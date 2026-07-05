@@ -1,5 +1,14 @@
 {
   "generated_at": "2026-07-05",
-  "hospital_overrides": [],
+  "hospital_overrides": [
+    {
+      "hospital_id": "hospital_001",
+      "rule_id": "MQSI2025_005",
+      "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
+      "status": "approved",
+      "version": "hospital_001_2026-07-05T21:22:02",
+      "change_id": "CR_20260705_212152_2f1b05"
+    }
+  ],
   "note": "初始库未配置医院个性化口径"
 }

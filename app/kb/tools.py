@@ -224,8 +224,18 @@ class KnowledgeBaseTools:
     def build_feedback_preview(self, rule_id: str, hospital_id: str | None, user_feedback: str) -> dict[str, Any]:
         effective = self.get_effective_rule(rule_id, hospital_id)
         hospital_override = effective.get("hospital_override")
+        company_rule = effective.get("company_rule") or {}
+        national_rule = effective.get("national_rule") or {}
         requested_formula = _derive_feedback_value(effective.get("formula", ""), user_feedback)
         requested_definition = _derive_feedback_value(effective.get("definition", ""), user_feedback)
+
+        current_effective = {
+            "level": effective.get("effective_level", ""),
+            "status": "effective",
+            "definition": effective.get("definition", ""),
+            "formula": effective.get("formula", ""),
+            "implementation_status": effective.get("implementation_status", ""),
+        }
         current_hospital = {
             "level": "hospital",
             "status": "configured" if hospital_override else "not_configured",
@@ -236,16 +246,16 @@ class KnowledgeBaseTools:
         company = {
             "level": "company",
             "status": "configured",
-            "definition": effective.get("definition", ""),
-            "formula": effective.get("formula", ""),
-            "implementation": effective.get("company_rule", {}).get("implementation", ""),
-            "implementation_status": effective.get("company_rule", {}).get("implementation_status", ""),
+            "definition": company_rule.get("definition", ""),
+            "formula": company_rule.get("formula", ""),
+            "implementation": company_rule.get("implementation", ""),
+            "implementation_status": company_rule.get("implementation_status", ""),
         }
         national = {
             "level": "national",
             "status": "configured",
-            "definition": effective.get("national_rule", {}).get("definition", ""),
-            "formula": effective.get("national_rule", {}).get("formula", ""),
+            "definition": national_rule.get("definition", ""),
+            "formula": national_rule.get("formula", ""),
         }
         requested = {
             "level": "hospital",
@@ -254,18 +264,41 @@ class KnowledgeBaseTools:
             "formula": requested_formula,
             "source_text": user_feedback,
         }
+
+        # 字段级变更对比
+        _fields = [
+            ("指标定义", "definition"),
+            ("计算公式", "formula"),
+            ("实现状态", "implementation_status"),
+        ]
+        field_changes: list[dict[str, Any]] = []
+        for label, key in _fields:
+            req_val = requested.get(key, "") if key != "implementation_status" else ""
+            cur_val = current_effective.get(key, "")
+            field_changes.append({
+                "field": label,
+                "requested": str(req_val or ""),
+                "current": str(cur_val or ""),
+                "changed": bool(req_val and req_val != cur_val),
+            })
+
         return {
             "rule_id": effective["rule_id"],
             "rule_name": effective["rule_name"],
             "hospital_id": hospital_id,
             "target_level": "hospital",
             "current_effective_level": effective["effective_level"],
+            # 医院前台弹窗使用
             "requested": requested,
+            "current_effective": current_effective,
+            "options": [requested, current_effective],
+            "field_changes": field_changes,
+            # 后台审批参考使用
             "current_hospital": current_hospital,
             "company": company,
             "national": national,
-            "options": [requested, current_hospital, company, national],
-            "message": "\u68c0\u6d4b\u5230\u672c\u9662\u53e3\u5f84\u53cd\u9988\uff0c\u8bf7\u786e\u8ba4\u5dee\u5f02\u540e\u518d\u63d0\u4ea4\u53d8\u66f4\u7533\u8bf7\u3002",
+            "references": [current_hospital, company, national],
+            "message": "检测到本院口径反馈，请确认差异后再提交变更申请。",
         }
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -280,14 +313,16 @@ class KnowledgeBaseTools:
             raise KBToolError("HOSPITAL_ID_REQUIRED")
 
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
+        created_at = datetime.now().isoformat(timespec="seconds")
         change_id = f"CR_{now}_{uuid.uuid4().hex[:6]}"
-        title = _safe_filename(str(payload.get("indicator_name") or rule.get("rule_name") or rule.get("rule_id") or "\u672c\u9662\u53e3\u5f84\u53cd\u9988"))
+        title = _safe_filename(str(payload.get("indicator_name") or rule.get("rule_name") or rule.get("rule_id") or "本院口径反馈"))
         rel_path = f"review/pending/{change_id}_{title}.md"
         path = self.kb_root / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         requested_definition = str(payload.get("requested_definition") or "")
         requested_formula = str(payload.get("requested_formula") or payload.get("hospital_feedback") or "")
-        created_at = datetime.now().isoformat(timespec="seconds")
+        submitter_id = str(payload.get("submitter_id") or "unknown")
+        submitter_role = str(payload.get("submitter_role") or "unknown")
 
         content = f"""---
 type: change_request
@@ -297,38 +332,42 @@ rule_id: {rule.get('rule_id', '')}
 indicator_name: {rule.get('rule_name', '')}
 hospital_id: {hospital_id}
 target_level: hospital
+submitter_id: {submitter_id}
+submitter_role: {submitter_role}
 created_at: {created_at}
 ---
 # {change_id}_{title}
 
-## \u6307\u6807
+## 指标
 
 - rule_id: {rule.get('rule_id', '')}
 - indicator_name: {rule.get('rule_name', '')}
 - hospital_id: {hospital_id}
 - target_level: hospital
-- change_type: {payload.get('change_type', '\u672c\u9662\u53e3\u5f84\u53cd\u9988')}
+- change_type: {payload.get('change_type', '本院口径反馈')}
 - status: pending
+- 提交人: {submitter_id}（{submitter_role}）
+- 提交时间: {created_at}
 
-## \u8bf7\u6c42\u5b9a\u4e49
+## 请求定义
 
 {requested_definition}
 
-## \u8bf7\u6c42\u516c\u5f0f
+## 请求公式
 
 {requested_formula}
 
-## \u7528\u6237\u53cd\u9988
+## 用户反馈
 
-{payload.get('hospital_feedback', '\u7528\u6237\u672a\u660e\u786e')}
+{payload.get('hospital_feedback', '用户未明确')}
 
-## \u539f\u59cb\u7528\u6237\u6d88\u606f
+## 原始用户消息
 
 {payload.get('original_user_message', '')}
 
-## \u5ba1\u6838\u8981\u6c42
+## 审核要求
 
-\u8be5\u53d8\u66f4\u4ec5\u8fdb\u5165 pending\uff0c\u4e0d\u76f4\u63a5\u5199\u5165\u6b63\u5f0f wiki\u3002\u4eba\u5de5\u5ba1\u6838\u901a\u8fc7\u540e\u53ea\u751f\u6210\u533b\u9662 override\uff0c\u4e0d\u4fee\u6539\u516c\u53f8\u6807\u51c6\u6216\u56fd\u6807\u3002
+该变更仅进入 pending，不直接写入正式 wiki。人工审核通过后只生成医院 override，不修改公司标准或国标。
 """
         path.write_text(content, encoding="utf-8")
         return {
@@ -338,6 +377,9 @@ created_at: {created_at}
             "target_level": "hospital",
             "rule_id": rule.get("rule_id", ""),
             "hospital_id": hospital_id,
+            "submitter_id": submitter_id,
+            "submitter_role": submitter_role,
+            "created_at": created_at,
         }
 
     def _pending_path_for(self, change_id: str) -> Path:
@@ -353,10 +395,13 @@ created_at: {created_at}
         return {
             **meta,
             "path": rel_path,
-            "requested_definition": _section(markdown, "\u8bf7\u6c42\u5b9a\u4e49"),
-            "requested_formula": _section(markdown, "\u8bf7\u6c42\u516c\u5f0f"),
-            "hospital_feedback": _section(markdown, "\u7528\u6237\u53cd\u9988"),
-            "original_user_message": _section(markdown, "\u539f\u59cb\u7528\u6237\u6d88\u606f"),
+            "requested_definition": _section(markdown, "请求定义"),
+            "requested_formula": _section(markdown, "请求公式"),
+            "hospital_feedback": _section(markdown, "用户反馈"),
+            "original_user_message": _section(markdown, "原始用户消息"),
+            "submitter_id": meta.get("submitter_id", "unknown"),
+            "submitter_role": meta.get("submitter_role", "unknown"),
+            "created_at": meta.get("created_at", ""),
         }
 
     def list_pending_change_requests(self) -> list[dict[str, Any]]:
@@ -366,7 +411,7 @@ created_at: {created_at}
         items = [self._change_request_from_path(path) for path in sorted(pending_dir.glob("CR_*.md"))]
         return [item for item in items if item.get("status") == "pending"]
 
-    def approve_change_request(self, change_id: str) -> dict[str, Any]:
+    def approve_change_request(self, change_id: str, approver_id: str = "admin") -> dict[str, Any]:
         pending_path = self._pending_path_for(change_id)
         request = self._change_request_from_path(pending_path)
         if request.get("target_level") != "hospital":
@@ -378,31 +423,32 @@ created_at: {created_at}
         if not hospital_id:
             raise KBToolError("HOSPITAL_ID_REQUIRED")
 
+        approved_at = datetime.now().isoformat(timespec="seconds")
         override_rel_path = f"wiki/hospitals/{hospital_id}/overrides/{rule['rule_id']}_override.md"
         override_path = self.kb_root / override_rel_path
         override_path.parent.mkdir(parents=True, exist_ok=True)
-        approved_at = datetime.now().isoformat(timespec="seconds")
         requested_definition = request.get("requested_definition") or ""
         requested_formula = request.get("requested_formula") or ""
         override_path.write_text(
-            f"""# {rule['rule_name']}_\u672c\u9662\u53e3\u5f84
+            f"""# {rule['rule_name']}_本院口径
 
-## \u672c\u9662\u6307\u6807\u5b9a\u4e49
+## 本院指标定义
 
 {requested_definition}
 
-## \u672c\u9662\u8ba1\u7b97\u516c\u5f0f
+## 本院计算公式
 
 {requested_formula}
 
-## \u672c\u9662\u6807\u51c6 SQL
+## 本院标准 SQL
 
-\u5f85\u533b\u9662\u5b57\u6bb5\u6620\u5c04\u786e\u8ba4\u3002
+待医院字段映射确认。
 
-## \u5ba1\u6279\u4fe1\u606f
+## 审批信息
 
 - change_id: {change_id}
 - approved_at: {approved_at}
+- approver_id: {approver_id}
 - target_level: hospital
 """,
             encoding="utf-8",
@@ -433,7 +479,7 @@ created_at: {created_at}
         approved_dir.mkdir(parents=True, exist_ok=True)
         approved_path = approved_dir / pending_path.name
         approved_text = pending_path.read_text(encoding="utf-8").replace("status: pending", "status: approved")
-        approved_text = approved_text + f"\n## \u5ba1\u6279\u7ed3\u679c\n\napproved_at: {approved_at}\n"
+        approved_text = approved_text + f"\n## 审批结果\n\n- approved_at: {approved_at}\n- approver_id: {approver_id}\n"
         approved_path.write_text(approved_text, encoding="utf-8")
         pending_path.write_text(approved_text, encoding="utf-8")
         return {
@@ -442,14 +488,18 @@ created_at: {created_at}
             "target_level": "hospital",
             "override_path": override_rel_path,
             "approved_path": approved_path.relative_to(self.kb_root).as_posix(),
+            "approved_at": approved_at,
+            "approver_id": approver_id,
         }
 
-    def reject_change_request(self, change_id: str) -> dict[str, Any]:
+    def reject_change_request(self, change_id: str, approver_id: str = "admin") -> dict[str, Any]:
         pending_path = self._pending_path_for(change_id)
+        rejected_at = datetime.now().isoformat(timespec="seconds")
         rejected_dir = self.kb_root / "review" / "rejected"
         rejected_dir.mkdir(parents=True, exist_ok=True)
         rejected_path = rejected_dir / pending_path.name
         rejected_text = pending_path.read_text(encoding="utf-8").replace("status: pending", "status: rejected")
+        rejected_text = rejected_text + f"\n## 审批结果\n\n- rejected_at: {rejected_at}\n- approver_id: {approver_id}\n"
         rejected_path.write_text(rejected_text, encoding="utf-8")
         pending_path.write_text(rejected_text, encoding="utf-8")
-        return {"change_id": change_id, "status": "rejected", "path": rejected_path.relative_to(self.kb_root).as_posix()}
+        return {"change_id": change_id, "status": "rejected", "path": rejected_path.relative_to(self.kb_root).as_posix(), "rejected_at": rejected_at, "approver_id": approver_id}

@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
+from app.prompts import answer_prompt_template, intent_prompt_system
 
 
 class LLMClient(Protocol):
@@ -32,37 +33,31 @@ class AgentState(TypedDict, total=False):
     errors: list[str]
 
 
-FEEDBACK_MARKERS = ["本院", "我们医院", "我院", "应该", "改成", "反馈", "口径", "按"]
+FEEDBACK_MARKERS = ["本院", "我们医院", "我院", "应该", "改成", "改为", "调整成", "修改成", "反馈", "按"]
+
+FOLLOW_UP_MARKERS = ["这个", "那个", "它", "上面", "刚才", "之前", "这个指标", "那个指标", "当前", "现在"]
 
 
 def detect_intent(query: str) -> str:
-    if any(marker in query for marker in FEEDBACK_MARKERS) and any(marker in query for marker in ["应该", "改", "反馈", "按"]):
+    """关键词兜底：只包含'口径'不一定是反馈，需要有明确的'要改'语义。"""
+    strong_feedback = ["应该", "改", "反馈", "按", "本院", "我们医院", "我院"]
+    if any(marker in query for marker in strong_feedback):
         return "feedback"
+    return "query"
     return "query"
 
 
-def _intent_prompt(query: str) -> str:
-    return f"""你是医疗质量指标知识库的意图识别器。
-
-用户输入：
-{query}
-
-请判断用户是在普通提问，还是在反馈/修正本院指标口径。
-只输出 JSON，不要解释，不要输出 Markdown。
-
-JSON 格式：
-{{
-  "intent": "query 或 feedback",
-  "question_type": "指标公式查询/指标定义查询/制度分类查询/指标列表查询/原文依据查询/本院口径查询/反馈修正/其他",
-  "indicator_name": "涉及的指标名称，没有则为空",
-  "theme_name": "涉及的制度主题，没有则为空",
-  "feedback_type": "计算口径修正/定义修正/分子修正/分母修正/排除条件修正/其他",
-  "feedback_summary": "如果是反馈，概括用户反馈；否则为空",
-  "retrieval_query": "用于检索本地 Markdown Wiki 的查询语句",
-  "need_clarification": false,
-  "clarification_question": ""
-}}
+def _intent_prompt(query: str, memory_context: dict[str, Any] | None = None) -> str:
+    history_block = ""
+    if memory_context:
+        last_rule = memory_context.get("rule_name", "")
+        if last_rule:
+            history_block = f"""
+上一轮对话上下文：
+- 上一轮用户查询的指标是：「{last_rule}」
+- 如果当前问题是追问（如"这个"、"当前"、"它"、"现在"），请结合上一轮指标来理解，并在 indicator_name 和 retrieval_query 中明确写出指标名。
 """
+    return intent_prompt_system().format(history_block=history_block, query=query)
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -79,17 +74,39 @@ def _extract_json_object(text: str) -> dict[str, Any]:
         return {}
 
 
-def _detect_intent(query: str, llm_client: LLMClient | None, errors: list[str]) -> str:
+def _detect_intent(
+    query: str,
+    llm_client: LLMClient | None,
+    errors: list[str],
+    memory_context: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """返回 {"intent":..., "retrieval_query":..., "indicator_name":...}。
+
+    LLM 可用时优先用 LLM 做意图识别 + 查询改写；
+    LLM 不可用或失败时回退到关键词规则，retrieval_query=原始query。
+    """
+    result: dict[str, str] = {
+        "intent": detect_intent(query),
+        "retrieval_query": query,
+        "indicator_name": "",
+    }
     if llm_client is not None:
         try:
-            data = _extract_json_object(llm_client.generate(_intent_prompt(query)))
+            data = _extract_json_object(llm_client.generate(_intent_prompt(query, memory_context)))
             intent = str(data.get("intent", "")).strip().lower()
             if intent in {"query", "feedback"}:
-                return intent
-            errors.append("LLM_INTENT_INVALID_JSON")
+                result["intent"] = intent
+            else:
+                errors.append("LLM_INTENT_INVALID_JSON")
+            retrieval = str(data.get("retrieval_query", "")).strip()
+            if retrieval:
+                result["retrieval_query"] = retrieval
+            indicator = str(data.get("indicator_name", "")).strip()
+            if indicator:
+                result["indicator_name"] = indicator
         except Exception as exc:
             errors.append(str(exc))
-    return detect_intent(query)
+    return result
 
 
 
@@ -143,34 +160,19 @@ def _process_steps(rule: dict[str, Any]) -> list[str]:
 
 def _build_answer_prompt(query: str, rule: dict[str, Any]) -> str:
     steps = "\n".join(f"{idx}. {step}" for idx, step in enumerate(_process_steps(rule), start=1))
-    return f"""你是医疗质量安全核心制度指标解释助手。
-
-请严格基于下面的知识库事实回答用户问题，不要编造字段、表名或 SQL。
-如果字段或 SQL 状态为不可用，必须明确说明不能生成可执行 SQL。
-
-用户问题：
-{query}
-
-可审计处理过程：
-{steps}
-
-知识库事实：
-- 指标名称：{rule.get("rule_name", "")}
-- rule_id：{rule.get("rule_id", "")}
-- 当前采用层级：{rule.get("effective_level", "")}
-- 定义：{rule.get("definition", "")}
-- 计算公式：{rule.get("formula", "")}
-- 实现状态：{rule.get("implementation_status", "")}
-- 字段状态：{rule.get("field_status", "")}
-- SQL 状态：{rule.get("sql_status", "")}
-- 警告：{", ".join(rule.get("warnings", []))}
-
-回答要求：
-1. 先给结论，再给定义和公式。
-2. 说明当前采用的是本院、公司还是国标层级。
-3. 如 SQL 不可用，明确说明原因。
-4. 不输出模型思维链，只输出可审计依据。
-"""
+    return answer_prompt_template().format(
+        query=query,
+        steps=steps,
+        rule_name=rule.get("rule_name", ""),
+        rule_id=rule.get("rule_id", ""),
+        effective_level=rule.get("effective_level", ""),
+        definition=rule.get("definition", ""),
+        formula=rule.get("formula", ""),
+        implementation_status=rule.get("implementation_status", ""),
+        field_status=rule.get("field_status", ""),
+        sql_status=rule.get("sql_status", ""),
+        warnings=", ".join(rule.get("warnings", [])),
+    )
 
 
 def _normalize_fact(text: str) -> str:
@@ -216,8 +218,11 @@ def _preview_feedback(state: AgentState, tools: KnowledgeBaseTools, effective: d
 
 def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLMClient | None = None) -> AgentState:
     query = state["query"]
-    state["intent"] = _detect_intent(query, llm_client, state.setdefault("errors", []))
-    search = tools.search(query, limit=5)
+    errors: list[str] = state.setdefault("errors", [])
+    intent_data = _detect_intent(query, llm_client, errors, state.get("memory_context"))
+    state["intent"] = intent_data["intent"]
+    search_query = intent_data["retrieval_query"] or query
+    search = tools.search(search_query, limit=5)
     state["search"] = search
     rule_id = search.get("resolved_rule_id")
     state["rule_id"] = rule_id
@@ -246,11 +251,14 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
         return _run_deterministic(state, tools, llm_client)
 
     def intent_node(s: AgentState) -> AgentState:
-        s["intent"] = _detect_intent(s["query"], llm_client, s.setdefault("errors", []))
+        intent_data = _detect_intent(s["query"], llm_client, s.setdefault("errors", []), s.get("memory_context"))
+        s["intent"] = intent_data["intent"]
+        s["_retrieval_query"] = intent_data["retrieval_query"]  # type: ignore[typeddict-unknown-key]
         return s
 
     def search_node(s: AgentState) -> AgentState:
-        s["search"] = tools.search(s["query"], limit=5)
+        search_query = s.get("_retrieval_query") or s["query"]  # type: ignore[typeddict-item]
+        s["search"] = tools.search(str(search_query), limit=5)
         s["rule_id"] = s["search"].get("resolved_rule_id")
         _apply_memory_context_if_needed(s)
         return s
@@ -348,3 +356,167 @@ def run_chat(
         },
     )
     return dict(result)
+
+
+def run_chat_stream(
+    query: str,
+    hospital_id: str | None = None,
+    kb_root: str | Path = DEFAULT_KB_ROOT,
+    use_llm: bool = False,
+    llm_client: LLMClient | None = None,
+    session_id: str | None = None,
+    memory: ConversationMemory | None = None,
+) -> Iterator[Tuple[str, dict[str, Any]]]:
+    """真正的流式对话：逐 token 从 Ollama 产出并立即 yield。
+
+    返回 (event_type, payload) 元组的生成器：
+      - ("meta", {...})         会话元信息
+      - ("token", {"text": "..."})  逐 token
+      - ("feedback_preview", {...})  反馈对比预览
+      - ("done", {...})         最终结果
+    """
+    tools = KnowledgeBaseTools(kb_root)
+    memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
+    active_session_id = memory_store.ensure_session(session_id, hospital_id)
+    memory_context = memory_store.last_rule_context(active_session_id) or {}
+
+    state: AgentState = {
+        "query": query,
+        "hospital_id": hospital_id,
+        "session_id": active_session_id,
+        "memory_context": memory_context,
+        "errors": [],
+    }
+    memory_store.append_message(
+        active_session_id, "user", query,
+        {"hospital_id": hospital_id, "memory_context": memory_context},
+    )
+
+    active_llm = llm_client if use_llm else None
+    if use_llm and active_llm is None:
+        active_llm = OllamaClient()
+
+    # ---- Phase 1: 意图识别 + 知识库检索（同步，很快） ----
+    errors: list[str] = state.setdefault("errors", [])
+    intent_data = _detect_intent(query, active_llm, errors, memory_context)
+    state["intent"] = intent_data["intent"]
+
+    try:
+        search_query = intent_data["retrieval_query"] or query
+        search = tools.search(search_query, limit=5)
+    except KBToolError as exc:
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": None, "generation_method": "tool",
+        })
+        yield ("token", {"text": f"知识库工具调用失败：{exc}"})
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": None, "generation_method": "tool",
+            "answer": f"知识库工具调用失败：{exc}", "errors": [str(exc)],
+        })
+        return
+
+    state["search"] = search
+    state["rule_id"] = search.get("resolved_rule_id")
+    _apply_memory_context_if_needed(state)
+    rule_id = state.get("rule_id")
+
+    if not rule_id:
+        answer = "未命中规则。请提供更明确的指标名称或 rule_id。"
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": None, "generation_method": "tool",
+        })
+        yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": state.get("intent"), "rule_id": None,
+            "generation_method": "tool", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": None, "generation_method": "tool",
+            "answer": answer, "errors": errors,
+        })
+        return
+
+    effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
+    state["effective_rule"] = effective
+    state["field_mapping"] = tools.get_field_mapping(rule_id)
+
+    # ---- Phase 2: 反馈模式（模板化，无需流式） ----
+    if state["intent"] == "feedback":
+        state = _preview_feedback(state, tools, effective)
+        answer = str(state.get("answer", ""))
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "tool",
+        })
+        yield ("token", {"text": answer})
+        if state.get("feedback_preview"):
+            yield ("feedback_preview", state["feedback_preview"])
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": state.get("intent"), "rule_id": rule_id,
+            "rule_name": effective.get("rule_name"),
+            "generation_method": "tool", "errors": errors,
+            "has_feedback_preview": True,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "tool",
+            "answer": answer, "errors": errors,
+            "feedback_preview": state.get("feedback_preview"),
+        })
+        return
+
+    # ---- Phase 3: 查询模式 —— 真正的流式 LLM 生成 ----
+    if active_llm is None:
+        # 无 LLM，直接用模板回答
+        answer = _answer_from_rule(effective)
+        generation_method = "tool"
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": generation_method,
+        })
+        yield ("token", {"text": answer})
+    else:
+        generation_method = "llm_stream"
+        full_answer = ""
+        try:
+            prompt = _build_answer_prompt(query, effective)
+            yield ("meta", {
+                "session_id": active_session_id, "intent": state.get("intent"),
+                "rule_id": rule_id, "generation_method": "llm_stream",
+            })
+            for token in active_llm.generate_stream(prompt):  # type: ignore[union-attr]
+                full_answer += token
+                yield ("token", {"text": token})
+
+            answer = full_answer.strip()
+
+            # 流式生成完成后做 guard 校验
+            if not answer or not _llm_answer_passes_guard(answer, effective):
+                errors.append("LLM_ANSWER_FAILED_FACT_GUARD")
+                fallback = _answer_from_rule(effective)
+                guard_note = "\n\n⚠️ LLM 生成内容未通过事实校验，以下为知识库模板回答：\n" + fallback
+                yield ("token", {"text": guard_note})
+                answer = (full_answer + guard_note) if full_answer else fallback
+                generation_method = "llm_guarded_fallback"
+
+        except Exception as exc:
+            errors.append(str(exc))
+            answer = _answer_from_rule(effective)
+            generation_method = "tool_fallback"
+            yield ("token", {"text": answer})
+
+    # ---- Phase 4: 记录记忆，返回 done ----
+    memory_store.append_message(active_session_id, "assistant", answer, {
+        "intent": state.get("intent"), "rule_id": rule_id,
+        "rule_name": effective.get("rule_name"),
+        "generation_method": generation_method, "errors": errors,
+    })
+    yield ("done", {
+        "session_id": active_session_id, "intent": state.get("intent"),
+        "rule_id": rule_id, "generation_method": generation_method,
+        "answer": answer, "errors": errors,
+    })

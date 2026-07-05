@@ -1,350 +1,655 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>核心制度指标 Agent</title>
-    <style>
-      :root {
-        color-scheme: light;
-        font-family: "Microsoft YaHei", Arial, sans-serif;
-        background: #f6f7f9;
-        color: #1f2937;
-      }
-      body { margin: 0; }
-      main { max-width: 1080px; margin: 0 auto; padding: 24px; }
-      header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 18px; }
-      h1 { font-size: 24px; margin: 0; }
-      h2 { font-size: 18px; margin: 18px 0 10px; }
-      .toolbar { display: flex; gap: 10px; align-items: center; }
-      .panel { background: #fff; border: 1px solid #d9dee7; border-radius: 8px; padding: 16px; }
-      .controls { display: grid; grid-template-columns: 180px 1fr 84px; gap: 10px; }
-      input, textarea, button { font: inherit; }
-      input, textarea { border: 1px solid #c9d0dc; border-radius: 6px; padding: 10px; }
-      textarea { min-height: 92px; resize: vertical; }
-      button { border: 0; border-radius: 6px; padding: 0 16px; background: #116a7b; color: white; cursor: pointer; }
-      button.secondary { background: #475467; min-height: 36px; }
-      button.ghost { background: #edf2f7; color: #344054; border: 1px solid #c9d0dc; }
-      button.danger { background: #9f1d35; }
-      button:disabled { background: #8795a1; cursor: wait; }
-      .meta { color: #5b677a; font-size: 14px; }
-      .mode-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-top: 12px; color: #344054; }
-      .messages { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; min-height: 260px; }
-      .message { max-width: 86%; border-radius: 8px; padding: 12px 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .message.user { align-self: flex-end; background: #e6f3f6; color: #12343b; }
-      .message.assistant { align-self: flex-start; background: #111827; color: #f9fafb; }
-      .message.system { align-self: center; background: #fff7e6; color: #5f4300; border: 1px solid #f2d08a; }
-      .message .label { display: block; opacity: 0.72; font-size: 12px; margin-bottom: 6px; }
-      .modal[hidden] { display: none; }
-      .modal { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.48); display: grid; place-items: center; padding: 20px; z-index: 20; }
-      .dialog { width: min(920px, 100%); max-height: 88vh; overflow: auto; background: #fff; border-radius: 8px; border: 1px solid #d9dee7; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22); }
-      .dialog header { padding: 16px; margin: 0; border-bottom: 1px solid #e4e7ec; }
-      .dialog-body { padding: 16px; }
-      .comparison { display: grid; gap: 10px; }
-      .row { display: grid; grid-template-columns: 120px 1fr 150px; gap: 10px; align-items: stretch; padding: 12px; border: 1px solid #e4e7ec; border-radius: 8px; }
-      .row-title { font-weight: 700; color: #111827; }
-      .row-content { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
-      .review-list { display: grid; gap: 10px; }
-      .review-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
-      .review-actions { display: flex; gap: 8px; justify-content: flex-end; }
-      @media (max-width: 760px) {
-        main { padding: 16px; }
-        header { align-items: flex-start; flex-direction: column; }
-        .toolbar, .mode-row { align-items: flex-start; flex-direction: column; }
-        .controls, .row { grid-template-columns: 1fr; }
-        button { min-height: 42px; }
-        .message { max-width: 100%; }
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <div>
-          <h1>核心制度指标 Agent</h1>
-          <div class="meta">本地 Markdown Wiki：医院口径优先，回退公司标准和国标。</div>
-        </div>
-        <div class="toolbar">
-          <button id="reviewButton" class="secondary">审批</button>
-          <button id="newSession" class="ghost">新会话</button>
-        </div>
-      </header>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>核心制度指标 Agent</title>
+<style>
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  color: #0f2742; background: #f5f7fb;
+}
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
 
-      <section class="panel">
-        <div class="controls">
-          <input id="hospitalId" value="hospital_001" aria-label="医院 ID" />
-          <textarea id="query" aria-label="问题">急会诊及时到位率怎么算？</textarea>
-          <button id="send">发送</button>
-        </div>
-        <div class="mode-row">
-          <span>默认使用 Ollama 生成最终回答；失败或事实校验未通过时自动回退知识库工具答案。</span>
-          <span id="sessionLabel" class="meta"></span>
-        </div>
-        <h2>对话</h2>
-        <div id="messages" class="messages"></div>
-      </section>
-    </main>
+/* 顶部栏 */
+.topbar {
+  height: 76px; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  border-bottom: 1px solid #d9e1ec; background: rgba(255,255,255,0.94); backdrop-filter: blur(8px);
+  position: sticky; top: 0; z-index: 20;
+}
+.brand-title { font-size: 24px; font-weight: 800; color: #0b1f3a; line-height: 1.2; }
+.brand-subtitle { margin-top: 4px; color: #4c6280; font-size: 14px; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
+.hospital-inline { display: flex; align-items: center; gap: 8px; color: #4c6280; font-size: 14px; }
+.hospital-inline input { width: 150px; height: 36px; padding: 0 10px; border: 1px solid #c8d3e2; border-radius: 10px; font-size: 15px; background: #fff; color: #0f2742; }
+.btn { border-radius: 10px; cursor: pointer; font-size: 15px; }
+.btn-secondary { height: 40px; padding: 0 18px; border: 0; color: #fff; background: #3b4658; }
+.btn-ghost { height: 40px; padding: 0 18px; color: #0f2742; border: 1px solid #c8d3e2; background: #f3f7fc; }
+.btn-ghost.admin-logged { background: #e8f5e9; border-color: #66bb6a; color: #2e7d32; }
 
-    <div id="feedbackModal" class="modal" hidden>
-      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="feedbackTitle">
-        <header>
-          <div>
-            <h2 id="feedbackTitle">口径差异确认</h2>
-            <div id="feedbackMeta" class="meta"></div>
-          </div>
-          <button class="ghost" data-close="feedbackModal">关闭</button>
-        </header>
-        <div class="dialog-body">
-          <div id="comparison" class="comparison"></div>
-        </div>
-      </section>
+/* 对话区域 */
+.chat-layout { flex: 1; min-height: 0; display: flex; justify-content: center; overflow: hidden; }
+.messages { width: min(920px, calc(100vw - 40px)); padding: 28px 0 180px; overflow-y: auto; }
+.message { display: flex; gap: 12px; margin: 18px 0; }
+.message.user { justify-content: flex-end; }
+.message.agent { justify-content: flex-start; }
+.message-avatar { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.message.agent .message-avatar { background: #102033; color: #fff; }
+.message.user .message-avatar { background: #dcecf3; color: #0e5365; order: 2; }
+.message-bubble { max-width: min(720px, 78vw); border-radius: 18px; padding: 14px 16px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; font-size: 16px; }
+.message.agent .message-bubble { color: #102033; background: #ffffff; border: 1px solid #dfe7f1; box-shadow: 0 4px 16px rgba(15,39,66,0.05); }
+.message.user .message-bubble { color: #0b2630; background: #dff1f5; }
+.message-meta { margin-bottom: 6px; font-size: 13px; color: #6b7f99; }
+
+/* 欢迎卡片 */
+.welcome-card { border: 1px solid #dfe7f1; border-radius: 20px; padding: 20px; background: #ffffff; box-shadow: 0 4px 20px rgba(15,39,66,0.06); }
+.welcome-card h2 { margin: 0 0 10px; font-size: 20px; color: #0b1f3a; }
+.welcome-card p { margin: 8px 0; line-height: 1.8; color: #28415f; }
+.welcome-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.example-chip { border: 1px solid #c8d3e2; border-radius: 999px; padding: 7px 12px; background: #f6f9fc; cursor: pointer; color: #28415f; font-size: 14px; }
+.example-chip:hover { background: #e8f0f8; }
+
+/* 底部输入区 */
+.composer-wrapper {
+  position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 24px 18px;
+  background: linear-gradient(180deg, rgba(245,247,251,0), rgba(245,247,251,0.94) 20%, #f5f7fb 100%);
+  z-index: 30;
+}
+.composer {
+  width: min(920px, calc(100vw - 40px)); margin: 0 auto; display: flex; align-items: flex-end; gap: 10px;
+  padding: 10px; border: 1px solid #cdd8e6; border-radius: 18px; background: #ffffff;
+  box-shadow: 0 8px 32px rgba(15,39,66,0.12);
+}
+#queryInput { flex: 1; min-height: 46px; max-height: 160px; padding: 10px 12px; border: 0; outline: none; resize: none; font-size: 16px; line-height: 1.6; color: #0f2742; background: transparent; }
+#sendButton { min-width: 84px; height: 46px; padding: 0 18px; border: 0; color: #ffffff; background: #157a8a; font-weight: 600; border-radius: 10px; cursor: pointer; font-size: 16px; }
+#sendButton:disabled { cursor: not-allowed; opacity: 0.55; }
+.composer-hint { width: min(920px, calc(100vw - 40px)); margin: 8px auto 0; color: #61738c; font-size: 13px; display: flex; justify-content: space-between; }
+
+/* 弹窗 */
+.modal[hidden] { display: none; }
+.modal {
+  position: fixed; inset: 0; background: rgba(17,24,39,0.48); display: grid; place-items: center; padding: 20px; z-index: 100;
+}
+.dialog { width: min(920px, 100%); max-height: 88vh; overflow: auto; background: #fff; border-radius: 8px; border: 1px solid #d9dee7; box-shadow: 0 20px 50px rgba(15,23,42,0.22); }
+.dialog header { padding: 16px; margin: 0; border-bottom: 1px solid #e4e7ec; display: flex; justify-content: space-between; align-items: center; }
+.dialog-body { padding: 16px; }
+.comparison { display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 120px 1fr 150px; gap: 10px; align-items: stretch; padding: 12px; border: 1px solid #e4e7ec; border-radius: 8px; }
+.row-title { font-weight: 700; color: #111827; }
+.row-content { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
+.review-list { display: grid; gap: 10px; }
+.review-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+.review-actions { display: flex; gap: 8px; justify-content: flex-end; }
+button { border: 0; border-radius: 6px; padding: 0 16px; background: #116a7b; color: white; cursor: pointer; font: inherit; }
+button.danger { background: #9f1d35; }
+button.ghost { background: #edf2f7; color: #344054; border: 1px solid #c9d0dc; }
+button:disabled { background: #8795a1; cursor: wait; }
+
+/* 字段对比表 */
+.diff-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 14px; }
+.diff-table th, .diff-table td { border: 1px solid #e4e7ec; padding: 8px 10px; text-align: left; vertical-align: top; }
+.diff-table th { background: #f6f7f9; font-weight: 700; color: #111827; white-space: nowrap; }
+.diff-table td { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-table .changed { background: #fff7e6; }
+.changed-badge { display: inline-block; background: #f59e0b; color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
+
+/* 登录弹窗 */
+.login-box { max-width: 400px; margin: 0 auto; display: grid; gap: 12px; }
+.login-box input { padding: 10px; border: 1px solid #c9d0dc; border-radius: 6px; font-size: 15px; }
+.login-err { color: #9f1d35; font-size: 14px; }
+
+/* 移动端 */
+@media (max-width: 720px) {
+  .topbar { height: auto; padding: 12px 16px; flex-direction: column; align-items: flex-start; }
+  .topbar-actions { width: 100%; flex-wrap: wrap; }
+  .hospital-inline input { width: 130px; }
+  .messages { width: calc(100vw - 24px); padding-bottom: 190px; }
+  .message-bubble { max-width: 86vw; }
+  .composer { width: calc(100vw - 24px); }
+  .composer-wrapper { padding: 14px 12px; }
+  .composer-hint { width: calc(100vw - 24px); }
+  .row { grid-template-columns: 1fr; }
+}
+
+/* 登录页面 */
+.login-screen { position: fixed; inset: 0; background: #f5f7fb; display: grid; place-items: center; z-index: 200; }
+.login-screen[hidden] { display: none; }
+.login-card { width: min(420px, 90vw); background: #fff; border-radius: 16px; padding: 40px 32px; box-shadow: 0 8px 40px rgba(15,39,66,0.12); text-align: center; }
+.login-card h2 { margin: 0 0 8px; font-size: 22px; color: #0b1f3a; }
+.login-card .subtitle { color: #5b677a; font-size: 14px; margin-bottom: 24px; }
+.login-card label { display: block; text-align: left; color: #4c6280; font-size: 14px; margin-bottom: 4px; margin-top: 12px; }
+.login-card input, .login-card select { width: 100%; padding: 10px 12px; border: 1px solid #c9d0dc; border-radius: 8px; font-size: 15px; margin-bottom: 4px; }
+.login-card select { background: #fff; }
+.login-card button { width: 100%; margin-top: 16px; padding: 12px; font-size: 16px; }
+.login-card .role-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.login-card .role-tab { flex: 1; padding: 10px; border: 2px solid #c9d0dc; border-radius: 10px; background: #fff; cursor: pointer; font-size: 15px; color: #4c6280; }
+.login-card .role-tab.active { border-color: #157a8a; color: #157a8a; font-weight: 700; background: #e6f4f7; }
+.user-info { display: flex; align-items: center; gap: 6px; color: #4c6280; font-size: 13px; }
+.user-badge { background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.user-badge.company { background: #e3f2fd; color: #1565c0; }
+
+/* 审批页人员信息 */
+.review-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #5b677a; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<!-- 登录页面 -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h2>核心制度指标 Agent</h2>
+    <div class="subtitle">请选择身份并输入账号</div>
+    <div class="role-tabs">
+      <button class="role-tab active" data-role="hospital">医院人员</button>
+      <button class="role-tab" data-role="company">公司人员</button>
     </div>
+    <label>账号</label>
+    <input id="loginAccount" type="text" placeholder="请输入账号" value="user_001" />
+    <label>密码（暂不校验）</label>
+    <input id="loginPassword2" type="password" placeholder="请输入密码" value="" />
+    <div id="loginError2" class="login-err" hidden></div>
+    <button id="loginSubmit2">进入系统</button>
+  </div>
+</div>
 
-    <div id="reviewModal" class="modal" hidden>
-      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
-        <header>
-          <div>
-            <h2 id="reviewTitle">待审批口径</h2>
-            <div class="meta">审批通过后只生效到当前医院口径。</div>
-          </div>
-          <button class="ghost" data-close="reviewModal">关闭</button>
-        </header>
-        <div class="dialog-body">
-          <div id="reviewList" class="review-list"></div>
-        </div>
-      </section>
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-title">核心制度指标 Agent</div>
+      <div class="brand-subtitle">本地 Markdown Wiki：医院口径优先，回退公司标准和国标。</div>
     </div>
+    <div class="topbar-actions">
+      <span id="userInfo" class="user-info"></span>
+      <label class="hospital-inline"><span>医院</span><input id="hospitalId" value="hospital_001" /></label>
+      <button id="reviewButton" class="btn btn-secondary">审批</button>
+      <button id="newSessionButton" class="btn btn-ghost">新会话</button>
+    </div>
+  </header>
 
-    <script>
-      const button = document.querySelector("#send");
-      const newSessionButton = document.querySelector("#newSession");
-      const reviewButton = document.querySelector("#reviewButton");
-      const messages = document.querySelector("#messages");
-      const queryInput = document.querySelector("#query");
-      const hospitalInput = document.querySelector("#hospitalId");
-      const sessionLabel = document.querySelector("#sessionLabel");
-      const feedbackModal = document.querySelector("#feedbackModal");
-      const feedbackMeta = document.querySelector("#feedbackMeta");
-      const comparison = document.querySelector("#comparison");
-      const reviewModal = document.querySelector("#reviewModal");
-      const reviewList = document.querySelector("#reviewList");
-      let sessionId = localStorage.getItem("coreRulesSessionId") || null;
-      let latestFeedbackPreview = null;
+  <main class="chat-layout">
+    <section id="messages" class="messages" aria-live="polite"></section>
+  </main>
 
-      function updateSessionLabel() {
-        sessionLabel.textContent = sessionId ? `session: ${sessionId.slice(0, 8)}` : "session: new";
-      }
+  <footer class="composer-wrapper">
+    <form id="chatForm" class="composer">
+      <textarea id="queryInput" rows="1" placeholder="输入问题，例如：急会诊及时到位率怎么算？"></textarea>
+      <button id="sendButton" type="submit">发送</button>
+    </form>
+    <div class="composer-hint">
+      <span>默认使用 Ollama 流式生成；失败或事实校验未通过时自动回退知识库工具答案。</span>
+      <span id="sessionLabel"></span>
+    </div>
+  </footer>
+</div>
 
-      function addMessage(role, content, method = "") {
-        const item = document.createElement("div");
-        item.className = `message ${role}`;
-        const label = document.createElement("span");
-        label.className = "label";
-        label.textContent = role === "user" ? "你" : (method ? `Agent - ${method}` : "Agent");
-        const body = document.createElement("span");
-        body.textContent = content;
-        item.append(label, body);
-        messages.appendChild(item);
-        item.scrollIntoView({ block: "nearest" });
-        return body;
-      }
+<!-- 口径差异确认弹窗 -->
+<div id="feedbackModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>口径差异确认</h2><div id="feedbackMeta" style="color:#5b677a;font-size:14px;"></div></div>
+      <button class="ghost" data-close="feedbackModal">关闭</button>
+    </header>
+    <div class="dialog-body"><div id="comparison" class="comparison"></div></div>
+  </section>
+</div>
 
-      function parseSseBlock(block) {
-        const eventLine = block.split("\n").find((line) => line.startsWith("event:"));
-        const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
-        if (!eventLine || !dataLine) return null;
-        return { event: eventLine.slice(6).trim(), data: JSON.parse(dataLine.slice(5).trim()) };
-      }
+<!-- 管理员登录弹窗 -->
+<div id="loginModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true" style="width:min(440px,100%);">
+    <header>
+      <div><h2>管理员登录</h2></div>
+      <button class="ghost" data-close="loginModal">关闭</button>
+    </header>
+    <div class="dialog-body">
+      <div class="login-box">
+        <label style="color:#4c6280;font-size:14px;">请输入管理员密码</label>
+        <input id="loginPassword" type="password" placeholder="管理员密码" />
+        <div id="loginError" class="login-err" hidden></div>
+        <button id="loginSubmit">登录</button>
+      </div>
+    </div>
+  </section>
+</div>
 
-      async function streamChat(query) {
-        const assistantBody = addMessage("assistant", "", "stream");
-        const response = await fetch("/api/chat/stream", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hospital_id: hospitalInput.value.trim() || "hospital_001",
-            query,
-            session_id: sessionId,
-            use_llm: true,
-          }),
-        });
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const blocks = buffer.split("\n\n");
-          buffer = blocks.pop() || "";
-          for (const block of blocks) {
-            const parsed = parseSseBlock(block);
-            if (!parsed) continue;
-            if (parsed.event === "meta") {
-              if (parsed.data.session_id) {
-                sessionId = parsed.data.session_id;
-                localStorage.setItem("coreRulesSessionId", sessionId);
-                updateSessionLabel();
-              }
-            }
-            if (parsed.event === "token") assistantBody.textContent += parsed.data.text || "";
-            if (parsed.event === "feedback_preview") {
-              latestFeedbackPreview = parsed.data;
-              showFeedbackPreview(parsed.data);
-            }
-            if (parsed.event === "done") {
-              if (parsed.data.session_id) {
-                sessionId = parsed.data.session_id;
-                localStorage.setItem("coreRulesSessionId", sessionId);
-                updateSessionLabel();
-              }
-            }
-            if (parsed.event === "error") assistantBody.textContent += `
-请求失败：${parsed.data.message}`;
-          }
+<!-- 审批弹窗 -->
+<div id="reviewModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>待审批口径</h2><div style="color:#5b677a;font-size:14px;">审批通过后只生效到当前医院口径。</div></div>
+      <button class="ghost" data-close="reviewModal">关闭</button>
+    </header>
+    <div class="dialog-body"><div id="reviewList" class="review-list"></div></div>
+  </section>
+</div>
+
+<script>
+// ===== 状态 =====
+var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
+var adminToken = sessionStorage.getItem("adminToken") || "";
+var currentUser = JSON.parse(sessionStorage.getItem("currentUser") || "null");
+var latestFeedbackPreview = null;
+
+// 未登录则显示登录页
+if (!currentUser) { document.getElementById("loginScreen").hidden = false; }
+
+// ===== DOM 引用 =====
+var loginScreen = document.getElementById("loginScreen");
+var loginAccount = document.getElementById("loginAccount");
+var loginPassword2 = document.getElementById("loginPassword2");
+var loginError2 = document.getElementById("loginError2");
+var loginSubmit2 = document.getElementById("loginSubmit2");
+var userInfo = document.getElementById("userInfo");
+var hospitalIdInput = document.getElementById("hospitalId");
+var queryInput = document.getElementById("queryInput");
+var sendButton = document.getElementById("sendButton");
+var chatForm = document.getElementById("chatForm");
+var messages = document.getElementById("messages");
+var sessionLabel = document.getElementById("sessionLabel");
+var reviewButton = document.getElementById("reviewButton");
+var newSessionButton = document.getElementById("newSessionButton");
+var feedbackModal = document.getElementById("feedbackModal");
+var feedbackMeta = document.getElementById("feedbackMeta");
+var comparison = document.getElementById("comparison");
+var loginModal = document.getElementById("loginModal");
+var loginPassword = document.getElementById("loginPassword");
+var loginError = document.getElementById("loginError");
+var loginSubmit = document.getElementById("loginSubmit");
+var reviewModal = document.getElementById("reviewModal");
+var reviewList = document.getElementById("reviewList");
+
+sessionLabel.textContent = "session: " + currentSessionId;
+updateUserUI();
+
+// ===== 登录页面逻辑 =====
+document.querySelectorAll(".role-tab").forEach(function(tab) {
+  tab.addEventListener("click", function() {
+    document.querySelectorAll(".role-tab").forEach(function(t) { t.classList.remove("active"); });
+    tab.classList.add("active");
+  });
+});
+
+loginSubmit2.addEventListener("click", function() {
+  var role = document.querySelector(".role-tab.active").dataset.role;
+  var account = loginAccount.value.trim();
+  if (!account) { loginError2.textContent = "请输入账号"; loginError2.hidden = false; return; }
+  currentUser = { role: role, accountId: account, loginTime: new Date().toISOString() };
+  sessionStorage.setItem("currentUser", JSON.stringify(currentUser));
+  loginScreen.hidden = true;
+  updateUserUI();
+  addWelcomeMessage();
+});
+
+function updateUserUI() {
+  if (!currentUser) return;
+  var roleLabel = currentUser.role === "company" ? "公司人员" : "医院人员";
+  var cls = currentUser.role === "company" ? "company" : "";
+  userInfo.innerHTML = '<span class="user-badge ' + cls + '">' + roleLabel + '</span> ' + currentUser.accountId;
+}
+
+// ===== 管理员登录状态 =====
+function updateAdminUI() {
+  if (adminToken) {
+    reviewButton.classList.add("admin-logged");
+    reviewButton.textContent = "审批 \u2713";
+  } else {
+    reviewButton.classList.remove("admin-logged");
+    reviewButton.textContent = "审批";
+  }
+}
+updateAdminUI();
+
+reviewButton.addEventListener("click", function() {
+  if (!adminToken) { loginModal.hidden = false; loginPassword.focus(); return; }
+  reviewModal.hidden = false; loadPendingReviews();
+});
+
+loginSubmit.addEventListener("click", async function() {
+  var pwd = loginPassword.value.trim();
+  if (!pwd) return;
+  loginError.hidden = true;
+  try {
+    var resp = await fetch("/api/admin/login", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({password:pwd}) });
+    var data = await resp.json();
+    if (!resp.ok) { loginError.textContent = data.detail || "登录失败"; loginError.hidden = false; return; }
+    adminToken = data.token;
+    sessionStorage.setItem("adminToken", adminToken);
+    updateAdminUI();
+    loginModal.hidden = true;
+    loginPassword.value = "";
+    reviewModal.hidden = false;
+    loadPendingReviews();
+  } catch(e) { loginError.textContent = "网络错误"; loginError.hidden = false; }
+});
+
+// ===== 工具函数 =====
+function scrollToBottom() {
+  requestAnimationFrame(function() { messages.scrollTop = messages.scrollHeight; });
+}
+
+function autoResizeTextarea() {
+  queryInput.style.height = "auto";
+  queryInput.style.height = Math.min(queryInput.scrollHeight, 160) + "px";
+}
+queryInput.addEventListener("input", autoResizeTextarea);
+
+queryInput.addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); chatForm.requestSubmit(); }
+});
+
+function levelName(level) {
+  var names = { hospital:"医院口径", company:"公司口径", national:"国标口径" };
+  return names[level] || level || "未知";
+}
+
+function optionText(option) {
+  if (!option) return "未配置";
+  return [option.definition, option.formula, option.implementation||option.implementation_status||""].filter(function(x){return !!x;}).join("\n").trim()||"未配置";
+}
+
+function parseSseEvent(raw) {
+  var lines = raw.split("\n");
+  var event = "message", data = "";
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("event:")) event = lines[i].slice(6).trim();
+    if (lines[i].startsWith("data:")) data += lines[i].slice(5).trim();
+  }
+  if (!data) return { event: event, data: {} };
+  try { return { event: event, data: JSON.parse(data) }; }
+  catch(e) { return { event: event, data: {text:data} }; }
+}
+
+function createMessage(role, text) {
+  var container = document.createElement("div");
+  container.className = "message " + role;
+  var avatar = document.createElement("div");
+  avatar.className = "message-avatar";
+  avatar.textContent = role === "user" ? "你" : "AI";
+  var bubble = document.createElement("div");
+  bubble.className = "message-bubble";
+  var meta = document.createElement("div");
+  meta.className = "message-meta";
+  meta.textContent = role === "user" ? "你" : "核心制度指标 Agent";
+  var body = document.createElement("div");
+  body.className = "message-body";
+  body.textContent = text || "";
+  bubble.append(meta, body);
+  container.append(avatar, bubble);
+  messages.appendChild(container);
+  scrollToBottom();
+  return { container: container, bubble: bubble, body: body };
+}
+
+// ===== 欢迎卡片 =====
+function addWelcomeMessage() {
+  var container = document.createElement("div");
+  container.className = "message agent";
+  var avatar = document.createElement("div");
+  avatar.className = "message-avatar";
+  avatar.textContent = "AI";
+  var bubble = document.createElement("div");
+  bubble.className = "message-bubble";
+  var wrapper = document.createElement("div");
+  wrapper.className = "welcome-card";
+  wrapper.innerHTML = '<h2>你好，我是核心制度指标 Agent</h2>' +
+    '<p>我可以帮你查询核心制度指标的定义、计算公式、医院执行口径、公司标准和国标来源。</p>' +
+    '<p>如果你反馈"我们医院想改成某个口径"，我会先生成差异确认，再提交审批，审批通过后才写入医院口径。</p>' +
+    '<p>字段映射未确认时，我会提醒暂不能生成可执行 SQL，避免输出不可靠 SQL。</p>' +
+    '<div class="welcome-examples">' +
+    '<button class="example-chip" type="button">急会诊及时到位率怎么算？</button>' +
+    '<button class="example-chip" type="button">这个指标当前采用的是哪个口径？</button>' +
+    '<button class="example-chip" type="button">我们医院急会诊及时到位率改成20分钟</button>' +
+    '</div>';
+  bubble.appendChild(wrapper);
+  container.append(avatar, bubble);
+  messages.appendChild(container);
+  wrapper.querySelectorAll(".example-chip").forEach(function(btn) {
+    btn.addEventListener("click", function() { queryInput.value = btn.textContent.trim(); autoResizeTextarea(); queryInput.focus(); });
+  });
+}
+
+// ===== 流式对话 =====
+async function streamChat(query) {
+  var hospitalId = hospitalIdInput.value.trim() || "hospital_001";
+  createMessage("user", query);
+  var ass = createMessage("agent", "");
+  sendButton.disabled = true;
+  queryInput.disabled = true;
+  try {
+    var resp = await fetch("/api/chat/stream", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ query: query, hospital_id: hospitalId, session_id: currentSessionId, use_llm: true }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    if (!resp.body) throw new Error("浏览器不支持流式读取");
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder("utf-8");
+    var buffer = "";
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+      var blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+      for (var i = 0; i < blocks.length; i++) {
+        var parsed = parseSseEvent(blocks[i]);
+        if (!parsed) continue;
+        if (parsed.event === "meta" && parsed.data.session_id) {
+          currentSessionId = parsed.data.session_id;
+          sessionLabel.textContent = "session: " + currentSessionId;
         }
+        if (parsed.event === "token") { ass.body.textContent += parsed.data.text||""; scrollToBottom(); }
+        if (parsed.event === "feedback_preview") { latestFeedbackPreview = parsed.data; showFeedbackPreview(parsed.data); }
+        if (parsed.event === "error") { ass.body.textContent += "\n\n[错误] " + (parsed.data.message||"请求失败"); scrollToBottom(); }
       }
+    }
+  } catch(e) { ass.body.textContent = "[请求失败] " + (e.message||e); }
+  finally { sendButton.disabled = false; queryInput.disabled = false; queryInput.focus(); scrollToBottom(); }
+}
 
-      function optionTitle(option) {
-        const names = { requested: "用户反馈口径", configured: "当前医院口径", not_configured: "当前医院口径", company: "公司口径", national: "国标口径" };
-        if (option.status === "requested") return names.requested;
-        if (option.level === "hospital") return names[option.status] || names.configured;
-        return names[option.level] || option.level;
-      }
+chatForm.addEventListener("submit", async function(e) {
+  e.preventDefault();
+  var q = queryInput.value.trim();
+  if (!q) return;
+  queryInput.value = "";
+  autoResizeTextarea();
+  await streamChat(q);
+});
 
-      function showFeedbackPreview(preview) {
-        feedbackMeta.textContent = `${preview.rule_name} ? ${preview.hospital_id} ? 当前采用 ${preview.current_effective_level}`;
-        comparison.innerHTML = "";
-        preview.options.forEach((option) => {
-          const row = document.createElement("div");
-          row.className = "row";
-          const title = document.createElement("div");
-          title.className = "row-title";
-          title.textContent = optionTitle(option);
-          const content = document.createElement("div");
-          content.className = "row-content";
-          content.textContent = [option.definition, option.formula, option.implementation || option.implementation_status || ""].filter(Boolean).join("\n").trim() || "未配置";
-          const actions = document.createElement("div");
-          const requestButton = document.createElement("button");
-          requestButton.textContent = "请求变更为此口径";
-          requestButton.disabled = !option.formula && !option.definition;
-          requestButton.addEventListener("click", () => submitChangeRequest(preview, option));
-          const skipButton = document.createElement("button");
-          skipButton.className = "ghost";
-          skipButton.textContent = "跳过";
-          skipButton.addEventListener("click", () => feedbackModal.hidden = true);
-          actions.append(requestButton, skipButton);
-          row.append(title, content, actions);
-          comparison.appendChild(row);
-        });
-        feedbackModal.hidden = false;
-      }
+// ===== 反馈弹窗 =====
+function renderDiffTable(changes) {
+  if (!changes || !changes.length) return;
+  var table = document.createElement("table");
+  table.className = "diff-table";
+  table.innerHTML = "<thead><tr><th>字段</th><th>用户反馈值</th><th>当前生效值</th><th>变更</th></tr></thead>";
+  var tbody = document.createElement("tbody");
+  changes.forEach(function(ch) {
+    var tr = document.createElement("tr");
+    if (ch.changed) tr.className = "changed";
+    tr.innerHTML = "<td>" + ch.field + "</td><td>" + (ch.requested||"（无）") + "</td><td>" + (ch.current||"（无）") + "</td><td>" + (ch.changed ? '<span class="changed-badge">已变更</span>' : "—") + "</td>";
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  comparison.appendChild(table);
+}
 
-      async function submitChangeRequest(preview, option) {
-        const payload = {
-          rule_id: preview.rule_id,
-          indicator_name: preview.rule_name,
-          hospital_id: preview.hospital_id,
-          target_level: "hospital",
-          requested_definition: option.definition || "",
-          requested_formula: option.formula || option.source_text || "",
-          hospital_feedback: preview.requested.source_text || "",
-          original_user_message: preview.requested.source_text || "",
-          change_type: "本院口径反馈",
-        };
-        const response = await fetch("/api/review/change-requests", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "request failed");
-        feedbackModal.hidden = true;
-        addMessage("system", `已提交待审批：${data.change_id}`);
-      }
+function renderFeedbackRow(titleText, option, mode, preview) {
+  var row = document.createElement("div");
+  row.className = "row";
+  var title = document.createElement("div");
+  title.className = "row-title";
+  title.textContent = titleText;
+  var content = document.createElement("div");
+  content.className = "row-content";
+  content.textContent = optionText(option);
+  var actions = document.createElement("div");
+  if (mode === "submit") {
+    var btn = document.createElement("button");
+    btn.textContent = "提交为本院口径";
+    btn.disabled = !option || (!option.formula && !option.definition);
+    btn.addEventListener("click", function() { submitChangeRequest(preview, option); });
+    actions.appendChild(btn);
+  } else {
+    var keepBtn = document.createElement("button");
+    keepBtn.className = "ghost";
+    keepBtn.textContent = "保持当前口径";
+    keepBtn.addEventListener("click", function() { feedbackModal.hidden = true; });
+    actions.appendChild(keepBtn);
+  }
+  row.append(title, content, actions);
+  comparison.appendChild(row);
+}
 
-      async function loadPendingReviews() {
-        reviewList.innerHTML = "";
-        const response = await fetch("/api/review/pending");
-        const data = await response.json();
-        if (!data.items.length) {
-          const empty = document.createElement("div");
-          empty.className = "meta";
-          empty.textContent = "当前没有待审批口径。";
-          reviewList.appendChild(empty);
-          return;
-        }
-        data.items.forEach((item) => {
-          const box = document.createElement("div");
-          box.className = "review-item";
-          const title = document.createElement("strong");
-          title.textContent = `${item.change_id} ? ${item.indicator_name || item.rule_id} ? ${item.hospital_id}`;
-          const body = document.createElement("div");
-          body.className = "row-content";
-          body.textContent = [item.requested_definition, item.requested_formula, item.hospital_feedback].filter(Boolean).join("\n");
-          const actions = document.createElement("div");
-          actions.className = "review-actions";
-          const approve = document.createElement("button");
-          approve.textContent = "确认通过";
-          approve.addEventListener("click", () => approveChange(item.change_id));
-          const reject = document.createElement("button");
-          reject.className = "danger";
-          reject.textContent = "拒绝";
-          reject.addEventListener("click", () => rejectChange(item.change_id));
-          actions.append(approve, reject);
-          box.append(title, body, actions);
-          reviewList.appendChild(box);
-        });
-      }
+function showFeedbackPreview(preview) {
+  feedbackMeta.textContent = preview.rule_name + " · " + preview.hospital_id + " · 当前采用：" + levelName(preview.current_effective_level);
+  comparison.innerHTML = "";
+  renderDiffTable(preview.field_changes);
+  var requested = preview.requested;
+  var current = preview.current_effective;
+  if (!current || (!current.definition && !current.formula)) {
+    current = preview.current_hospital || preview.company || preview.national || {};
+  }
+  renderFeedbackRow("用户反馈口径", requested, "submit", preview);
+  renderFeedbackRow("当前医院执行口径", current, "keep", preview);
+  feedbackModal.hidden = false;
+}
 
-      async function approveChange(changeId) {
-        const response = await fetch(`/api/review/change-requests/${changeId}/approve`, { method: "POST" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "approve failed");
-        addMessage("system", `已生效到医院口径：${data.override_path}`);
-        await loadPendingReviews();
-      }
+async function submitChangeRequest(preview, option) {
+  var payload = {
+    rule_id: preview.rule_id, indicator_name: preview.rule_name,
+    hospital_id: preview.hospital_id, target_level: "hospital",
+    requested_definition: option.definition||"",
+    requested_formula: option.formula||option.source_text||"",
+    hospital_feedback: preview.requested.source_text||"",
+    original_user_message: preview.requested.source_text||"",
+    change_type: "本院口径反馈",
+    submitter_id: currentUser ? currentUser.accountId : "unknown",
+    submitter_role: currentUser ? currentUser.role : "unknown",
+  };
+  var resp = await fetch("/api/review/change-requests", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+  var data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail||"request failed");
+  feedbackModal.hidden = true;
+  createMessage("agent", "已提交待审批：" + data.change_id);
+}
 
-      async function rejectChange(changeId) {
-        const response = await fetch(`/api/review/change-requests/${changeId}/reject`, { method: "POST" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.detail || "reject failed");
-        addMessage("system", `已拒绝：${changeId}`);
-        await loadPendingReviews();
-      }
+// ===== 审批功能 =====
+async function loadPendingReviews() {
+  reviewList.innerHTML = "";
+  var resp = await fetch("/api/review/pending", { headers:{"Authorization":"Bearer " + adminToken} });
+  if (resp.status === 401 || resp.status === 403) {
+    adminToken = ""; sessionStorage.removeItem("adminToken"); updateAdminUI();
+    reviewList.innerHTML = '<div style="color:#9f1d35;">登录已过期，请重新登录。</div>';
+    return;
+  }
+  var data = await resp.json();
+  if (!data.items.length) {
+    reviewList.innerHTML = '<div style="color:#5b677a;">当前没有待审批口径。</div>';
+    return;
+  }
+  for (var idx = 0; idx < data.items.length; idx++) {
+    var item = data.items[idx];
+    var box = document.createElement("div");
+    box.className = "review-item";
+    var title = document.createElement("strong");
+    title.textContent = item.change_id + " · " + (item.indicator_name||item.rule_id) + " · " + item.hospital_id;
 
-      document.querySelectorAll("[data-close]").forEach((node) => {
-        node.addEventListener("click", () => document.querySelector(`#${node.dataset.close}`).hidden = true);
-      });
+    var metaLine = document.createElement("div");
+    metaLine.className = "review-meta";
+    var submitterRole = item.submitter_role === "company" ? "公司人员" : "医院人员";
+    metaLine.textContent = "提交人：" + (item.submitter_id||"unknown") + "（" + submitterRole + "）  提交时间：" + (item.created_at||"unknown");
+    box.append(title, metaLine);
 
-      newSessionButton.addEventListener("click", () => {
-        sessionId = null;
-        latestFeedbackPreview = null;
-        localStorage.removeItem("coreRulesSessionId");
-        messages.innerHTML = "";
-        updateSessionLabel();
-      });
+    var body = document.createElement("div");
+    body.className = "row-content";
+    body.textContent = ["【申请变更】", item.requested_definition, item.requested_formula, item.hospital_feedback].filter(function(x){return !!x;}).join("\n");
 
-      reviewButton.addEventListener("click", async () => {
-        reviewModal.hidden = false;
-        await loadPendingReviews();
-      });
+    var refDiv = document.createElement("div");
+    refDiv.textContent = "加载参考口径…";
+    box.append(title, body, refDiv);
 
-      button.addEventListener("click", async () => {
-        const query = queryInput.value.trim();
-        if (!query) return;
-        button.disabled = true;
-        addMessage("user", query);
+    var ruleId = item.rule_id, hospitalId = item.hospital_id;
+    (async function(item, ruleId, hospitalId, refDiv, box) {
+      if (ruleId && hospitalId) {
         try {
-          await streamChat(query);
-        } catch (error) {
-          addMessage("assistant", `请求失败：${error}`);
-        } finally {
-          button.disabled = false;
-        }
-      });
+          var refResp = await fetch("/api/kb/rules/" + encodeURIComponent(ruleId) + "/effective?hospital_id=" + encodeURIComponent(hospitalId));
+          if (refResp.ok) {
+            var ref = await refResp.json();
+            var hRef = ref.hospital_override||{}, cRef = ref.company_rule||{}, nRef = ref.national_rule||{};
+            var tbl = document.createElement("table");
+            tbl.className = "diff-table";
+            tbl.innerHTML = "<thead><tr><th>字段</th><th>申请值</th><th>当前医院</th><th>公司标准</th><th>国标</th></tr></thead>";
+            var tbody = document.createElement("tbody");
+            [["指标定义","requested_definition","definition"],["计算公式","requested_formula","formula"]].forEach(function(fld) {
+              var tr = document.createElement("tr");
+              tr.innerHTML = "<td>" + fld[0] + "</td><td>" + (item[fld[1]]||"（无）") + "</td><td>" + (hRef[fld[2]]||"未配置") + "</td><td>" + (cRef[fld[2]]||cRef["implementation_status"]||"未配置") + "</td><td>" + (nRef[fld[2]]||"未配置") + "</td>";
+              tbody.appendChild(tr);
+            });
+            tbl.appendChild(tbody);
+            refDiv.innerHTML = ""; refDiv.appendChild(tbl);
+          } else { refDiv.textContent = "参考口径加载失败"; }
+        } catch(e) { refDiv.textContent = "参考口径加载失败"; }
+      } else { refDiv.textContent = ""; }
+    })(item, ruleId, hospitalId, refDiv, box);
 
-      updateSessionLabel();
-    </script>
-  </body>
+    var actions = document.createElement("div");
+    actions.className = "review-actions";
+    var approve = document.createElement("button");
+    approve.textContent = "确认通过";
+    approve.addEventListener("click", function() { approveChange(item.change_id); });
+    var reject = document.createElement("button");
+    reject.className = "danger";
+    reject.textContent = "拒绝";
+    reject.addEventListener("click", function() { rejectChange(item.change_id); });
+    actions.append(approve, reject);
+    box.append(actions);
+    reviewList.appendChild(box);
+  }
+}
+
+async function approveChange(changeId) {
+  var resp = await fetch("/api/review/change-requests/" + changeId + "/approve", {
+    method:"POST", headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({ approver_id: currentUser ? currentUser.accountId : "admin" })
+  });
+  var data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail||"approve failed");
+  createMessage("agent", "已生效到医院口径：" + data.override_path + "\n审批人：" + (data.approver_id||"") + "  时间：" + (data.approved_at||""));
+  await loadPendingReviews();
+}
+
+async function rejectChange(changeId) {
+  var resp = await fetch("/api/review/change-requests/" + changeId + "/reject", {
+    method:"POST", headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({ approver_id: currentUser ? currentUser.accountId : "admin" })
+  });
+  var data = await resp.json();
+  if (!resp.ok) throw new Error(data.detail||"reject failed");
+  createMessage("agent", "已拒绝：" + changeId + "\n审批人：" + (data.approver_id||"") + "  时间：" + (data.rejected_at||""));
+  await loadPendingReviews();
+}
+
+// ===== 新会话 =====
+newSessionButton.addEventListener("click", function() {
+  currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
+  sessionLabel.textContent = "session: " + currentSessionId;
+  messages.innerHTML = "";
+  addWelcomeMessage();
+  queryInput.value = "";
+  autoResizeTextarea();
+  queryInput.focus();
+});
+
+// ===== 关闭弹窗 =====
+document.querySelectorAll("[data-close]").forEach(function(el) {
+  el.addEventListener("click", function() {
+    var target = document.querySelector("#" + el.dataset.close);
+    if (target) target.hidden = true;
+  });
+});
+
+// 欢迎消息由登录后触发，此处不再自动调用
+</script>
+</body>
 </html>
