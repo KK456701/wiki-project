@@ -37,13 +37,35 @@ FEEDBACK_MARKERS = ["本院", "我们医院", "我院", "应该", "改成", "改
 
 FOLLOW_UP_MARKERS = ["这个", "那个", "它", "上面", "刚才", "之前", "这个指标", "那个指标", "当前", "现在"]
 
+CHAT_EXACTS = {"你好", "您好", "嗨", "hi", "hello", "谢谢", "感谢", "好的", "ok", "OK"}
+CHAT_MARKERS = ["你是谁", "你能做什么", "你可以做什么", "怎么使用", "有什么用", "帮助"]
+KB_MARKERS = ["指标", "口径", "公式", "定义", "计算", "怎么算", "采用", "医院", "公司", "国标", "SQL", "字段", "急会诊", "会诊"]
+SQL_MARKERS = ["生成SQL", "生成 sql", "可执行SQL", "试运行SQL", "SQL怎么写", "生成可执行"]
+DIAG_MARKERS = ["排查", "异常", "为什么不对", "为什么算不出来", "根因", "诊断"]
+SYNC_MARKERS = ["同步元数据", "同步表结构", "扫描字段"]
+TRIAL_MARKERS = ["试运行", "运行SQL", "运行 sql", "执行SQL", "执行 sql"]
+
 
 def detect_intent(query: str) -> str:
-    """关键词兜底：只包含'口径'不一定是反馈，需要有明确的'要改'语义。"""
+    """关键词兜底：chat/query/feedback/generate_sql/diagnose/metadata_sync。"""
+    q = (query or "").strip()
+    compact = re.sub(r"\s+", "", q)
     strong_feedback = ["应该", "改", "反馈", "按", "本院", "我们医院", "我院"]
-    if any(marker in query for marker in strong_feedback):
+    if any(marker in compact for marker in strong_feedback):
         return "feedback"
-    return "query"
+    lower = compact.lower()
+    if lower in {item.lower() for item in CHAT_EXACTS}:
+        return "chat"
+    if any(marker in compact for marker in CHAT_MARKERS) and not any(marker in compact for marker in KB_MARKERS):
+        return "chat"
+    if any(marker in compact for marker in SQL_MARKERS):
+        return "generate_sql"
+    if any(marker in compact for marker in DIAG_MARKERS):
+        return "diagnose"
+    if any(marker in compact for marker in SYNC_MARKERS):
+        return "metadata_sync"
+    if any(marker in compact for marker in TRIAL_MARKERS):
+        return "trial_run"
     return "query"
 
 
@@ -80,30 +102,36 @@ def _detect_intent(
     errors: list[str],
     memory_context: dict[str, Any] | None = None,
 ) -> dict[str, str]:
-    """返回 {"intent":..., "retrieval_query":..., "indicator_name":...}。
+    """返回 {"intent":..., "retrieval_query":..., "indicator_name":..., "custom_filters":...}。
 
-    LLM 可用时优先用 LLM 做意图识别 + 查询改写；
+    LLM 可用时优先用 LLM 做意图识别 + 查询改写 + 过滤条件提取；
     LLM 不可用或失败时回退到关键词规则，retrieval_query=原始query。
     """
-    result: dict[str, str] = {
+    result: dict[str, Any] = {
         "intent": detect_intent(query),
         "retrieval_query": query,
         "indicator_name": "",
+        "custom_filters": [],
     }
     if llm_client is not None:
         try:
             data = _extract_json_object(llm_client.generate(_intent_prompt(query, memory_context)))
             intent = str(data.get("intent", "")).strip().lower()
-            if intent in {"query", "feedback"}:
+            if intent in {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run"}:
                 result["intent"] = intent
             else:
                 errors.append("LLM_INTENT_INVALID_JSON")
             retrieval = str(data.get("retrieval_query", "")).strip()
-            if retrieval:
+            if result["intent"] == "chat":
+                result["retrieval_query"] = ""
+            elif retrieval:
                 result["retrieval_query"] = retrieval
             indicator = str(data.get("indicator_name", "")).strip()
             if indicator:
                 result["indicator_name"] = indicator
+            filters = data.get("custom_filters")
+            if isinstance(filters, list):
+                result["custom_filters"] = filters
         except Exception as exc:
             errors.append(str(exc))
     return result
@@ -127,6 +155,14 @@ def _apply_memory_context_if_needed(state: AgentState) -> None:
     search["context_source"] = "memory_last_rule"
 
 
+def _answer_chat(query: str) -> str:
+    return (
+        "你好，我是核心制度指标 Agent。"
+        "我可以帮你查询指标定义、计算公式、当前医院口径、公司标准和国标依据；"
+        "也可以在你反馈本院口径不一致时，生成差异确认并提交审批。"
+    )
+
+
 def _answer_from_rule(rule: dict[str, Any]) -> str:
     lines = [
         f"命中指标：{rule['rule_name']}（{rule['rule_id']}）。",
@@ -141,7 +177,9 @@ def _answer_from_rule(rule: dict[str, Any]) -> str:
     if rule.get("implementation_status"):
         lines.append(f"实现状态：{rule['implementation_status']}")
     if rule.get("sql_status") != "available":
-        lines.append("字段和 SQL 状态：待医院字段映射确认，当前不能生成可执行 SQL。")
+        lines.append("SQL 状态：不可用，原因：字段映射或 SQL 未审核，禁止生成可执行 SQL。")
+    else:
+        lines.append("💡 SQL 状态：可用。你可以直接输入「生成 SQL」，我会为你生成可执行的 SQL 语句并试运行。")
     return "\n".join(lines)
 
 
@@ -155,6 +193,8 @@ def _process_steps(rule: dict[str, Any]) -> list[str]:
         steps.append("当前医院未配置已审核本院口径，回退公司标准和国标依据")
     if rule.get("sql_status") != "available":
         steps.append("字段映射或 SQL 未审核，禁止生成可执行 SQL")
+    else:
+        steps.append("字段映射已确认，可生成 SQL")
     return steps
 
 
@@ -221,6 +261,11 @@ def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client:
     errors: list[str] = state.setdefault("errors", [])
     intent_data = _detect_intent(query, llm_client, errors, state.get("memory_context"))
     state["intent"] = intent_data["intent"]
+    if state["intent"] == "chat":
+        state["rule_id"] = None
+        state["generation_method"] = "chat"
+        state["answer"] = _answer_chat(query)
+        return state
     search_query = intent_data["retrieval_query"] or query
     search = tools.search(search_query, limit=5)
     state["search"] = search
@@ -256,6 +301,12 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
         s["_retrieval_query"] = intent_data["retrieval_query"]  # type: ignore[typeddict-unknown-key]
         return s
 
+    def chat_node(s: AgentState) -> AgentState:
+        s["rule_id"] = None
+        s["generation_method"] = "chat"
+        s["answer"] = _answer_chat(s["query"])
+        return s
+
     def search_node(s: AgentState) -> AgentState:
         search_query = s.get("_retrieval_query") or s["query"]  # type: ignore[typeddict-item]
         s["search"] = tools.search(str(search_query), limit=5)
@@ -283,19 +334,63 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
         s["effective_rule"] = effective
         return _preview_feedback(s, tools, effective)
 
+    def route_after_intent(s: AgentState) -> str:
+        return "chat" if s.get("intent") == "chat" else "search"
+
     def route_after_search(s: AgentState) -> str:
-        return "feedback" if s.get("intent") == "feedback" else "query"
+        intent = s.get("intent", "query")
+        if intent == "feedback":
+            return "feedback"
+        if intent in ("generate_sql", "diagnose", "metadata_sync", "trial_run"):
+            return intent
+        return "query"
+
+    def sql_node(s: AgentState) -> AgentState:
+        s["generation_method"] = "tool"
+        s["answer"] = "SQL 生成请通过流式对话触发：先查询指标，再输入「生成 SQL」。"
+        return s
+
+    def trial_node(s: AgentState) -> AgentState:
+        s["generation_method"] = "tool"
+        s["answer"] = "试运行请通过流式对话触发：生成 SQL 后输入「试运行」即可。"
+        return s
+
+    def diagnose_node(s: AgentState) -> AgentState:
+        s["generation_method"] = "tool"
+        s["answer"] = ("异常排查请使用 API 接口 POST /api/diagnose/run，"
+                        "或通过流式对话触发。系统将执行三层排查：结构校验 → 口径规则 → 数据质量。")
+        return s
+
+    def sync_node(s: AgentState) -> AgentState:
+        s["generation_method"] = "tool"
+        s["answer"] = ("元数据同步请使用 API 接口 POST /api/metadata/sync。"
+                        "同步后系统将自动更新表结构和字段映射信息。")
+        return s
 
     graph = StateGraph(AgentState)
     graph.add_node("intent", intent_node)
+    graph.add_node("chat", chat_node)
     graph.add_node("search", search_node)
     graph.add_node("query", query_node)
     graph.add_node("feedback", feedback_node)
+    graph.add_node("generate_sql", sql_node)
+    graph.add_node("trial_run", trial_node)
+    graph.add_node("diagnose", diagnose_node)
+    graph.add_node("metadata_sync", sync_node)
     graph.set_entry_point("intent")
-    graph.add_edge("intent", "search")
-    graph.add_conditional_edges("search", route_after_search, {"query": "query", "feedback": "feedback"})
+    graph.add_conditional_edges("intent", route_after_intent, {"chat": "chat", "search": "search"})
+    graph.add_conditional_edges("search", route_after_search, {
+        "query": "query", "feedback": "feedback",
+        "generate_sql": "generate_sql", "trial_run": "trial_run",
+        "diagnose": "diagnose", "metadata_sync": "metadata_sync",
+    })
+    graph.add_edge("chat", END)
     graph.add_edge("query", END)
     graph.add_edge("feedback", END)
+    graph.add_edge("generate_sql", END)
+    graph.add_edge("trial_run", END)
+    graph.add_edge("diagnose", END)
+    graph.add_edge("metadata_sync", END)
     return graph.compile().invoke(state)
 
 
@@ -400,6 +495,25 @@ def run_chat_stream(
     errors: list[str] = state.setdefault("errors", [])
     intent_data = _detect_intent(query, active_llm, errors, memory_context)
     state["intent"] = intent_data["intent"]
+    state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
+
+    if state["intent"] == "chat":
+        answer = _answer_chat(query)
+        yield ("meta", {
+            "session_id": active_session_id, "intent": "chat",
+            "rule_id": None, "generation_method": "chat",
+        })
+        yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": "chat", "rule_id": None,
+            "generation_method": "chat", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": "chat",
+            "rule_id": None, "generation_method": "chat",
+            "answer": answer, "errors": errors,
+        })
+        return
 
     try:
         search_query = intent_data["retrieval_query"] or query
@@ -469,6 +583,232 @@ def run_chat_stream(
         })
         return
 
+    # ---- Phase 2b: SQL 生成 / 异常排查 / 元数据同步 ----
+    if state["intent"] == "generate_sql":
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "sqlgen",
+        })
+        try:
+            from datetime import datetime as dt
+            from app.db.engine import create_runtime_engine, create_business_engine
+            from app.sqlgen.agent import SQLGenerationAgent
+
+            now = dt.now()
+            start = f"{now.year}-{now.month:02d}-01 00:00:00"
+            if now.month == 12:
+                end = f"{now.year + 1}-01-01 00:00:00"
+            else:
+                end = f"{now.year}-{now.month + 1:02d}-01 00:00:00"
+
+            sql_agent = SQLGenerationAgent(
+                kb_root=kb_root, runtime_engine=create_runtime_engine(),
+                business_engine=create_business_engine(),
+            )
+            result = sql_agent.generate(
+                query=query, hospital_id=str(state.get("hospital_id") or ""),
+                rule_id=str(rule_id), effective_rule=effective,
+                stat_start_time=start, stat_end_time=end, trial_run=False,
+                custom_filters=state.get("_custom_filters", []),
+            )
+            if result.get("status") == "field_precheck_failed":
+                answer = f"❌ 暂不能生成 SQL\n\n{result.get('message', '')}"
+            else:
+                # 读取映射和规格，用于解释
+                import yaml
+                from app.metadata.precheck import find_spec_dir, load_yaml as _load_yaml
+                spec_dir = find_spec_dir(kb_root, str(rule_id))
+                spec = _load_yaml(spec_dir / "rule_sql_spec.yaml") if spec_dir else {}
+                mapping_path = kb_root / "hospital-mappings" / str(state.get("hospital_id") or "") / f"{rule_id}.yaml"
+                mapping = {}
+                if mapping_path.exists():
+                    with open(mapping_path, encoding="utf-8") as f:
+                        mapping = yaml.safe_load(f) or {}
+
+                field_lines = ["📋 字段映射："]
+                for bf_name in (spec.get("required_business_fields") or []):
+                    col = (mapping.get("fields") or {}).get(bf_name, "未映射")
+                    field_lines.append(f"  · {bf_name} → {col}")
+                field_lines.append(f"  主表：{mapping.get('main_table', '')}")
+                field_lines.append(f"  数据库：{mapping.get('db_name', '')}")
+                field_lines.append(f"  数据库类型：{mapping.get('dialect', 'mysql').upper()}")
+
+                # 规格说明 + 当前口径参数
+                num = spec.get("numerator", {})
+                den = spec.get("denominator", {})
+                params = result.get("params", {})
+
+                spec_lines = ["📐 计算逻辑："]
+                spec_lines.append(f"  分子（{num.get('name', '')}）：{', '.join(num.get('logic', []))}")
+                spec_lines.append(f"  分母（{den.get('name', '')}）：{', '.join(den.get('logic', []))}")
+
+                # 参数
+                param_lines = ["⚙️ 参数："]
+                for k, v in params.items():
+                    param_lines.append(f"  · {k} = {v}")
+
+                # 自定义口径规则（含 YAML custom_rules + 阈值差异）
+                custom_rules = mapping.get("custom_rules") or {}
+                rule_lines: list[str] = []
+                has_custom = bool(custom_rules.get("exclude_depts") or custom_rules.get("count_multiple_transfers"))
+                if effective.get("effective_level") == "hospital":
+                    has_custom = True  # 医院层级本身就有自定义
+                if has_custom:
+                    rule_lines = ["🔧 本院自定义口径："]
+                    # 阈值差异
+                    for k, v in params.items():
+                        if k not in ("hospital_id", "consult_type_value", "start_time", "end_time"):
+                            rule_lines.append(f"  · {k} = {v}（医院自定义，非公司默认）")
+                    if custom_rules.get("exclude_depts"):
+                        rule_lines.append(f"  · 排除科室：{', '.join(custom_rules['exclude_depts'])}")
+                    if custom_rules.get("count_multiple_transfers"):
+                        rule_lines.append("  · 多次转科：分别计数（不去重）")
+
+                answer = (
+                    f"✅ SQL 已生成\n"
+                    f"SQL ID：{result.get('sql_id', '')}\n"
+                    f"安全校验：{result['validation'].get('message', result['validation'].get('error',''))}\n\n"
+                    + "\n".join(field_lines) + "\n\n"
+                    + "\n".join(spec_lines) + "\n\n"
+                    + "\n".join(param_lines) + "\n\n"
+                    + ("\n".join(rule_lines) + "\n\n" if custom_rules else "")
+                    + f"```sql\n{result.get('sql_text', '')}\n```"
+                )
+                trial = result.get("trial_run", {})
+                if trial:
+                    answer += f"\n🧪 试运行：{trial.get('status', '')}，{trial.get('duration_ms', 0)}ms"
+                    if trial.get("result_value") is not None:
+                        answer += f"，结果：{trial['result_value']}%"
+                    if trial.get("error_message"):
+                        answer += f"\n错误：{trial['error_message']}"
+                else:
+                    answer += "\n\n💡 如需试运行此 SQL，请输入「**试运行**」。将使用当前月份的统计数据在只读库中执行并返回结果。"
+            yield ("token", {"text": answer})
+        except Exception as exc:
+            answer = f"SQL 生成失败：{exc}"
+            yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": state.get("intent"), "rule_id": rule_id,
+            "rule_name": effective.get("rule_name"),
+            "generation_method": "sqlgen", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "sqlgen",
+            "answer": answer, "errors": errors,
+        })
+        return
+
+    if state["intent"] == "trial_run":
+        yield ("meta", {
+            "session_id": active_session_id, "intent": "trial_run",
+            "rule_id": rule_id, "generation_method": "trial_run",
+        })
+        try:
+            from datetime import datetime as dt
+            from app.db.engine import create_runtime_engine, create_business_engine
+            from app.sqlgen.agent import SQLGenerationAgent
+
+            now = dt.now()
+            start = f"{now.year}-{now.month:02d}-01 00:00:00"
+            end = f"{now.year}-{now.month + 1:02d}-01 00:00:00" if now.month < 12 else f"{now.year + 1}-01-01 00:00:00"
+
+            sql_agent = SQLGenerationAgent(
+                kb_root=kb_root, runtime_engine=create_runtime_engine(),
+                business_engine=create_business_engine(),
+            )
+            result = sql_agent.generate(
+                query=query, hospital_id=str(state.get("hospital_id") or ""),
+                rule_id=str(rule_id), effective_rule=effective,
+                stat_start_time=start, stat_end_time=end, trial_run=True,
+                custom_filters=state.get("_custom_filters", []),
+            )
+            trial = result.get("trial_run", {})
+            answer = (
+                f"```sql\n{result.get('sql_text', '')}\n```\n\n"
+                f"🧪 试运行完成\n"
+                f"运行 ID：{trial.get('run_id', '')}\n"
+                f"状态：{trial.get('status', '')}\n"
+                f"耗时：{trial.get('duration_ms', 0)}ms"
+            )
+            if trial.get("result_value") is not None:
+                answer += f"\n结果：**{trial['result_value']}%**"
+            if trial.get("error_message"):
+                answer += f"\n错误：{trial['error_message']}"
+            yield ("token", {"text": answer})
+        except Exception as exc:
+            answer = f"试运行失败：{exc}"
+            yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": "trial_run", "rule_id": rule_id,
+            "rule_name": effective.get("rule_name"),
+            "generation_method": "trial_run", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": "trial_run",
+            "rule_id": rule_id, "generation_method": "trial_run",
+            "answer": answer, "errors": errors,
+        })
+        return
+
+    if state["intent"] == "diagnose":
+        yield ("meta", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "diagnose",
+        })
+        try:
+            from app.db.engine import create_runtime_engine, create_business_engine
+            from app.diagnose.agent import DiagnoseAgent
+            diag_agent = DiagnoseAgent(
+                kb_root=kb_root, runtime_engine=create_runtime_engine(),
+                business_engine=create_business_engine(),
+            )
+            diag_result = diag_agent.run(
+                hospital_id=str(state.get("hospital_id") or ""),
+                rule_id=str(rule_id), effective_rule=effective,
+            )
+            layers = diag_result.get("layers", [])
+            lines = ["📋 三层异常排查结果：\n"]
+            for layer in layers:
+                icon = "✅" if layer.get("ok") else "❌"
+                lines.append(f"{icon} 第{layer['layer']}层：{layer['layer_name']}")
+                if not layer.get("ok"):
+                    lines.append(f"   根因：{layer.get('diagnose_type', '')}")
+                    lines.append(f"   详情：{layer.get('problem_detail', '')}")
+                    lines.append(f"   建议：{layer.get('repair_suggest', '')}")
+                else:
+                    lines.append(f"   {layer.get('message', '正常')}")
+            lines.append(f"\n总结：{diag_result.get('summary', '')}")
+            answer = "\n".join(lines)
+        except Exception as exc:
+            answer = f"排查失败：{exc}"
+        yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": state.get("intent"), "rule_id": rule_id,
+            "rule_name": effective.get("rule_name"),
+            "generation_method": "diagnose", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "diagnose",
+            "answer": answer, "errors": errors,
+        })
+        return
+
+    if state["intent"] == "metadata_sync":
+        answer = "元数据同步请使用 API：POST /api/metadata/sync。需提供 hospital_id、db_name。"
+        yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": state.get("intent"), "rule_id": rule_id,
+            "generation_method": "tool", "errors": errors,
+        })
+        yield ("done", {
+            "session_id": active_session_id, "intent": state.get("intent"),
+            "rule_id": rule_id, "generation_method": "tool",
+            "answer": answer, "errors": errors,
+        })
+        return
+
     # ---- Phase 3: 查询模式 —— 真正的流式 LLM 生成 ----
     if active_llm is None:
         # 无 LLM，直接用模板回答
@@ -498,9 +838,9 @@ def run_chat_stream(
             if not answer or not _llm_answer_passes_guard(answer, effective):
                 errors.append("LLM_ANSWER_FAILED_FACT_GUARD")
                 fallback = _answer_from_rule(effective)
-                guard_note = "\n\n⚠️ LLM 生成内容未通过事实校验，以下为知识库模板回答：\n" + fallback
+                guard_note = "\n\n为避免模型误写公式或 SQL 状态，已切换为知识库标准答案：\n" + fallback
                 yield ("token", {"text": guard_note})
-                answer = (full_answer + guard_note) if full_answer else fallback
+                answer = fallback
                 generation_method = "llm_guarded_fallback"
 
         except Exception as exc:

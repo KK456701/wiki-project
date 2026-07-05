@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from typing import Iterator
+
+from app.config import get, get_int
 
 
 class OllamaError(RuntimeError):
@@ -18,9 +19,9 @@ class OllamaClient:
         base_url: str | None = None,
         timeout_seconds: float | None = None,
     ) -> None:
-        self.model = model or os.getenv("OLLAMA_MODEL", "qwen3:4B-instruct")
-        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
-        self.timeout_seconds = float(timeout_seconds or os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+        self.model = model or get("ollama_model", "qwen3:4B-instruct")
+        self.base_url = (base_url or get("ollama_base_url", "http://127.0.0.1:11434")).rstrip("/")
+        self.timeout_seconds = float(timeout_seconds or get_int("ollama_timeout_seconds", 20))
 
     def generate(self, prompt: str) -> str:
         payload = {

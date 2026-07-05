@@ -7,7 +7,46 @@
       "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
       "status": "approved",
       "version": "hospital_001_2026-07-05T21:22:02",
-      "change_id": "CR_20260705_212152_2f1b05"
+      "change_id": "CR_20260705_230621_dca41d",
+      "versions": [
+        {
+          "version_id": "hospital_001_2026-07-05T21:22:02",
+          "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005/versions/hospital_001_2026-07-05T21_22_02.md",
+          "change_id": "CR_20260705_212152_2f1b05",
+          "approved_at": "",
+          "approver_id": "legacy",
+          "source": "legacy_import",
+          "status": "approved"
+        },
+        {
+          "version_id": "hospital_001_MQSI2025_005_20260705_230712_f968d1",
+          "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005/versions/hospital_001_MQSI2025_005_20260705_230712_f968d1.md",
+          "change_id": "CR_20260705_230621_dca41d",
+          "approved_at": "2026-07-05T23:07:12",
+          "approver_id": "user_001",
+          "source": "approval",
+          "status": "approved"
+        }
+      ],
+      "active_version_id": "hospital_001_2026-07-05T21:22:02",
+      "active_version_path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005/versions/hospital_001_2026-07-05T21_22_02.md",
+      "restore_events": [
+        {
+          "version_id": "hospital_001_2026-07-05T21:22:02",
+          "restored_at": "2026-07-06T00:16:22",
+          "approver_id": "user_001"
+        },
+        {
+          "version_id": "hospital_001_MQSI2025_005_20260705_230712_f968d1",
+          "restored_at": "2026-07-06T00:16:24",
+          "approver_id": "user_001"
+        },
+        {
+          "version_id": "hospital_001_2026-07-05T21:22:02",
+          "restored_at": "2026-07-06T00:16:28",
+          "approver_id": "user_001"
+        }
+      ]
     }
   ],
   "note": "初始库未配置医院个性化口径"

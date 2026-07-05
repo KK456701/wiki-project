@@ -1,0 +1,21 @@
+SELECT
+  CASE
+    WHEN COUNT(*) = 0 THEN 0
+    ELSE ROUND(
+      SUM(
+        CASE
+          WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) <= :arrive_minutes_threshold
+          THEN 1 ELSE 0
+        END
+      ) / COUNT(*) * 100,
+      2
+    )
+  END AS index_value
+FROM {{ main_table }}
+WHERE {{ fields.hospital_id }} = :hospital_id
+  AND {{ fields.consult_type }} = :consult_type_value
+  AND {{ fields.request_time }} >= :start_time
+  AND {{ fields.request_time }} < :end_time
+{% for dept in custom_rules.exclude_depts %}
+  AND {{ fields.get('dept_id', 'dept_id') }} != '{{ dept }}'
+{% endfor %}

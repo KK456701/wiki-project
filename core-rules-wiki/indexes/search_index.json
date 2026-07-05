@@ -2701,5 +2701,68 @@
     "related_fields": [],
     "related_tables": [],
     "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_hospital_hospital_001_item",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_本院指标定义",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院指标定义",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "hospital_001",
+      "本院指标定义"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_2026-07-05T21:22:02",
+    "content": "急会诊请求发出后，20分钟内到达现场的急会诊次数占同期急会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_hospital_hospital_001_item",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_本院计算公式",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院计算公式",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "hospital_001",
+      "本院计算公式"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_2026-07-05T21:22:02",
+    "content": "急会诊及时到位率 = (急会诊记录中 20分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_005_hospital_hospital_001_SQL",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_本院标准 SQL",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院标准 SQL",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "hospital_001",
+      "本院标准 SQL"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_2026-07-05T21:22:02",
+    "content": "待医院字段映射确认。"
   }
 ]

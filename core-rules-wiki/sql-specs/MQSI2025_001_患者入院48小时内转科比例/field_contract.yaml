@@ -1,0 +1,22 @@
+rule_id: MQSI2025_TRANSFER
+business_fields:
+  hospital_id:
+    type: string
+    required: true
+    desc: 医院ID
+  admission_id:
+    type: string
+    required: true
+    desc: 入院流水号或住院号
+  admit_time:
+    type: datetime
+    required: true
+    desc: 入院时间
+  transfer_time:
+    type: datetime
+    required: true
+    desc: 转科时间
+  to_dept_id:
+    type: string
+    required: false
+    desc: 转入科室ID（用于排除过滤）

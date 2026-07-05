@@ -81,7 +81,14 @@ body {
 .row-content { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-list { display: grid; gap: 10px; }
 .review-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
-.review-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.version-list { display: grid; gap: 10px; }
+.version-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+.version-item.active { border-color: #157a8a; background: #eef9fb; }
+.version-meta { color: #5b677a; font-size: 13px; }
+.history-lookup { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 12px; }
+.history-lookup input { padding: 9px 10px; border: 1px solid #c9d0dc; border-radius: 6px; font: inherit; min-width: 0; }
+@media (max-width: 720px) { .history-lookup { grid-template-columns: 1fr; } }
 button { border: 0; border-radius: 6px; padding: 0 16px; background: #116a7b; color: white; cursor: pointer; font: inherit; }
 button.danger { background: #9f1d35; }
 button.ghost { background: #edf2f7; color: #344054; border: 1px solid #c9d0dc; }
@@ -220,7 +227,25 @@ button:disabled { background: #8795a1; cursor: wait; }
       <div><h2>待审批口径</h2><div style="color:#5b677a;font-size:14px;">审批通过后只生效到当前医院口径。</div></div>
       <button class="ghost" data-close="reviewModal">关闭</button>
     </header>
-    <div class="dialog-body"><div id="reviewList" class="review-list"></div></div>
+    <div class="dialog-body">
+      <div class="history-lookup">
+        <input id="historyHospitalInput" placeholder="医院 ID" value="hospital_001" />
+        <input id="historyRuleInput" placeholder="rule_id，如 MQSI2025_005" />
+        <button id="historyLookupButton">查看历史版本</button>
+      </div>
+      <div id="reviewList" class="review-list"></div>
+    </div>
+  </section>
+</div>
+
+<!-- 医院口径历史版本弹窗 -->
+<div id="historyModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>医院口径历史版本</h2><div id="historyMeta" style="color:#5b677a;font-size:14px;"></div></div>
+      <button class="ghost" data-close="historyModal">关闭</button>
+    </header>
+    <div class="dialog-body"><div id="historyList" class="version-list"></div></div>
   </section>
 </div>
 
@@ -258,6 +283,12 @@ var loginError = document.getElementById("loginError");
 var loginSubmit = document.getElementById("loginSubmit");
 var reviewModal = document.getElementById("reviewModal");
 var reviewList = document.getElementById("reviewList");
+var historyModal = document.getElementById("historyModal");
+var historyMeta = document.getElementById("historyMeta");
+var historyList = document.getElementById("historyList");
+var historyHospitalInput = document.getElementById("historyHospitalInput");
+var historyRuleInput = document.getElementById("historyRuleInput");
+var historyLookupButton = document.getElementById("historyLookupButton");
 
 sessionLabel.textContent = "session: " + currentSessionId;
 updateUserUI();
@@ -360,6 +391,15 @@ function parseSseEvent(raw) {
   catch(e) { return { event: event, data: {text:data} }; }
 }
 
+function _renderAssHtml(text) {
+  return (text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code style='background:#e8e8e8;padding:1px 5px;border-radius:3px;'>$1</code>")
+    .replace(/✅/g, "<span style='color:#2e7d32'>✅</span>")
+    .replace(/❌/g, "<span style='color:#c62828'>❌</span>")
+    .replace(/(📋|📐|⚙️|🧪|💡)/g, '<span style="font-size:16px;">$1</span>');
+}
+
 function createMessage(role, text) {
   var container = document.createElement("div");
   container.className = "message " + role;
@@ -373,7 +413,11 @@ function createMessage(role, text) {
   meta.textContent = role === "user" ? "你" : "核心制度指标 Agent";
   var body = document.createElement("div");
   body.className = "message-body";
-  body.textContent = text || "";
+  if (role === "agent" || role === "assistant") {
+    body.innerHTML = _renderAssHtml(text || "");
+  } else {
+    body.textContent = text || "";
+  }
   bubble.append(meta, body);
   container.append(avatar, bubble);
   messages.appendChild(container);
@@ -439,7 +483,11 @@ async function streamChat(query) {
           currentSessionId = parsed.data.session_id;
           sessionLabel.textContent = "session: " + currentSessionId;
         }
-        if (parsed.event === "token") { ass.body.textContent += parsed.data.text||""; scrollToBottom(); }
+        if (parsed.event === "token") {
+          ass._raw = (ass._raw || "") + (parsed.data.text || "");
+          ass.body.innerHTML = _renderAssHtml(ass._raw);
+          scrollToBottom();
+        }
         if (parsed.event === "feedback_preview") { latestFeedbackPreview = parsed.data; showFeedbackPreview(parsed.data); }
         if (parsed.event === "error") { ass.body.textContent += "\n\n[错误] " + (parsed.data.message||"请求失败"); scrollToBottom(); }
       }
@@ -536,6 +584,7 @@ async function submitChangeRequest(preview, option) {
 
 // ===== 审批功能 =====
 async function loadPendingReviews() {
+  historyHospitalInput.value = hospitalIdInput.value || "hospital_001";
   reviewList.innerHTML = "";
   var resp = await fetch("/api/review/pending", { headers:{"Authorization":"Bearer " + adminToken} });
   if (resp.status === 401 || resp.status === 403) {
@@ -549,7 +598,7 @@ async function loadPendingReviews() {
     return;
   }
   for (var idx = 0; idx < data.items.length; idx++) {
-    var item = data.items[idx];
+    let item = data.items[idx];
     var box = document.createElement("div");
     box.className = "review-item";
     var title = document.createElement("strong");
@@ -569,7 +618,7 @@ async function loadPendingReviews() {
     refDiv.textContent = "加载参考口径…";
     box.append(title, body, refDiv);
 
-    var ruleId = item.rule_id, hospitalId = item.hospital_id;
+    let ruleId = item.rule_id, hospitalId = item.hospital_id;
     (async function(item, ruleId, hospitalId, refDiv, box) {
       if (ruleId && hospitalId) {
         try {
@@ -598,11 +647,15 @@ async function loadPendingReviews() {
     var approve = document.createElement("button");
     approve.textContent = "确认通过";
     approve.addEventListener("click", function() { approveChange(item.change_id); });
+    var history = document.createElement("button");
+    history.className = "ghost";
+    history.textContent = "历史版本";
+    history.addEventListener("click", function() { showOverrideHistory(ruleId, hospitalId, item.indicator_name||item.rule_id); });
     var reject = document.createElement("button");
     reject.className = "danger";
     reject.textContent = "拒绝";
     reject.addEventListener("click", function() { rejectChange(item.change_id); });
-    actions.append(approve, reject);
+    actions.append(history, approve, reject);
     box.append(actions);
     reviewList.appendChild(box);
   }
@@ -629,6 +682,62 @@ async function rejectChange(changeId) {
   createMessage("agent", "已拒绝：" + changeId + "\n审批人：" + (data.approver_id||"") + "  时间：" + (data.rejected_at||""));
   await loadPendingReviews();
 }
+
+async function showOverrideHistory(ruleId, hospitalId, title) {
+  if (!ruleId || !hospitalId) return;
+  historyMeta.textContent = (title||ruleId) + " ? " + hospitalId;
+  historyList.innerHTML = "加载历史版本…";
+  historyModal.hidden = false;
+  var resp = await fetch("/api/review/hospital-overrides/" + encodeURIComponent(hospitalId) + "/" + encodeURIComponent(ruleId) + "/versions", {
+    headers:{"Authorization":"Bearer " + adminToken}
+  });
+  var data = await resp.json();
+  if (!resp.ok) { historyList.textContent = data.detail || "历史版本加载失败"; return; }
+  historyList.innerHTML = "";
+  if (!data.versions.length) { historyList.textContent = "暂无历史版本。"; return; }
+  data.versions.slice().reverse().forEach(function(version) {
+    var box = document.createElement("div");
+    box.className = "version-item" + (version.version_id === data.active_version_id ? " active" : "");
+    var head = document.createElement("strong");
+    head.textContent = (version.version_id === data.active_version_id ? "当前生效 ? " : "") + version.version_id;
+    var meta = document.createElement("div");
+    meta.className = "version-meta";
+    meta.textContent = "来源：" + (version.source||"approval") + "  审批人：" + (version.approver_id||"unknown") + "  时间：" + (version.approved_at||"unknown");
+    var table = document.createElement("table");
+    table.className = "diff-table";
+    table.innerHTML = "<tbody><tr><th>指标定义</th><td></td></tr><tr><th>计算公式</th><td></td></tr></tbody>";
+    table.rows[0].cells[1].textContent = version.definition || "（无）";
+    table.rows[1].cells[1].textContent = version.formula || "（无）";
+    var actions = document.createElement("div");
+    actions.className = "review-actions";
+    var restore = document.createElement("button");
+    restore.textContent = version.version_id === data.active_version_id ? "当前生效" : "恢复此版本";
+    restore.disabled = version.version_id === data.active_version_id;
+    restore.addEventListener("click", function() { restoreOverrideVersion(ruleId, hospitalId, version.version_id); });
+    actions.append(restore);
+    box.append(head, meta, table, actions);
+    historyList.appendChild(box);
+  });
+}
+
+async function restoreOverrideVersion(ruleId, hospitalId, versionId) {
+  var resp = await fetch("/api/review/hospital-overrides/" + encodeURIComponent(hospitalId) + "/" + encodeURIComponent(ruleId) + "/versions/" + encodeURIComponent(versionId) + "/restore", {
+    method:"POST",
+    headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({ approver_id: currentUser ? currentUser.accountId : "admin" })
+  });
+  var data = await resp.json();
+  if (!resp.ok) { alert(data.detail || "恢复失败"); return; }
+  createMessage("agent", "已恢复医院历史口径：" + data.active_version_id + "\n恢复人：" + (data.approver_id||""));
+  await showOverrideHistory(ruleId, hospitalId, "已恢复");
+}
+
+historyLookupButton.addEventListener("click", function() {
+  var hospitalId = (historyHospitalInput.value || hospitalIdInput.value || "hospital_001").trim();
+  var ruleId = (historyRuleInput.value || "").trim();
+  if (!ruleId) { alert("请输入 rule_id"); return; }
+  showOverrideHistory(ruleId, hospitalId, ruleId);
+});
 
 // ===== 新会话 =====
 newSessionButton.addEventListener("click", function() {

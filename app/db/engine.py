@@ -1,0 +1,14 @@
+"""数据库引擎模块。"""
+
+from sqlalchemy import create_engine, Engine
+from app.config import get
+
+
+def create_runtime_engine() -> Engine:
+    url = get("runtime_db_url", "mysql+pymysql://root:123456@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4")
+    return create_engine(url, pool_pre_ping=True)
+
+
+def create_business_engine() -> Engine:
+    url = get("business_db_url", "mysql+pymysql://root:123456@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4")
+    return create_engine(url, pool_pre_ping=True)

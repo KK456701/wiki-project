@@ -22,6 +22,17 @@ class FakeLLM:
         return "\n\n".join(self.prompts)
 
 
+class ChatIntentLLM:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def generate(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if "???????????????" in prompt:
+            return '{"intent":"chat","question_type":"????","indicator_name":"","retrieval_query":""}'
+        return "SHOULD_NOT_CALL_ANSWER_PROMPT"
+
+
 class BadFormulaLLM:
     def generate(self, prompt: str) -> str:
         if "医疗质量指标知识库的意图识别器" in prompt:
@@ -35,6 +46,52 @@ class FailingLLM:
 
 
 class AgentWorkflowTest(unittest.TestCase):
+    def test_greeting_is_chat_and_does_not_reuse_previous_rule_context(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            first = run_chat(
+                "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id="session-chat-intent",
+                memory=memory,
+            )
+
+            second = run_chat(
+                "\u4f60\u597d",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id=first["session_id"],
+                memory=memory,
+            )
+
+            self.assertEqual(second["intent"], "chat")
+            self.assertIsNone(second.get("rule_id"))
+            self.assertEqual(second["generation_method"], "chat")
+            self.assertIn("\u6838\u5fc3\u5236\u5ea6\u6307\u6807", second["answer"])
+            self.assertNotIn("\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387", second["answer"])
+
+    def test_llm_chat_intent_skips_knowledge_base_answer_prompt(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            llm = ChatIntentLLM()
+
+            result = run_chat(
+                "\u4f60\u597d",
+                hospital_id="hospital_001",
+                kb_root=root,
+                use_llm=True,
+                llm_client=llm,
+            )
+
+            self.assertEqual(result["intent"], "chat")
+            self.assertIsNone(result.get("rule_id"))
+            self.assertEqual(result["generation_method"], "chat")
+            self.assertEqual(len(llm.prompts), 1)
+
     def test_query_uses_effective_rule_and_reports_missing_sql(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

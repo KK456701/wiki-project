@@ -1,0 +1,15 @@
+hospital_id: hospital_002
+rule_id: MQSI2025_005
+dialect: mysql
+db_name: hospital_demo_data
+main_table: consult_record
+fields:
+  hospital_id: consult_record.hospital_id
+  consult_type: consult_record.consult_type
+  request_time: consult_record.request_time
+  arrive_time: consult_record.arrive_time
+filters:
+  consult_type_value: 急会诊
+status: confirmed
+updated_by: admin
+updated_at: "2026-07-06 22:00:00"

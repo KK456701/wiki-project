@@ -1,0 +1,22 @@
+rule_id: MQSI2025_005
+business_fields:
+  hospital_id:
+    type: string
+    required: true
+    desc: 医院 ID
+  consult_type:
+    type: string
+    required: true
+    desc: 会诊类型
+  request_time:
+    type: datetime
+    required: true
+    desc: 急会诊请求发出时间
+  arrive_time:
+    type: datetime
+    required: true
+    desc: 急会诊到达现场时间
+  dept_id:
+    type: string
+    required: false
+    desc: 科室ID（用于排除过滤）

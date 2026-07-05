@@ -1,0 +1,22 @@
+SELECT
+  CASE
+    WHEN COUNT({{ "DISTINCT" if not custom_rules.count_multiple_transfers else "*" }}) = 0 THEN 0
+    ELSE ROUND(
+      COUNT(
+        {{ "DISTINCT" if not custom_rules.count_multiple_transfers else "" }}
+        CASE
+          WHEN {{ fields.transfer_time }} IS NOT NULL
+           AND TIMESTAMPDIFF(HOUR, {{ fields.admit_time }}, {{ fields.transfer_time }}) <= :transfer_hours_threshold
+          THEN {{ fields.admission_id if not custom_rules.count_multiple_transfers else "1" }}
+        END
+      ) / COUNT({{ "DISTINCT" if not custom_rules.count_multiple_transfers else "*" }}) * 100,
+      2
+    )
+  END AS index_value
+FROM {{ main_table }}
+WHERE {{ fields.hospital_id }} = :hospital_id
+  AND {{ fields.admit_time }} >= :start_time
+  AND {{ fields.admit_time }} < :end_time
+{% for dept in custom_rules.exclude_depts %}
+  AND {{ fields.get('to_dept_id', 'to_dept_id') }} != '{{ dept }}'
+{% endfor %}

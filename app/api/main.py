@@ -13,12 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.agent.graph import run_chat, run_chat_stream
+from app.config import get
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = PROJECT_ROOT / "web"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+ADMIN_PASSWORD = get("admin_password", "admin123")
 
 # 内存中存 admin token（重启失效）
 _admin_tokens: set[str] = set()
@@ -45,7 +46,7 @@ class ChangeRequestCreate(BaseModel):
     requested_formula: str
     hospital_feedback: str | None = None
     original_user_message: str | None = None
-    change_type: str = "??????"
+    change_type: str = "本院口径反馈"
     submitter_id: str | None = None
     submitter_role: str | None = None
 
@@ -161,7 +162,7 @@ def admin_logout(token: str = Header(..., alias="Authorization")) -> dict[str, s
 # ---- 审批接口（需管理员登录） ----
 
 @app.get("/api/review/pending")
-def list_pending_change_requests(_token: str = Header(..., alias="Authorization")) -> dict[str, Any]:
+def list_pending_change_requests(_token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
     _require_admin(_token)
     return {"items": KnowledgeBaseTools(DEFAULT_KB_ROOT).list_pending_change_requests()}
 
@@ -170,7 +171,7 @@ def list_pending_change_requests(_token: str = Header(..., alias="Authorization"
 def approve_change_request(
     change_id: str,
     body: ApproveRejectRequest | None = None,
-    _token: str = Header(..., alias="Authorization"),
+    _token: str | None = Header(None, alias="Authorization"),
 ) -> dict[str, Any]:
     _require_admin(_token)
     try:
@@ -180,11 +181,41 @@ def approve_change_request(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+
+@app.get("/api/review/hospital-overrides/{hospital_id}/{rule_id}/versions")
+def list_hospital_override_versions(
+    hospital_id: str,
+    rule_id: str,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return KnowledgeBaseTools(DEFAULT_KB_ROOT).list_hospital_override_versions(rule_id, hospital_id)
+    except KBToolError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/review/hospital-overrides/{hospital_id}/{rule_id}/versions/{version_id}/restore")
+def restore_hospital_override_version(
+    hospital_id: str,
+    rule_id: str,
+    version_id: str,
+    body: ApproveRejectRequest | None = None,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        approver_id = (body.approver_id if body else None) or "admin"
+        return KnowledgeBaseTools(DEFAULT_KB_ROOT).restore_hospital_override_version(rule_id, hospital_id, version_id, approver_id)
+    except KBToolError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/review/change-requests/{change_id}/reject")
 def reject_change_request(
     change_id: str,
     body: ApproveRejectRequest | None = None,
-    _token: str = Header(..., alias="Authorization"),
+    _token: str | None = Header(None, alias="Authorization"),
 ) -> dict[str, Any]:
     _require_admin(_token)
     try:
@@ -192,6 +223,83 @@ def reject_change_request(
         return KnowledgeBaseTools(DEFAULT_KB_ROOT).reject_change_request(change_id, approver_id)
     except KBToolError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---- SQL 生成与元数据同步 ----
+
+class MetadataSyncRequest(BaseModel):
+    hospital_id: str
+    db_name: str
+
+
+class SqlGenerateRequest(BaseModel):
+    query: str
+    hospital_id: str
+    rule_id: str
+    stat_start_time: str
+    stat_end_time: str
+    trial_run: bool = False
+
+
+class DiagnoseRequest(BaseModel):
+    hospital_id: str
+    rule_id: str
+    trigger: str = "manual"
+
+
+@app.post("/api/metadata/sync")
+def metadata_sync(request: MetadataSyncRequest) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.metadata.sync import sync_mysql_metadata
+    runtime_engine = create_runtime_engine()
+    business_engine = create_business_engine()
+    return sync_mysql_metadata(
+        runtime_engine=runtime_engine,
+        business_engine=business_engine,
+        hospital_id=request.hospital_id,
+        db_name=request.db_name,
+    )
+
+
+@app.post("/api/sql/generate")
+def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.sqlgen.agent import SQLGenerationAgent
+    tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
+    effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
+    agent = SQLGenerationAgent(
+        kb_root=DEFAULT_KB_ROOT,
+        runtime_engine=create_runtime_engine(),
+        business_engine=create_business_engine(),
+    )
+    return agent.generate(
+        query=request.query,
+        hospital_id=request.hospital_id,
+        rule_id=request.rule_id,
+        effective_rule=effective,
+        stat_start_time=request.stat_start_time,
+        stat_end_time=request.stat_end_time,
+        trial_run=request.trial_run,
+    )
+
+
+@app.post("/api/diagnose/run")
+def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.diagnose.agent import DiagnoseAgent
+    tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
+    effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
+    agent = DiagnoseAgent(
+        kb_root=DEFAULT_KB_ROOT,
+        runtime_engine=create_runtime_engine(),
+        business_engine=create_business_engine(),
+    )
+    return agent.run(
+        hospital_id=request.hospital_id,
+        rule_id=request.rule_id,
+        effective_rule=effective,
+        trigger=request.trigger,
+    )
 
 
 if WEB_ROOT.exists():

@@ -20,6 +20,32 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", "", str(text).lower())
 
 
+def _tokenize(text: str) -> set[str]:
+    """将中文文本切分为 unigram+bigram token 集合，用于模糊匹配。"""
+    t = _normalize(text)
+    tokens: set[str] = set()
+    for i, ch in enumerate(t):
+        tokens.add(ch)
+        if i + 1 < len(t):
+            tokens.add(t[i:i + 2])
+    return tokens
+
+
+def _token_overlap(query: str, candidate: str) -> float:
+    """返回 query 与 candidate 的 token Jaccard 相似度 (0~1)。"""
+    q_tokens = _tokenize(query)
+    c_tokens = _tokenize(candidate)
+    if not q_tokens or not c_tokens:
+        return 0.0
+    intersection = q_tokens & c_tokens
+    union = q_tokens | c_tokens
+    return len(intersection) / len(union) if union else 0.0
+
+
+def _safe_id(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(text)).strip("_") or "item"
+
+
 def _safe_filename(text: str) -> str:
     value = re.sub(r"\s+", "", text.strip()) or "change"
     for old, new in {
@@ -88,14 +114,27 @@ class KnowledgeBaseTools:
     def resolve_rule(self, query: str) -> dict[str, Any] | None:
         rules = self._read_json("indexes/rule_index.json").get("rules", [])
         q = _normalize(query)
+        # Phase 1: exact match
         for rule in rules:
             candidates = [rule.get("rule_id", ""), rule.get("rule_name", ""), *rule.get("aliases", [])]
             if any(_normalize(candidate) == q for candidate in candidates):
                 return rule
+        # Phase 2: substring match
         for rule in rules:
             candidates = [rule.get("rule_id", ""), rule.get("rule_name", ""), *rule.get("aliases", [])]
             if any(q in _normalize(candidate) or _normalize(candidate) in q for candidate in candidates):
                 return rule
+        # Phase 3: token-based fuzzy match（用户措辞不精确时的最后兜底）
+        best_score = 0.0
+        best_rule = None
+        for rule in rules:
+            for candidate in [rule.get("rule_name", ""), *rule.get("aliases", [])]:
+                score = _token_overlap(query, candidate)
+                if score > best_score:
+                    best_score = score
+                    best_rule = rule
+        if best_score >= 0.35 and best_rule:
+            return best_rule
         return None
 
     def search(self, query: str, limit: int = 5) -> dict[str, Any]:
@@ -116,10 +155,16 @@ class KnowledgeBaseTools:
                 )
             )
             score = 0
+            # rule_id 精确命中
             if rule and chunk.get("rule_id") == rule.get("rule_id"):
                 score += 10
+            # 子串匹配
             if q and q in haystack:
                 score += 5
+            # token 重叠加分（用户措辞不精确时依然有分）
+            token_score = int(_token_overlap(query, haystack) * 8)
+            if token_score > 0:
+                score += token_score
             if score:
                 scored.append((score, chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -201,6 +246,15 @@ class KnowledgeBaseTools:
         sql_status = "unavailable"
         if implementation_status and "待医院字段映射确认" not in implementation_status and "原文未明确" not in implementation_status:
             sql_status = "available"
+        # 检查新版 hospital-mappings 是否已配置（覆盖旧的 markdown 状态）
+        if sql_status == "unavailable" and hospital_id:
+            mapping_path = self.kb_root / "hospital-mappings" / hospital_id / f"{rule_id}.yaml"
+            if mapping_path.exists():
+                import yaml
+                with open(mapping_path, encoding="utf-8") as f:
+                    mapping = yaml.safe_load(f) or {}
+                if mapping.get("status") == "confirmed" and mapping.get("fields"):
+                    sql_status = "available"
 
         return {
             "rule_id": rule_id,
@@ -411,6 +465,246 @@ created_at: {created_at}
         items = [self._change_request_from_path(path) for path in sorted(pending_dir.glob("CR_*.md"))]
         return [item for item in items if item.get("status") == "pending"]
 
+    def _write_json(self, rel_path: str, data: object) -> None:
+        path = self.kb_root / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _active_override_rel_path(self, hospital_id: str, rule_id: str) -> str:
+        return f"wiki/hospitals/{hospital_id}/overrides/{rule_id}_override.md"
+
+    def _version_override_rel_path(self, hospital_id: str, rule_id: str, version_id: str) -> str:
+        return f"wiki/hospitals/{hospital_id}/overrides/{rule_id}/versions/{_safe_id(version_id)}.md"
+
+    def _override_markdown(
+        self,
+        rule_name: str,
+        definition: str,
+        formula: str,
+        change_id: str,
+        approved_at: str,
+        approver_id: str,
+        version_id: str,
+    ) -> str:
+        return f"""# {rule_name}_\u672c\u9662\u53e3\u5f84
+
+## \u672c\u9662\u6307\u6807\u5b9a\u4e49
+
+{definition}
+
+## \u672c\u9662\u8ba1\u7b97\u516c\u5f0f
+
+{formula}
+
+## \u672c\u9662\u6807\u51c6 SQL
+
+\u5f85\u533b\u9662\u5b57\u6bb5\u6620\u5c04\u786e\u8ba4\u3002
+
+## \u5ba1\u6279\u4fe1\u606f
+
+- change_id: {change_id}
+- version_id: {version_id}
+- approved_at: {approved_at}
+- approver_id: {approver_id}
+- target_level: hospital
+"""
+
+    def _find_override_entry(self, index: dict[str, Any], rule_id: str, hospital_id: str) -> dict[str, Any] | None:
+        for item in index.setdefault("hospital_overrides", []):
+            if item.get("rule_id") == rule_id and item.get("hospital_id") == hospital_id:
+                return item
+        return None
+
+    def _version_summary(self, version: dict[str, Any]) -> dict[str, Any]:
+        result = dict(version)
+        rel_path = str(version.get("path") or "")
+        if rel_path and (self.kb_root / rel_path).exists():
+            markdown = self._read_text(rel_path)
+            result["definition"] = _section(markdown, "\u672c\u9662\u6307\u6807\u5b9a\u4e49")
+            result["formula"] = _section(markdown, "\u672c\u9662\u8ba1\u7b97\u516c\u5f0f")
+            result["implementation_status"] = _section(markdown, "\u672c\u9662\u6807\u51c6 SQL")
+        return result
+
+    def _normalize_override_entry(self, item: dict[str, Any], rule: dict[str, Any]) -> dict[str, Any]:
+        hospital_id = str(item.get("hospital_id") or "")
+        rule_id = str(item.get("rule_id") or rule.get("rule_id") or "")
+        active_rel_path = str(item.get("path") or self._active_override_rel_path(hospital_id, rule_id))
+        item["hospital_id"] = hospital_id
+        item["rule_id"] = rule_id
+        item["path"] = active_rel_path
+        item["status"] = item.get("status") or "approved"
+        versions = item.setdefault("versions", [])
+        active_version_id = str(item.get("active_version_id") or item.get("version") or "")
+        active_version_path = str(item.get("active_version_path") or "")
+
+        if not versions and active_rel_path and (self.kb_root / active_rel_path).exists():
+            legacy_id = active_version_id or f"legacy_{uuid.uuid4().hex[:8]}"
+            legacy_rel_path = self._version_override_rel_path(hospital_id, rule_id, legacy_id)
+            legacy_path = self.kb_root / legacy_rel_path
+            legacy_path.parent.mkdir(parents=True, exist_ok=True)
+            if not legacy_path.exists():
+                legacy_path.write_text((self.kb_root / active_rel_path).read_text(encoding="utf-8"), encoding="utf-8")
+            versions.append(
+                {
+                    "version_id": legacy_id,
+                    "path": legacy_rel_path,
+                    "change_id": item.get("change_id", "legacy_import"),
+                    "approved_at": item.get("approved_at", ""),
+                    "approver_id": item.get("approver_id", "legacy"),
+                    "source": "legacy_import",
+                    "status": "approved",
+                }
+            )
+            active_version_id = legacy_id
+            active_version_path = legacy_rel_path
+
+        if versions and not active_version_id:
+            active_version_id = str(versions[-1].get("version_id") or "")
+            active_version_path = str(versions[-1].get("path") or "")
+        if versions and not active_version_path:
+            for version in versions:
+                if version.get("version_id") == active_version_id:
+                    active_version_path = str(version.get("path") or "")
+                    break
+
+        item["active_version_id"] = active_version_id
+        item["active_version_path"] = active_version_path
+        item["version"] = active_version_id
+        if active_version_path and not (self.kb_root / active_rel_path).exists() and (self.kb_root / active_version_path).exists():
+            active_path = self.kb_root / active_rel_path
+            active_path.parent.mkdir(parents=True, exist_ok=True)
+            active_path.write_text((self.kb_root / active_version_path).read_text(encoding="utf-8"), encoding="utf-8")
+        return item
+
+    def list_hospital_override_versions(self, rule_id_or_name: str, hospital_id: str) -> dict[str, Any]:
+        rule = self.resolve_rule(rule_id_or_name)
+        if not rule:
+            raise KBToolError(f"RULE_NOT_FOUND: {rule_id_or_name}")
+        index = self._read_json("indexes/hospital_override_index.json")
+        item = self._find_override_entry(index, rule["rule_id"], hospital_id)
+        if not item:
+            return {"rule_id": rule["rule_id"], "rule_name": rule["rule_name"], "hospital_id": hospital_id, "active_version_id": None, "versions": []}
+        self._normalize_override_entry(item, rule)
+        self._write_json("indexes/hospital_override_index.json", index)
+        return {
+            "rule_id": rule["rule_id"],
+            "rule_name": rule["rule_name"],
+            "hospital_id": hospital_id,
+            "active_version_id": item.get("active_version_id"),
+            "active_version_path": item.get("active_version_path"),
+            "active_path": item.get("path"),
+            "versions": [self._version_summary(version) for version in item.get("versions", [])],
+            "restore_events": item.get("restore_events", []),
+        }
+
+    def restore_hospital_override_version(self, rule_id_or_name: str, hospital_id: str, version_id: str, approver_id: str = "admin") -> dict[str, Any]:
+        rule = self.resolve_rule(rule_id_or_name)
+        if not rule:
+            raise KBToolError(f"RULE_NOT_FOUND: {rule_id_or_name}")
+        index = self._read_json("indexes/hospital_override_index.json")
+        item = self._find_override_entry(index, rule["rule_id"], hospital_id)
+        if not item:
+            raise KBToolError(f"HOSPITAL_OVERRIDE_NOT_FOUND: {hospital_id}/{rule['rule_id']}")
+        self._normalize_override_entry(item, rule)
+        target = None
+        for version in item.get("versions", []):
+            if version.get("version_id") == version_id:
+                target = version
+                break
+        if not target:
+            raise KBToolError(f"HOSPITAL_OVERRIDE_VERSION_NOT_FOUND: {version_id}")
+        version_path = self.kb_root / str(target.get("path") or "")
+        if not version_path.exists():
+            raise KBToolError(f"HOSPITAL_OVERRIDE_VERSION_FILE_MISSING: {target.get('path')}")
+        active_rel_path = self._active_override_rel_path(hospital_id, rule["rule_id"])
+        active_path = self.kb_root / active_rel_path
+        active_path.parent.mkdir(parents=True, exist_ok=True)
+        active_path.write_text(version_path.read_text(encoding="utf-8"), encoding="utf-8")
+        restored_at = datetime.now().isoformat(timespec="seconds")
+        item["path"] = active_rel_path
+        item["active_version_id"] = version_id
+        item["active_version_path"] = str(target.get("path") or "")
+        item["version"] = version_id
+        item["status"] = "approved"
+        item.setdefault("restore_events", []).append({"version_id": version_id, "restored_at": restored_at, "approver_id": approver_id})
+        self._write_json("indexes/hospital_override_index.json", index)
+        self.rebuild_runtime_indexes()
+        return {
+            "status": "restored",
+            "rule_id": rule["rule_id"],
+            "hospital_id": hospital_id,
+            "active_version_id": version_id,
+            "active_version_path": item.get("active_version_path"),
+            "override_path": active_rel_path,
+            "restored_at": restored_at,
+            "approver_id": approver_id,
+        }
+
+    def rebuild_runtime_indexes(self) -> dict[str, Any]:
+        rule_index = self._read_json("indexes/rule_index.json")
+        relation_index = self._read_json("indexes/relation_index.json")
+        search_index = self._read_json("indexes/search_index.json")
+        override_index = self._read_json("indexes/hospital_override_index.json")
+        rules_by_id = {str(rule.get("rule_id")): rule for rule in rule_index.get("rules", [])}
+
+        for rel in relation_index.values():
+            rel.setdefault("relations", {})["has_hospital_override"] = []
+        search_index = [chunk for chunk in search_index if chunk.get("type") != "hospital_override"]
+
+        active_count = 0
+        for item in override_index.setdefault("hospital_overrides", []):
+            rule_id = str(item.get("rule_id") or "")
+            rule = rules_by_id.get(rule_id)
+            if not rule or item.get("status") != "approved":
+                continue
+            self._normalize_override_entry(item, rule)
+            active_path = str(item.get("path") or "")
+            if not active_path or not (self.kb_root / active_path).exists():
+                continue
+            markdown = self._read_text(active_path)
+            definition = _section(markdown, "\u672c\u9662\u6307\u6807\u5b9a\u4e49")
+            formula = _section(markdown, "\u672c\u9662\u8ba1\u7b97\u516c\u5f0f")
+            implementation = _section(markdown, "\u672c\u9662\u6807\u51c6 SQL")
+            relation_index.setdefault(rule_id, {"rule_name": rule.get("rule_name", ""), "relations": {}}).setdefault("relations", {})["has_hospital_override"].append(
+                {
+                    "hospital_id": item.get("hospital_id"),
+                    "target_path": active_path,
+                    "active_version_id": item.get("active_version_id"),
+                    "active_version_path": item.get("active_version_path"),
+                    "status": "approved",
+                }
+            )
+            sections = [
+                ("\u672c\u9662\u6307\u6807\u5b9a\u4e49", definition),
+                ("\u672c\u9662\u8ba1\u7b97\u516c\u5f0f", formula),
+                ("\u672c\u9662\u6807\u51c6 SQL", implementation),
+            ]
+            for section, content in sections:
+                search_index.append(
+                    {
+                        "chunk_id": f"{rule_id}_hospital_{_safe_id(str(item.get('hospital_id')))}_{_safe_id(section)}",
+                        "rule_id": rule_id,
+                        "title": f"{rule.get('rule_name', rule_id)}_{section}",
+                        "path": active_path,
+                        "type": "hospital_override",
+                        "level": "hospital",
+                        "hospital_id": item.get("hospital_id"),
+                        "section": section,
+                        "keywords": [rule_id, str(rule.get("rule_name", "")), str(item.get("hospital_id", "")), section],
+                        "related_rule_ids": [],
+                        "related_fields": [],
+                        "related_tables": [],
+                        "active_version_id": item.get("active_version_id"),
+                        "content": content,
+                    }
+                )
+            active_count += 1
+
+        self._write_json("indexes/hospital_override_index.json", override_index)
+        self._write_json("indexes/relation_index.json", relation_index)
+        self._write_json("indexes/search_index.json", search_index)
+        return {"hospital_overrides": active_count, "search_chunks": len(search_index), "relation_rules": len(relation_index)}
+
     def approve_change_request(self, change_id: str, approver_id: str = "admin") -> dict[str, Any]:
         pending_path = self._pending_path_for(change_id)
         request = self._change_request_from_path(pending_path)
@@ -424,69 +718,62 @@ created_at: {created_at}
             raise KBToolError("HOSPITAL_ID_REQUIRED")
 
         approved_at = datetime.now().isoformat(timespec="seconds")
-        override_rel_path = f"wiki/hospitals/{hospital_id}/overrides/{rule['rule_id']}_override.md"
-        override_path = self.kb_root / override_rel_path
-        override_path.parent.mkdir(parents=True, exist_ok=True)
+        version_id = f"{hospital_id}_{rule['rule_id']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        active_rel_path = self._active_override_rel_path(hospital_id, rule["rule_id"])
+        version_rel_path = self._version_override_rel_path(hospital_id, rule["rule_id"], version_id)
         requested_definition = request.get("requested_definition") or ""
         requested_formula = request.get("requested_formula") or ""
-        override_path.write_text(
-            f"""# {rule['rule_name']}_本院口径
+        content = self._override_markdown(rule["rule_name"], requested_definition, requested_formula, change_id, approved_at, approver_id, version_id)
 
-## 本院指标定义
+        version_path = self.kb_root / version_rel_path
+        version_path.parent.mkdir(parents=True, exist_ok=True)
+        version_path.write_text(content, encoding="utf-8")
+        active_path = self.kb_root / active_rel_path
+        active_path.parent.mkdir(parents=True, exist_ok=True)
+        active_path.write_text(content, encoding="utf-8")
 
-{requested_definition}
-
-## 本院计算公式
-
-{requested_formula}
-
-## 本院标准 SQL
-
-待医院字段映射确认。
-
-## 审批信息
-
-- change_id: {change_id}
-- approved_at: {approved_at}
-- approver_id: {approver_id}
-- target_level: hospital
-""",
-            encoding="utf-8",
-        )
-
-        index_path = self.kb_root / "indexes" / "hospital_override_index.json"
         index = self._read_json("indexes/hospital_override_index.json")
         overrides = index.setdefault("hospital_overrides", [])
-        replacement = {
-            "hospital_id": hospital_id,
-            "rule_id": rule["rule_id"],
-            "path": override_rel_path,
-            "status": "approved",
-            "version": f"{hospital_id}_{approved_at}",
-            "change_id": change_id,
-        }
-        updated = False
-        for idx, item in enumerate(overrides):
-            if item.get("hospital_id") == hospital_id and item.get("rule_id") == rule["rule_id"]:
-                overrides[idx] = replacement
-                updated = True
-                break
-        if not updated:
-            overrides.append(replacement)
-        index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+        item = self._find_override_entry(index, rule["rule_id"], hospital_id)
+        if item is None:
+            item = {"hospital_id": hospital_id, "rule_id": rule["rule_id"], "status": "approved", "path": active_rel_path, "versions": []}
+            overrides.append(item)
+        else:
+            self._normalize_override_entry(item, rule)
+        item["path"] = active_rel_path
+        item["status"] = "approved"
+        item["version"] = version_id
+        item["active_version_id"] = version_id
+        item["active_version_path"] = version_rel_path
+        item["change_id"] = change_id
+        item.setdefault("versions", []).append(
+            {
+                "version_id": version_id,
+                "path": version_rel_path,
+                "change_id": change_id,
+                "approved_at": approved_at,
+                "approver_id": approver_id,
+                "source": "approval",
+                "status": "approved",
+            }
+        )
+        self._write_json("indexes/hospital_override_index.json", index)
+        self.rebuild_runtime_indexes()
 
         approved_dir = self.kb_root / "review" / "approved"
         approved_dir.mkdir(parents=True, exist_ok=True)
         approved_path = approved_dir / pending_path.name
         approved_text = pending_path.read_text(encoding="utf-8").replace("status: pending", "status: approved")
-        approved_text = approved_text + f"\n## 审批结果\n\n- approved_at: {approved_at}\n- approver_id: {approver_id}\n"
+        approved_text = approved_text + f"\n## \u5ba1\u6279\u7ed3\u679c\n\n- approved_at: {approved_at}\n- approver_id: {approver_id}\n- active_version_id: {version_id}\n"
         approved_path.write_text(approved_text, encoding="utf-8")
         pending_path.write_text(approved_text, encoding="utf-8")
         return {
             "change_id": change_id,
             "status": "approved",
             "target_level": "hospital",
-            "override_path": override_rel_path,
+            "override_path": active_rel_path,
+            "active_version_id": version_id,
+            "active_version_path": version_rel_path,
             "approved_path": approved_path.relative_to(self.kb_root).as_posix(),
             "approved_at": approved_at,
             "approver_id": approver_id,

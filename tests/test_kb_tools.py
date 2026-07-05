@@ -223,6 +223,87 @@ class KnowledgeBaseToolsTest(unittest.TestCase):
             self.assertIn("\u516c\u53f8\u6807\u51c6\u7ee7\u627f\u56fd\u6807", company_page)
             self.assertEqual(tools.list_pending_change_requests(), [])
 
+
+    def test_approve_appends_versions_and_restore_switches_active_override(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=True)
+            tools = KnowledgeBaseTools(root)
+
+            first = tools.submit_change_request(
+                {
+                    "rule_id": "R001",
+                    "indicator_name": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u7533\u8bf7\u5230\u7b7e\u5230\u4e0d\u8d85\u8fc7\u0032\u0030\u5206\u949f\u7edf\u8ba1\u3002",
+                    "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0032\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
+                }
+            )
+            approved_first = tools.approve_change_request(first["change_id"], approver_id="admin_a")
+
+            second = tools.submit_change_request(
+                {
+                    "rule_id": "R001",
+                    "indicator_name": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u7533\u8bf7\u5230\u7b7e\u5230\u4e0d\u8d85\u8fc7\u0033\u0030\u5206\u949f\u7edf\u8ba1\u3002",
+                    "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0033\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
+                }
+            )
+            approved_second = tools.approve_change_request(second["change_id"], approver_id="admin_b")
+
+            history = tools.list_hospital_override_versions("R001", "hospital_001")
+            effective_latest = tools.get_effective_rule("R001", "hospital_001")
+            restored = tools.restore_hospital_override_version(
+                "R001",
+                "hospital_001",
+                approved_first["active_version_id"],
+                approver_id="admin_restore",
+            )
+            effective_restored = tools.get_effective_rule("R001", "hospital_001")
+
+            self.assertEqual(history["active_version_id"], approved_second["active_version_id"])
+            self.assertGreaterEqual(len(history["versions"]), 3)
+            self.assertTrue((root / approved_first["active_version_path"]).exists())
+            self.assertTrue((root / approved_second["active_version_path"]).exists())
+            self.assertIn("\u0033\u0030\u5206\u949f\u5185\u7b7e\u5230", effective_latest["formula"])
+            self.assertEqual(restored["active_version_id"], approved_first["active_version_id"])
+            self.assertIn("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", effective_restored["formula"])
+            self.assertEqual(tools.list_hospital_override_versions("R001", "hospital_001")["active_version_id"], approved_first["active_version_id"])
+
+    def test_rebuild_runtime_indexes_preserves_hospital_override_search_and_relations(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            tools = KnowledgeBaseTools(root)
+            pending = tools.submit_change_request(
+                {
+                    "rule_id": "R001",
+                    "indicator_name": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u7533\u8bf7\u5230\u7b7e\u5230\u4e0d\u8d85\u8fc7\u0032\u0030\u5206\u949f\u7edf\u8ba1\u3002",
+                    "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0032\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
+                }
+            )
+            approved = tools.approve_change_request(pending["change_id"])
+
+            rebuilt_once = tools.rebuild_runtime_indexes()
+            rebuilt_twice = tools.rebuild_runtime_indexes()
+            search = tools.search("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", limit=5)
+            relation = tools.get_relations("R001")
+            override_index = json.loads((root / "indexes/hospital_override_index.json").read_text(encoding="utf-8"))
+            hospital_chunks = [item for item in json.loads((root / "indexes/search_index.json").read_text(encoding="utf-8")) if item.get("type") == "hospital_override"]
+
+            self.assertEqual(rebuilt_once["hospital_overrides"], 1)
+            self.assertEqual(rebuilt_twice["hospital_overrides"], 1)
+            self.assertEqual(len(hospital_chunks), 3)
+            self.assertTrue(any(match.get("type") == "hospital_override" for match in search["matches"]))
+            self.assertEqual(relation["relations"]["has_hospital_override"][0]["active_version_id"], approved["active_version_id"])
+            self.assertEqual(override_index["hospital_overrides"][0]["active_version_id"], approved["active_version_id"])
+
     def test_rejects_company_level_change_request_for_hospital_mvp(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

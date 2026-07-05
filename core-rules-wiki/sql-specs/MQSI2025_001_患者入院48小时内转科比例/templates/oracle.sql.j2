@@ -1,0 +1,18 @@
+SELECT
+  CASE
+    WHEN COUNT(DISTINCT {{ fields.admission_id }}) = 0 THEN 0
+    ELSE ROUND(
+      COUNT(
+        DISTINCT CASE
+          WHEN {{ fields.transfer_time }} IS NOT NULL
+           AND (CAST({{ fields.transfer_time }} AS DATE) - CAST({{ fields.admit_time }} AS DATE)) * 24 <= :transfer_hours_threshold
+          THEN {{ fields.admission_id }}
+        END
+      ) / COUNT(DISTINCT {{ fields.admission_id }}) * 100,
+      2
+    )
+  END AS index_value
+FROM {{ main_table }}
+WHERE {{ fields.hospital_id }} = :hospital_id
+  AND {{ fields.admit_time }} >= :start_time
+  AND {{ fields.admit_time }} < :end_time

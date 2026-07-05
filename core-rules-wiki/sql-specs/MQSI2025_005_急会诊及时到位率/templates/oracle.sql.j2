@@ -1,0 +1,18 @@
+SELECT
+  CASE
+    WHEN COUNT(*) = 0 THEN 0
+    ELSE ROUND(
+      SUM(
+        CASE
+          WHEN (CAST({{ fields.arrive_time }} AS DATE) - CAST({{ fields.request_time }} AS DATE)) * 24 * 60 <= :arrive_minutes_threshold
+          THEN 1 ELSE 0
+        END
+      ) / COUNT(*) * 100,
+      2
+    )
+  END AS index_value
+FROM {{ main_table }}
+WHERE {{ fields.hospital_id }} = :hospital_id
+  AND {{ fields.consult_type }} = :consult_type_value
+  AND {{ fields.request_time }} >= :start_time
+  AND {{ fields.request_time }} < :end_time

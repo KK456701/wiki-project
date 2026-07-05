@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -50,6 +50,12 @@ def write_text(path: Path, content: str) -> None:
 
 def write_json(path: Path, data: object) -> None:
     write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+
+
+def read_json_if_exists(path: Path) -> object | None:
+    if not path.exists():
+        return None
+    return json.loads(read_text(path))
 
 
 def safe_name(name: str) -> str:
@@ -767,6 +773,7 @@ def build() -> None:
         raise FileNotFoundError(SOURCE_PATH)
     if not SPEC_PATH.exists():
         raise FileNotFoundError(SPEC_PATH)
+    preserved_hospital_override_index = read_json_if_exists(KB_ROOT / "indexes/hospital_override_index.json")
     create_directories()
     source = read_text(SOURCE_PATH)
     indicators = parse_indicators(source)
@@ -795,13 +802,19 @@ def build() -> None:
     write_text(KB_ROOT / "review/pending/CR_20260705_001_字段映射与SQL实现待审核.md", pending_change_request(indicators))
 
     rule_index, hospital_override_index, field_index, relation_index, search_index = build_indexes(indicators)
+    if isinstance(preserved_hospital_override_index, dict):
+        hospital_override_index = preserved_hospital_override_index
     write_json(KB_ROOT / "indexes/rule_index.json", rule_index)
     write_json(KB_ROOT / "indexes/hospital_override_index.json", hospital_override_index)
     write_json(KB_ROOT / "indexes/field_index.json", field_index)
     write_json(KB_ROOT / "indexes/relation_index.json", relation_index)
     write_json(KB_ROOT / "indexes/search_index.json", search_index)
 
+    from app.kb.tools import KnowledgeBaseTools
+
+    runtime_result = KnowledgeBaseTools(KB_ROOT).rebuild_runtime_indexes()
     print(f"Generated {len(indicators)} indicators at {KB_ROOT}")
+    print(f"Runtime indexes rebuilt: {runtime_result}")
 
 
 def verify() -> None:
