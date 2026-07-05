@@ -1,0 +1,2705 @@
+[
+  {
+    "chunk_id": "MQSI2025_001_national_指标定义",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_指标定义",
+    "path": "wiki/standards/national/MQSI2025_001_患者入院48小时内转科的比例.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "三级查房制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_002",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "入院 48 小时内转科患者人次数占同期入院患者总人次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_001_national_计算公式",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_计算公式",
+    "path": "wiki/standards/national/MQSI2025_001_患者入院48小时内转科的比例.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "三级查房制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_002",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "患者入院 48 小时内转科的比例 = (入院 48 小时内转科患者人次数 / 同期入院患者总人次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_001_company_公司实现口径",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_001_患者入院48小时内转科的比例_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "三级查房制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_002",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_002_national_指标定义",
+    "rule_id": "MQSI2025_002",
+    "title": "患者入院 8 小时内查房率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_002_患者入院8小时内查房率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_002",
+      "患者入院 8 小时内查房率",
+      "三级查房制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "入院 8 小时内开具检查或治疗医嘱的患者人次数占同期入院患者总人次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_002_national_计算公式",
+    "rule_id": "MQSI2025_002",
+    "title": "患者入院 8 小时内查房率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_002_患者入院8小时内查房率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_002",
+      "患者入院 8 小时内查房率",
+      "三级查房制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "患者入院 8 小时内查房率 = (入院 8 小时内开具检查或治疗医嘱的患者人次数 / 同期入院患者总人次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_002_company_公司实现口径",
+    "rule_id": "MQSI2025_002",
+    "title": "患者入院 8 小时内查房率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_002_患者入院8小时内查房率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_002",
+      "患者入院 8 小时内查房率",
+      "三级查房制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_003"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_003_national_指标定义",
+    "rule_id": "MQSI2025_003",
+    "title": "上级医师查房记录规范率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_003_上级医师查房记录规范率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_003",
+      "上级医师查房记录规范率",
+      "三级查房制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_002"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "住院患者病历中上级医师查房记录规范、完整的病例数量占同期住院患者病例总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_003_national_计算公式",
+    "rule_id": "MQSI2025_003",
+    "title": "上级医师查房记录规范率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_003_上级医师查房记录规范率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_003",
+      "上级医师查房记录规范率",
+      "三级查房制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_002"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "上级医师查房记录规范率 = (住院患者病历中上级医师查房记录规范、完整的病例数量 / 同期住院患者病例总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_003_company_公司实现口径",
+    "rule_id": "MQSI2025_003",
+    "title": "上级医师查房记录规范率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_003_上级医师查房记录规范率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_003",
+      "上级医师查房记录规范率",
+      "三级查房制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_001",
+      "MQSI2025_002"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_004_national_指标定义",
+    "rule_id": "MQSI2025_004",
+    "title": "住院患者非计划手术率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_004_住院患者非计划手术率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_004",
+      "住院患者非计划手术率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "行非计划手术的住院患者人次数占同期住院患者总人次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_004_national_计算公式",
+    "rule_id": "MQSI2025_004",
+    "title": "住院患者非计划手术率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_004_住院患者非计划手术率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_004",
+      "住院患者非计划手术率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "住院患者非计划手术率 = (行非计划手术的住院患者人次数 / 同期住院患者总人次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_004_company_公司实现口径",
+    "rule_id": "MQSI2025_004",
+    "title": "住院患者非计划手术率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_004_住院患者非计划手术率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_004",
+      "住院患者非计划手术率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_national_指标定义",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊请求发出后，10 分钟内到达现场的急会诊次数占同期急会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_national_计算公式",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊及时到位率 = (急会诊记录中 10 分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_005_company_公司实现口径",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_005_急会诊及时到位率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_006_national_指标定义",
+    "rule_id": "MQSI2025_006",
+    "title": "急会诊有效率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_006_急会诊有效率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_006",
+      "急会诊有效率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊后开具相关医嘱的次数占同期急会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_006_national_计算公式",
+    "rule_id": "MQSI2025_006",
+    "title": "急会诊有效率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_006_急会诊有效率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_006",
+      "急会诊有效率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊有效率 = (急会诊后开具相关医嘱的次数 / 同期急会诊总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_006_company_公司实现口径",
+    "rule_id": "MQSI2025_006",
+    "title": "急会诊有效率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_006_急会诊有效率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_006",
+      "急会诊有效率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_007_national_指标定义",
+    "rule_id": "MQSI2025_007",
+    "title": "普通会诊及时完成率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_007_普通会诊及时完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_007",
+      "普通会诊及时完成率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "普通会诊 24 小时内完成次数占同期普通会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_007_national_计算公式",
+    "rule_id": "MQSI2025_007",
+    "title": "普通会诊及时完成率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_007_普通会诊及时完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_007",
+      "普通会诊及时完成率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "普通会诊及时完成率 = (普通会诊 24 小时内完成次数 / 同期普通会诊总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_007_company_公司实现口径",
+    "rule_id": "MQSI2025_007",
+    "title": "普通会诊及时完成率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_007_普通会诊及时完成率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_007",
+      "普通会诊及时完成率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_008_national_指标定义",
+    "rule_id": "MQSI2025_008",
+    "title": "普通会诊有效率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_008_普通会诊有效率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_008",
+      "普通会诊有效率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "普通会诊结束后开具相关医嘱的次数占同期普通会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_008_national_计算公式",
+    "rule_id": "MQSI2025_008",
+    "title": "普通会诊有效率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_008_普通会诊有效率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_008",
+      "普通会诊有效率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "普通会诊有效率 = (普通会诊结束后开具相关医嘱的次数 / 同期普通会诊患者总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_008_company_公司实现口径",
+    "rule_id": "MQSI2025_008",
+    "title": "普通会诊有效率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_008_普通会诊有效率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_008",
+      "普通会诊有效率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_009_national_指标定义",
+    "rule_id": "MQSI2025_009",
+    "title": "手术患者特级护理/一级护理出院率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_009_手术患者特级护理／一级护理出院率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_009",
+      "手术患者特级护理/一级护理出院率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "手术患者出院时为特级护理/一级护理级别的患者数量占同期手术患者总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_009_national_计算公式",
+    "rule_id": "MQSI2025_009",
+    "title": "手术患者特级护理/一级护理出院率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_009_手术患者特级护理／一级护理出院率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_009",
+      "手术患者特级护理/一级护理出院率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "手术患者特级护理/一级护理出院率 = (手术患者出院时为特级护理/一级护理级别的患者数量 / 同期手术患者总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_009_company_公司实现口径",
+    "rule_id": "MQSI2025_009",
+    "title": "手术患者特级护理/一级护理出院率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_009_手术患者特级护理／一级护理出院率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_009",
+      "手术患者特级护理/一级护理出院率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_010_national_指标定义",
+    "rule_id": "MQSI2025_010",
+    "title": "四级手术患者手术当日床旁交接班占比_指标定义",
+    "path": "wiki/standards/national/MQSI2025_010_四级手术患者手术当日床旁交接班占比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_010",
+      "四级手术患者手术当日床旁交接班占比",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术患者手术当日进行床旁交接班的患者数量占同期进行四级手术的患者总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_010_national_计算公式",
+    "rule_id": "MQSI2025_010",
+    "title": "四级手术患者手术当日床旁交接班占比_计算公式",
+    "path": "wiki/standards/national/MQSI2025_010_四级手术患者手术当日床旁交接班占比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_010",
+      "四级手术患者手术当日床旁交接班占比",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术患者当日床旁交接班占比 = (四级手术患者当日进行床旁交接班的患者数量 / 同期进行四级手术的患者总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_010_company_公司实现口径",
+    "rule_id": "MQSI2025_010",
+    "title": "四级手术患者手术当日床旁交接班占比_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_010_四级手术患者手术当日床旁交接班占比_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_010",
+      "四级手术患者手术当日床旁交接班占比",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_011_national_指标定义",
+    "rule_id": "MQSI2025_011",
+    "title": "非计划再次住院/手术患者疑难病例讨论完成率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_011_非计划再次住院／手术患者疑难病例讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_011",
+      "非计划再次住院/手术患者疑难病例讨论完成率",
+      "疑难病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_012",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "对非计划再次住院/手术患者进行疑难病例讨论的数量占同期非计划再次住院/手术的数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_011_national_计算公式",
+    "rule_id": "MQSI2025_011",
+    "title": "非计划再次住院/手术患者疑难病例讨论完成率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_011_非计划再次住院／手术患者疑难病例讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_011",
+      "非计划再次住院/手术患者疑难病例讨论完成率",
+      "疑难病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_012",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "非计划再次住院 手术患者疑难病例讨论完成率\n\n非计划再次住院/手术患者疑难病例讨论完成率 = (对非计划再次住院/手术患者进行疑难病例讨论的数量 / 同期非计划再次住院/手术的数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_011_company_公司实现口径",
+    "rule_id": "MQSI2025_011",
+    "title": "非计划再次住院/手术患者疑难病例讨论完成率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_011_非计划再次住院／手术患者疑难病例讨论完成率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_011",
+      "非计划再次住院/手术患者疑难病例讨论完成率",
+      "疑难病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_012",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_012_national_指标定义",
+    "rule_id": "MQSI2025_012",
+    "title": "非计划再次住院/手术患者疑难病例讨论记 录完整率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_012_非计划再次住院／手术患者疑难病例讨论记录完整率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_012",
+      "非计划再次住院/手术患者疑难病例讨论记 录完整率",
+      "疑难病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量占同期对非计划再次住院/手术患者进行疑难病例讨论的数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_012_national_计算公式",
+    "rule_id": "MQSI2025_012",
+    "title": "非计划再次住院/手术患者疑难病例讨论记 录完整率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_012_非计划再次住院／手术患者疑难病例讨论记录完整率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_012",
+      "非计划再次住院/手术患者疑难病例讨论记 录完整率",
+      "疑难病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "非计划再次住院/手术患者疑难病例讨论记录完整率 = (对非计划再次住院/手术患者 进行疑难病例讨论并将讨论结论记入病历的数量 同期对非计划再次住院/手术患者 / 进行疑难病例讨论的数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_012_company_公司实现口径",
+    "rule_id": "MQSI2025_012",
+    "title": "非计划再次住院/手术患者疑难病例讨论记 录完整率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_012_非计划再次住院／手术患者疑难病例讨论记录完整率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_012",
+      "非计划再次住院/手术患者疑难病例讨论记 录完整率",
+      "疑难病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_013"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_013_national_指标定义",
+    "rule_id": "MQSI2025_013",
+    "title": "高额异常费用患者进行疑难病例讨论的占比_指标定义",
+    "path": "wiki/standards/national/MQSI2025_013_高额异常费用患者进行疑难病例讨论的占比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_013",
+      "高额异常费用患者进行疑难病例讨论的占比",
+      "疑难病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_012"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "对产生高额异常费用患者进行疑难病例讨论的数量占同期高额异常费用患者数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_013_national_计算公式",
+    "rule_id": "MQSI2025_013",
+    "title": "高额异常费用患者进行疑难病例讨论的占比_计算公式",
+    "path": "wiki/standards/national/MQSI2025_013_高额异常费用患者进行疑难病例讨论的占比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_013",
+      "高额异常费用患者进行疑难病例讨论的占比",
+      "疑难病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_012"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "高额异常费用患者进行疑难病例讨论的占比 = (对产生高额异常费用患者进行疑难病例讨论的数量 / 同期高额异常费用患者数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_013_company_公司实现口径",
+    "rule_id": "MQSI2025_013",
+    "title": "高额异常费用患者进行疑难病例讨论的占比_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_013_高额异常费用患者进行疑难病例讨论的占比_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_013",
+      "高额异常费用患者进行疑难病例讨论的占比",
+      "疑难病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_011",
+      "MQSI2025_012"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_014_national_指标定义",
+    "rule_id": "MQSI2025_014",
+    "title": "急危重症患者抢救成功率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_014_急危重症患者抢救成功率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_014",
+      "急危重症患者抢救成功率",
+      "急危重症抢救制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急危重症患者抢救成功的例次数占同期急危重症患者抢救的总例次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_014_national_计算公式",
+    "rule_id": "MQSI2025_014",
+    "title": "急危重症患者抢救成功率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_014_急危重症患者抢救成功率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_014",
+      "急危重症患者抢救成功率",
+      "急危重症抢救制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "危急重症患者抢救成功率 = (急危重症患者抢救成功的例次数 / 同期急危重症患者抢救的总例次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_014_company_公司实现口径",
+    "rule_id": "MQSI2025_014",
+    "title": "急危重症患者抢救成功率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_014_急危重症患者抢救成功率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_014",
+      "急危重症患者抢救成功率",
+      "急危重症抢救制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_015_national_指标定义",
+    "rule_id": "MQSI2025_015",
+    "title": "术前讨论完成率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_015_术前讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_015",
+      "术前讨论完成率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "完成术前讨论的手术例数占同期手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_015_national_计算公式",
+    "rule_id": "MQSI2025_015",
+    "title": "术前讨论完成率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_015_术前讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_015",
+      "术前讨论完成率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术前讨论完成率 = (完成术前讨论的手术例数 / 同期手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_015_company_公司实现口径",
+    "rule_id": "MQSI2025_015",
+    "title": "术前讨论完成率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_015_术前讨论完成率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_015",
+      "术前讨论完成率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_016_national_指标定义",
+    "rule_id": "MQSI2025_016",
+    "title": "术者参加术前讨论率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_016_术者参加术前讨论率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_016",
+      "术者参加术前讨论率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术者参加术前讨论的手术例数占同期进行术前讨论手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_016_national_计算公式",
+    "rule_id": "MQSI2025_016",
+    "title": "术者参加术前讨论率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_016_术者参加术前讨论率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_016",
+      "术者参加术前讨论率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术者参加术前讨论率 = (术者参加术前讨论的手术例数 / 同期进行术前讨论手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_016_company_公司实现口径",
+    "rule_id": "MQSI2025_016",
+    "title": "术者参加术前讨论率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_016_术者参加术前讨论率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_016",
+      "术者参加术前讨论率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_017_national_指标定义",
+    "rule_id": "MQSI2025_017",
+    "title": "术前讨论计划手术一致率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_017_术前讨论计划手术一致率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_017",
+      "术前讨论计划手术一致率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "实际开展手术与术前讨论计划手术一致的手术例数占同期手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_017_national_计算公式",
+    "rule_id": "MQSI2025_017",
+    "title": "术前讨论计划手术一致率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_017_术前讨论计划手术一致率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_017",
+      "术前讨论计划手术一致率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术前讨论计划手术一致率 = (实际开展手术与术前讨论计划手术一致的手术例数 / 同期手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_017_company_公司实现口径",
+    "rule_id": "MQSI2025_017",
+    "title": "术前讨论计划手术一致率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_017_术前讨论计划手术一致率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_017",
+      "术前讨论计划手术一致率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_018_national_指标定义",
+    "rule_id": "MQSI2025_018",
+    "title": "实际手术术者与计划手术术者一致率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_018_实际手术术者与计划手术术者一致率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_018",
+      "实际手术术者与计划手术术者一致率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "实际开展手术术者与计划手术术者一致的手术例数占同期手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_018_national_计算公式",
+    "rule_id": "MQSI2025_018",
+    "title": "实际手术术者与计划手术术者一致率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_018_实际手术术者与计划手术术者一致率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_018",
+      "实际手术术者与计划手术术者一致率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "实际手术术者与计划手术术者一致率 = (实际开展手术术者与计划手术术者一致的手术例数 / 同期手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_018_company_公司实现口径",
+    "rule_id": "MQSI2025_018",
+    "title": "实际手术术者与计划手术术者一致率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_018_实际手术术者与计划手术术者一致率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_018",
+      "实际手术术者与计划手术术者一致率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_019_national_指标定义",
+    "rule_id": "MQSI2025_019",
+    "title": "死亡病例讨论 5 日完成率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_019_死亡病例讨论5日完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_019",
+      "死亡病例讨论 5 日完成率",
+      "死亡病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_020",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "患者死亡5 个工作日内完成死亡病例讨论的病例数量占同期死亡病例总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_019_national_计算公式",
+    "rule_id": "MQSI2025_019",
+    "title": "死亡病例讨论 5 日完成率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_019_死亡病例讨论5日完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_019",
+      "死亡病例讨论 5 日完成率",
+      "死亡病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_020",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "死亡病例讨论5 日完成率\n\n死亡病例讨论 5 日完成率 = (患者死亡 5 个工作日内 完成死亡病例讨论的病例数量 / 同期死亡病例总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_019_company_公司实现口径",
+    "rule_id": "MQSI2025_019",
+    "title": "死亡病例讨论 5 日完成率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_019_死亡病例讨论5日完成率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_019",
+      "死亡病例讨论 5 日完成率",
+      "死亡病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_020",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_020_national_指标定义",
+    "rule_id": "MQSI2025_020",
+    "title": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_指标定义",
+    "path": "wiki/standards/national/MQSI2025_020_医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_020",
+      "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "死亡病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "医务部门组织进行死亡病例讨论的病例数量与同期发生医疗纠纷的死亡病例数量的比值。"
+  },
+  {
+    "chunk_id": "MQSI2025_020_national_计算公式",
+    "rule_id": "MQSI2025_020",
+    "title": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_计算公式",
+    "path": "wiki/standards/national/MQSI2025_020_医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_020",
+      "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "死亡病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值 = (医务部门组织进行死亡病例讨论的病例数量 / 同期发生医疗纠纷的死亡病例数量)"
+  },
+  {
+    "chunk_id": "MQSI2025_020_company_公司实现口径",
+    "rule_id": "MQSI2025_020",
+    "title": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_020_医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_020",
+      "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "死亡病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_021",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_021_national_指标定义",
+    "rule_id": "MQSI2025_021",
+    "title": "科主任主持死亡病例讨论率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_021_科主任主持死亡病例讨论率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_021",
+      "科主任主持死亡病例讨论率",
+      "死亡病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "死亡病例讨论由科主任主持的病例数量占同期死亡病例总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_021_national_计算公式",
+    "rule_id": "MQSI2025_021",
+    "title": "科主任主持死亡病例讨论率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_021_科主任主持死亡病例讨论率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_021",
+      "科主任主持死亡病例讨论率",
+      "死亡病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "科主任主持死亡病例讨论率 = (死亡病例讨论由科主任主持的病例数量 / 同期死亡病例总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_021_company_公司实现口径",
+    "rule_id": "MQSI2025_021",
+    "title": "科主任主持死亡病例讨论率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_021_科主任主持死亡病例讨论率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_021",
+      "科主任主持死亡病例讨论率",
+      "死亡病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_022"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_022_national_指标定义",
+    "rule_id": "MQSI2025_022",
+    "title": "死亡患者病案上传率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_022_死亡患者病案上传率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_022",
+      "死亡患者病案上传率",
+      "死亡病例讨论制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_021"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "按要求完整上传本机构死亡患者病案的数量占同期应上传死亡患者病案总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_022_national_计算公式",
+    "rule_id": "MQSI2025_022",
+    "title": "死亡患者病案上传率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_022_死亡患者病案上传率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_022",
+      "死亡患者病案上传率",
+      "死亡病例讨论制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_021"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "死亡患者病案上传率 = (按要求完整上传本机构死亡患者病案的数量 / 同期应上传死亡患者病案总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_022_company_公司实现口径",
+    "rule_id": "MQSI2025_022",
+    "title": "死亡患者病案上传率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_022_死亡患者病案上传率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_022",
+      "死亡患者病案上传率",
+      "死亡病例讨论制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_019",
+      "MQSI2025_020",
+      "MQSI2025_021"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_023_national_指标定义",
+    "rule_id": "MQSI2025_023",
+    "title": "长期医嘱当日终止率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_023_长期医嘱当日终止率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_023",
+      "长期医嘱当日终止率",
+      "医嘱管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "开具长期医嘱后当日终止执行的医嘱数量占同期开具长期医嘱总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_023_national_计算公式",
+    "rule_id": "MQSI2025_023",
+    "title": "长期医嘱当日终止率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_023_长期医嘱当日终止率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_023",
+      "长期医嘱当日终止率",
+      "医嘱管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "长期医嘱当日终止率 = (开具长期医嘱后当日终止执行的医嘱数量 / 同期开具长期医嘱总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_023_company_公司实现口径",
+    "rule_id": "MQSI2025_023",
+    "title": "长期医嘱当日终止率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_023_长期医嘱当日终止率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_023",
+      "长期医嘱当日终止率",
+      "医嘱管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_024_national_指标定义",
+    "rule_id": "MQSI2025_024",
+    "title": "手术医师手术时间重合率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_024_手术医师手术时间重合率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_024",
+      "手术医师手术时间重合率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "同一时间内手术医师为同一人的手术例数占同期住院患者手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_024_national_计算公式",
+    "rule_id": "MQSI2025_024",
+    "title": "手术医师手术时间重合率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_024_手术医师手术时间重合率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_024",
+      "手术医师手术时间重合率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "手术医师手术时间重合率 = (同一时间内手术医师为同一人的手术例数 / 同期住院患者手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_024_company_公司实现口径",
+    "rule_id": "MQSI2025_024",
+    "title": "手术医师手术时间重合率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_024_手术医师手术时间重合率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_024",
+      "手术医师手术时间重合率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_025_national_指标定义",
+    "rule_id": "MQSI2025_025",
+    "title": "麻醉医师手术时间重合率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_025_麻醉医师手术时间重合率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_025",
+      "麻醉医师手术时间重合率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "同一时间内手术麻醉医师为同一人的手术例数占同期住院患者手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_025_national_计算公式",
+    "rule_id": "MQSI2025_025",
+    "title": "麻醉医师手术时间重合率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_025_麻醉医师手术时间重合率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_025",
+      "麻醉医师手术时间重合率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "麻醉医师手术时间重合率 = (同一时间内手术麻醉医师为同一人的手术例数 / 同期住院患者手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_025_company_公司实现口径",
+    "rule_id": "MQSI2025_025",
+    "title": "麻醉医师手术时间重合率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_025_麻醉医师手术时间重合率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_025",
+      "麻醉医师手术时间重合率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_026_national_指标定义",
+    "rule_id": "MQSI2025_026",
+    "title": "四级手术与三级手术并发症发生率比_指标定义",
+    "path": "wiki/standards/national/MQSI2025_026_四级手术与三级手术并发症发生率比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_026",
+      "四级手术与三级手术并发症发生率比",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术并发症发生率与三级手术并发症发生率的比。"
+  },
+  {
+    "chunk_id": "MQSI2025_026_national_计算公式",
+    "rule_id": "MQSI2025_026",
+    "title": "四级手术与三级手术并发症发生率比_计算公式",
+    "path": "wiki/standards/national/MQSI2025_026_四级手术与三级手术并发症发生率比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_026",
+      "四级手术与三级手术并发症发生率比",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术与三级手术并发症发生率比\n\n= 四级手术并发症发生率\n\n### :三级手术并发症发生率"
+  },
+  {
+    "chunk_id": "MQSI2025_026_company_公司实现口径",
+    "rule_id": "MQSI2025_026",
+    "title": "四级手术与三级手术并发症发生率比_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_026_四级手术与三级手术并发症发生率比_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_026",
+      "四级手术与三级手术并发症发生率比",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_027",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_027_national_指标定义",
+    "rule_id": "MQSI2025_027",
+    "title": "四级手术与三级手术患者死亡率比_指标定义",
+    "path": "wiki/standards/national/MQSI2025_027_四级手术与三级手术患者死亡率比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_027",
+      "四级手术与三级手术患者死亡率比",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术患者死亡率与三级手术患者死亡率的比。"
+  },
+  {
+    "chunk_id": "MQSI2025_027_national_计算公式",
+    "rule_id": "MQSI2025_027",
+    "title": "四级手术与三级手术患者死亡率比_计算公式",
+    "path": "wiki/standards/national/MQSI2025_027_四级手术与三级手术患者死亡率比.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_027",
+      "四级手术与三级手术患者死亡率比",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术与三级手术患者死亡率比\n\n四级手术患者死亡率：三级手术患者死亡率"
+  },
+  {
+    "chunk_id": "MQSI2025_027_company_公司实现口径",
+    "rule_id": "MQSI2025_027",
+    "title": "四级手术与三级手术患者死亡率比_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_027_四级手术与三级手术患者死亡率比_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_027",
+      "四级手术与三级手术患者死亡率比",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_028",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_028_national_指标定义",
+    "rule_id": "MQSI2025_028",
+    "title": "四级手术术前多学科讨论完成率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_028_四级手术术前多学科讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_028",
+      "四级手术术前多学科讨论完成率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术前完成多学科讨论的四级手术例数占同期四级\n\n手术总例数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_028_national_计算公式",
+    "rule_id": "MQSI2025_028",
+    "title": "四级手术术前多学科讨论完成率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_028_四级手术术前多学科讨论完成率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_028",
+      "四级手术术前多学科讨论完成率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "四级手术术前多学科讨论完成率 = (术前完成多学科讨论的四级手术例数 / 同期四级手术总例数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_028_company_公司实现口径",
+    "rule_id": "MQSI2025_028",
+    "title": "四级手术术前多学科讨论完成率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_028_四级手术术前多学科讨论完成率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_028",
+      "四级手术术前多学科讨论完成率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_029"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_029_national_指标定义",
+    "rule_id": "MQSI2025_029",
+    "title": "三、四级手术实际开展率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_029_三、四级手术实际开展率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_029",
+      "三、四级手术实际开展率",
+      "手术分级管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "实际开展的三、四级手术术种数占同期备案的三、四级手术术种数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_029_national_计算公式",
+    "rule_id": "MQSI2025_029",
+    "title": "三、四级手术实际开展率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_029_三、四级手术实际开展率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_029",
+      "三、四级手术实际开展率",
+      "手术分级管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "### 三、四级手术实际开展率\n\n三、四级手术实际开展率 = (实际开展的三、四级手术术种数 / 同期备案的三、四级手术术种数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_029_company_公司实现口径",
+    "rule_id": "MQSI2025_029",
+    "title": "三、四级手术实际开展率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_029_三、四级手术实际开展率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_029",
+      "三、四级手术实际开展率",
+      "手术分级管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_004",
+      "MQSI2025_009",
+      "MQSI2025_010",
+      "MQSI2025_015",
+      "MQSI2025_016",
+      "MQSI2025_017",
+      "MQSI2025_018",
+      "MQSI2025_024",
+      "MQSI2025_025",
+      "MQSI2025_026",
+      "MQSI2025_027",
+      "MQSI2025_028"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_030_national_指标定义",
+    "rule_id": "MQSI2025_030",
+    "title": "新技术新项目留存转化率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_030_新技术新项目留存转化率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_030",
+      "新技术新项目留存转化率",
+      "新技术新项目管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "在四年的评估周期内，医院新增的技术项目在第四年继续开展的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_030_national_计算公式",
+    "rule_id": "MQSI2025_030",
+    "title": "新技术新项目留存转化率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_030_新技术新项目留存转化率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_030",
+      "新技术新项目留存转化率",
+      "新技术新项目管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "新技术新项目综合留存转化率 = (A + C + E / A + B + C + D + E + F × 100%)"
+  },
+  {
+    "chunk_id": "MQSI2025_030_company_公司实现口径",
+    "rule_id": "MQSI2025_030",
+    "title": "新技术新项目留存转化率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_030_新技术新项目留存转化率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_030",
+      "新技术新项目留存转化率",
+      "新技术新项目管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_031_national_指标定义",
+    "rule_id": "MQSI2025_031",
+    "title": "危急值报告时间_指标定义",
+    "path": "wiki/standards/national/MQSI2025_031_危急值报告时间.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_031",
+      "危急值报告时间",
+      "危急值管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_032"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "将出现危急值到临床科室获取危急值的时间，由长到短排序后取其中位数。"
+  },
+  {
+    "chunk_id": "MQSI2025_031_national_计算公式",
+    "rule_id": "MQSI2025_031",
+    "title": "危急值报告时间_计算公式",
+    "path": "wiki/standards/national/MQSI2025_031_危急值报告时间.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_031",
+      "危急值报告时间",
+      "危急值管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_032"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "危急值报告时间（中位数） = (X(n + 1)/2，n 为奇数 / 危急值报告时间（中位数） = (Xn/2 + Xn/2 + 1)/2， n 为偶数)\n\n危急值报告时间（中位数） = (Xn/2 + Xn/2 + 1)/2， n 为偶数"
+  },
+  {
+    "chunk_id": "MQSI2025_031_company_公司实现口径",
+    "rule_id": "MQSI2025_031",
+    "title": "危急值报告时间_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_031_危急值报告时间_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_031",
+      "危急值报告时间",
+      "危急值管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_032"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_032_national_指标定义",
+    "rule_id": "MQSI2025_032",
+    "title": "住院患者危急值当日及时处置率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_032_住院患者危急值当日及时处置率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_032",
+      "住院患者危急值当日及时处置率",
+      "危急值管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_031"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "当日处置的住院患者危急值项目数占同期临床科室接获住院患者危急值项目数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_032_national_计算公式",
+    "rule_id": "MQSI2025_032",
+    "title": "住院患者危急值当日及时处置率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_032_住院患者危急值当日及时处置率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_032",
+      "住院患者危急值当日及时处置率",
+      "危急值管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_031"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "住院患者危急值当日及时处置率 = (当日处置的住院患者危急值项目数 / 同期临床科室接获住院患者危急值项目数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_032_company_公司实现口径",
+    "rule_id": "MQSI2025_032",
+    "title": "住院患者危急值当日及时处置率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_032_住院患者危急值当日及时处置率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_032",
+      "住院患者危急值当日及时处置率",
+      "危急值管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_031"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_033_national_指标定义",
+    "rule_id": "MQSI2025_033",
+    "title": "特殊使用级抗菌药物使用会诊率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_033_特殊使用级抗菌药物使用会诊率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_033",
+      "特殊使用级抗菌药物使用会诊率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量占同期特殊使用级抗菌药物使用医嘱总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_033_national_计算公式",
+    "rule_id": "MQSI2025_033",
+    "title": "特殊使用级抗菌药物使用会诊率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_033_特殊使用级抗菌药物使用会诊率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_033",
+      "特殊使用级抗菌药物使用会诊率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "特殊使用级抗菌药物使用会诊率 = (特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量 / 同期特殊使用级抗菌药物使用医嘱总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_033_company_公司实现口径",
+    "rule_id": "MQSI2025_033",
+    "title": "特殊使用级抗菌药物使用会诊率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_033_特殊使用级抗菌药物使用会诊率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_033",
+      "特殊使用级抗菌药物使用会诊率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_034_national_指标定义",
+    "rule_id": "MQSI2025_034",
+    "title": "临床用血后评估记录率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_034_临床用血后评估记录率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_034",
+      "临床用血后评估记录率",
+      "临床用血管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_035"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "输血治疗后规范书写评估输血记录例次数占同期临床输血治疗病例总例次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_034_national_计算公式",
+    "rule_id": "MQSI2025_034",
+    "title": "临床用血后评估记录率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_034_临床用血后评估记录率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_034",
+      "临床用血后评估记录率",
+      "临床用血管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_035"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "临床用血后评估记录率 = (输血治疗后规范书写评估输血记录例次数 / 同期临床输血治疗病例总例次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_034_company_公司实现口径",
+    "rule_id": "MQSI2025_034",
+    "title": "临床用血后评估记录率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_034_临床用血后评估记录率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_034",
+      "临床用血后评估记录率",
+      "临床用血管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_035"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_035_national_指标定义",
+    "rule_id": "MQSI2025_035",
+    "title": "术中自体血回输率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_035_术中自体血回输率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_035",
+      "术中自体血回输率",
+      "临床用血管理制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_034"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术中使用自体血回输的患者数量占同期术中进行输血患者总数量的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_035_national_计算公式",
+    "rule_id": "MQSI2025_035",
+    "title": "术中自体血回输率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_035_术中自体血回输率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_035",
+      "术中自体血回输率",
+      "临床用血管理制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_034"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "术中自体血回输率 = (术中使用自体血回输的患者数量 / 同期术中进行输血患者总数量) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_035_company_公司实现口径",
+    "rule_id": "MQSI2025_035",
+    "title": "术中自体血回输率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_035_术中自体血回输率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_035",
+      "术中自体血回输率",
+      "临床用血管理制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_034"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  }
+]

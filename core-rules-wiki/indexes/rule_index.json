@@ -1,0 +1,425 @@
+{
+  "generated_at": "2026-07-05",
+  "rules": [
+    {
+      "rule_id": "MQSI2025_001",
+      "rule_name": "患者入院 48小时内转科的比例",
+      "aliases": [
+        "患者入院 48小时内转科的比例"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/standards/national/MQSI2025_001_患者入院48小时内转科的比例.md",
+      "company_path": "wiki/standards/company/MQSI2025_001_患者入院48小时内转科的比例_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_002",
+      "rule_name": "患者入院 8 小时内查房率",
+      "aliases": [
+        "患者入院 8 小时内查房率"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/standards/national/MQSI2025_002_患者入院8小时内查房率.md",
+      "company_path": "wiki/standards/company/MQSI2025_002_患者入院8小时内查房率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_003",
+      "rule_name": "上级医师查房记录规范率",
+      "aliases": [
+        "上级医师查房记录规范率"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/standards/national/MQSI2025_003_上级医师查房记录规范率.md",
+      "company_path": "wiki/standards/company/MQSI2025_003_上级医师查房记录规范率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_004",
+      "rule_name": "住院患者非计划手术率",
+      "aliases": [
+        "住院患者非计划手术率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_004_住院患者非计划手术率.md",
+      "company_path": "wiki/standards/company/MQSI2025_004_住院患者非计划手术率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_005",
+      "rule_name": "急会诊及时到位率",
+      "aliases": [
+        "急会诊及时到位率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
+      "company_path": "wiki/standards/company/MQSI2025_005_急会诊及时到位率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_006",
+      "rule_name": "急会诊有效率",
+      "aliases": [
+        "急会诊有效率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/standards/national/MQSI2025_006_急会诊有效率.md",
+      "company_path": "wiki/standards/company/MQSI2025_006_急会诊有效率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_007",
+      "rule_name": "普通会诊及时完成率",
+      "aliases": [
+        "普通会诊及时完成率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/standards/national/MQSI2025_007_普通会诊及时完成率.md",
+      "company_path": "wiki/standards/company/MQSI2025_007_普通会诊及时完成率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_008",
+      "rule_name": "普通会诊有效率",
+      "aliases": [
+        "普通会诊有效率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/standards/national/MQSI2025_008_普通会诊有效率.md",
+      "company_path": "wiki/standards/company/MQSI2025_008_普通会诊有效率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_009",
+      "rule_name": "手术患者特级护理/一级护理出院率",
+      "aliases": [
+        "手术患者特级护理/一级护理出院率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_009_手术患者特级护理／一级护理出院率.md",
+      "company_path": "wiki/standards/company/MQSI2025_009_手术患者特级护理／一级护理出院率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_010",
+      "rule_name": "四级手术患者手术当日床旁交接班占比",
+      "aliases": [
+        "四级手术患者手术当日床旁交接班占比"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_010_四级手术患者手术当日床旁交接班占比.md",
+      "company_path": "wiki/standards/company/MQSI2025_010_四级手术患者手术当日床旁交接班占比_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_011",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论完成率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论完成率"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_011_非计划再次住院／手术患者疑难病例讨论完成率.md",
+      "company_path": "wiki/standards/company/MQSI2025_011_非计划再次住院／手术患者疑难病例讨论完成率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_012",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论记 录完整率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论记 录完整率"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_012_非计划再次住院／手术患者疑难病例讨论记录完整率.md",
+      "company_path": "wiki/standards/company/MQSI2025_012_非计划再次住院／手术患者疑难病例讨论记录完整率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_013",
+      "rule_name": "高额异常费用患者进行疑难病例讨论的占比",
+      "aliases": [
+        "高额异常费用患者进行疑难病例讨论的占比"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_013_高额异常费用患者进行疑难病例讨论的占比.md",
+      "company_path": "wiki/standards/company/MQSI2025_013_高额异常费用患者进行疑难病例讨论的占比_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_014",
+      "rule_name": "急危重症患者抢救成功率",
+      "aliases": [
+        "急危重症患者抢救成功率"
+      ],
+      "category": "急危重症抢救制度",
+      "national_path": "wiki/standards/national/MQSI2025_014_急危重症患者抢救成功率.md",
+      "company_path": "wiki/standards/company/MQSI2025_014_急危重症患者抢救成功率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_015",
+      "rule_name": "术前讨论完成率",
+      "aliases": [
+        "术前讨论完成率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_015_术前讨论完成率.md",
+      "company_path": "wiki/standards/company/MQSI2025_015_术前讨论完成率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_016",
+      "rule_name": "术者参加术前讨论率",
+      "aliases": [
+        "术者参加术前讨论率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_016_术者参加术前讨论率.md",
+      "company_path": "wiki/standards/company/MQSI2025_016_术者参加术前讨论率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_017",
+      "rule_name": "术前讨论计划手术一致率",
+      "aliases": [
+        "术前讨论计划手术一致率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_017_术前讨论计划手术一致率.md",
+      "company_path": "wiki/standards/company/MQSI2025_017_术前讨论计划手术一致率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_018",
+      "rule_name": "实际手术术者与计划手术术者一致率",
+      "aliases": [
+        "实际手术术者与计划手术术者一致率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_018_实际手术术者与计划手术术者一致率.md",
+      "company_path": "wiki/standards/company/MQSI2025_018_实际手术术者与计划手术术者一致率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_019",
+      "rule_name": "死亡病例讨论 5 日完成率",
+      "aliases": [
+        "死亡病例讨论 5 日完成率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_019_死亡病例讨论5日完成率.md",
+      "company_path": "wiki/standards/company/MQSI2025_019_死亡病例讨论5日完成率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_020",
+      "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "aliases": [
+        "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_020_医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值.md",
+      "company_path": "wiki/standards/company/MQSI2025_020_医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_021",
+      "rule_name": "科主任主持死亡病例讨论率",
+      "aliases": [
+        "科主任主持死亡病例讨论率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_021_科主任主持死亡病例讨论率.md",
+      "company_path": "wiki/standards/company/MQSI2025_021_科主任主持死亡病例讨论率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_022",
+      "rule_name": "死亡患者病案上传率",
+      "aliases": [
+        "死亡患者病案上传率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/standards/national/MQSI2025_022_死亡患者病案上传率.md",
+      "company_path": "wiki/standards/company/MQSI2025_022_死亡患者病案上传率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_023",
+      "rule_name": "长期医嘱当日终止率",
+      "aliases": [
+        "长期医嘱当日终止率"
+      ],
+      "category": "医嘱管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_023_长期医嘱当日终止率.md",
+      "company_path": "wiki/standards/company/MQSI2025_023_长期医嘱当日终止率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_024",
+      "rule_name": "手术医师手术时间重合率",
+      "aliases": [
+        "手术医师手术时间重合率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_024_手术医师手术时间重合率.md",
+      "company_path": "wiki/standards/company/MQSI2025_024_手术医师手术时间重合率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_025",
+      "rule_name": "麻醉医师手术时间重合率",
+      "aliases": [
+        "麻醉医师手术时间重合率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_025_麻醉医师手术时间重合率.md",
+      "company_path": "wiki/standards/company/MQSI2025_025_麻醉医师手术时间重合率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_026",
+      "rule_name": "四级手术与三级手术并发症发生率比",
+      "aliases": [
+        "四级手术与三级手术并发症发生率比"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_026_四级手术与三级手术并发症发生率比.md",
+      "company_path": "wiki/standards/company/MQSI2025_026_四级手术与三级手术并发症发生率比_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_027",
+      "rule_name": "四级手术与三级手术患者死亡率比",
+      "aliases": [
+        "四级手术与三级手术患者死亡率比"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_027_四级手术与三级手术患者死亡率比.md",
+      "company_path": "wiki/standards/company/MQSI2025_027_四级手术与三级手术患者死亡率比_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_028",
+      "rule_name": "四级手术术前多学科讨论完成率",
+      "aliases": [
+        "四级手术术前多学科讨论完成率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_028_四级手术术前多学科讨论完成率.md",
+      "company_path": "wiki/standards/company/MQSI2025_028_四级手术术前多学科讨论完成率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_029",
+      "rule_name": "三、四级手术实际开展率",
+      "aliases": [
+        "三、四级手术实际开展率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_029_三、四级手术实际开展率.md",
+      "company_path": "wiki/standards/company/MQSI2025_029_三、四级手术实际开展率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_030",
+      "rule_name": "新技术新项目留存转化率",
+      "aliases": [
+        "新技术新项目留存转化率"
+      ],
+      "category": "新技术新项目管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_030_新技术新项目留存转化率.md",
+      "company_path": "wiki/standards/company/MQSI2025_030_新技术新项目留存转化率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_031",
+      "rule_name": "危急值报告时间",
+      "aliases": [
+        "危急值报告时间"
+      ],
+      "category": "危急值管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_031_危急值报告时间.md",
+      "company_path": "wiki/standards/company/MQSI2025_031_危急值报告时间_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_032",
+      "rule_name": "住院患者危急值当日及时处置率",
+      "aliases": [
+        "住院患者危急值当日及时处置率"
+      ],
+      "category": "危急值管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_032_住院患者危急值当日及时处置率.md",
+      "company_path": "wiki/standards/company/MQSI2025_032_住院患者危急值当日及时处置率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_033",
+      "rule_name": "特殊使用级抗菌药物使用会诊率",
+      "aliases": [
+        "特殊使用级抗菌药物使用会诊率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/standards/national/MQSI2025_033_特殊使用级抗菌药物使用会诊率.md",
+      "company_path": "wiki/standards/company/MQSI2025_033_特殊使用级抗菌药物使用会诊率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_034",
+      "rule_name": "临床用血后评估记录率",
+      "aliases": [
+        "临床用血后评估记录率"
+      ],
+      "category": "临床用血管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_034_临床用血后评估记录率.md",
+      "company_path": "wiki/standards/company/MQSI2025_034_临床用血后评估记录率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    },
+    {
+      "rule_id": "MQSI2025_035",
+      "rule_name": "术中自体血回输率",
+      "aliases": [
+        "术中自体血回输率"
+      ],
+      "category": "临床用血管理制度",
+      "national_path": "wiki/standards/national/MQSI2025_035_术中自体血回输率.md",
+      "company_path": "wiki/standards/company/MQSI2025_035_术中自体血回输率_公司标准.md",
+      "status": "active",
+      "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md"
+    }
+  ]
+}

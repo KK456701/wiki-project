@@ -1,0 +1,426 @@
+{
+  "generated_at": "2026-07-05",
+  "status": "pending_field_mapping",
+  "field_roles": [
+    {
+      "rule_id": "MQSI2025_001",
+      "rule_name": "患者入院 48小时内转科的比例",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_002",
+      "rule_name": "患者入院 8 小时内查房率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_003",
+      "rule_name": "上级医师查房记录规范率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_004",
+      "rule_name": "住院患者非计划手术率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_005",
+      "rule_name": "急会诊及时到位率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_006",
+      "rule_name": "急会诊有效率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_007",
+      "rule_name": "普通会诊及时完成率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_008",
+      "rule_name": "普通会诊有效率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_009",
+      "rule_name": "手术患者特级护理/一级护理出院率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_010",
+      "rule_name": "四级手术患者手术当日床旁交接班占比",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_011",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论完成率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_012",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论记 录完整率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_013",
+      "rule_name": "高额异常费用患者进行疑难病例讨论的占比",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_014",
+      "rule_name": "急危重症患者抢救成功率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_015",
+      "rule_name": "术前讨论完成率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_016",
+      "rule_name": "术者参加术前讨论率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_017",
+      "rule_name": "术前讨论计划手术一致率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_018",
+      "rule_name": "实际手术术者与计划手术术者一致率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_019",
+      "rule_name": "死亡病例讨论 5 日完成率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_020",
+      "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_021",
+      "rule_name": "科主任主持死亡病例讨论率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_022",
+      "rule_name": "死亡患者病案上传率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_023",
+      "rule_name": "长期医嘱当日终止率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_024",
+      "rule_name": "手术医师手术时间重合率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_025",
+      "rule_name": "麻醉医师手术时间重合率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_026",
+      "rule_name": "四级手术与三级手术并发症发生率比",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_027",
+      "rule_name": "四级手术与三级手术患者死亡率比",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_028",
+      "rule_name": "四级手术术前多学科讨论完成率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_029",
+      "rule_name": "三、四级手术实际开展率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_030",
+      "rule_name": "新技术新项目留存转化率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_031",
+      "rule_name": "危急值报告时间",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_032",
+      "rule_name": "住院患者危急值当日及时处置率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_033",
+      "rule_name": "特殊使用级抗菌药物使用会诊率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_034",
+      "rule_name": "临床用血后评估记录率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    },
+    {
+      "rule_id": "MQSI2025_035",
+      "rule_name": "术中自体血回输率",
+      "roles": [
+        "分子计数对象",
+        "分母计数对象",
+        "统计周期字段"
+      ],
+      "standard_fields": [],
+      "status": "待医院字段映射确认",
+      "field_role_path": "wiki/metadata/field_roles/核心制度指标字段角色映射_待确认.md"
+    }
+  ]
+}
