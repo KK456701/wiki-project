@@ -1,4 +1,4 @@
-rule_id: MQSI2025_TRANSFER
+rule_id: MQSI2025_001
 rule_name: 患者入院48小时内转科比例
 dialects: [mysql, oracle]
 default_params:

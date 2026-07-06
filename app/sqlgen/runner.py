@@ -27,6 +27,13 @@ def run_sql_trial(runtime_engine: Engine, business_engine: Engine,
 
     try:
         with business_engine.connect() as conn:
+            if SQL_RUN_TIMEOUT_SECONDS > 0 and "mysql" in business_engine.dialect.name.lower():
+                timeout_ms = max(1, int(SQL_RUN_TIMEOUT_SECONDS * 1000))
+                try:
+                    conn.execute(text(f"SET SESSION MAX_EXECUTION_TIME={timeout_ms}"))
+                except Exception:
+                    # Some MySQL-compatible databases do not support MAX_EXECUTION_TIME.
+                    pass
             stmt = text(sql_text)
             bound_params = {"hospital_id": hospital_id, "start_time": stat_start, "end_time": stat_end, **params}
             row = conn.execute(stmt, bound_params).fetchone()

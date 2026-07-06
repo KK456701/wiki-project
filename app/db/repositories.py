@@ -83,11 +83,44 @@ def insert_sql_run_log(engine: Engine, run_id: str, sql_id: str, hospital_id: st
 
 def insert_diagnose_report(engine: Engine, report_id: str, hospital_id: str, rule_id: str,
                            diagnose_type: str, problem_detail: str, repair_suggest: str,
-                           repair_sql: str) -> None:
+                           repair_sql: str, trigger_type: str = "manual",
+                           related_sql_id: str | None = None,
+                           layer_results: Any | None = None,
+                           diagnose_status: str = "healthy",
+                           stat_period: str | None = None) -> None:
+    import json
+
+    params = {
+        "rid": report_id,
+        "h": hospital_id,
+        "r": rule_id,
+        "dt": diagnose_type,
+        "p": problem_detail or "",
+        "rs": repair_suggest or "",
+        "sql": repair_sql or "",
+        "tr": trigger_type or "manual",
+        "sid": related_sql_id or "",
+        "layers": json.dumps(layer_results or [], ensure_ascii=False),
+        "ds": diagnose_status or "healthy",
+        "sp": stat_period or "",
+    }
     with engine.connect() as conn:
-        conn.execute(
-            text("INSERT INTO med_index_diagnose_report (report_id, hospital_id, rule_id, diagnose_type, problem_detail, repair_suggest, repair_sql, diagnose_time, status) VALUES (:rid, :h, :r, :dt, :p, :rs, :sql, NOW(), 0)"),
-            {"rid": report_id, "h": hospital_id, "r": rule_id, "dt": diagnose_type, "p": problem_detail or "", "rs": repair_suggest or "", "sql": repair_sql or ""})
+        try:
+            conn.execute(
+                text("""INSERT INTO med_index_diagnose_report
+                         (report_id, hospital_id, rule_id, diagnose_type, problem_detail, repair_suggest, repair_sql,
+                          diagnose_time, status, trigger_type, related_sql_id, layer_results, diagnose_status, stat_period)
+                         VALUES (:rid, :h, :r, :dt, :p, :rs, :sql, CURRENT_TIMESTAMP, 0, :tr, :sid, :layers, :ds, :sp)"""),
+                params,
+            )
+        except Exception:
+            conn.rollback()
+            conn.execute(
+                text("""INSERT INTO med_index_diagnose_report
+                         (report_id, hospital_id, rule_id, diagnose_type, problem_detail, repair_suggest, repair_sql, diagnose_time, status)
+                         VALUES (:rid, :h, :r, :dt, :p, :rs, :sql, CURRENT_TIMESTAMP, 0)"""),
+                params,
+            )
         conn.commit()
 
 

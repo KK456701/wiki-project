@@ -1,6 +1,8 @@
-"""SQL 安全校验器。"""
+"""SQL safety validator."""
 
 import re
+
+import sqlparse
 
 
 FORBIDDEN_KEYWORDS = [
@@ -11,27 +13,34 @@ FORBIDDEN_KEYWORDS = [
 
 
 def validate_select_sql(sql_text: str, hospital_id: str, main_table: str) -> dict:
-    upper = sql_text.upper().strip()
+    stripped_sql = sqlparse.format(sql_text, strip_comments=True).strip()
+    upper = stripped_sql.upper()
 
-    # 只允许 SELECT
     if not upper.startswith("SELECT"):
-        return {"ok": False, "error": "只允许 SELECT 语句"}
+        return {"ok": False, "error": "\u53ea\u5141\u8bb8 SELECT \u8bed\u53e5"}
 
-    # 禁止危险关键字
     for kw in FORBIDDEN_KEYWORDS:
         if re.search(rf"\b{kw}\b", upper):
-            return {"ok": False, "error": f"禁止使用 {kw}"}
+            return {"ok": False, "error": f"\u7981\u6b62\u4f7f\u7528 {kw}"}
 
-    # 禁止多语句
-    if ";" in sql_text.rstrip(";").rstrip():
-        return {"ok": False, "error": "禁止多语句"}
+    if ";" in stripped_sql.rstrip(";").rstrip():
+        return {"ok": False, "error": "\u7981\u6b62\u591a\u8bed\u53e5"}
 
-    # 必须包含时间范围条件
-    if ":start_time" not in sql_text or ":end_time" not in sql_text:
-        return {"ok": False, "error": "必须包含 :start_time 和 :end_time 参数"}
+    # Generated templates currently do not need OR; reject it to avoid bypassing AND filters.
+    if re.search(r"\bOR\b", upper):
+        return {"ok": False, "error": "\u7981\u6b62\u4f7f\u7528 OR \u6761\u4ef6"}
 
-    # 必须命中主表
-    if main_table.upper() not in upper:
-        return {"ok": False, "error": f"SQL 必须使用主表 {main_table}"}
+    if ":start_time" not in stripped_sql or ":end_time" not in stripped_sql:
+        return {"ok": False, "error": "\u5fc5\u987b\u5305\u542b :start_time \u548c :end_time \u53c2\u6570"}
 
-    return {"ok": True, "message": "安全校验通过"}
+    table_tokens = re.findall(r"\b(?:FROM|JOIN)\s+([A-Z0-9_.$`\"]+)", upper)
+    normalized_tables = {
+        token.strip("`\"").split(".")[-1]
+        for token in table_tokens
+        if token.strip("`\"")
+    }
+    expected_table = main_table.strip("`\"").split(".")[-1].upper()
+    if expected_table not in normalized_tables:
+        return {"ok": False, "error": f"SQL \u5fc5\u987b\u4f7f\u7528\u4e3b\u8868 {main_table}"}
+
+    return {"ok": True, "message": "\u5b89\u5168\u6821\u9a8c\u901a\u8fc7"}

@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from app.agent.graph import run_chat
+from app.agent.graph import _format_diagnose_answer, run_chat
 from app.memory.store import ConversationMemory
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
@@ -43,6 +43,30 @@ class BadFormulaLLM:
 class FailingLLM:
     def generate(self, prompt: str) -> str:
         raise RuntimeError("ollama unavailable")
+
+
+class DiagnoseFormattingTest(unittest.TestCase):
+    def test_warning_layers_show_warning_details_instead_of_normal(self) -> None:
+        answer = _format_diagnose_answer({
+            "layers": [
+                {
+                    "ok": True,
+                    "layer": 1,
+                    "layer_name": "\u7cfb\u7edf\u7ed3\u6784\u6821\u9a8c",
+                    "checks": [
+                        {"status": "pass", "message": "metadata ok"},
+                        {"status": "warn", "message": "Required business field arrive_time is nullable in metadata.", "repair_suggest": "Focus on null rate in data quality checks."},
+                    ],
+                }
+            ],
+            "summary": "\u5b58\u5728\u98ce\u9669: \u7cfb\u7edf\u7ed3\u6784\u6821\u9a8c",
+        })
+
+        self.assertIn("\u901a\u8fc7\u4f46\u6709\u98ce\u9669", answer)
+        self.assertIn("\u5fc5\u586b\u4e1a\u52a1\u5b57\u6bb5 arrive_time \u5728\u5143\u6570\u636e\u4e2d\u5141\u8bb8\u4e3a\u7a7a", answer)
+        self.assertIn("\u8bf7\u5728\u6570\u636e\u8d28\u91cf\u6821\u9a8c\u4e2d\u91cd\u70b9\u5173\u6ce8\u7a7a\u503c\u7387", answer)
+        self.assertNotIn("Required business field", answer)
+        self.assertNotIn("\n   \u6b63\u5e38\n", answer)
 
 
 class AgentWorkflowTest(unittest.TestCase):
@@ -102,7 +126,8 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(result["intent"], "query")
             self.assertEqual(result["rule_id"], "R001")
             self.assertIn("10分钟内到位", result["answer"])
-            self.assertIn("当前不能生成可执行 SQL", result["answer"])
+            self.assertIn("SQL 状态：不可用", result["answer"])
+            self.assertIn("禁止生成可执行 SQL", result["answer"])
 
     def test_query_can_use_llm_answer_generation(self) -> None:
         with temp_kb_dir() as tmp:

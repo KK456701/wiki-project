@@ -7,8 +7,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Body, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -57,6 +57,12 @@ class LoginRequest(BaseModel):
 
 class ApproveRejectRequest(BaseModel):
     approver_id: str | None = None
+
+
+class MergeItemDecisionRequest(BaseModel):
+    decision: str = "adopt_as_company_candidate"
+    approver_id: str | None = None
+    reason: str | None = None
 
 
 def _require_admin(authorization: str | None = Header(None)) -> str:
@@ -142,6 +148,85 @@ def health() -> dict[str, str]:
 
 
 # ---- 管理员认证 ----
+
+
+
+# ---- KB export and merge ----
+
+@app.get("/api/kb/export")
+def kb_export(hospital_id: str = "hospital_001") -> Response:
+    from app.kb.export import export_hospital_kb_zip
+    data = export_hospital_kb_zip(DEFAULT_KB_ROOT, hospital_id)
+    filename = f"{hospital_id}_kb_export.zip"
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/kb/merge/upload")
+def kb_merge_upload(
+    payload: bytes = Body(..., media_type="application/zip"),
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        from app.kb.merge import create_merge_report
+        return create_merge_report(DEFAULT_KB_ROOT, payload, uploaded_by="admin")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/kb/merge/reports")
+def kb_merge_reports(_token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
+    _require_admin(_token)
+    from app.kb.merge import list_merge_reports
+    return {"items": list_merge_reports(DEFAULT_KB_ROOT)}
+
+
+@app.get("/api/kb/merge/report/{report_id}")
+def kb_merge_report(report_id: str, _token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        from app.kb.merge import read_merge_report
+        return read_merge_report(DEFAULT_KB_ROOT, report_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/kb/merge/report/{report_id}/items/{item_id}/approve")
+def kb_merge_item_approve(
+    report_id: str,
+    item_id: str,
+    body: MergeItemDecisionRequest | None = None,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        from app.kb.merge import approve_merge_item
+        decision = (body.decision if body else None) or "adopt_as_company_candidate"
+        approver_id = (body.approver_id if body else None) or "admin"
+        return approve_merge_item(DEFAULT_KB_ROOT, report_id, item_id, decision, approver_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/kb/merge/report/{report_id}/items/{item_id}/reject")
+def kb_merge_item_reject(
+    report_id: str,
+    item_id: str,
+    body: MergeItemDecisionRequest | None = None,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        from app.kb.merge import reject_merge_item
+        reason = (body.reason if body else None) or ""
+        approver_id = (body.approver_id if body else None) or "admin"
+        return reject_merge_item(DEFAULT_KB_ROOT, report_id, item_id, reason, approver_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 @app.post("/api/admin/login")
 def admin_login(request: LoginRequest) -> dict[str, Any]:
@@ -245,6 +330,8 @@ class DiagnoseRequest(BaseModel):
     hospital_id: str
     rule_id: str
     trigger: str = "manual"
+    related_sql_id: str | None = None
+    stat_period: str | None = None
 
 
 @app.post("/api/metadata/sync")
@@ -299,6 +386,8 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
         rule_id=request.rule_id,
         effective_rule=effective,
         trigger=request.trigger,
+        related_sql_id=request.related_sql_id,
+        stat_period=request.stat_period,
     )
 
 

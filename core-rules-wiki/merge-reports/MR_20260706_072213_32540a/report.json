@@ -1,0 +1,74 @@
+{
+  "report_id": "MR_20260706_072213_32540a",
+  "hospital_id": "hospital_001",
+  "uploaded_at": "2026-07-06T07:22:13",
+  "uploaded_by": "admin",
+  "status": "pending_review",
+  "summary": {
+    "total_items": 2,
+    "conflicts": 1,
+    "new_indicators": 0,
+    "new_rules": 1,
+    "unchanged": 0,
+    "pending": 2
+  },
+  "items": [
+    {
+      "item_id": "ITEM_001",
+      "type": "caliber_conflict",
+      "rule_id": "MQSI2025_005",
+      "rule_name": "急会诊及时到位率",
+      "field": "minutes_threshold",
+      "hospital_value": "20分钟",
+      "company_value": "10分钟",
+      "status": "pending",
+      "source_payload": {
+        "rule_id": "MQSI2025_005",
+        "rule_name": "急会诊及时到位率",
+        "hospital_id": "hospital_001",
+        "effective_level": "hospital",
+        "definition": "急会诊请求发出后，20分钟内到达现场的急会诊次数占同期急会诊总次数的比例。",
+        "formula": "急会诊及时到位率 = (急会诊记录中 20分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%",
+        "implementation_status": "待医院字段映射确认。",
+        "active_version_id": "hospital_001_2026-07-05T21:22:02",
+        "source_path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md"
+      }
+    },
+    {
+      "item_id": "ITEM_002",
+      "type": "new_rule",
+      "rule_id": "MQSI2025_001",
+      "rule_name": "MQSI2025_001",
+      "field": "exclude_depts",
+      "hospital_value": [
+        "ICU"
+      ],
+      "company_value": [],
+      "status": "pending",
+      "source_payload": {
+        "hospital_id": "hospital_001",
+        "rule_id": "MQSI2025_001",
+        "dialect": "mysql",
+        "db_name": "hospital_demo_data",
+        "main_table": "inpatient_transfer_record",
+        "fields": {
+          "hospital_id": "inpatient_transfer_record.hospital_id",
+          "admission_id": "inpatient_transfer_record.admission_id",
+          "admit_time": "inpatient_transfer_record.admit_time",
+          "transfer_time": "inpatient_transfer_record.transfer_time",
+          "to_dept_id": "inpatient_transfer_record.to_dept_id"
+        },
+        "filters": {},
+        "custom_rules": {
+          "exclude_depts": [
+            "ICU"
+          ],
+          "count_multiple_transfers": true
+        },
+        "status": "confirmed",
+        "updated_by": "admin",
+        "updated_at": "2026-07-06 22:00:00"
+      }
+    }
+  ]
+}

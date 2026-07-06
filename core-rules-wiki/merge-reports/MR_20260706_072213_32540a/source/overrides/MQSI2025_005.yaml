@@ -1,0 +1,9 @@
+rule_id: MQSI2025_005
+rule_name: 急会诊及时到位率
+hospital_id: hospital_001
+effective_level: hospital
+definition: 急会诊请求发出后，20分钟内到达现场的急会诊次数占同期急会诊总次数的比例。
+formula: 急会诊及时到位率 = (急会诊记录中 20分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%
+implementation_status: 待医院字段映射确认。
+active_version_id: hospital_001_2026-07-05T21:22:02
+source_path: wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md

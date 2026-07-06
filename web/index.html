@@ -5,140 +5,376 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>核心制度指标 Agent</title>
 <style>
+:root {
+  --paper: #f6f9f8;
+  --paper-strong: #edf4f2;
+  --panel: rgba(255,255,255,0.92);
+  --panel-solid: #ffffff;
+  --ink: #172320;
+  --ink-soft: #334541;
+  --muted: #637773;
+  --line: #cfddda;
+  --line-strong: #abc2bd;
+  --teal: #087b75;
+  --teal-deep: #045a56;
+  --teal-soft: #dff4f1;
+  --mint: #a9ddd5;
+  --red: #a64536;
+  --amber: #b66f1e;
+  --shadow: 0 18px 45px rgba(30, 58, 53, 0.13);
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --sans: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-  color: #0f2742; background: #f5f7fb;
+  font-family: var(--sans);
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(176,199,194,0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(176,199,194,0.18) 1px, transparent 1px),
+    var(--paper);
+  background-size: 28px 28px, 28px 28px, auto;
+}
+body::before {
+  content: "MQSI\A WIKI\A LOCAL";
+  white-space: pre;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 76px;
+  padding-top: 26px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  color: rgba(255,255,255,0.78);
+  background: #172320;
+  font: 700 11px/1.8 var(--mono);
+  letter-spacing: 0.12em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  z-index: 35;
+  border-right: 1px solid rgba(255,255,255,0.16);
 }
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-
-/* 顶部栏 */
 .topbar {
-  height: 76px; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px;
-  border-bottom: 1px solid #d9e1ec; background: rgba(255,255,255,0.94); backdrop-filter: blur(8px);
-  position: sticky; top: 0; z-index: 20;
+  min-height: 76px;
+  margin: 16px 24px 0 100px;
+  padding: 14px 18px 14px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid rgba(171,194,189,0.72);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.78);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 12px 36px rgba(37, 72, 66, 0.10);
+  position: sticky;
+  top: 12px;
+  z-index: 30;
 }
-.brand-title { font-size: 24px; font-weight: 800; color: #0b1f3a; line-height: 1.2; }
-.brand-subtitle { margin-top: 4px; color: #4c6280; font-size: 14px; }
-.topbar-actions { display: flex; align-items: center; gap: 12px; }
-.hospital-inline { display: flex; align-items: center; gap: 8px; color: #4c6280; font-size: 14px; }
-.hospital-inline input { width: 150px; height: 36px; padding: 0 10px; border: 1px solid #c8d3e2; border-radius: 10px; font-size: 15px; background: #fff; color: #0f2742; }
-.btn { border-radius: 10px; cursor: pointer; font-size: 15px; }
-.btn-secondary { height: 40px; padding: 0 18px; border: 0; color: #fff; background: #3b4658; }
-.btn-ghost { height: 40px; padding: 0 18px; color: #0f2742; border: 1px solid #c8d3e2; background: #f3f7fc; }
-.btn-ghost.admin-logged { background: #e8f5e9; border-color: #66bb6a; color: #2e7d32; }
-
-/* 对话区域 */
-.chat-layout { flex: 1; min-height: 0; display: flex; justify-content: center; overflow: hidden; }
-.messages { width: min(920px, calc(100vw - 40px)); padding: 28px 0 180px; overflow-y: auto; }
-.message { display: flex; gap: 12px; margin: 18px 0; }
+.brand { min-width: 260px; }
+.brand-title {
+  font-size: 24px;
+  font-weight: 850;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-title::before {
+  content: "";
+  width: 10px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--teal), var(--red));
+  box-shadow: 0 0 0 5px rgba(8,124,117,0.08);
+}
+.brand-subtitle { margin-top: 7px; color: var(--muted); font-size: 13px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.user-info { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+.user-badge { background: #e5f5e9; color: #237044; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.user-badge.company { background: #e4efff; color: #1f5fa8; }
+.hospital-inline {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.68);
+}
+.hospital-inline input {
+  width: 150px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  outline: none;
+  font: 600 15px/1 var(--sans);
+  background: transparent;
+  color: var(--ink);
+}
+.btn, button { border: 0; cursor: pointer; font: inherit; }
+.btn, button.ghost, .merge-file-input, .role-tab, #sendButton { transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease; }
+.btn:hover, button.ghost:hover, .merge-file-input:hover, .role-tab:hover, #sendButton:hover { transform: translateY(-1px); }
+.btn-secondary {
+  height: 42px;
+  padding: 0 18px;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(23,35,32,0.18);
+}
+.btn-ghost {
+  height: 42px;
+  padding: 0 18px;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.66);
+}
+.btn-ghost.admin-logged { background: #e8f6ec; border-color: #8ac69c; color: #2f7549; }
+.chat-layout { flex: 1; min-height: 0; display: flex; justify-content: center; overflow: hidden; padding-left: 76px; }
+.messages {
+  width: min(1040px, calc(100vw - 132px));
+  padding: 44px 0 190px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.message { display: flex; gap: 14px; margin: 22px 0; }
 .message.user { justify-content: flex-end; }
 .message.agent { justify-content: flex-start; }
-.message-avatar { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
-.message.agent .message-avatar { background: #102033; color: #fff; }
-.message.user .message-avatar { background: #dcecf3; color: #0e5365; order: 2; }
-.message-bubble { max-width: min(720px, 78vw); border-radius: 18px; padding: 14px 16px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; font-size: 16px; }
-.message.agent .message-bubble { color: #102033; background: #ffffff; border: 1px solid #dfe7f1; box-shadow: 0 4px 16px rgba(15,39,66,0.05); }
-.message.user .message-bubble { color: #0b2630; background: #dff1f5; }
-.message-meta { margin-bottom: 6px; font-size: 13px; color: #6b7f99; }
-
-/* 欢迎卡片 */
-.welcome-card { border: 1px solid #dfe7f1; border-radius: 20px; padding: 20px; background: #ffffff; box-shadow: 0 4px 20px rgba(15,39,66,0.06); }
-.welcome-card h2 { margin: 0 0 10px; font-size: 20px; color: #0b1f3a; }
-.welcome-card p { margin: 8px 0; line-height: 1.8; color: #28415f; }
-.welcome-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.example-chip { border: 1px solid #c8d3e2; border-radius: 999px; padding: 7px 12px; background: #f6f9fc; cursor: pointer; color: #28415f; font-size: 14px; }
-.example-chip:hover { background: #e8f0f8; }
-
-/* 底部输入区 */
+.message-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+.message.agent .message-avatar { background: var(--ink); color: #fff; box-shadow: 0 10px 22px rgba(23,35,32,0.18); }
+.message.user .message-avatar { background: var(--teal-soft); color: var(--teal-deep); order: 2; border: 1px solid rgba(8,124,117,0.16); }
+.message-bubble {
+  max-width: min(780px, 78vw);
+  border-radius: 8px;
+  padding: 15px 17px;
+  line-height: 1.78;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 15.5px;
+}
+.message.agent .message-bubble {
+  color: var(--ink);
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(171,194,189,0.75);
+  border-left: 4px solid var(--teal);
+  box-shadow: var(--shadow);
+}
+.message.user .message-bubble {
+  color: #082c2a;
+  background: linear-gradient(135deg, #dff4f1, #ccebe6);
+  border: 1px solid rgba(8,124,117,0.16);
+  box-shadow: 0 12px 28px rgba(8,124,117,0.10);
+}
+.message-meta {
+  margin-bottom: 8px;
+  font: 650 12px/1.2 var(--mono);
+  letter-spacing: .02em;
+  color: #6e817d;
+}
+.welcome-card {
+  padding: 8px 8px 4px;
+  background: transparent;
+}
+.welcome-card h2 {
+  margin: 0 0 12px;
+  font-size: clamp(23px, 3vw, 34px);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+.welcome-card h2::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  margin-top: 13px;
+  border-radius: 999px;
+  background: var(--red);
+}
+.welcome-card p { margin: 8px 0; line-height: 1.85; color: var(--ink-soft); }
+.welcome-examples { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+.example-chip {
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 7px 13px;
+  background: rgba(255,255,255,0.72);
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+}
+.example-chip:hover { background: var(--teal-soft); border-color: var(--teal); color: var(--teal-deep); }
 .composer-wrapper {
-  position: fixed; left: 0; right: 0; bottom: 0; padding: 16px 24px 18px;
-  background: linear-gradient(180deg, rgba(245,247,251,0), rgba(245,247,251,0.94) 20%, #f5f7fb 100%);
+  position: fixed;
+  left: 76px;
+  right: 0;
+  bottom: 0;
+  padding: 22px 24px 20px;
+  background: linear-gradient(180deg, rgba(246,249,248,0), rgba(246,249,248,0.94) 26%, var(--paper) 100%);
   z-index: 30;
 }
 .composer {
-  width: min(920px, calc(100vw - 40px)); margin: 0 auto; display: flex; align-items: flex-end; gap: 10px;
-  padding: 10px; border: 1px solid #cdd8e6; border-radius: 18px; background: #ffffff;
-  box-shadow: 0 8px 32px rgba(15,39,66,0.12);
+  width: min(1040px, calc(100vw - 132px));
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid rgba(171,194,189,0.86);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 18px 46px rgba(30,58,53,0.16);
 }
-#queryInput { flex: 1; min-height: 46px; max-height: 160px; padding: 10px 12px; border: 0; outline: none; resize: none; font-size: 16px; line-height: 1.6; color: #0f2742; background: transparent; }
-#sendButton { min-width: 84px; height: 46px; padding: 0 18px; border: 0; color: #ffffff; background: #157a8a; font-weight: 600; border-radius: 10px; cursor: pointer; font-size: 16px; }
-#sendButton:disabled { cursor: not-allowed; opacity: 0.55; }
-.composer-hint { width: min(920px, calc(100vw - 40px)); margin: 8px auto 0; color: #61738c; font-size: 13px; display: flex; justify-content: space-between; }
-
-/* 弹窗 */
+#queryInput {
+  flex: 1;
+  min-height: 48px;
+  max-height: 160px;
+  padding: 11px 12px;
+  border: 0;
+  outline: none;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: transparent;
+}
+#queryInput::placeholder { color: #8a9d99; }
+#sendButton {
+  min-width: 92px;
+  height: 48px;
+  padding: 0 20px;
+  color: #fff;
+  background: var(--teal);
+  font-weight: 800;
+  border-radius: 8px;
+  font-size: 16px;
+  box-shadow: 0 12px 24px rgba(8,124,117,0.24);
+}
+#sendButton:disabled { cursor: not-allowed; opacity: 0.55; transform: none; }
+.composer-hint {
+  width: min(1040px, calc(100vw - 132px));
+  margin: 9px auto 0;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
 .modal[hidden] { display: none; }
-.modal {
-  position: fixed; inset: 0; background: rgba(17,24,39,0.48); display: grid; place-items: center; padding: 20px; z-index: 100;
+.modal { position: fixed; inset: 0; background: rgba(23,35,32,0.48); display: grid; place-items: center; padding: 22px; z-index: 100; backdrop-filter: blur(5px); }
+.dialog {
+  width: min(980px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--panel-solid);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  box-shadow: 0 28px 70px rgba(23,35,32,0.26);
 }
-.dialog { width: min(920px, 100%); max-height: 88vh; overflow: auto; background: #fff; border-radius: 8px; border: 1px solid #d9dee7; box-shadow: 0 20px 50px rgba(15,23,42,0.22); }
-.dialog header { padding: 16px; margin: 0; border-bottom: 1px solid #e4e7ec; display: flex; justify-content: space-between; align-items: center; }
-.dialog-body { padding: 16px; }
-.comparison { display: grid; gap: 10px; }
-.row { display: grid; grid-template-columns: 120px 1fr 150px; gap: 10px; align-items: stretch; padding: 12px; border: 1px solid #e4e7ec; border-radius: 8px; }
-.row-title { font-weight: 700; color: #111827; }
-.row-content { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
-.review-list { display: grid; gap: 10px; }
-.review-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+.dialog header { padding: 18px 20px; margin: 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.dialog h2 { margin: 0; letter-spacing: -0.02em; }
+.dialog-body { padding: 18px 20px 22px; }
+.comparison, .review-list, .version-list { display: grid; gap: 12px; }
+.row, .review-item, .version-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px;
+  background: #fbfdfc;
+}
+.row { display: grid; grid-template-columns: 128px 1fr 150px; gap: 12px; align-items: stretch; }
+.row-title { font-weight: 800; color: var(--ink); }
+.row-content { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
 .review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-.version-list { display: grid; gap: 10px; }
-.version-item { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
-.version-item.active { border-color: #157a8a; background: #eef9fb; }
-.version-meta { color: #5b677a; font-size: 13px; }
-.history-lookup { border: 1px solid #e4e7ec; border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 12px; }
-.history-lookup input { padding: 9px 10px; border: 1px solid #c9d0dc; border-radius: 6px; font: inherit; min-width: 0; }
-@media (max-width: 720px) { .history-lookup { grid-template-columns: 1fr; } }
-button { border: 0; border-radius: 6px; padding: 0 16px; background: #116a7b; color: white; cursor: pointer; font: inherit; }
-button.danger { background: #9f1d35; }
-button.ghost { background: #edf2f7; color: #344054; border: 1px solid #c9d0dc; }
-button:disabled { background: #8795a1; cursor: wait; }
-
-/* 字段对比表 */
-.diff-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 14px; }
-.diff-table th, .diff-table td { border: 1px solid #e4e7ec; padding: 8px 10px; text-align: left; vertical-align: top; }
-.diff-table th { background: #f6f7f9; font-weight: 700; color: #111827; white-space: nowrap; }
-.diff-table td { color: #344054; white-space: pre-wrap; overflow-wrap: anywhere; }
-.diff-table .changed { background: #fff7e6; }
-.changed-badge { display: inline-block; background: #f59e0b; color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 4px; }
-
-/* 登录弹窗 */
-.login-box { max-width: 400px; margin: 0 auto; display: grid; gap: 12px; }
-.login-box input { padding: 10px; border: 1px solid #c9d0dc; border-radius: 6px; font-size: 15px; }
-.login-err { color: #9f1d35; font-size: 14px; }
-
-/* 移动端 */
-@media (max-width: 720px) {
-  .topbar { height: auto; padding: 12px 16px; flex-direction: column; align-items: flex-start; }
-  .topbar-actions { width: 100%; flex-wrap: wrap; }
-  .hospital-inline input { width: 130px; }
-  .messages { width: calc(100vw - 24px); padding-bottom: 190px; }
-  .message-bubble { max-width: 86vw; }
-  .composer { width: calc(100vw - 24px); }
-  .composer-wrapper { padding: 14px 12px; }
-  .composer-hint { width: calc(100vw - 24px); }
-  .row { grid-template-columns: 1fr; }
+.version-item.active { border-color: var(--teal); background: var(--teal-soft); }
+.version-meta, .review-meta { color: var(--muted); font-size: 12px; }
+.history-lookup { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 12px; background: #fbfdfc; }
+.history-lookup input, .login-box input, .login-card input, .login-card select {
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  min-width: 0;
+  background: #fff;
+  color: var(--ink);
 }
-
-/* 登录页面 */
-.login-screen { position: fixed; inset: 0; background: #f5f7fb; display: grid; place-items: center; z-index: 200; }
+button { border-radius: 8px; padding: 0 16px; background: var(--teal); color: white; cursor: pointer; min-height: 36px; }
+button.danger { background: var(--red); }
+button.ghost { background: #f4f8f7; color: var(--ink-soft); border: 1px solid var(--line); }
+button:disabled { background: #879995; cursor: wait; transform: none; }
+.review-tabs { display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.review-tab { background: #eef5f3; color: var(--ink-soft); border: 1px solid var(--line); }
+.review-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.merge-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.merge-file-input { display: inline-flex; align-items: center; min-height: 36px; padding: 0 16px; border-radius: 8px; background: var(--teal); color: #fff; cursor: pointer; }
+.merge-report-list, .merge-report-list + div { display: grid; gap: 10px; }
+.merge-report-item, .merge-item { border: 1px solid var(--line); background: #fbfdfc; color: var(--ink); border-radius: 8px; padding: 12px; text-align: left; }
+.diff-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 13px; border-radius: 8px; overflow: hidden; }
+.diff-table th, .diff-table td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.diff-table th { background: #edf4f2; font-weight: 800; color: var(--ink); white-space: nowrap; }
+.diff-table td { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; background: #fff; }
+.diff-table .changed { background: #fff6e8; }
+.changed-badge { display: inline-block; background: var(--amber); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 999px; margin-left: 4px; }
+.login-screen { position: fixed; inset: 0; background: var(--paper); display: grid; place-items: center; z-index: 200; }
 .login-screen[hidden] { display: none; }
-.login-card { width: min(420px, 90vw); background: #fff; border-radius: 16px; padding: 40px 32px; box-shadow: 0 8px 40px rgba(15,39,66,0.12); text-align: center; }
-.login-card h2 { margin: 0 0 8px; font-size: 22px; color: #0b1f3a; }
-.login-card .subtitle { color: #5b677a; font-size: 14px; margin-bottom: 24px; }
-.login-card label { display: block; text-align: left; color: #4c6280; font-size: 14px; margin-bottom: 4px; margin-top: 12px; }
-.login-card input, .login-card select { width: 100%; padding: 10px 12px; border: 1px solid #c9d0dc; border-radius: 8px; font-size: 15px; margin-bottom: 4px; }
-.login-card select { background: #fff; }
+.login-card {
+  width: min(430px, 90vw);
+  background: rgba(255,255,255,0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 38px 32px;
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+.login-card h2 { margin: 0 0 8px; font-size: 24px; color: var(--ink); letter-spacing: -0.03em; }
+.login-card .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+.login-card label { display: block; text-align: left; color: var(--muted); font-size: 13px; margin-bottom: 5px; margin-top: 12px; }
 .login-card button { width: 100%; margin-top: 16px; padding: 12px; font-size: 16px; }
 .login-card .role-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-.login-card .role-tab { flex: 1; padding: 10px; border: 2px solid #c9d0dc; border-radius: 10px; background: #fff; cursor: pointer; font-size: 15px; color: #4c6280; }
-.login-card .role-tab.active { border-color: #157a8a; color: #157a8a; font-weight: 700; background: #e6f4f7; }
-.user-info { display: flex; align-items: center; gap: 6px; color: #4c6280; font-size: 13px; }
-.user-badge { background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
-.user-badge.company { background: #e3f2fd; color: #1565c0; }
-
-/* 审批页人员信息 */
-.review-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #5b677a; margin-top: 4px; }
+.login-card .role-tab { flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; font-size: 15px; color: var(--muted); }
+.login-card .role-tab.active { border-color: var(--teal); color: var(--teal-deep); font-weight: 800; background: var(--teal-soft); }
+.login-err { color: var(--red); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+@media (max-width: 900px) {
+  body::before { display: none; }
+  .topbar { margin: 10px 12px 0; flex-direction: column; align-items: flex-start; }
+  .topbar-actions { width: 100%; justify-content: flex-start; }
+  .chat-layout { padding-left: 0; }
+  .messages { width: calc(100vw - 24px); padding: 24px 0 190px; }
+  .composer-wrapper { left: 0; padding: 14px 12px; }
+  .composer, .composer-hint { width: calc(100vw - 24px); }
+  .message-bubble { max-width: 86vw; }
+  .row, .history-lookup { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .brand-title { font-size: 21px; }
+  .hospital-inline input { width: 112px; }
+  .composer { align-items: stretch; flex-direction: column; }
+  #sendButton { width: 100%; }
+  .composer-hint { flex-direction: column; gap: 4px; }
+}
 </style>
 </head>
 <body>
@@ -228,12 +464,27 @@ button:disabled { background: #8795a1; cursor: wait; }
       <button class="ghost" data-close="reviewModal">关闭</button>
     </header>
     <div class="dialog-body">
-      <div class="history-lookup">
-        <input id="historyHospitalInput" placeholder="医院 ID" value="hospital_001" />
-        <input id="historyRuleInput" placeholder="rule_id，如 MQSI2025_005" />
-        <button id="historyLookupButton">查看历史版本</button>
+      <div class="review-tabs">
+        <button id="caliberReviewTab" class="review-tab active" type="button">&#21475;&#24452;&#23457;&#25209;</button>
+        <button id="kbMergeTab" class="review-tab" type="button">&#30693;&#35782;&#24211;&#21512;&#24182;</button>
       </div>
-      <div id="reviewList" class="review-list"></div>
+      <div id="caliberReviewPanel">
+        <div class="history-lookup">
+          <input id="historyHospitalInput" placeholder="\u533b\u9662 ID" value="hospital_001" />
+          <input id="historyRuleInput" placeholder="rule_id\uff0c\u5982 MQSI2025_005" />
+          <button id="historyLookupButton">&#26597;&#30475;&#21382;&#21490;&#29256;&#26412;</button>
+        </div>
+        <div id="reviewList" class="review-list"></div>
+      </div>
+      <div id="kbMergePanel" hidden>
+        <div class="merge-toolbar">
+          <button id="exportKbButton" type="button">&#23548;&#20986;&#24403;&#21069;&#21307;&#38498; ZIP</button>
+          <label class="merge-file-input">&#19978;&#20256;&#21307;&#38498; ZIP <input id="mergeUploadInput" type="file" accept=".zip" style="display:none" /></label>
+          <button id="refreshMergeReportsButton" type="button" class="ghost">&#21047;&#26032;&#25253;&#21578;</button>
+        </div>
+        <div id="mergeReportList" class="merge-report-list"></div>
+        <div id="mergeReportDetail"></div>
+      </div>
     </div>
   </section>
 </div>
@@ -289,6 +540,15 @@ var historyList = document.getElementById("historyList");
 var historyHospitalInput = document.getElementById("historyHospitalInput");
 var historyRuleInput = document.getElementById("historyRuleInput");
 var historyLookupButton = document.getElementById("historyLookupButton");
+var caliberReviewTab = document.getElementById("caliberReviewTab");
+var kbMergeTab = document.getElementById("kbMergeTab");
+var caliberReviewPanel = document.getElementById("caliberReviewPanel");
+var kbMergePanel = document.getElementById("kbMergePanel");
+var exportKbButton = document.getElementById("exportKbButton");
+var mergeUploadInput = document.getElementById("mergeUploadInput");
+var refreshMergeReportsButton = document.getElementById("refreshMergeReportsButton");
+var mergeReportList = document.getElementById("mergeReportList");
+var mergeReportDetail = document.getElementById("mergeReportDetail");
 
 sessionLabel.textContent = "session: " + currentSessionId;
 updateUserUI();
@@ -333,7 +593,7 @@ updateAdminUI();
 
 reviewButton.addEventListener("click", function() {
   if (!adminToken) { loginModal.hidden = false; loginPassword.focus(); return; }
-  reviewModal.hidden = false; loadPendingReviews();
+  reviewModal.hidden = false; switchReviewTab("caliber"); loadPendingReviews();
 });
 
 loginSubmit.addEventListener("click", async function() {
@@ -422,7 +682,7 @@ function createMessage(role, text) {
   container.append(avatar, bubble);
   messages.appendChild(container);
   scrollToBottom();
-  return { container: container, bubble: bubble, body: body };
+  return { container: container, bubble: bubble, meta: meta, body: body };
 }
 
 // ===== 欢迎卡片 =====
@@ -483,13 +743,22 @@ async function streamChat(query) {
           currentSessionId = parsed.data.session_id;
           sessionLabel.textContent = "session: " + currentSessionId;
         }
+        if (parsed.event === "progress") {
+          var progressText = parsed.data.message || "\u6b63\u5728\u5904\u7406";
+          ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - " + progressText;
+          if (!(ass._raw || "")) {
+            ass.body.innerHTML = "<span style='color:#6b7f99'>" + _renderAssHtml(progressText) + "...</span>";
+          }
+          scrollToBottom();
+        }
         if (parsed.event === "token") {
           ass._raw = (ass._raw || "") + (parsed.data.text || "");
           ass.body.innerHTML = _renderAssHtml(ass._raw);
           scrollToBottom();
         }
         if (parsed.event === "feedback_preview") { latestFeedbackPreview = parsed.data; showFeedbackPreview(parsed.data); }
-        if (parsed.event === "error") { ass.body.textContent += "\n\n[错误] " + (parsed.data.message||"请求失败"); scrollToBottom(); }
+        if (parsed.event === "error") { ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u8bf7\u6c42\u5931\u8d25"; ass.body.textContent += "\n\n[\u9519\u8bef] " + (parsed.data.message||"\u8bf7\u6c42\u5931\u8d25"); scrollToBottom(); }
+        if (parsed.event === "done") { ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u5df2\u5b8c\u6210"; }
       }
     }
   } catch(e) { ass.body.textContent = "[请求失败] " + (e.message||e); }
@@ -685,7 +954,7 @@ async function rejectChange(changeId) {
 
 async function showOverrideHistory(ruleId, hospitalId, title) {
   if (!ruleId || !hospitalId) return;
-  historyMeta.textContent = (title||ruleId) + " ? " + hospitalId;
+  historyMeta.textContent = (title||ruleId) + " · " + hospitalId;
   historyList.innerHTML = "加载历史版本…";
   historyModal.hidden = false;
   var resp = await fetch("/api/review/hospital-overrides/" + encodeURIComponent(hospitalId) + "/" + encodeURIComponent(ruleId) + "/versions", {
@@ -699,7 +968,7 @@ async function showOverrideHistory(ruleId, hospitalId, title) {
     var box = document.createElement("div");
     box.className = "version-item" + (version.version_id === data.active_version_id ? " active" : "");
     var head = document.createElement("strong");
-    head.textContent = (version.version_id === data.active_version_id ? "当前生效 ? " : "") + version.version_id;
+    head.textContent = (version.version_id === data.active_version_id ? "\u5f53\u524d\u751f\u6548 \u00b7 " : "") + version.version_id;
     var meta = document.createElement("div");
     meta.className = "version-meta";
     meta.textContent = "来源：" + (version.source||"approval") + "  审批人：" + (version.approver_id||"unknown") + "  时间：" + (version.approved_at||"unknown");
@@ -740,6 +1009,142 @@ historyLookupButton.addEventListener("click", function() {
 });
 
 // ===== 新会话 =====
+
+// ===== KB merge =====
+function switchReviewTab(tab) {
+  var isMerge = tab === "merge";
+  caliberReviewTab.classList.toggle("active", !isMerge);
+  kbMergeTab.classList.toggle("active", isMerge);
+  caliberReviewPanel.hidden = isMerge;
+  kbMergePanel.hidden = !isMerge;
+  if (isMerge) loadMergeReports();
+}
+
+caliberReviewTab.addEventListener("click", function() { switchReviewTab("caliber"); loadPendingReviews(); });
+kbMergeTab.addEventListener("click", function() { switchReviewTab("merge"); });
+
+exportKbButton.addEventListener("click", function() {
+  var hospitalId = (hospitalIdInput.value || "hospital_001").trim();
+  window.open("/api/kb/export?hospital_id=" + encodeURIComponent(hospitalId), "_blank");
+});
+
+refreshMergeReportsButton.addEventListener("click", loadMergeReports);
+
+mergeUploadInput.addEventListener("change", async function() {
+  var file = mergeUploadInput.files && mergeUploadInput.files[0];
+  if (!file) return;
+  mergeReportDetail.textContent = "\u6b63\u5728\u4e0a\u4f20\u5e76\u751f\u6210\u5dee\u5f02\u62a5\u544a...";
+  try {
+    var resp = await fetch("/api/kb/merge/upload", {
+      method: "POST",
+      headers: {"Authorization":"Bearer " + adminToken, "Content-Type":"application/zip"},
+      body: await file.arrayBuffer()
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "upload failed");
+    mergeReportDetail.textContent = "\u5df2\u751f\u6210\u5408\u5e76\u62a5\u544a\uff1a" + data.report_id;
+    await loadMergeReports();
+    await showMergeReport(data.report_id);
+  } catch (e) {
+    mergeReportDetail.textContent = "\u4e0a\u4f20\u5931\u8d25\uff1a" + (e.message || e);
+  } finally {
+    mergeUploadInput.value = "";
+  }
+});
+
+async function loadMergeReports() {
+  if (!adminToken) return;
+  mergeReportList.innerHTML = "\u52a0\u8f7d\u5408\u5e76\u62a5\u544a...";
+  try {
+    var resp = await fetch("/api/kb/merge/reports", { headers:{"Authorization":"Bearer " + adminToken} });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "load failed");
+    mergeReportList.innerHTML = "";
+    if (!data.items.length) { mergeReportList.textContent = "\u6682\u65e0\u5408\u5e76\u62a5\u544a\u3002"; return; }
+    data.items.forEach(function(report) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "merge-report-item";
+      var summary = report.summary || {};
+      btn.innerHTML = "<strong>" + report.report_id + " · " + report.hospital_id + "</strong>" +
+        "<span>" + (report.status || "") + " \u00b7 \u51b2\u7a81 " + (summary.conflicts||0) + " \u00b7 \u65b0\u89c4\u5219 " + (summary.new_rules||0) + " \u00b7 \u65b0\u6307\u6807 " + (summary.new_indicators||0) + "</span>";
+      btn.addEventListener("click", function() { showMergeReport(report.report_id); });
+      mergeReportList.appendChild(btn);
+    });
+  } catch(e) { mergeReportList.textContent = "\u5408\u5e76\u62a5\u544a\u52a0\u8f7d\u5931\u8d25\uff1a" + (e.message || e); }
+}
+
+async function showMergeReport(reportId) {
+  mergeReportDetail.textContent = "\u52a0\u8f7d\u62a5\u544a\u8be6\u60c5...";
+  var resp = await fetch("/api/kb/merge/report/" + encodeURIComponent(reportId), { headers:{"Authorization":"Bearer " + adminToken} });
+  var report = await resp.json();
+  if (!resp.ok) { mergeReportDetail.textContent = report.detail || "load failed"; return; }
+  renderMergeReport(report);
+}
+
+function renderMergeReport(report) {
+  mergeReportDetail.innerHTML = "";
+  var title = document.createElement("h3");
+  title.textContent = report.report_id + " · " + report.hospital_id;
+  mergeReportDetail.appendChild(title);
+  (report.items || []).forEach(function(item) {
+    var box = document.createElement("div");
+    box.className = "merge-item " + (item.status || "pending");
+    var head = document.createElement("strong");
+    head.textContent = item.item_id + " · " + item.type + " · " + (item.rule_name || item.indicator_name || item.rule_id || "");
+    var table = document.createElement("table");
+    table.className = "diff-table";
+    table.innerHTML = "<tbody><tr><th>\u5b57\u6bb5</th><td></td></tr><tr><th>\u533b\u9662\u503c</th><td></td></tr><tr><th>\u516c\u53f8\u503c</th><td></td></tr><tr><th>\u72b6\u6001</th><td></td></tr></tbody>";
+    table.rows[0].cells[1].textContent = item.field || "";
+    table.rows[1].cells[1].textContent = JSON.stringify(item.hospital_value || item.files || "", null, 2);
+    table.rows[2].cells[1].textContent = JSON.stringify(item.company_value || "", null, 2);
+    table.rows[3].cells[1].textContent = (item.status || "") + (item.decision ? " / " + item.decision : "");
+    var actions = document.createElement("div");
+    actions.className = "review-actions";
+    if (item.status === "pending") {
+      var candidate = document.createElement("button");
+      candidate.textContent = "\u91c7\u7eb3\u4e3a\u516c\u53f8\u5019\u9009";
+      candidate.addEventListener("click", function() { approveMergeItem(report.report_id, item.item_id, "adopt_as_company_candidate"); });
+      var local = document.createElement("button");
+      local.className = "ghost";
+      local.textContent = "\u4fdd\u7559\u4e3a\u533b\u9662\u672c\u5730";
+      local.addEventListener("click", function() { approveMergeItem(report.report_id, item.item_id, "keep_as_hospital_local"); });
+      var reject = document.createElement("button");
+      reject.className = "danger";
+      reject.textContent = "\u62d2\u7edd";
+      reject.addEventListener("click", function() { rejectMergeItem(report.report_id, item.item_id); });
+      actions.append(candidate, local, reject);
+    }
+    box.append(head, table, actions);
+    mergeReportDetail.appendChild(box);
+  });
+}
+
+async function approveMergeItem(reportId, itemId, decision) {
+  var resp = await fetch("/api/kb/merge/report/" + encodeURIComponent(reportId) + "/items/" + encodeURIComponent(itemId) + "/approve", {
+    method:"POST",
+    headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({decision: decision, approver_id: currentUser ? currentUser.accountId : "admin"})
+  });
+  var data = await resp.json();
+  if (!resp.ok) { alert(data.detail || "approve failed"); return; }
+  await showMergeReport(reportId);
+  await loadMergeReports();
+}
+
+async function rejectMergeItem(reportId, itemId) {
+  var reason = prompt("\u8bf7\u8f93\u5165\u62d2\u7edd\u539f\u56e0", "");
+  var resp = await fetch("/api/kb/merge/report/" + encodeURIComponent(reportId) + "/items/" + encodeURIComponent(itemId) + "/reject", {
+    method:"POST",
+    headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({reason: reason || "", approver_id: currentUser ? currentUser.accountId : "admin"})
+  });
+  var data = await resp.json();
+  if (!resp.ok) { alert(data.detail || "reject failed"); return; }
+  await showMergeReport(reportId);
+  await loadMergeReports();
+}
+
 newSessionButton.addEventListener("click", function() {
   currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
   sessionLabel.textContent = "session: " + currentSessionId;

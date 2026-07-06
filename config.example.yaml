@@ -1,0 +1,23 @@
+# Copy this file to config.yaml and adjust values for your local environment.
+
+# Runtime database for Agent memory, review records and diagnosis logs.
+runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
+
+# Read-only business database used by SQL trial runs and diagnosis checks.
+business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
+business_db_dialect: "mysql"
+
+# Metadata cache.
+metadata_max_age_hours: 24
+
+# SQL trial run safety.
+allow_sql_trial_run: true
+sql_run_timeout_seconds: 10
+
+# Admin password for local MVP review pages. Change before real deployment.
+admin_password: "CHANGE_ME"
+
+# Ollama local model.
+ollama_model: "qwen3:4B-instruct"
+ollama_base_url: "http://127.0.0.1:11434"
+ollama_timeout_seconds: 20

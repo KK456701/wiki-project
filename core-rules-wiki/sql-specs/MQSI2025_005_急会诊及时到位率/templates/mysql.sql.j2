@@ -16,6 +16,6 @@ WHERE {{ fields.hospital_id }} = :hospital_id
   AND {{ fields.consult_type }} = :consult_type_value
   AND {{ fields.request_time }} >= :start_time
   AND {{ fields.request_time }} < :end_time
-{% for dept in custom_rules.exclude_depts %}
-  AND {{ fields.get('dept_id', 'dept_id') }} != '{{ dept }}'
+{% for dept in custom_rules.exclude_dept_filters %}
+  AND {{ fields.get('dept_id', 'dept_id') }} != :{{ dept.param }}
 {% endfor %}

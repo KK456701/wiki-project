@@ -1,4 +1,4 @@
-rule_id: MQSI2025_TRANSFER
+rule_id: MQSI2025_001
 business_fields:
   hospital_id:
     type: string

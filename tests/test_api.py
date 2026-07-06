@@ -31,7 +31,8 @@ class ApiTest(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["rule_id"], "MQSI2025_005")
         self.assertIn("急会诊及时到位率", data["answer"])
-        self.assertIn("当前不能生成可执行 SQL", data["answer"])
+        self.assertIn("SQL 状态：可用", data["answer"])
+        self.assertIn("生成 SQL", data["answer"])
 
     def test_chat_endpoint_uses_session_memory_for_follow_up_feedback(self) -> None:
         with temp_kb_dir() as tmp:
@@ -63,6 +64,38 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(second["rule_id"], "R001")
             self.assertEqual(second["feedback_preview"]["target_level"], "hospital")
             self.assertNotIn("change_request", second)
+
+    def test_kb_export_and_merge_upload_workflow(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=True)
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root):
+                exported = client.get("/api/kb/export", params={"hospital_id": "hospital_001"})
+                login = client.post("/api/admin/login", json={"password": "admin123"})
+                headers = {"Authorization": f"Bearer {login.json()['token']}", "Content-Type": "application/zip"}
+                uploaded = client.post("/api/kb/merge/upload", content=exported.content, headers=headers)
+                report_id = uploaded.json()["report_id"]
+                listed = client.get("/api/kb/merge/reports", headers={"Authorization": headers["Authorization"]})
+                detail = client.get(f"/api/kb/merge/report/{report_id}", headers={"Authorization": headers["Authorization"]})
+                item_id = detail.json()["items"][0]["item_id"]
+                approved = client.post(
+                    f"/api/kb/merge/report/{report_id}/items/{item_id}/approve",
+                    headers={"Authorization": headers["Authorization"], "Content-Type": "application/json"},
+                    json={"decision": "adopt_as_company_candidate", "approver_id": "admin"},
+                )
+
+            self.assertEqual(exported.status_code, 200)
+            self.assertEqual(exported.headers["content-type"], "application/zip")
+            self.assertEqual(uploaded.status_code, 200)
+            self.assertEqual(uploaded.json()["status"], "pending_review")
+            self.assertGreaterEqual(uploaded.json()["summary"]["total_items"], 1)
+            self.assertEqual(listed.status_code, 200)
+            self.assertTrue(any(item["report_id"] == report_id for item in listed.json()["items"]))
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual(approved.status_code, 200)
+            self.assertEqual(approved.json()["status"], "approved_candidate")
 
     def test_review_api_creates_and_approves_hospital_change_request(self) -> None:
         with temp_kb_dir() as tmp:

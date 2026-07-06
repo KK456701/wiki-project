@@ -93,6 +93,8 @@ class SQLGenerationAgent:
         params = _extract_params(effective_rule, spec)
         if mapping.get("filters", {}).get("consult_type_value"):
             params["consult_type_value"] = mapping["filters"]["consult_type_value"]
+        for index, value in enumerate(custom_rules.get("exclude_depts") or []):
+            params[f"exclude_dept_{index}"] = str(value)
 
         insert_generated_sql(self.runtime_engine, sql_id, hospital_id, rule_id, dialect, sql_text,
                              sql_status, validation.get("message", validation.get("error", "")), generated_by)

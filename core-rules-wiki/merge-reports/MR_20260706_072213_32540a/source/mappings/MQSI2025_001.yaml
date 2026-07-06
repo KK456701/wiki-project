@@ -1,4 +1,4 @@
-hospital_id: hospital_002
+hospital_id: hospital_001
 rule_id: MQSI2025_001
 dialect: mysql
 db_name: hospital_demo_data
@@ -8,7 +8,13 @@ fields:
   admission_id: inpatient_transfer_record.admission_id
   admit_time: inpatient_transfer_record.admit_time
   transfer_time: inpatient_transfer_record.transfer_time
+  to_dept_id: inpatient_transfer_record.to_dept_id
 filters: {}
+custom_rules:
+  # 排除 ICU 转科
+  exclude_depts: ["ICU"]
+  # 同一患者多次转科分别计数（不去重）
+  count_multiple_transfers: true
 status: confirmed
 updated_by: admin
 updated_at: "2026-07-06 22:00:00"

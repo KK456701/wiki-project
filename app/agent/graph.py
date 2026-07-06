@@ -50,8 +50,12 @@ def detect_intent(query: str) -> str:
     """关键词兜底：chat/query/feedback/generate_sql/diagnose/metadata_sync。"""
     q = (query or "").strip()
     compact = re.sub(r"\s+", "", q)
-    strong_feedback = ["应该", "改", "反馈", "按", "本院", "我们医院", "我院"]
-    if any(marker in compact for marker in strong_feedback):
+    feedback_actions = ["\u5e94\u8be5", "\u6539\u6210", "\u6539\u4e3a", "\u8c03\u6574\u6210", "\u4fee\u6539\u6210", "\u53cd\u9988", "\u4e0d\u4e00\u81f4"]
+    hospital_subjects = ["\u672c\u9662", "\u6211\u4eec\u533b\u9662", "\u6211\u9662"]
+    query_cues = ["\u54ea\u4e2a", "\u4ec0\u4e48", "\u591a\u5c11", "\u600e\u4e48", "\u5417", "\uff1f", "?", "\u5f53\u524d", "\u91c7\u7528"]
+    if any(marker in compact for marker in feedback_actions):
+        return "feedback"
+    if any(subject in compact for subject in hospital_subjects) and "\u6309" in compact and not any(cue in compact for cue in query_cues):
         return "feedback"
     lower = compact.lower()
     if lower in {item.lower() for item in CHAT_EXACTS}:
@@ -278,6 +282,7 @@ def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client:
         state["answer"] = "未命中规则。请提供更明确的指标名称或 rule_id。"
         return state
 
+    yield ("progress", {"message": "\u5df2\u547d\u4e2d\u6307\u6807\uff0c\u6b63\u5728\u8bfb\u53d6\u533b\u9662\u4f18\u5148\u53e3\u5f84"})
     effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
     state["effective_rule"] = effective
     state["field_mapping"] = tools.get_field_mapping(rule_id)
@@ -394,6 +399,73 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
     return graph.compile().invoke(state)
 
 
+def _localize_diagnose_text(text: str) -> str:
+    value = str(text or "")
+    replacements = [
+        ("Required business field ", "\u5fc5\u586b\u4e1a\u52a1\u5b57\u6bb5 "),
+        (" is nullable in metadata.", " \u5728\u5143\u6570\u636e\u4e2d\u5141\u8bb8\u4e3a\u7a7a\u3002"),
+        ("Focus on null rate in data quality checks.", "\u8bf7\u5728\u6570\u636e\u8d28\u91cf\u6821\u9a8c\u4e2d\u91cd\u70b9\u5173\u6ce8\u7a7a\u503c\u7387\u3002"),
+        ("Formula contains division but no explicit zero-denominator guard.", "\u516c\u5f0f\u5305\u542b\u9664\u6cd5\uff0c\u4f46\u672a\u770b\u5230\u660e\u786e\u7684\u5206\u6bcd\u4e3a\u96f6\u4fdd\u62a4\u3002"),
+        ("Generated SQL should use NULLIF or CASE for denominator protection.", "\u751f\u6210 SQL \u65f6\u5e94\u4f7f\u7528 NULLIF \u6216 CASE \u505a\u5206\u6bcd\u4fdd\u62a4\u3002"),
+        ("Business main table sample is small: ", "\u4e1a\u52a1\u4e3b\u8868\u6837\u672c\u91cf\u8f83\u5c0f\uff1a"),
+        (" rows.", " \u884c\u3002"),
+        ("Confirm this test DB or statistic period has enough coverage.", "\u8bf7\u786e\u8ba4\u5f53\u524d\u6d4b\u8bd5\u5e93\u6216\u7edf\u8ba1\u5468\u671f\u662f\u5426\u8986\u76d6\u8db3\u591f\u6570\u636e\u3002"),
+        ("Column ", "\u5b57\u6bb5 "),
+        (" null rate is acceptable: ", " \u7a7a\u503c\u7387\u53ef\u63a5\u53d7\uff1a"),
+        (" has elevated null rate: ", " \u7a7a\u503c\u7387\u504f\u9ad8\uff1a"),
+        ("Required column ", "\u5fc5\u586b\u5b57\u6bb5 "),
+        (" has high null rate: ", " \u7a7a\u503c\u7387\u8f83\u9ad8\uff1a"),
+        ("Datetime column ", "\u65f6\u95f4\u5b57\u6bb5 "),
+        (" contains nulls: ", " \u5b58\u5728\u7a7a\u503c\uff1a"),
+        ("Datetime nulls may affect numerator, denominator, or statistic period.", "\u65f6\u95f4\u5b57\u6bb5\u7a7a\u503c\u53ef\u80fd\u5f71\u54cd\u5206\u5b50\u3001\u5206\u6bcd\u6216\u7edf\u8ba1\u5468\u671f\u3002"),
+        ("Check source data quality or whether the mapped field is correct.", "\u8bf7\u68c0\u67e5\u6e90\u6570\u636e\u8d28\u91cf\u6216\u786e\u8ba4\u6620\u5c04\u5b57\u6bb5\u662f\u5426\u6b63\u786e\u3002"),
+        ("Confirm whether this field participates in filters or grouping.", "\u8bf7\u786e\u8ba4\u8be5\u5b57\u6bb5\u662f\u5426\u53c2\u4e0e\u7b5b\u9009\u6216\u5206\u7ec4\u3002"),
+    ]
+    for source, target in replacements:
+        value = value.replace(source, target)
+    return value
+
+
+def _format_diagnose_answer(diag_result: dict[str, Any]) -> str:
+    lines = ["\U0001f4cb \u4e09\u5c42\u5f02\u5e38\u6392\u67e5\u7ed3\u679c\uff1a\n"]
+    for layer in diag_result.get("layers", []):
+        checks = layer.get("checks", []) or []
+        warnings = [c for c in checks if c.get("status") == "warn"]
+        failures = [c for c in checks if c.get("status") == "fail"]
+        if failures or not layer.get("ok"):
+            icon = "\u274c"
+            state_text = "\u672a\u901a\u8fc7"
+        elif warnings:
+            icon = "\u26a0\ufe0f"
+            state_text = "\u901a\u8fc7\u4f46\u6709\u98ce\u9669"
+        else:
+            icon = "\u2705"
+            state_text = "\u6b63\u5e38"
+        lines.append(f"{icon} \u7b2c{layer.get('layer')}\u5c42\uff1a{layer.get('layer_name')} - {state_text}")
+        if failures:
+            lines.append(f"   \u6839\u56e0\uff1a{_localize_diagnose_text(layer.get('diagnose_type', ''))}")
+            if layer.get("problem_detail"):
+                lines.append(f"   \u8be6\u60c5\uff1a{_localize_diagnose_text(layer.get('problem_detail'))}")
+            if layer.get("repair_suggest"):
+                lines.append(f"   \u5efa\u8bae\uff1a{_localize_diagnose_text(layer.get('repair_suggest'))}")
+        elif warnings:
+            for check in warnings:
+                lines.append(f"   \u6ce8\u610f\uff1a{_localize_diagnose_text(check.get('message', ''))}")
+                if check.get("repair_suggest"):
+                    lines.append(f"   \u5efa\u8bae\uff1a{_localize_diagnose_text(check.get('repair_suggest'))}")
+        else:
+            lines.append("   \u6b63\u5e38")
+    status = diag_result.get("diagnose_status")
+    summary = diag_result.get("summary", "")
+    if status == "warning":
+        lines.append(f"\n\u603b\u7ed3\uff1a\u8bca\u65ad\u901a\u8fc7\uff0c\u4f46\u5b58\u5728\u6ce8\u610f\u9879\u3002{_localize_diagnose_text(summary)}")
+    elif status == "failed":
+        lines.append(f"\n\u603b\u7ed3\uff1a\u8bca\u65ad\u672a\u901a\u8fc7\u3002{_localize_diagnose_text(summary)}")
+    else:
+        lines.append(f"\n\u603b\u7ed3\uff1a{_localize_diagnose_text(summary) or '\u5168\u90e8\u6b63\u5e38'}")
+    return "\n".join(lines)
+
+
 def run_chat(
     query: str,
     hospital_id: str | None = None,
@@ -491,6 +563,12 @@ def run_chat_stream(
     if use_llm and active_llm is None:
         active_llm = OllamaClient()
 
+    yield ("meta", {
+        "session_id": active_session_id, "intent": None,
+        "rule_id": None, "generation_method": "preparing",
+    })
+    yield ("progress", {"message": "\u6b63\u5728\u8bc6\u522b\u95ee\u9898\u610f\u56fe"})
+
     # ---- Phase 1: 意图识别 + 知识库检索（同步，很快） ----
     errors: list[str] = state.setdefault("errors", [])
     intent_data = _detect_intent(query, active_llm, errors, memory_context)
@@ -498,6 +576,7 @@ def run_chat_stream(
     state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
 
     if state["intent"] == "chat":
+        yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u666e\u901a\u5bf9\u8bdd\u56de\u7b54"})
         answer = _answer_chat(query)
         yield ("meta", {
             "session_id": active_session_id, "intent": "chat",
@@ -516,6 +595,7 @@ def run_chat_stream(
         return
 
     try:
+        yield ("progress", {"message": "\u6b63\u5728\u68c0\u7d22\u672c\u5730 Wiki \u77e5\u8bc6\u5e93"})
         search_query = intent_data["retrieval_query"] or query
         search = tools.search(search_query, limit=5)
     except KBToolError as exc:
@@ -560,6 +640,7 @@ def run_chat_stream(
 
     # ---- Phase 2: 反馈模式（模板化，无需流式） ----
     if state["intent"] == "feedback":
+        yield ("progress", {"message": "\u6b63\u5728\u751f\u6210\u53e3\u5f84\u5dee\u5f02\u786e\u8ba4"})
         state = _preview_feedback(state, tools, effective)
         answer = str(state.get("answer", ""))
         yield ("meta", {
@@ -585,6 +666,7 @@ def run_chat_stream(
 
     # ---- Phase 2b: SQL 生成 / 异常排查 / 元数据同步 ----
     if state["intent"] == "generate_sql":
+        yield ("progress", {"message": "\u6b63\u5728\u751f\u6210\u53ef\u5ba1\u6838 SQL"})
         yield ("meta", {
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "sqlgen",
@@ -700,6 +782,7 @@ def run_chat_stream(
         return
 
     if state["intent"] == "trial_run":
+        yield ("progress", {"message": "\u6b63\u5728\u6267\u884c SQL \u8bd5\u8fd0\u884c"})
         yield ("meta", {
             "session_id": active_session_id, "intent": "trial_run",
             "rule_id": rule_id, "generation_method": "trial_run",
@@ -752,6 +835,7 @@ def run_chat_stream(
         return
 
     if state["intent"] == "diagnose":
+        yield ("progress", {"message": "\u6b63\u5728\u542f\u52a8\u4e09\u5c42\u5f02\u5e38\u6392\u67e5"})
         yield ("meta", {
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "diagnose",
@@ -759,27 +843,18 @@ def run_chat_stream(
         try:
             from app.db.engine import create_runtime_engine, create_business_engine
             from app.diagnose.agent import DiagnoseAgent
+            yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u7cfb\u7edf\u7ed3\u6784\u548c\u5143\u6570\u636e"})
             diag_agent = DiagnoseAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
                 business_engine=create_business_engine(),
             )
+            yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u53e3\u5f84\u89c4\u5219\u548c\u6570\u636e\u8d28\u91cf"})
             diag_result = diag_agent.run(
                 hospital_id=str(state.get("hospital_id") or ""),
                 rule_id=str(rule_id), effective_rule=effective,
             )
-            layers = diag_result.get("layers", [])
-            lines = ["📋 三层异常排查结果：\n"]
-            for layer in layers:
-                icon = "✅" if layer.get("ok") else "❌"
-                lines.append(f"{icon} 第{layer['layer']}层：{layer['layer_name']}")
-                if not layer.get("ok"):
-                    lines.append(f"   根因：{layer.get('diagnose_type', '')}")
-                    lines.append(f"   详情：{layer.get('problem_detail', '')}")
-                    lines.append(f"   建议：{layer.get('repair_suggest', '')}")
-                else:
-                    lines.append(f"   {layer.get('message', '正常')}")
-            lines.append(f"\n总结：{diag_result.get('summary', '')}")
-            answer = "\n".join(lines)
+            yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u8bca\u65ad\u7ed3\u679c"})
+            answer = _format_diagnose_answer(diag_result)
         except Exception as exc:
             answer = f"排查失败：{exc}"
         yield ("token", {"text": answer})
@@ -812,6 +887,7 @@ def run_chat_stream(
     # ---- Phase 3: 查询模式 —— 真正的流式 LLM 生成 ----
     if active_llm is None:
         # 无 LLM，直接用模板回答
+        yield ("progress", {"message": "\u6b63\u5728\u6309\u77e5\u8bc6\u5e93\u6a21\u677f\u751f\u6210\u56de\u7b54"})
         answer = _answer_from_rule(effective)
         generation_method = "tool"
         yield ("meta", {
@@ -823,6 +899,7 @@ def run_chat_stream(
         generation_method = "llm_stream"
         full_answer = ""
         try:
+            yield ("progress", {"message": "\u6b63\u5728\u8c03\u7528 Ollama \u751f\u6210\u6700\u7ec8\u56de\u7b54"})
             prompt = _build_answer_prompt(query, effective)
             yield ("meta", {
                 "session_id": active_session_id, "intent": state.get("intent"),

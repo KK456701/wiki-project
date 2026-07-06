@@ -1,4 +1,4 @@
-"""三层异常排查 Agent。"""
+"""Three-layer diagnose agent."""
 
 from pathlib import Path
 from typing import Any
@@ -17,30 +17,53 @@ class DiagnoseAgent:
         self.runtime_engine = runtime_engine
         self.business_engine = business_engine
 
-    def run(self, hospital_id: str, rule_id: str,
-            effective_rule: dict[str, Any], trigger: str = "manual") -> dict[str, Any]:
-        layers = []
+    def run(
+        self,
+        hospital_id: str,
+        rule_id: str,
+        effective_rule: dict[str, Any],
+        trigger: str = "manual",
+        related_sql_id: str | None = None,
+        stat_period: str | None = None,
+    ) -> dict[str, Any]:
+        layers: list[dict[str, Any]] = []
 
-        # Layer 1
         r1 = structure_check(self.kb_root, self.runtime_engine, hospital_id, rule_id)
         layers.append(r1)
         if not r1["ok"]:
-            report = build_report(layers)
-            save_report(self.runtime_engine, hospital_id, rule_id, report, trigger)
-            return {"ok": False, **report, "stopped_at_layer": 1}
+            return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=1)
 
-        # Layer 2
         r2 = rule_check(effective_rule)
         layers.append(r2)
         if not r2["ok"]:
-            report = build_report(layers)
-            save_report(self.runtime_engine, hospital_id, rule_id, report, trigger)
-            return {"ok": False, **report, "stopped_at_layer": 2}
+            return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=2)
 
-        # Layer 3
         r3 = data_check(self.kb_root, self.business_engine, hospital_id, rule_id)
         layers.append(r3)
+        stopped_at_layer = 3 if not r3["ok"] or any(c.get("status") == "warn" for c in r3.get("checks", [])) else None
+        return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=stopped_at_layer)
 
-        report = build_report(layers)
-        save_report(self.runtime_engine, hospital_id, rule_id, report, trigger)
-        return {"ok": True, **report}
+    def _finish(
+        self,
+        hospital_id: str,
+        rule_id: str,
+        layers: list[dict[str, Any]],
+        trigger: str,
+        related_sql_id: str | None,
+        stat_period: str | None,
+        stopped_at_layer: int | None,
+    ) -> dict[str, Any]:
+        report = build_report(layers, trigger_type=trigger, related_sql_id=related_sql_id, stat_period=stat_period)
+        report_id = save_report(
+            self.runtime_engine,
+            hospital_id,
+            rule_id,
+            report,
+            trigger=trigger,
+            related_sql_id=related_sql_id,
+            stat_period=stat_period,
+        )
+        response = {**report, "report_id": report_id}
+        if stopped_at_layer is not None:
+            response["stopped_at_layer"] = stopped_at_layer
+        return response

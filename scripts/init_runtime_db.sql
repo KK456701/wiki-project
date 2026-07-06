@@ -96,7 +96,12 @@ CREATE TABLE IF NOT EXISTS med_index_diagnose_report (
   repair_suggest TEXT,
   repair_sql TEXT,
   diagnose_time DATETIME NOT NULL,
-  status TINYINT NOT NULL DEFAULT 0
+  status TINYINT NOT NULL DEFAULT 0,
+  trigger_type VARCHAR(64) NOT NULL DEFAULT 'manual',
+  related_sql_id VARCHAR(64),
+  layer_results JSON,
+  diagnose_status VARCHAR(32) NOT NULL DEFAULT 'healthy',
+  stat_period VARCHAR(128)
 );
 
 CREATE TABLE IF NOT EXISTS med_index_run_result (

@@ -16,3 +16,6 @@ test_tmp/
 !.env.example
 .DS_Store
 Thumbs.db
+
+# Local runtime configuration with database passwords/admin token.
+config.yaml
