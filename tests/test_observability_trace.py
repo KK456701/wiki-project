@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -81,6 +82,7 @@ class TraceRecorderTest(unittest.TestCase):
                 output_summary="query",
                 duration_ms=12,
             )
+            time.sleep(0.02)
             recorder.finish_trace("TRACE_1", "success", "已回答", intent="query")
 
             trace = recorder.get_trace("TRACE_1")
@@ -88,11 +90,25 @@ class TraceRecorderTest(unittest.TestCase):
             self.assertEqual(trace["final_status"], "success")
             self.assertEqual(trace["nodes"][0]["node_name"], "intent_detect")
             self.assertEqual(trace["nodes"][0]["status"], "success")
+            self.assertGreater(trace["duration_ms"], 0)
 
             events = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(events[0]["event"], "trace_started")
             self.assertEqual(events[1]["event"], "trace_node")
             self.assertEqual(events[2]["event"], "trace_finished")
+            self.assertGreater(events[2]["duration_ms"], 0)
+
+    def test_jsonl_is_written_when_runtime_db_write_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = Path(tmp) / "trace_events.jsonl"
+            recorder = TraceRecorder(create_engine("sqlite:///:memory:"), jsonl)
+
+            with self.assertRaises(Exception):
+                recorder.start_trace("TRACE_FAIL", None, None, "fallback test")
+
+            events = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(events[0]["event"], "trace_started")
+            self.assertEqual(events[0]["trace_id"], "TRACE_FAIL")
 
 
 if __name__ == "__main__":

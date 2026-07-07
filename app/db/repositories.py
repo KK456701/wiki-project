@@ -1,5 +1,8 @@
 """运行库数据访问层。"""
 
+from __future__ import annotations
+
+import json
 import uuid
 from datetime import datetime
 from typing import Any
@@ -13,6 +16,30 @@ def _now() -> str:
 
 def _uid(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:12]}"
+
+
+def _normalize_datetime(value: datetime | str | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat(sep=" ", timespec="milliseconds")
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _parse_datetime(value: datetime | str | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        normalized = value.replace("T", " ")
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+    return None
 
 
 def log_sync_table(engine: Engine, hospital_id: str, db_name: str, table_name: str,
@@ -81,6 +108,147 @@ def insert_sql_run_log(engine: Engine, run_id: str, sql_id: str, hospital_id: st
         conn.commit()
 
 
+def start_trace_record(engine: Engine, trace_id: str, session_id: str | None,
+                       hospital_id: str | None, user_query: str | None,
+                       started_at: datetime | str | None = None,
+                       user_id: str | None = None, intent: str | None = None) -> None:
+    started_at_value = _normalize_datetime(started_at) or datetime.now().isoformat(sep=" ", timespec="milliseconds")
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_agent_trace
+                  (trace_id, session_id, hospital_id, user_id, user_query, intent, final_status,
+                   started_at, created_at)
+                VALUES
+                  (:trace_id, :session_id, :hospital_id, :user_id, :user_query, :intent, 'running',
+                   :started_at, :created_at)
+                """
+            ),
+            {
+                "trace_id": trace_id,
+                "session_id": session_id,
+                "hospital_id": hospital_id,
+                "user_id": user_id,
+                "user_query": user_query or "",
+                "intent": intent,
+                "started_at": started_at_value,
+                "created_at": started_at_value,
+            },
+        )
+
+
+def insert_trace_node(engine: Engine, trace_id: str, node_id: str, node_name: str, node_type: str,
+                      status: str, input_summary: str = "", output_summary: str = "",
+                      error_code: str = "", error_message: str = "", tool_name: str = "",
+                      db_source: str = "", sql_id: str = "", run_id: str = "", rule_id: str = "",
+                      llm_model: str = "", started_at: datetime | str | None = None,
+                      ended_at: datetime | str | None = None, duration_ms: int | None = None,
+                      created_at: datetime | str | None = None) -> None:
+    started_at_value = _normalize_datetime(started_at) or datetime.now().isoformat(sep=" ", timespec="milliseconds")
+    ended_at_value = _normalize_datetime(ended_at) or started_at_value
+    created_at_value = _normalize_datetime(created_at) or started_at_value
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_agent_trace_node
+                  (trace_id, node_id, node_name, node_type, status, input_summary, output_summary,
+                   error_code, error_message, tool_name, db_source, sql_id, run_id, rule_id,
+                   llm_model, started_at, ended_at, duration_ms, created_at)
+                VALUES
+                  (:trace_id, :node_id, :node_name, :node_type, :status, :input_summary,
+                   :output_summary, :error_code, :error_message, :tool_name, :db_source, :sql_id,
+                   :run_id, :rule_id, :llm_model, :started_at, :ended_at, :duration_ms, :created_at)
+                """
+            ),
+            {
+                "trace_id": trace_id,
+                "node_id": node_id,
+                "node_name": node_name,
+                "node_type": node_type,
+                "status": status,
+                "input_summary": input_summary or "",
+                "output_summary": output_summary or "",
+                "error_code": error_code or "",
+                "error_message": error_message or "",
+                "tool_name": tool_name or "",
+                "db_source": db_source or "",
+                "sql_id": sql_id or "",
+                "run_id": run_id or "",
+                "rule_id": rule_id or "",
+                "llm_model": llm_model or "",
+                "started_at": started_at_value,
+                "ended_at": ended_at_value,
+                "duration_ms": duration_ms if duration_ms is not None else 0,
+                "created_at": created_at_value,
+            },
+        )
+
+
+def finish_trace_record(engine: Engine, trace_id: str, final_status: str,
+                        final_answer_summary: str = "", intent: str = "",
+                        error_count: int = 0, fallback_count: int = 0,
+                        ended_at: datetime | str | None = None,
+                        duration_ms: int | None = None) -> None:
+    ended_at_value = _normalize_datetime(ended_at) or datetime.now().isoformat(sep=" ", timespec="milliseconds")
+    if duration_ms is None:
+        with engine.connect() as conn:
+            started_row = conn.execute(
+                text("SELECT started_at FROM med_agent_trace WHERE trace_id=:tid"),
+                {"tid": trace_id},
+            ).mappings().first()
+        started_at_value = _parse_datetime(started_row["started_at"]) if started_row else None
+        ended_at_dt = _parse_datetime(ended_at_value)
+        if started_at_value is not None and ended_at_dt is not None:
+            duration_ms = max(0, int((ended_at_dt - started_at_value).total_seconds() * 1000))
+        else:
+            duration_ms = 0
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE med_agent_trace
+                SET final_status=:final_status,
+                    final_answer_summary=:final_answer_summary,
+                    intent=:intent,
+                    error_count=:error_count,
+                    fallback_count=:fallback_count,
+                    ended_at=:ended_at,
+                    duration_ms=:duration_ms
+                WHERE trace_id=:trace_id
+                """
+            ),
+            {
+                "trace_id": trace_id,
+                "final_status": final_status,
+                "final_answer_summary": final_answer_summary[:2000],
+                "intent": intent,
+                "error_count": error_count,
+                "fallback_count": fallback_count,
+                "ended_at": ended_at_value,
+                "duration_ms": duration_ms,
+            },
+        )
+
+
+def get_trace_record(engine: Engine, trace_id: str) -> dict[str, Any] | None:
+    with engine.connect() as conn:
+        trace = conn.execute(
+            text("SELECT * FROM med_agent_trace WHERE trace_id=:tid"),
+            {"tid": trace_id},
+        ).mappings().first()
+        if not trace:
+            return None
+        nodes = conn.execute(
+            text("SELECT * FROM med_agent_trace_node WHERE trace_id=:tid ORDER BY id"),
+            {"tid": trace_id},
+        ).mappings().all()
+    result = dict(trace)
+    result["nodes"] = [dict(row) for row in nodes]
+    return result
+
+
 def insert_diagnose_report(engine: Engine, report_id: str, hospital_id: str, rule_id: str,
                            diagnose_type: str, problem_detail: str, repair_suggest: str,
                            repair_sql: str, trigger_type: str = "manual",
@@ -88,8 +256,6 @@ def insert_diagnose_report(engine: Engine, report_id: str, hospital_id: str, rul
                            layer_results: Any | None = None,
                            diagnose_status: str = "healthy",
                            stat_period: str | None = None) -> None:
-    import json
-
     params = {
         "rid": report_id,
         "h": hospital_id,
