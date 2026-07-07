@@ -5,8 +5,9 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
+from app.db_access.query_result import QueryResult
 from app.diagnose.agent import DiagnoseAgent
-from app.diagnose.data_check import _quote_ident
+from app.diagnose.data_check import _quote_ident, data_check
 from tests.test_kb_tools import temp_kb_dir, write
 
 
@@ -16,8 +17,8 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             root = Path(root)
             _make_diag_kb(root, include_arrive_metadata=False)
             runtime_engine = _runtime_engine(root / "runtime.db", include_arrive_metadata=False)
-            business_engine = _business_engine(root / "business.db")
-            agent = DiagnoseAgent(root, runtime_engine, business_engine)
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db)
 
             report = agent.run(
                 hospital_id="hospital_001",
@@ -42,8 +43,8 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             root = Path(root)
             _make_diag_kb(root, include_arrive_metadata=True)
             runtime_engine = _runtime_engine(root / "runtime.db", include_arrive_metadata=True)
-            business_engine = _business_engine(root / "business.db")
-            agent = DiagnoseAgent(root, runtime_engine, business_engine)
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db)
 
             report = agent.run(
                 hospital_id="hospital_001",
@@ -78,13 +79,25 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
         self.assertEqual(_quote_ident("we`ird", "mysql"), "`we``ird`")
         self.assertEqual(_quote_ident("consult_record", "sqlite"), '"consult_record"')
 
+    def test_data_check_uses_business_db_mcp(self) -> None:
+        with temp_kb_dir() as root:
+            root = Path(root)
+            _make_diag_kb(root, include_arrive_metadata=True)
+            business_db = _business_db(root / "business.db")
+
+            result = data_check(root, business_db, "hospital_001", "MQSI2025_005")
+
+            self.assertTrue(business_db.sql)
+            self.assertTrue(all(statement.lower().startswith("select") for statement in business_db.sql))
+            self.assertIn(result["diagnose_type"], {"数据质量风险", "数据质量正常"})
+
     def test_rule_check_has_no_three_caliber_compare(self) -> None:
         with temp_kb_dir() as root:
             root = Path(root)
             _make_diag_kb(root, include_arrive_metadata=True)
             runtime_engine = _runtime_engine(root / "runtime.db", include_arrive_metadata=True)
-            business_engine = _business_engine(root / "business.db")
-            agent = DiagnoseAgent(root, runtime_engine, business_engine)
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db)
 
             report = agent.run("hospital_001", "MQSI2025_005", _effective_rule())
 
@@ -179,7 +192,7 @@ def _runtime_engine(path: Path, include_arrive_metadata: bool):
     return engine
 
 
-def _business_engine(path: Path):
+def _business_db(path: Path):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     with engine.begin() as conn:
         conn.execute(text("""
@@ -196,7 +209,27 @@ def _business_engine(path: Path):
             "('2', '2026-07-01 09:00:00', NULL, NULL), "
             "('3', '2026-07-01 10:00:00', '2026-07-01 10:15:00', 'ED')"
         ))
-    return engine
+
+    class SQLiteBusinessDB:
+        source_id = "hospital_demo_data"
+        tool_name = "execute_sql_hospital_demo_data"
+
+        def __init__(self):
+            self.sql: list[str] = []
+
+        def execute_select(self, sql: str) -> QueryResult:
+            self.sql.append(sql)
+            with engine.connect() as conn:
+                rows = [dict(row) for row in conn.execute(text(sql)).mappings().all()]
+            return QueryResult(
+                rows=rows,
+                row_count=len(rows),
+                source=self.source_id,
+                tool_name=self.tool_name,
+                duration_ms=1,
+            )
+
+    return SQLiteBusinessDB()
 
 
 def _effective_rule() -> dict[str, str]:
