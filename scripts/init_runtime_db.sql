@@ -116,3 +116,47 @@ CREATE TABLE IF NOT EXISTS med_index_run_result (
   run_id VARCHAR(64),
   created_at DATETIME NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS med_agent_trace (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trace_id VARCHAR(64) NOT NULL UNIQUE,
+  session_id VARCHAR(128),
+  hospital_id VARCHAR(64),
+  user_id VARCHAR(128),
+  user_query TEXT,
+  intent VARCHAR(64),
+  final_status VARCHAR(32),
+  final_answer_summary TEXT,
+  error_count INT DEFAULT 0,
+  fallback_count INT DEFAULT 0,
+  started_at DATETIME NOT NULL,
+  ended_at DATETIME,
+  duration_ms INT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS med_agent_trace_node (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trace_id VARCHAR(64) NOT NULL,
+  node_id VARCHAR(64) NOT NULL,
+  node_name VARCHAR(128) NOT NULL,
+  node_type VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  input_summary TEXT,
+  output_summary TEXT,
+  error_code VARCHAR(128),
+  error_message TEXT,
+  tool_name VARCHAR(128),
+  db_source VARCHAR(128),
+  sql_id VARCHAR(64),
+  run_id VARCHAR(64),
+  rule_id VARCHAR(64),
+  llm_model VARCHAR(128),
+  started_at DATETIME NOT NULL,
+  ended_at DATETIME,
+  duration_ms INT,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_trace_node_trace_id (trace_id),
+  INDEX idx_trace_node_status (status),
+  INDEX idx_trace_node_rule_id (rule_id)
+);
