@@ -6,17 +6,23 @@ STATUS: done
 - `tests/test_business_db_mcp.py`
 - `.superpowers/sdd/task-2-report.md`
 
-提交哈希:
-- TBD
+提交:
+- 初始实现: `b0584d1 feat: 增加业务库 MCP 只读客户端`
+- 本次修复: 当前提交 `fix: 修正业务库 MCP SQL 分号校验`
 
 实际测试命令和结果:
-- `python -B -m unittest tests.test_business_db_mcp -v` -> PASS
-- `python -B -m unittest` -> PASS, 44 tests
+- `python -B -m unittest tests.test_business_db_mcp -v` -> PASS，4 个测试通过
+- `python -B -m py_compile app\db_access\business_db.py app\db_access\query_result.py` -> PASS
+
+修复内容:
+- `BusinessDBClient._assert_select` 允许单条 SELECT 末尾携带一个分号，例如 `SELECT 1;`。
+- 仍然拒绝多语句 SQL，例如 `SELECT 1; SELECT 2`。
+- 仍然在调用 MCP 前拒绝非 SELECT、写入和结构变更 SQL。
+- 错误提示已恢复为中文。
 
 自审结论:
-- `BusinessDBClient.execute_select` 在调用 MCP 前完成只读校验，并将返回值封装为 `QueryResult`。
-- `check_available` 复用只读查询路径，返回包含 `ok/source/tool_name/row_count/duration_ms` 的状态字典。
-- 已用失败测试驱动实现，且全量单测通过。
+- 业务库访问仍然只通过注入的 MCP 执行函数，不直接连接业务库。
+- 只读边界测试已覆盖：正常 SELECT、末尾分号 SELECT、非 SELECT、多语句。
 
 concerns:
-- 当前只覆盖了 `SELECT` 只读约束的主要路径；如果后续 MCP 客户端需要支持更复杂的 SQL 解析规则，可能需要补更细的语法边界测试。
+- 当前只做轻量 SQL 边界校验，后续如果要支持更复杂 SQL 语法，可再接入 SQL parser 做更严格 AST 级校验。

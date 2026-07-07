@@ -44,6 +44,32 @@ class BusinessDBClientTest(unittest.TestCase):
 
         self.assertEqual(fake.sql, [])
 
+    def test_allows_single_select_with_trailing_semicolon(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="hospital_demo_data",
+            tool_name="execute_sql_hospital_demo_data",
+        )
+
+        result = client.execute_select("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES;")
+
+        self.assertEqual(fake.sql, ["SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES;"])
+        self.assertEqual(result.row_count, 1)
+
+    def test_rejects_multiple_statements_before_mcp(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="hospital_demo_data",
+            tool_name="execute_sql_hospital_demo_data",
+        )
+
+        with self.assertRaises(ValueError):
+            client.execute_select("SELECT 1; SELECT 2")
+
+        self.assertEqual(fake.sql, [])
+
 
 if __name__ == "__main__":
     unittest.main()

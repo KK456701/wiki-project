@@ -17,7 +17,7 @@ class BusinessDBClient:
         normalized = re.sub(r"\s+", " ", sql.strip()).lower()
         if not normalized.startswith("select"):
             raise ValueError("业务库 MCP 只允许执行 SELECT 查询")
-        if ";" in normalized:
+        if ";" in normalized.rstrip(";"):
             raise ValueError("业务库 MCP 禁止多语句 SQL")
         blocked_keywords = (" insert ", " update ", " delete ", " drop ", " alter ", " truncate ", " create ")
         padded = f" {normalized} "
