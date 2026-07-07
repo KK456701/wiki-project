@@ -3,6 +3,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 
 import app.api.main as api_main
 from app.api.main import app
@@ -213,6 +215,92 @@ class ApiTest(unittest.TestCase):
         body = response.text
         self.assertIn("event: token", body)
         self.assertIn("event: done", body)
+
+    def test_health_dependencies_reports_dbhub_and_runtime(self) -> None:
+        class FakeBusinessDB:
+            def check_available(self):
+                return {"ok": True, "source": "hospital_demo_data", "tool_name": "execute_sql_hospital_demo_data"}
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        with patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "create_business_db_client", return_value=FakeBusinessDB()), \
+             patch.object(api_main, "dbhub_sources", return_value={"sources": [{"name": "hospital_demo_data"}]}):
+            response = client.get("/api/health/dependencies")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["fastapi"]["ok"])
+        self.assertTrue(data["runtime_db"]["ok"])
+        self.assertTrue(data["business_db_mcp"]["ok"])
+        self.assertTrue(data["dbhub_http"]["ok"])
+
+    def test_trace_api_returns_trace_nodes(self) -> None:
+        from app.observability.trace import TraceRecorder
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        recorder = TraceRecorder(engine)
+        recorder.start_trace("TRACE_API_TEST", "session_1", "hospital_001", "测试")
+        recorder.record_node("TRACE_API_TEST", "intent_detect", "llm", "success")
+        recorder.finish_trace("TRACE_API_TEST", "success", "完成")
+
+        with patch("app.db.engine.create_runtime_engine", return_value=engine):
+            response = client.get("/api/traces/TRACE_API_TEST")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["trace_id"], "TRACE_API_TEST")
+        self.assertEqual(data["nodes"][0]["node_name"], "intent_detect")
+
+
+def _trace_runtime_engine():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL UNIQUE,
+              session_id TEXT,
+              hospital_id TEXT,
+              user_id TEXT,
+              user_query TEXT,
+              intent TEXT,
+              final_status TEXT,
+              final_answer_summary TEXT,
+              error_count INTEGER DEFAULT 0,
+              fallback_count INTEGER DEFAULT 0,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace_node (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              node_name TEXT NOT NULL,
+              node_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              input_summary TEXT,
+              output_summary TEXT,
+              error_code TEXT,
+              error_message TEXT,
+              tool_name TEXT,
+              db_source TEXT,
+              sql_id TEXT,
+              run_id TEXT,
+              rule_id TEXT,
+              llm_model TEXT,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
+            )
+        """))
+    return engine
 
 
 if __name__ == "__main__":

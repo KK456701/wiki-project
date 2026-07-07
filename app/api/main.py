@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import secrets
 import uuid
@@ -11,10 +12,14 @@ from fastapi import Body, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from app.agent.graph import run_chat, run_chat_stream
 from app.config import get
+from app.db_access.business_db import BusinessDBClient
+from app.db_access.dbhub_mcp import DBHubMCPClient, dbhub_sources
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
+from app.metadata.sync import DBHubMetadataProvider
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -85,6 +90,49 @@ def _chunk_text(text: str, size: int = 16) -> Iterable[str]:
     for index in range(0, len(value), size):
         yield value[index : index + size]
 
+
+def _dbhub_api_url() -> str:
+    return get("dbhub_api_url", "http://127.0.0.1:8080")
+
+
+def _dbhub_mcp_url() -> str:
+    return get("dbhub_mcp_url", f"{_dbhub_api_url().rstrip('/')}/mcp")
+
+
+def _dbhub_source_id_for_db(db_name: str) -> str:
+    return get(f"dbhub_source_{db_name}", db_name)
+
+
+def _dbhub_execute_tool_for_db(db_name: str) -> str:
+    return get(f"dbhub_execute_tool_{db_name}", f"execute_sql_{db_name}")
+
+
+def create_dbhub_client_for_db(db_name: str) -> DBHubMCPClient:
+    return DBHubMCPClient(
+        endpoint=_dbhub_mcp_url(),
+        execute_tool=_dbhub_execute_tool_for_db(db_name),
+        timeout_seconds=int(get("dbhub_timeout_seconds", "10")),
+        source_id=_dbhub_source_id_for_db(db_name),
+    )
+
+
+def create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
+    client = create_dbhub_client_for_db(db_name)
+    return BusinessDBClient(
+        client.execute_sql,
+        source_id=_dbhub_source_id_for_db(db_name),
+        tool_name=_dbhub_execute_tool_for_db(db_name),
+    )
+
+
+def create_dbhub_metadata_provider(db_name: str = "hospital_demo_data") -> DBHubMetadataProvider:
+    client = create_dbhub_client_for_db(db_name)
+    return DBHubMetadataProvider(client.execute_sql)
+
+
+def _langgraph_available() -> bool:
+    return importlib.util.find_spec("langgraph") is not None
+
 app = FastAPI(title="Core Rules Wiki Agent", version="0.1.0")
 
 
@@ -145,6 +193,46 @@ def kb_effective_rule(rule_id: str, hospital_id: str | None = "hospital_001") ->
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/health/dependencies")
+def health_dependencies() -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine
+
+    result: dict[str, Any] = {
+        "fastapi": {"ok": True},
+        "langgraph": {"ok": _langgraph_available(), "engine": "langgraph" if _langgraph_available() else "fallback"},
+    }
+    try:
+        with create_runtime_engine().connect() as conn:
+            conn.execute(text("SELECT 1"))
+        result["runtime_db"] = {"ok": True}
+    except Exception as exc:
+        result["runtime_db"] = {"ok": False, "error": str(exc)}
+    try:
+        result["business_db_mcp"] = create_business_db_client("hospital_demo_data").check_available()
+    except Exception as exc:
+        result["business_db_mcp"] = {"ok": False, "error": str(exc)}
+    try:
+        sources = dbhub_sources(_dbhub_api_url(), int(get("dbhub_timeout_seconds", "5")))
+        if isinstance(sources, dict):
+            source_items = sources.get("sources", [])
+        elif isinstance(sources, list):
+            source_items = sources
+        else:
+            source_items = []
+        result["dbhub_http"] = {"ok": True, "source_count": len(source_items)}
+    except Exception as exc:
+        result["dbhub_http"] = {"ok": False, "error": str(exc)}
+    return result
+
+
+@app.get("/api/traces/{trace_id}")
+def get_trace(trace_id: str) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine
+    from app.observability.trace import TraceRecorder
+
+    return TraceRecorder(create_runtime_engine()).get_trace(trace_id)
 
 
 # ---- 管理员认证 ----
@@ -315,6 +403,7 @@ def reject_change_request(
 class MetadataSyncRequest(BaseModel):
     hospital_id: str
     db_name: str
+    source: str = "dbhub"
 
 
 class SqlGenerateRequest(BaseModel):
@@ -336,13 +425,12 @@ class DiagnoseRequest(BaseModel):
 
 @app.post("/api/metadata/sync")
 def metadata_sync(request: MetadataSyncRequest) -> dict[str, Any]:
-    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.db.engine import create_runtime_engine
     from app.metadata.sync import sync_mysql_metadata
     runtime_engine = create_runtime_engine()
-    business_engine = create_business_engine()
     return sync_mysql_metadata(
         runtime_engine=runtime_engine,
-        business_engine=business_engine,
+        metadata_provider=create_dbhub_metadata_provider(request.db_name),
         hospital_id=request.hospital_id,
         db_name=request.db_name,
     )
@@ -350,14 +438,14 @@ def metadata_sync(request: MetadataSyncRequest) -> dict[str, Any]:
 
 @app.post("/api/sql/generate")
 def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
-    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.db.engine import create_runtime_engine
     from app.sqlgen.agent import SQLGenerationAgent
     tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = SQLGenerationAgent(
         kb_root=DEFAULT_KB_ROOT,
         runtime_engine=create_runtime_engine(),
-        business_engine=create_business_engine(),
+        business_db=create_business_db_client("hospital_demo_data"),
     )
     return agent.generate(
         query=request.query,
@@ -372,14 +460,14 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
 
 @app.post("/api/diagnose/run")
 def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
-    from app.db.engine import create_runtime_engine, create_business_engine
+    from app.db.engine import create_runtime_engine
     from app.diagnose.agent import DiagnoseAgent
     tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = DiagnoseAgent(
         kb_root=DEFAULT_KB_ROOT,
         runtime_engine=create_runtime_engine(),
-        business_engine=create_business_engine(),
+        business_db=create_business_db_client("hospital_demo_data"),
     )
     return agent.run(
         hospital_id=request.hospital_id,

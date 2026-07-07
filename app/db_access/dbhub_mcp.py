@@ -1,0 +1,97 @@
+"""DBHub MCP HTTP 客户端。"""
+
+from __future__ import annotations
+
+import json
+import time
+import urllib.error
+import urllib.request
+import uuid
+from typing import Any
+
+
+class DBHubMCPClient:
+    def __init__(self, endpoint: str, execute_tool: str, timeout_seconds: int = 10, source_id: str = ""):
+        self.endpoint = endpoint.rstrip("/")
+        self.execute_tool = execute_tool
+        self.timeout_seconds = timeout_seconds
+        self.source_id = source_id or execute_tool
+
+    def execute_sql(self, sql: str) -> list[dict[str, Any]]:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": uuid.uuid4().hex,
+            "method": "tools/call",
+            "params": {
+                "name": self.execute_tool,
+                "arguments": {"sql": sql},
+            },
+        }
+        started = time.perf_counter()
+        data = _post_json(self.endpoint, payload, self.timeout_seconds)
+        if "error" in data:
+            raise RuntimeError(f"DBHub MCP 调用失败: {data['error']}")
+        rows = _extract_rows(data.get("result", data))
+        if rows is None:
+            raise RuntimeError("DBHub MCP 返回格式中没有可解析的 rows")
+        self.last_duration_ms = int((time.perf_counter() - started) * 1000)
+        return rows
+
+
+def dbhub_sources(api_base_url: str = "http://127.0.0.1:8080", timeout_seconds: int = 5) -> dict[str, Any]:
+    return _get_json(f"{api_base_url.rstrip('/')}/api/sources", timeout_seconds)
+
+
+def _post_json(url: str, payload: dict[str, Any], timeout_seconds: int) -> dict[str, Any]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"无法访问 DBHub MCP: {exc}") from exc
+
+
+def _get_json(url: str, timeout_seconds: int) -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"无法访问 DBHub API: {exc}") from exc
+
+
+def _extract_rows(payload: Any) -> list[dict[str, Any]] | None:
+    if isinstance(payload, list):
+        return [dict(row) for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return None
+    for key in ("rows", "data"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [dict(row) for row in value if isinstance(row, dict)]
+    structured = payload.get("structuredContent")
+    if isinstance(structured, dict):
+        rows = _extract_rows(structured)
+        if rows is not None:
+            return rows
+    content = payload.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if not isinstance(text, str):
+                continue
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            rows = _extract_rows(parsed)
+            if rows is not None:
+                return rows
+    return None

@@ -7,6 +7,13 @@ runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime
 business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
 business_db_dialect: "mysql"
 
+# DBHub MCP sidecar. Business database reads should go through this MCP tool in production.
+dbhub_api_url: "http://127.0.0.1:8080"
+dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
+dbhub_timeout_seconds: 10
+dbhub_source_hospital_demo_data: "hospital_demo_data"
+dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
+
 # Metadata cache.
 metadata_max_age_hours: 24
 
