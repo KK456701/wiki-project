@@ -500,12 +500,23 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </section>
 </div>
 
+<div id="traceModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>执行链路</h2><div id="traceMeta" style="color:#5b677a;font-size:14px;"></div></div>
+      <button class="ghost" data-close="traceModal">关闭</button>
+    </header>
+    <div class="dialog-body"><div id="traceNodeList" class="review-list"></div></div>
+  </section>
+</div>
+
 <script>
 // ===== 状态 =====
 var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
 var adminToken = sessionStorage.getItem("adminToken") || "";
 var currentUser = JSON.parse(sessionStorage.getItem("currentUser") || "null");
 var latestFeedbackPreview = null;
+var latestTraceId = "";
 
 // 未登录则显示登录页
 if (!currentUser) { document.getElementById("loginScreen").hidden = false; }
@@ -549,6 +560,9 @@ var mergeUploadInput = document.getElementById("mergeUploadInput");
 var refreshMergeReportsButton = document.getElementById("refreshMergeReportsButton");
 var mergeReportList = document.getElementById("mergeReportList");
 var mergeReportDetail = document.getElementById("mergeReportDetail");
+var traceModal = document.getElementById("traceModal");
+var traceMeta = document.getElementById("traceMeta");
+var traceNodeList = document.getElementById("traceNodeList");
 
 sessionLabel.textContent = "session: " + currentSessionId;
 updateUserUI();
@@ -685,6 +699,61 @@ function createMessage(role, text) {
   return { container: container, bubble: bubble, meta: meta, body: body };
 }
 
+function attachTraceButton(message, traceId) {
+  if (!traceId || !message || message.traceButtonAttached) return;
+  var wrap = document.createElement("div");
+  wrap.className = "review-actions";
+  wrap.style.justifyContent = "flex-start";
+  wrap.style.marginTop = "12px";
+  var btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ghost";
+  btn.textContent = "查看链路";
+  btn.addEventListener("click", function() { showTrace(traceId); });
+  wrap.appendChild(btn);
+  message.body.appendChild(wrap);
+  message.traceButtonAttached = true;
+}
+
+async function showTrace(traceId) {
+  traceModal.hidden = false;
+  traceMeta.textContent = traceId;
+  traceNodeList.innerHTML = "正在加载链路...";
+  try {
+    var resp = await fetch("/api/traces/" + encodeURIComponent(traceId));
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "链路加载失败");
+    traceNodeList.innerHTML = "";
+    var nodes = data.nodes || [];
+    if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
+    nodes.forEach(function(node) {
+      var box = document.createElement("div");
+      box.className = "review-item";
+      var title = document.createElement("strong");
+      title.textContent = (node.node_name || "unknown") + " · " + (node.status || "");
+      var meta = document.createElement("div");
+      meta.className = "review-meta";
+      meta.textContent = "类型：" + (node.node_type || "") + "  耗时：" + (node.duration_ms || 0) + "ms" + (node.tool_name ? "  工具：" + node.tool_name : "");
+      var input = document.createElement("div");
+      input.className = "row-content";
+      input.textContent = "输入：" + (node.input_summary || "无");
+      var output = document.createElement("div");
+      output.className = "row-content";
+      output.textContent = "输出：" + (node.output_summary || "无");
+      box.append(title, meta, input, output);
+      if (node.error_message) {
+        var err = document.createElement("div");
+        err.style.color = "#a64536";
+        err.textContent = "错误：" + node.error_message;
+        box.appendChild(err);
+      }
+      traceNodeList.appendChild(box);
+    });
+  } catch (e) {
+    traceNodeList.textContent = "链路加载失败：" + (e.message || e);
+  }
+}
+
 // ===== 欢迎卡片 =====
 function addWelcomeMessage() {
   var container = document.createElement("div");
@@ -742,6 +811,10 @@ async function streamChat(query) {
         if (parsed.event === "meta" && parsed.data.session_id) {
           currentSessionId = parsed.data.session_id;
           sessionLabel.textContent = "session: " + currentSessionId;
+          if (parsed.data.trace_id) {
+            latestTraceId = parsed.data.trace_id;
+            ass.traceId = parsed.data.trace_id;
+          }
         }
         if (parsed.event === "progress") {
           var progressText = parsed.data.message || "\u6b63\u5728\u5904\u7406";
@@ -758,7 +831,14 @@ async function streamChat(query) {
         }
         if (parsed.event === "feedback_preview") { latestFeedbackPreview = parsed.data; showFeedbackPreview(parsed.data); }
         if (parsed.event === "error") { ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u8bf7\u6c42\u5931\u8d25"; ass.body.textContent += "\n\n[\u9519\u8bef] " + (parsed.data.message||"\u8bf7\u6c42\u5931\u8d25"); scrollToBottom(); }
-        if (parsed.event === "done") { ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u5df2\u5b8c\u6210"; }
+        if (parsed.event === "done") {
+          if (parsed.data.trace_id) {
+            latestTraceId = parsed.data.trace_id;
+            ass.traceId = parsed.data.trace_id;
+          }
+          ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u5df2\u5b8c\u6210";
+          attachTraceButton(ass, ass.traceId || latestTraceId);
+        }
       }
     }
   } catch(e) { ass.body.textContent = "[请求失败] " + (e.message||e); }
