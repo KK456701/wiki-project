@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
+from app.config import get
+from app.db.engine import create_runtime_engine
+from app.db_access.business_db import BusinessDBClient
+from app.db_access.dbhub_mcp import DBHubMCPClient
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
+from app.observability.trace import TraceRecorder
 from app.prompts import answer_prompt_template, intent_prompt_system
 
 
@@ -44,6 +50,51 @@ SQL_MARKERS = ["生成SQL", "生成 sql", "可执行SQL", "试运行SQL", "SQL�
 DIAG_MARKERS = ["排查", "异常", "为什么不对", "为什么算不出来", "根因", "诊断"]
 SYNC_MARKERS = ["同步元数据", "同步表结构", "扫描字段"]
 TRIAL_MARKERS = ["试运行", "运行SQL", "运行 sql", "执行SQL", "执行 sql"]
+
+
+def _create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
+    execute_tool = get(f"dbhub_execute_tool_{db_name}", f"execute_sql_{db_name}")
+    source_id = get(f"dbhub_source_{db_name}", db_name)
+    endpoint = get("dbhub_mcp_url", "http://127.0.0.1:8080/mcp")
+    timeout_seconds = int(get("dbhub_timeout_seconds", "10"))
+    client = DBHubMCPClient(endpoint, execute_tool, timeout_seconds, source_id)
+    return BusinessDBClient(client.execute_sql, source_id=source_id, tool_name=execute_tool)
+
+
+def _start_trace(session_id: str, hospital_id: str | None, query: str) -> tuple[str, TraceRecorder | None]:
+    trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+    try:
+        recorder = TraceRecorder(create_runtime_engine())
+        recorder.start_trace(trace_id, session_id, hospital_id, query)
+        return trace_id, recorder
+    except Exception:
+        return trace_id, None
+
+
+def _record_trace_node(recorder: TraceRecorder | None, trace_id: str, node_name: str, node_type: str, status: str, **kwargs: Any) -> None:
+    if recorder is None:
+        return
+    try:
+        recorder.record_node(trace_id, node_name, node_type, status, **kwargs)
+    except Exception:
+        pass
+
+
+def _finish_trace(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    final_status: str,
+    final_answer_summary: str = "",
+    intent: str = "",
+    error_count: int = 0,
+    fallback_count: int = 0,
+) -> None:
+    if recorder is None:
+        return
+    try:
+        recorder.finish_trace(trace_id, final_status, final_answer_summary, intent, error_count, fallback_count)
+    except Exception:
+        pass
 
 
 def detect_intent(query: str) -> str:
@@ -479,6 +530,7 @@ def run_chat(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
+    trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     state: AgentState = {
         "query": query,
         "hospital_id": hospital_id,
@@ -505,9 +557,30 @@ def run_chat(
             "answer": f"\u77e5\u8bc6\u5e93\u5de5\u5177\u8c03\u7528\u5931\u8d25\uff1a{exc}",
             "errors": [str(exc)],
         }
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "intent_detect",
+        "llm_or_rule",
+        "success",
+        input_summary=query,
+        output_summary=str(result.get("intent", "")),
+    )
+    if result.get("search") or result.get("rule_id"):
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "rule_search",
+            "kb_tool",
+            "success",
+            input_summary=query,
+            output_summary=str(result.get("rule_id") or ""),
+            rule_id=str(result.get("rule_id") or ""),
+        )
     result.setdefault("generation_method", "tool")
     result.setdefault("session_id", active_session_id)
     result.setdefault("memory_context", memory_context)
+    result["trace_id"] = trace_id
     effective_rule = result.get("effective_rule") or {}
     memory_store.append_message(
         active_session_id,
@@ -521,6 +594,25 @@ def run_chat(
             "errors": result.get("errors", []),
             "has_feedback_preview": bool(result.get("feedback_preview")),
         },
+    )
+    error_count = len(result.get("errors", []) or [])
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "final_response",
+        "agent",
+        "success" if error_count == 0 else "fallback",
+        output_summary=str(result.get("answer", ""))[:500],
+        rule_id=str(result.get("rule_id") or ""),
+    )
+    _finish_trace(
+        trace_recorder,
+        trace_id,
+        "success" if error_count == 0 else "fallback",
+        str(result.get("answer", ""))[:500],
+        intent=str(result.get("intent", "")),
+        error_count=error_count,
+        fallback_count=1 if error_count else 0,
     )
     return dict(result)
 
@@ -546,6 +638,7 @@ def run_chat_stream(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
+    trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
 
     state: AgentState = {
         "query": query,
@@ -566,6 +659,7 @@ def run_chat_stream(
     yield ("meta", {
         "session_id": active_session_id, "intent": None,
         "rule_id": None, "generation_method": "preparing",
+        "trace_id": trace_id,
     })
     yield ("progress", {"message": "\u6b63\u5728\u8bc6\u522b\u95ee\u9898\u610f\u56fe"})
 
@@ -574,6 +668,15 @@ def run_chat_stream(
     intent_data = _detect_intent(query, active_llm, errors, memory_context)
     state["intent"] = intent_data["intent"]
     state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "intent_detect",
+        "llm_or_rule",
+        "success",
+        input_summary=query,
+        output_summary=str(state.get("intent", "")),
+    )
 
     if state["intent"] == "chat":
         yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u666e\u901a\u5bf9\u8bdd\u56de\u7b54"})
@@ -587,10 +690,12 @@ def run_chat_stream(
             "intent": "chat", "rule_id": None,
             "generation_method": "chat", "errors": errors,
         })
+        _record_trace_node(trace_recorder, trace_id, "final_response", "agent", "success", output_summary=answer[:500])
+        _finish_trace(trace_recorder, trace_id, "success", answer[:500], intent="chat", error_count=len(errors))
         yield ("done", {
             "session_id": active_session_id, "intent": "chat",
             "rule_id": None, "generation_method": "chat",
-            "answer": answer, "errors": errors,
+            "answer": answer, "errors": errors, "trace_id": trace_id,
         })
         return
 
@@ -615,6 +720,16 @@ def run_chat_stream(
     state["rule_id"] = search.get("resolved_rule_id")
     _apply_memory_context_if_needed(state)
     rule_id = state.get("rule_id")
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "rule_search",
+        "kb_tool",
+        "success",
+        input_summary=search_query,
+        output_summary=str(rule_id or ""),
+        rule_id=str(rule_id or ""),
+    )
 
     if not rule_id:
         answer = "未命中规则。请提供更明确的指标名称或 rule_id。"
@@ -673,7 +788,6 @@ def run_chat_stream(
         })
         try:
             from datetime import datetime as dt
-            from app.db.engine import create_runtime_engine, create_business_engine
             from app.sqlgen.agent import SQLGenerationAgent
 
             now = dt.now()
@@ -685,7 +799,7 @@ def run_chat_stream(
 
             sql_agent = SQLGenerationAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_engine=create_business_engine(),
+                business_db=_create_business_db_client("hospital_demo_data"),
             )
             result = sql_agent.generate(
                 query=query, hospital_id=str(state.get("hospital_id") or ""),
@@ -789,7 +903,6 @@ def run_chat_stream(
         })
         try:
             from datetime import datetime as dt
-            from app.db.engine import create_runtime_engine, create_business_engine
             from app.sqlgen.agent import SQLGenerationAgent
 
             now = dt.now()
@@ -798,7 +911,7 @@ def run_chat_stream(
 
             sql_agent = SQLGenerationAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_engine=create_business_engine(),
+                business_db=_create_business_db_client("hospital_demo_data"),
             )
             result = sql_agent.generate(
                 query=query, hospital_id=str(state.get("hospital_id") or ""),
@@ -841,12 +954,11 @@ def run_chat_stream(
             "rule_id": rule_id, "generation_method": "diagnose",
         })
         try:
-            from app.db.engine import create_runtime_engine, create_business_engine
             from app.diagnose.agent import DiagnoseAgent
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u7cfb\u7edf\u7ed3\u6784\u548c\u5143\u6570\u636e"})
             diag_agent = DiagnoseAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_engine=create_business_engine(),
+                business_db=_create_business_db_client("hospital_demo_data"),
             )
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u53e3\u5f84\u89c4\u5219\u548c\u6570\u636e\u8d28\u91cf"})
             diag_result = diag_agent.run(
@@ -932,8 +1044,26 @@ def run_chat_stream(
         "rule_name": effective.get("rule_name"),
         "generation_method": generation_method, "errors": errors,
     })
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "final_response",
+        "agent",
+        "success" if not errors else "fallback",
+        output_summary=str(answer)[:500],
+        rule_id=str(rule_id or ""),
+    )
+    _finish_trace(
+        trace_recorder,
+        trace_id,
+        "success" if not errors else "fallback",
+        str(answer)[:500],
+        intent=str(state.get("intent", "")),
+        error_count=len(errors),
+        fallback_count=1 if errors else 0,
+    )
     yield ("done", {
         "session_id": active_session_id, "intent": state.get("intent"),
         "rule_id": rule_id, "generation_method": generation_method,
-        "answer": answer, "errors": errors,
+        "answer": answer, "errors": errors, "trace_id": trace_id,
     })

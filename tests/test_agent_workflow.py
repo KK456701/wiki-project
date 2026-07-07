@@ -1,7 +1,12 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from app.agent.graph import _format_diagnose_answer, run_chat
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
+
+from app.agent.graph import _format_diagnose_answer, run_chat, run_chat_stream
+from app.observability.trace import TraceRecorder
 from app.memory.store import ConversationMemory
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
@@ -270,6 +275,93 @@ class AgentWorkflowTest(unittest.TestCase):
             events = (memory_root / "events.jsonl").read_text(encoding="utf-8").splitlines()
             self.assertGreaterEqual(len(events), 2)
             self.assertIn("\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f", events[0])
+
+    def test_run_chat_returns_trace_id_and_records_nodes(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+                result = run_chat(
+                    "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                )
+
+            self.assertTrue(result["trace_id"].startswith("TRACE_"))
+            trace = TraceRecorder(engine).get_trace(result["trace_id"])
+            self.assertEqual(trace["trace_id"], result["trace_id"])
+            node_names = [node["node_name"] for node in trace["nodes"]]
+            self.assertIn("intent_detect", node_names)
+            self.assertIn("final_response", node_names)
+
+    def test_run_chat_stream_meta_contains_trace_id(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+                events = list(run_chat_stream(
+                    "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                ))
+
+            meta = next(data for event, data in events if event == "meta")
+            done = next(data for event, data in reversed(events) if event == "done")
+            self.assertTrue(meta["trace_id"].startswith("TRACE_"))
+            self.assertEqual(done["trace_id"], meta["trace_id"])
+
+
+def _trace_runtime_engine():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL UNIQUE,
+              session_id TEXT,
+              hospital_id TEXT,
+              user_id TEXT,
+              user_query TEXT,
+              intent TEXT,
+              final_status TEXT,
+              final_answer_summary TEXT,
+              error_count INTEGER DEFAULT 0,
+              fallback_count INTEGER DEFAULT 0,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace_node (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              node_name TEXT NOT NULL,
+              node_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              input_summary TEXT,
+              output_summary TEXT,
+              error_code TEXT,
+              error_message TEXT,
+              tool_name TEXT,
+              db_source TEXT,
+              sql_id TEXT,
+              run_id TEXT,
+              rule_id TEXT,
+              llm_model TEXT,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
+            )
+        """))
+    return engine
 
 
 if __name__ == "__main__":
