@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import Engine
 
 from app.db.repositories import insert_generated_sql, insert_run_result
+from app.db_access.business_db import BusinessDBClient
 from app.metadata.precheck import precheck_rule_fields
 from app.sqlgen.spec_loader import (
     load_hospital_mapping, load_rule_sql_spec, load_template,
@@ -40,10 +41,10 @@ def _extract_params(effective_rule: dict[str, Any], spec: dict[str, Any]) -> dic
 
 
 class SQLGenerationAgent:
-    def __init__(self, kb_root: str | Path, runtime_engine: Engine, business_engine: Engine):
+    def __init__(self, kb_root: str | Path, runtime_engine: Engine, business_db: BusinessDBClient):
         self.kb_root = Path(kb_root)
         self.runtime_engine = runtime_engine
-        self.business_engine = business_engine
+        self.business_db = business_db
 
     def generate(self, query: str, hospital_id: str, rule_id: str,
                  effective_rule: dict[str, Any], stat_start_time: str,
@@ -105,7 +106,7 @@ class SQLGenerationAgent:
         }
 
         if trial_run and validation["ok"]:
-            trial = run_sql_trial(self.runtime_engine, self.business_engine, sql_id, sql_text,
+            trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
                                    hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by)
             result["trial_run"] = trial
             if trial.get("result_value") is not None:
