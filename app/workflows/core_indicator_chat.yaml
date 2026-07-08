@@ -1,0 +1,202 @@
+workflow_id: core_indicator_chat
+name: 核心制度指标问答工作流
+description: 面向核心制度指标问答、反馈、SQL、诊断和元数据同步的主工作流。
+
+nodes:
+  - id: request_received
+    title: 接收用户请求
+    type: start
+    description: 接收用户问题、医院 ID 和会话 ID，创建本次请求上下文。
+    inputs: [query, hospital_id, session_id]
+    outputs: [trace_id, active_session_id]
+    config:
+      source: FastAPI chat endpoint
+    failure_hint: 如果这里失败，优先检查前端请求体、FastAPI 路由和会话初始化。
+
+  - id: memory_load
+    title: 读取会话记忆
+    type: memory
+    description: 读取上轮命中的指标上下文，用于处理“这个指标”等追问。
+    inputs: [session_id]
+    outputs: [memory_context]
+    config:
+      storage: SQLite + JSONL
+    failure_hint: 如果这里失败，优先检查 runtime/conversations 目录权限和 SQLite 文件状态。
+
+  - id: intent_detect
+    title: 识别用户意图
+    type: llm_or_rule
+    description: 判断用户是在问指标、反馈口径、生成 SQL、试运行、诊断、同步元数据还是普通聊天。
+    inputs: [query, session_memory]
+    outputs: [intent, retrieval_query, custom_filters]
+    config:
+      strategy: 规则兜底 + 可选 LLM 意图识别
+      prompt: app/prompts/intent.txt
+    failure_hint: 如果这里失败，优先检查意图识别 prompt、Ollama 状态或规则兜底逻辑。
+
+  - id: rule_search
+    title: 检索指标规则
+    type: kb_tool
+    description: 根据检索 query 在本地 Wiki 索引中查找对应指标，并解析 rule_id。
+    inputs: [retrieval_query, hospital_id]
+    outputs: [rule_id, matched_documents, search_score]
+    config:
+      tool: KnowledgeBaseTools.search
+      priority: 医院口径 > 公司标准 > 国标
+    failure_hint: 如果这里失败，优先检查知识库索引、rule_index、search_index 和 hospital_override_index。
+
+  - id: effective_rule_resolve
+    title: 解析生效口径
+    type: kb_tool
+    description: 按医院口径、公司标准、国标的优先级读取当前生效规则。
+    inputs: [rule_id, hospital_id]
+    outputs: [effective_rule, effective_level]
+    config:
+      tool: KnowledgeBaseTools.get_effective_rule
+    failure_hint: 如果这里失败，优先检查对应 rule_id 的 Markdown、医院 override 和索引重建结果。
+
+  - id: feedback_preview
+    title: 生成口径反馈预览
+    type: agent
+    description: 对用户反馈的新口径生成差异预览，但不直接写入待审批目录。
+    inputs: [query, rule_id, effective_rule]
+    outputs: [feedback_preview]
+    config:
+      write_policy: 用户确认后才提交 pending
+    failure_hint: 如果这里失败，优先检查反馈意图识别、指标命中和口径差异解析。
+
+  - id: sql_generate
+    title: 生成 SQL
+    type: sqlgen
+    description: 根据 SQL spec、字段契约和医院字段映射生成只读 SQL。
+    inputs: [rule_id, hospital_id, filters, stat_period]
+    outputs: [sql_id, sql_text, parameters]
+    config:
+      renderer: Jinja2
+      dialects: MySQL / Oracle
+    failure_hint: 如果这里失败，优先检查 SQL spec、field_contract 和医院字段映射 YAML。
+
+  - id: sql_validate
+    title: 校验 SQL 安全性
+    type: sql_validator
+    description: 检查 SQL 是否只读、单语句、主表合法且参数化。
+    inputs: [sql_text, rule_id]
+    outputs: [validation_status, validation_errors]
+    config:
+      allow: SELECT
+      deny: DDL / DML / 多语句
+    failure_hint: 如果这里失败，优先检查 SQL 模板是否拼接了危险语句或缺少参数化。
+
+  - id: sql_trial_mcp
+    title: 通过 DBHub 试运行 SQL
+    type: mcp_tool
+    description: 用户二次确认后，通过 DBHub MCP 只读执行 SQL。
+    inputs: [sql_text, parameters, db_source]
+    outputs: [run_id, rows, duration_ms]
+    config:
+      tool: execute_sql_hospital_demo_data
+      readonly: true
+    failure_hint: 如果这里失败，优先检查 DBHub sidecar、MySQL 账号权限和 SQL 参数。
+
+  - id: diagnose_structure_mcp
+    title: 诊断结构适配
+    type: diagnose
+    description: 校验医院字段映射对应的表和字段是否存在、类型是否匹配。
+    inputs: [rule_id, hospital_id, db_source]
+    outputs: [structure_checks, metadata_source]
+    config:
+      provider: DBHub 实时元数据，失败后回退运行库缓存
+    failure_hint: 如果这里失败，优先检查 DBHub 元数据查询、字段映射和运行库元数据缓存。
+
+  - id: diagnose_rule_check
+    title: 诊断口径规则
+    type: diagnose
+    description: 检查口径规则中的分母、过滤条件和计算逻辑风险。
+    inputs: [rule_id, effective_rule]
+    outputs: [rule_checks]
+    config:
+      layer: 2
+    failure_hint: 如果这里失败，优先检查规则公式、分子分母和排除条件。
+
+  - id: diagnose_data_check_mcp
+    title: 诊断数据质量
+    type: diagnose
+    description: 通过 DBHub MCP 检查样本量、空值率和异常数据质量风险。
+    inputs: [rule_id, hospital_id, db_source]
+    outputs: [data_checks]
+    config:
+      tool: execute_sql_hospital_demo_data
+    failure_hint: 如果这里失败，优先检查 DBHub 连接、业务表数据和只读 SQL 权限。
+
+  - id: metadata_sync_mcp
+    title: 同步数据库元数据
+    type: mcp_tool
+    description: 通过 DBHub MCP 读取 INFORMATION_SCHEMA，保存表字段快照并生成结构变更。
+    inputs: [hospital_id, db_name, source]
+    outputs: [batch_id, table_count, column_count, changes, affected_rules]
+    config:
+      tool: execute_sql_<source_id>
+    failure_hint: 如果这里失败，优先检查 DBHub sources、MySQL INFORMATION_SCHEMA 权限和运行库表结构。
+
+  - id: llm_answer
+    title: 生成 LLM 回答
+    type: llm
+    description: 基于知识库检索结果组织最终自然语言回答。
+    inputs: [query, effective_rule, context]
+    outputs: [answer, model]
+    config:
+      provider: Ollama
+      prompt: app/prompts/answer.txt
+    failure_hint: 如果这里失败，优先检查 Ollama 服务、模型名称和 answer prompt。
+
+  - id: fact_guard
+    title: 校验回答事实
+    type: guard
+    description: 校验 LLM 回答是否偏离知识库事实，失败时回退工具模板答案。
+    inputs: [answer, effective_rule]
+    outputs: [guard_status, fallback_used]
+    config:
+      fallback: 知识库模板答案
+    failure_hint: 如果这里失败，优先检查 LLM 是否改写公式、百分号或口径层级。
+
+  - id: final_response
+    title: 生成最终回答
+    type: agent
+    description: 汇总前面节点结果，写入会话记忆并返回用户可见答案。
+    inputs: [intent, rule_id, generation_method, errors]
+    outputs: [answer, trace_id, final_status]
+    config:
+      storage: ConversationMemory + TraceRecorder
+    failure_hint: 如果这里失败，优先检查前面失败节点、会话记忆写入和 SSE 返回。
+
+edges:
+  - from: request_received
+    to: memory_load
+  - from: memory_load
+    to: intent_detect
+  - from: intent_detect
+    to: final_response
+    condition: intent == chat
+  - from: intent_detect
+    to: rule_search
+    condition: intent in [query, feedback, generate_sql, trial_run, diagnose]
+  - from: rule_search
+    to: effective_rule_resolve
+  - from: effective_rule_resolve
+    to: feedback_preview
+    condition: intent == feedback
+  - from: effective_rule_resolve
+    to: sql_generate
+    condition: intent == generate_sql
+  - from: sql_generate
+    to: sql_validate
+  - from: sql_validate
+    to: sql_trial_mcp
+    condition: 用户确认试运行
+  - from: effective_rule_resolve
+    to: llm_answer
+    condition: intent == query
+  - from: llm_answer
+    to: fact_guard
+  - from: fact_guard
+    to: final_response

@@ -307,6 +307,37 @@ body::before {
 .row { display: grid; grid-template-columns: 128px 1fr 150px; gap: 12px; align-items: stretch; }
 .row-title { font-weight: 800; color: var(--ink); }
 .row-content { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.trace-node { display: grid; gap: 10px; border-left: 4px solid var(--teal); }
+.trace-node.failed { border-left-color: var(--red); background: #fff8f6; }
+.trace-node.fallback, .trace-node.warning { border-left-color: var(--amber); background: #fffaf0; }
+.trace-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.trace-title { font-size: 18px; font-weight: 850; color: var(--ink); }
+.trace-status {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 750 12px/1.2 var(--mono);
+  color: var(--teal-deep);
+  background: var(--teal-soft);
+}
+.trace-node.failed .trace-status { color: #8b2f22; background: #ffe9e3; border-color: #f2b8ab; }
+.trace-node.fallback .trace-status, .trace-node.warning .trace-status { color: #8a5a00; background: #fff0c7; border-color: #e7c56b; }
+.trace-desc { color: var(--ink-soft); font-size: 14px; }
+.trace-section { display: grid; gap: 5px; }
+.trace-section-title { color: var(--muted); font-size: 12px; font-weight: 800; }
+.trace-json {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.5 var(--mono);
+}
+.trace-field-list { color: var(--ink-soft); font-size: 13px; }
+.trace-hint { color: #6a5a20; background: #fff8dc; border: 1px solid #eadb93; border-radius: 8px; padding: 9px 10px; font-size: 13px; }
 .review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .version-item.active { border-color: var(--teal); background: var(--teal-soft); }
 .version-meta, .review-meta { color: var(--muted); font-size: 12px; }
@@ -880,19 +911,42 @@ async function showTrace(traceId) {
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
     nodes.forEach(function(node) {
       var box = document.createElement("div");
-      box.className = "review-item";
-      var title = document.createElement("strong");
-      title.textContent = (node.node_name || "unknown") + " · " + (node.status || "");
+      box.className = "review-item trace-node " + (node.status || "");
+      var titleRow = document.createElement("div");
+      titleRow.className = "trace-title-row";
+      var titleWrap = document.createElement("div");
+      var title = document.createElement("div");
+      title.className = "trace-title";
+      title.textContent = node.node_title || node.node_name || "未知节点";
+      var nodeId = document.createElement("div");
+      nodeId.className = "review-meta";
+      nodeId.textContent = node.node_name || "unknown";
+      titleWrap.append(title, nodeId);
+      var status = document.createElement("span");
+      status.className = "trace-status";
+      status.textContent = node.status || "unknown";
+      titleRow.append(titleWrap, status);
       var meta = document.createElement("div");
       meta.className = "review-meta";
-      meta.textContent = "类型：" + (node.node_type || "") + "  耗时：" + (node.duration_ms || 0) + "ms" + (node.tool_name ? "  工具：" + node.tool_name : "");
-      var input = document.createElement("div");
-      input.className = "row-content";
-      input.textContent = "输入：" + (node.input_summary || "无");
-      var output = document.createElement("div");
-      output.className = "row-content";
-      output.textContent = "输出：" + (node.output_summary || "无");
-      box.append(title, meta, input, output);
+      meta.textContent = "类型：" + (node.manifest_type || node.node_type || "") + "  耗时：" + (node.duration_ms || 0) + "ms" + (node.tool_name ? "  工具：" + node.tool_name : "") + (node.db_source ? "  数据源：" + node.db_source : "");
+      var desc = document.createElement("div");
+      desc.className = "trace-desc";
+      desc.textContent = node.node_description || "";
+      box.append(titleRow, meta);
+      if (desc.textContent) box.appendChild(desc);
+      appendTraceSection(box, "本次入参", node.input_data, node.input_summary || "无");
+      appendTraceSection(box, "本次出参", node.output_data, node.output_summary || "无");
+      appendTraceSection(box, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
+      var fields = document.createElement("div");
+      fields.className = "trace-field-list";
+      fields.textContent = "期望入参：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望出参：" + ((node.expected_outputs || []).join(", ") || "无");
+      box.appendChild(fields);
+      if (node.failure_hint) {
+        var hint = document.createElement("div");
+        hint.className = "trace-hint";
+        hint.textContent = "定位建议：" + node.failure_hint;
+        box.appendChild(hint);
+      }
       if (node.error_message) {
         var err = document.createElement("div");
         err.style.color = "#a64536";
@@ -904,6 +958,29 @@ async function showTrace(traceId) {
   } catch (e) {
     traceNodeList.textContent = "链路加载失败：" + (e.message || e);
   }
+}
+
+function formatTraceValue(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback || "无";
+  if (typeof value === "object") {
+    if (Array.isArray(value) && !value.length) return fallback || "无";
+    if (!Array.isArray(value) && !Object.keys(value).length) return fallback || "无";
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+function appendTraceSection(parent, title, value, fallback) {
+  var section = document.createElement("div");
+  section.className = "trace-section";
+  var heading = document.createElement("div");
+  heading.className = "trace-section-title";
+  heading.textContent = title;
+  var body = document.createElement("pre");
+  body.className = "trace-json";
+  body.textContent = formatTraceValue(value, fallback);
+  section.append(heading, body);
+  parent.appendChild(section);
 }
 
 // ===== 欢迎卡片 =====

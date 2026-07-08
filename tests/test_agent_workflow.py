@@ -307,6 +307,28 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertIn("intent_detect", node_names)
             self.assertIn("final_response", node_names)
 
+    def test_run_chat_trace_nodes_have_manifest_metadata_and_structured_data(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+                result = run_chat(
+                    "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                )
+
+            trace = TraceRecorder(engine).get_trace(result["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertEqual(by_name["intent_detect"]["node_title"], "识别用户意图")
+            self.assertEqual(by_name["rule_search"]["node_title"], "检索指标规则")
+            self.assertEqual(by_name["final_response"]["node_title"], "生成最终回答")
+            self.assertIn("query", by_name["intent_detect"]["input_data"])
+            self.assertEqual(by_name["rule_search"]["output_data"]["rule_id"], "R001")
+            self.assertIn("answer_preview", by_name["final_response"]["output_data"])
+
     def test_run_chat_stream_meta_contains_trace_id(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

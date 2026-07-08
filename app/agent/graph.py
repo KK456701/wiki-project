@@ -592,8 +592,23 @@ def run_chat(
         "success",
         input_summary=query,
         output_summary=str(result.get("intent", "")),
+        input_data={
+            "query": query,
+            "session_memory": memory_context,
+            "use_llm": use_llm,
+        },
+        output_data={
+            "intent": result.get("intent"),
+            "retrieval_query": (result.get("search") or {}).get("query", query) if isinstance(result.get("search"), dict) else query,
+            "custom_filters": result.get("_custom_filters", []),
+        },
+        config_data={
+            "strategy": "规则兜底 + 可选 LLM 意图识别",
+            "workflow_engine": result.get("workflow_engine") or workflow_engine_name(),
+        },
     )
     if result.get("search") or result.get("rule_id"):
+        search_payload = result.get("search") if isinstance(result.get("search"), dict) else {}
         _record_trace_node(
             trace_recorder,
             trace_id,
@@ -603,6 +618,18 @@ def run_chat(
             input_summary=query,
             output_summary=str(result.get("rule_id") or ""),
             rule_id=str(result.get("rule_id") or ""),
+            input_data={
+                "retrieval_query": search_payload.get("query", query),
+                "hospital_id": hospital_id,
+            },
+            output_data={
+                "rule_id": result.get("rule_id"),
+                "matched_count": len(search_payload.get("results", [])) if isinstance(search_payload.get("results"), list) else 0,
+            },
+            config_data={
+                "tool": "KnowledgeBaseTools.search",
+                "priority": "医院口径 > 公司标准 > 国标",
+            },
         )
     result.setdefault("generation_method", "tool")
     result.setdefault("workflow_engine", workflow_engine_name())
@@ -632,6 +659,20 @@ def run_chat(
         "success" if error_count == 0 else "fallback",
         output_summary=str(result.get("answer", ""))[:500],
         rule_id=str(result.get("rule_id") or ""),
+        input_data={
+            "intent": result.get("intent"),
+            "rule_id": result.get("rule_id"),
+            "generation_method": result.get("generation_method"),
+            "errors": result.get("errors", []),
+        },
+        output_data={
+            "answer_preview": str(result.get("answer", ""))[:1000],
+            "trace_id": trace_id,
+            "final_status": "success" if error_count == 0 else "fallback",
+        },
+        config_data={
+            "storage": "ConversationMemory + TraceRecorder",
+        },
     )
     _finish_trace(
         trace_recorder,
@@ -704,6 +745,19 @@ def run_chat_stream(
         "success",
         input_summary=query,
         output_summary=str(state.get("intent", "")),
+        input_data={
+            "query": query,
+            "session_memory": memory_context,
+            "use_llm": use_llm,
+        },
+        output_data={
+            "intent": state.get("intent"),
+            "retrieval_query": intent_data.get("retrieval_query"),
+            "custom_filters": intent_data.get("custom_filters", []),
+        },
+        config_data={
+            "strategy": "规则兜底 + 可选 LLM 意图识别",
+        },
     )
 
     if state["intent"] == "chat":
@@ -718,7 +772,28 @@ def run_chat_stream(
             "intent": "chat", "rule_id": None,
             "generation_method": "chat", "errors": errors,
         })
-        _record_trace_node(trace_recorder, trace_id, "final_response", "agent", "success", output_summary=answer[:500])
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success",
+            output_summary=answer[:500],
+            input_data={
+                "intent": "chat",
+                "rule_id": None,
+                "generation_method": "chat",
+                "errors": errors,
+            },
+            output_data={
+                "answer_preview": answer[:1000],
+                "trace_id": trace_id,
+                "final_status": "success",
+            },
+            config_data={
+                "storage": "ConversationMemory + TraceRecorder",
+            },
+        )
         _finish_trace(trace_recorder, trace_id, "success", answer[:500], intent="chat", error_count=len(errors))
         yield ("done", {
             "session_id": active_session_id, "intent": "chat",
@@ -757,6 +832,18 @@ def run_chat_stream(
         input_summary=search_query,
         output_summary=str(rule_id or ""),
         rule_id=str(rule_id or ""),
+        input_data={
+            "retrieval_query": search_query,
+            "hospital_id": hospital_id,
+        },
+        output_data={
+            "rule_id": rule_id,
+            "matched_count": len(search.get("results", [])) if isinstance(search.get("results"), list) else 0,
+        },
+        config_data={
+            "tool": "KnowledgeBaseTools.search",
+            "priority": "医院口径 > 公司标准 > 国标",
+        },
     )
 
     if not rule_id:
@@ -1081,6 +1168,20 @@ def run_chat_stream(
         "success" if not errors else "fallback",
         output_summary=str(answer)[:500],
         rule_id=str(rule_id or ""),
+        input_data={
+            "intent": state.get("intent"),
+            "rule_id": rule_id,
+            "generation_method": generation_method,
+            "errors": errors,
+        },
+        output_data={
+            "answer_preview": str(answer)[:1000],
+            "trace_id": trace_id,
+            "final_status": "success" if not errors else "fallback",
+        },
+        config_data={
+            "storage": "ConversationMemory + TraceRecorder",
+        },
     )
     _finish_trace(
         trace_recorder,

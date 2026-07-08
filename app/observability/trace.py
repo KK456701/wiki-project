@@ -14,6 +14,7 @@ from app.db.repositories import (
     insert_trace_node,
     start_trace_record,
 )
+from app.workflows.manifest import annotate_trace_node
 
 
 def _now() -> datetime:
@@ -88,6 +89,9 @@ class TraceRecorder:
         run_id: str = "",
         rule_id: str = "",
         duration_ms: int = 0,
+        input_data: dict[str, Any] | None = None,
+        output_data: dict[str, Any] | None = None,
+        config_data: dict[str, Any] | None = None,
     ) -> None:
         started_at = _now()
         node_id = f"NODE_{uuid.uuid4().hex[:12]}"
@@ -108,6 +112,9 @@ class TraceRecorder:
             "rule_id": rule_id,
             "duration_ms": duration_ms,
             "started_at": _format_time(started_at),
+            "input_data": input_data or {},
+            "output_data": output_data or {},
+            "config_data": config_data or {},
         }
         try:
             insert_trace_node(
@@ -194,9 +201,29 @@ class TraceRecorder:
         except Exception:
             trace = None
         if not trace:
-            return self._get_trace_from_jsonl(trace_id)
+            return self._annotate_trace(self._get_trace_from_jsonl(trace_id))
         trace["trace_storage"] = "runtime_db"
+        self._merge_jsonl_node_payloads(trace)
+        return self._annotate_trace(trace)
+
+    def _annotate_trace(self, trace: dict[str, Any]) -> dict[str, Any]:
+        trace["nodes"] = [annotate_trace_node(dict(node)) for node in trace.get("nodes", [])]
         return trace
+
+    def _merge_jsonl_node_payloads(self, trace: dict[str, Any]) -> None:
+        jsonl_trace = self._get_trace_from_jsonl(str(trace.get("trace_id") or ""))
+        payloads = {
+            node.get("node_id"): node
+            for node in jsonl_trace.get("nodes", [])
+            if node.get("node_id")
+        }
+        for node in trace.get("nodes", []):
+            payload = payloads.get(node.get("node_id"))
+            if not payload:
+                continue
+            for key in ("input_data", "output_data", "config_data"):
+                if key in payload:
+                    node[key] = payload[key]
 
     def _get_trace_from_jsonl(self, trace_id: str) -> dict[str, Any]:
         if not self.jsonl_path.exists():

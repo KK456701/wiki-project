@@ -119,6 +119,31 @@ class TraceRecorderTest(unittest.TestCase):
             self.assertEqual(trace["final_status"], "success")
             self.assertEqual(trace["nodes"][0]["node_name"], "intent_detect")
 
+    def test_trace_nodes_include_structured_data_and_manifest_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = Path(tmp) / "trace_events.jsonl"
+            recorder = TraceRecorder(self._engine(), jsonl)
+            recorder.start_trace("TRACE_STRUCT", "session_1", "hospital_001", "急会诊怎么算")
+            recorder.record_node(
+                "TRACE_STRUCT",
+                "intent_detect",
+                "llm_or_rule",
+                "success",
+                input_summary="急会诊怎么算",
+                output_summary="query",
+                input_data={"query": "急会诊怎么算", "session_memory": {}},
+                output_data={"intent": "query", "retrieval_query": "急会诊怎么算"},
+                config_data={"strategy": "规则兜底 + LLM"},
+            )
+            recorder.finish_trace("TRACE_STRUCT", "success", "已回答", intent="query")
+
+            trace = recorder.get_trace("TRACE_STRUCT")
+            node = trace["nodes"][0]
+            self.assertEqual(node["node_title"], "识别用户意图")
+            self.assertEqual(node["input_data"]["query"], "急会诊怎么算")
+            self.assertEqual(node["output_data"]["intent"], "query")
+            self.assertEqual(node["config_data"]["strategy"], "规则兜底 + LLM")
+
 
 if __name__ == "__main__":
     unittest.main()
