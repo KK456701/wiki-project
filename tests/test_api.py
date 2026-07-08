@@ -12,6 +12,17 @@ from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
 
 class ApiTest(unittest.TestCase):
+    def test_health_reports_workflow_engine(self) -> None:
+        client = TestClient(app)
+
+        response = client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertIn(data["workflow_engine"], {"langgraph", "deterministic_fallback"})
+        self.assertIn("langgraph_installed", data)
+
     def test_change_request_default_change_type_is_readable(self) -> None:
         request = api_main.ChangeRequestCreate(
             rule_id="R001",
@@ -66,6 +77,74 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(second["rule_id"], "R001")
             self.assertEqual(second["feedback_preview"]["target_level"], "hospital")
             self.assertNotIn("change_request", second)
+
+    def test_metadata_sync_dbhub_uses_mcp_client(self) -> None:
+        class FakeDBHubClient:
+            def __init__(self, *args, **kwargs):
+                self.calls = []
+
+            def execute_sql(self, sql):
+                self.calls.append(sql)
+                if "INFORMATION_SCHEMA.TABLES" in sql:
+                    return [{"TABLE_NAME": "consult_record", "TABLE_COMMENT": "", "TABLE_TYPE": "BASE TABLE"}]
+                if "INFORMATION_SCHEMA.COLUMNS" in sql:
+                    return [
+                        {"TABLE_NAME": "consult_record", "COLUMN_NAME": "id", "DATA_TYPE": "bigint", "COLUMN_TYPE": "bigint", "IS_NULLABLE": "NO", "COLUMN_KEY": "PRI", "COLUMN_DEFAULT": None, "COLUMN_COMMENT": ""}
+                    ]
+                return []
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            runtime_engine = _metadata_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch.object(api_main, "DBHubMCPClient", FakeDBHubClient):
+                response = client.post("/api/metadata/sync", json={"hospital_id": "hospital_001", "db_name": "hospital_demo_data", "source": "dbhub"})
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["metadata_source"], "dbhub")
+            self.assertEqual(data["table_count"], 1)
+            self.assertEqual(data["column_count"], 1)
+
+    def test_metadata_sync_dbhub_selects_tool_by_database(self) -> None:
+        captured = []
+
+        class FakeDBHubClient:
+            def __init__(self, *args, **kwargs):
+                captured.append(kwargs)
+
+            def execute_sql(self, sql):
+                if "INFORMATION_SCHEMA.TABLES" in sql:
+                    return [{"TABLE_NAME": "med_metadata_column", "TABLE_COMMENT": "", "TABLE_TYPE": "BASE TABLE"}]
+                if "INFORMATION_SCHEMA.COLUMNS" in sql:
+                    return [
+                        {"TABLE_NAME": "med_metadata_column", "COLUMN_NAME": "column_name", "DATA_TYPE": "varchar", "COLUMN_TYPE": "varchar(128)", "IS_NULLABLE": "NO", "COLUMN_KEY": "", "COLUMN_DEFAULT": None, "COLUMN_COMMENT": ""}
+                    ]
+                return []
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            runtime_engine = _metadata_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch.object(api_main, "DBHubMCPClient", FakeDBHubClient):
+                response = client.post("/api/metadata/sync", json={"hospital_id": "system", "db_name": "wiki_agent_runtime", "source": "dbhub"})
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["metadata_source"], "dbhub")
+            self.assertEqual(captured[0]["execute_tool"], "execute_sql_wiki_agent_runtime")
+            self.assertEqual(captured[0]["source_id"], "wiki_agent_runtime")
+
+    def test_metadata_sync_request_accepts_source_default(self) -> None:
+        request = api_main.MetadataSyncRequest(hospital_id="hospital_001", db_name="hospital_demo_data")
+
+        self.assertEqual(request.source, "dbhub")
 
     def test_kb_export_and_merge_upload_workflow(self) -> None:
         with temp_kb_dir() as tmp:
@@ -298,6 +377,37 @@ def _trace_runtime_engine():
               ended_at TEXT,
               duration_ms INTEGER,
               created_at TEXT NOT NULL
+            )
+        """))
+    return engine
+
+
+def _metadata_runtime_engine():
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE med_metadata_table (
+              hospital_id TEXT, db_name TEXT, table_name TEXT, table_comment TEXT,
+              table_type TEXT, sync_batch_id TEXT, sync_time TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_metadata_column (
+              hospital_id TEXT, db_name TEXT, table_name TEXT, column_name TEXT,
+              data_type TEXT, column_type TEXT, is_nullable TEXT, column_key TEXT,
+              column_default TEXT, column_comment TEXT, sync_batch_id TEXT, sync_time TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_metadata_sync_log (
+              hospital_id TEXT, db_name TEXT, table_name TEXT, field_name TEXT,
+              change_type TEXT, change_desc TEXT, sync_batch_id TEXT, sync_time TEXT
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_metadata_snapshot (
+              hospital_id TEXT, db_name TEXT, metadata_source TEXT, sync_batch_id TEXT,
+              snapshot_json TEXT, created_at TEXT
             )
         """))
     return engine

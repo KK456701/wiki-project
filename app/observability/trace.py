@@ -58,6 +58,8 @@ class TraceRecorder:
                 user_query=user_query,
                 started_at=started_at,
             )
+        except Exception:
+            pass
         finally:
             self._write_jsonl(
                 {
@@ -129,6 +131,8 @@ class TraceRecorder:
                 duration_ms=duration_ms,
                 created_at=started_at,
             )
+        except Exception:
+            pass
         finally:
             event = dict(payload)
             event["event"] = "trace_node"
@@ -146,8 +150,12 @@ class TraceRecorder:
         ended_at = _now()
         started_at = self._started_at.get(trace_id)
         if started_at is None:
-            trace = get_trace_record(self.runtime_engine, trace_id)
-            if trace is not None:
+            try:
+                trace = get_trace_record(self.runtime_engine, trace_id)
+                if trace is not None:
+                    started_at = _parse_time(trace.get("started_at"))
+            except Exception:
+                trace = self._get_trace_from_jsonl(trace_id)
                 started_at = _parse_time(trace.get("started_at"))
         duration_ms = 0
         if started_at is not None:
@@ -164,6 +172,8 @@ class TraceRecorder:
                 ended_at=ended_at,
                 duration_ms=duration_ms,
             )
+        except Exception:
+            pass
         finally:
             self._write_jsonl(
                 {
@@ -179,7 +189,62 @@ class TraceRecorder:
             )
 
     def get_trace(self, trace_id: str) -> dict[str, Any]:
-        trace = get_trace_record(self.runtime_engine, trace_id)
+        try:
+            trace = get_trace_record(self.runtime_engine, trace_id)
+        except Exception:
+            trace = None
         if not trace:
-            return {"trace_id": trace_id, "nodes": []}
+            return self._get_trace_from_jsonl(trace_id)
+        trace["trace_storage"] = "runtime_db"
         return trace
+
+    def _get_trace_from_jsonl(self, trace_id: str) -> dict[str, Any]:
+        if not self.jsonl_path.exists():
+            return {"trace_id": trace_id, "nodes": [], "trace_storage": "none"}
+
+        started: dict[str, Any] | None = None
+        finished: dict[str, Any] | None = None
+        nodes: list[dict[str, Any]] = []
+        for line in self.jsonl_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if event.get("trace_id") != trace_id:
+                continue
+            event_type = event.get("event")
+            if event_type == "trace_started":
+                started = event
+            elif event_type == "trace_node":
+                nodes.append({k: v for k, v in event.items() if k != "event"})
+            elif event_type == "trace_finished":
+                finished = event
+
+        result: dict[str, Any] = {
+            "trace_id": trace_id,
+            "nodes": nodes,
+            "trace_storage": "jsonl" if started or nodes or finished else "none",
+        }
+        if started:
+            result.update(
+                {
+                    "session_id": started.get("session_id"),
+                    "hospital_id": started.get("hospital_id"),
+                    "user_query": started.get("user_query"),
+                    "started_at": started.get("started_at"),
+                }
+            )
+        if finished:
+            result.update(
+                {
+                    "final_status": finished.get("final_status"),
+                    "intent": finished.get("intent"),
+                    "error_count": finished.get("error_count", 0),
+                    "fallback_count": finished.get("fallback_count", 0),
+                    "ended_at": finished.get("ended_at"),
+                    "duration_ms": finished.get("duration_ms", 0),
+                }
+            )
+        return result

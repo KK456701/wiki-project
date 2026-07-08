@@ -1,0 +1,11 @@
+{
+  "name": "wiki-project-dbhub-sidecar",
+  "private": true,
+  "description": "核心制度指标 Agent 的 DBHub MCP 本地数据库工具启动器",
+  "scripts": {
+    "start": "powershell -ExecutionPolicy Bypass -File ./start-dbhub.ps1"
+  },
+  "dependencies": {
+    "@bytebase/dbhub": "latest"
+  }
+}

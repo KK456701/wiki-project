@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import importlib.util
-import os
+import re
 import secrets
-import uuid
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -14,19 +14,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.agent.graph import run_chat, run_chat_stream
+from app.agent.graph import langgraph_installed, run_chat, run_chat_stream, workflow_engine_name
 from app.config import get
 from app.db_access.business_db import BusinessDBClient
-from app.db_access.dbhub_mcp import DBHubMCPClient, dbhub_sources
+from app.db_access.dbhub_mcp import DBHubMCPClient, DBHubMCPError, dbhub_sources
+from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
-from app.metadata.sync import DBHubMetadataProvider
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEB_ROOT = PROJECT_ROOT / "web"
 ADMIN_PASSWORD = get("admin_password", "admin123")
 
-# 内存中存 admin token（重启失效）
+# 内存管理员 token，服务重启后失效。
 _admin_tokens: set[str] = set()
 
 
@@ -79,32 +79,30 @@ def _require_admin(authorization: str | None = Header(None)) -> str:
     return token
 
 
-
-
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _chunk_text(text: str, size: int = 16) -> Iterable[str]:
-    value = text or ""
-    for index in range(0, len(value), size):
-        yield value[index : index + size]
+def _config_suffix(value: str) -> str:
+    return re.sub(r"[^0-9a-zA-Z]+", "_", value).strip("_").lower()
 
 
 def _dbhub_api_url() -> str:
-    return get("dbhub_api_url", "http://127.0.0.1:8080")
+    return get("dbhub_api_url", get("dbhub_http_url", "http://127.0.0.1:8080"))
 
 
 def _dbhub_mcp_url() -> str:
     return get("dbhub_mcp_url", f"{_dbhub_api_url().rstrip('/')}/mcp")
 
 
-def _dbhub_source_id_for_db(db_name: str) -> str:
-    return get(f"dbhub_source_{db_name}", db_name)
-
-
 def _dbhub_execute_tool_for_db(db_name: str) -> str:
-    return get(f"dbhub_execute_tool_{db_name}", f"execute_sql_{db_name}")
+    suffix = _config_suffix(db_name)
+    return get(f"dbhub_execute_tool_{suffix}", f"execute_sql_{suffix}")
+
+
+def _dbhub_source_id_for_db(db_name: str) -> str:
+    suffix = _config_suffix(db_name)
+    return get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", get("dbhub_source_id", db_name)))
 
 
 def create_dbhub_client_for_db(db_name: str) -> DBHubMCPClient:
@@ -130,9 +128,6 @@ def create_dbhub_metadata_provider(db_name: str = "hospital_demo_data") -> DBHub
     return DBHubMetadataProvider(client.execute_sql)
 
 
-def _langgraph_available() -> bool:
-    return importlib.util.find_spec("langgraph") is not None
-
 app = FastAPI(title="Core Rules Wiki Agent", version="0.1.0")
 
 
@@ -154,7 +149,7 @@ def chat(request: ChatRequest) -> dict[str, Any]:
 
 @app.post("/api/chat/stream")
 def chat_stream(request: ChatRequest) -> StreamingResponse:
-    """真正的流式对话：LLM 逐 token 产出 → SSE 逐 token 推送."""
+    """Ollama 逐 token 生成，FastAPI 通过 SSE 流式返回。"""
 
     def generate() -> Iterable[str]:
         try:
@@ -191,8 +186,12 @@ def kb_effective_rule(rule_id: str, hospital_id: str | None = "hospital_001") ->
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | bool]:
+    return {
+        "status": "ok",
+        "workflow_engine": workflow_engine_name(),
+        "langgraph_installed": langgraph_installed(),
+    }
 
 
 @app.get("/api/health/dependencies")
@@ -201,7 +200,7 @@ def health_dependencies() -> dict[str, Any]:
 
     result: dict[str, Any] = {
         "fastapi": {"ok": True},
-        "langgraph": {"ok": _langgraph_available(), "engine": "langgraph" if _langgraph_available() else "fallback"},
+        "langgraph": {"ok": langgraph_installed(), "engine": workflow_engine_name()},
     }
     try:
         with create_runtime_engine().connect() as conn:
@@ -209,18 +208,15 @@ def health_dependencies() -> dict[str, Any]:
         result["runtime_db"] = {"ok": True}
     except Exception as exc:
         result["runtime_db"] = {"ok": False, "error": str(exc)}
+
     try:
         result["business_db_mcp"] = create_business_db_client("hospital_demo_data").check_available()
     except Exception as exc:
         result["business_db_mcp"] = {"ok": False, "error": str(exc)}
+
     try:
-        sources = dbhub_sources(_dbhub_api_url(), int(get("dbhub_timeout_seconds", "5")))
-        if isinstance(sources, dict):
-            source_items = sources.get("sources", [])
-        elif isinstance(sources, list):
-            source_items = sources
-        else:
-            source_items = []
+        payload = dbhub_sources(_dbhub_api_url(), int(get("dbhub_timeout_seconds", "5")))
+        source_items = payload if isinstance(payload, list) else payload.get("sources", payload.get("value", []))
         result["dbhub_http"] = {"ok": True, "source_count": len(source_items)}
     except Exception as exc:
         result["dbhub_http"] = {"ok": False, "error": str(exc)}
@@ -235,15 +231,10 @@ def get_trace(trace_id: str) -> dict[str, Any]:
     return TraceRecorder(create_runtime_engine()).get_trace(trace_id)
 
 
-# ---- 管理员认证 ----
-
-
-
-# ---- KB export and merge ----
-
 @app.get("/api/kb/export")
 def kb_export(hospital_id: str = "hospital_001") -> Response:
     from app.kb.export import export_hospital_kb_zip
+
     data = export_hospital_kb_zip(DEFAULT_KB_ROOT, hospital_id)
     filename = f"{hospital_id}_kb_export.zip"
     return Response(
@@ -261,6 +252,7 @@ def kb_merge_upload(
     _require_admin(_token)
     try:
         from app.kb.merge import create_merge_report
+
         return create_merge_report(DEFAULT_KB_ROOT, payload, uploaded_by="admin")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -270,6 +262,7 @@ def kb_merge_upload(
 def kb_merge_reports(_token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
     _require_admin(_token)
     from app.kb.merge import list_merge_reports
+
     return {"items": list_merge_reports(DEFAULT_KB_ROOT)}
 
 
@@ -278,6 +271,7 @@ def kb_merge_report(report_id: str, _token: str | None = Header(None, alias="Aut
     _require_admin(_token)
     try:
         from app.kb.merge import read_merge_report
+
         return read_merge_report(DEFAULT_KB_ROOT, report_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -293,6 +287,7 @@ def kb_merge_item_approve(
     _require_admin(_token)
     try:
         from app.kb.merge import approve_merge_item
+
         decision = (body.decision if body else None) or "adopt_as_company_candidate"
         approver_id = (body.approver_id if body else None) or "admin"
         return approve_merge_item(DEFAULT_KB_ROOT, report_id, item_id, decision, approver_id)
@@ -310,11 +305,13 @@ def kb_merge_item_reject(
     _require_admin(_token)
     try:
         from app.kb.merge import reject_merge_item
+
         reason = (body.reason if body else None) or ""
         approver_id = (body.approver_id if body else None) or "admin"
         return reject_merge_item(DEFAULT_KB_ROOT, report_id, item_id, reason, approver_id)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @app.post("/api/admin/login")
 def admin_login(request: LoginRequest) -> dict[str, Any]:
@@ -331,8 +328,6 @@ def admin_logout(token: str = Header(..., alias="Authorization")) -> dict[str, s
     _admin_tokens.discard(clean)
     return {"message": "已登出"}
 
-
-# ---- 审批接口（需管理员登录） ----
 
 @app.get("/api/review/pending")
 def list_pending_change_requests(_token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
@@ -352,7 +347,6 @@ def approve_change_request(
         return KnowledgeBaseTools(DEFAULT_KB_ROOT).approve_change_request(change_id, approver_id)
     except KBToolError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
 
 
 @app.get("/api/review/hospital-overrides/{hospital_id}/{rule_id}/versions")
@@ -398,8 +392,6 @@ def reject_change_request(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-# ---- SQL 生成与元数据同步 ----
-
 class MetadataSyncRequest(BaseModel):
     hospital_id: str
     db_name: str
@@ -423,23 +415,46 @@ class DiagnoseRequest(BaseModel):
     stat_period: str | None = None
 
 
+@app.get("/api/mcp/dbhub/sources")
+def dbhub_sources_api() -> dict[str, Any]:
+    try:
+        payload = dbhub_sources(_dbhub_api_url(), int(get("dbhub_timeout_seconds", "10")))
+    except (DBHubMCPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"DBHub sidecar 访问失败: {exc}") from exc
+    items = payload if isinstance(payload, list) else payload.get("sources", payload.get("value", []))
+    return {
+        "status": "ok",
+        "dbhub_http_url": _dbhub_api_url().rstrip("/"),
+        "sources": items,
+    }
+
+
 @app.post("/api/metadata/sync")
 def metadata_sync(request: MetadataSyncRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
-    from app.metadata.sync import sync_mysql_metadata
-    runtime_engine = create_runtime_engine()
-    return sync_mysql_metadata(
-        runtime_engine=runtime_engine,
-        metadata_provider=create_dbhub_metadata_provider(request.db_name),
-        hospital_id=request.hospital_id,
-        db_name=request.db_name,
-    )
+    from app.metadata.sync import sync_metadata_from_provider
+
+    source = (request.source or "dbhub").lower()
+    if source != "dbhub":
+        raise HTTPException(status_code=400, detail="当前 FastAPI 主链路只允许通过 DBHub MCP 同步业务库元数据")
+
+    try:
+        return sync_metadata_from_provider(
+            runtime_engine=create_runtime_engine(),
+            provider=create_dbhub_metadata_provider(request.db_name),
+            hospital_id=request.hospital_id,
+            db_name=request.db_name,
+            kb_root=DEFAULT_KB_ROOT,
+        )
+    except DBHubMCPError as exc:
+        raise HTTPException(status_code=400, detail=f"DBHub MCP 调用失败: {exc}") from exc
 
 
 @app.post("/api/sql/generate")
 def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.sqlgen.agent import SQLGenerationAgent
+
     tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = SQLGenerationAgent(
@@ -462,12 +477,14 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
 def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.diagnose.agent import DiagnoseAgent
+
     tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = DiagnoseAgent(
         kb_root=DEFAULT_KB_ROOT,
         runtime_engine=create_runtime_engine(),
         business_db=create_business_db_client("hospital_demo_data"),
+        metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
     )
     return agent.run(
         hospital_id=request.hospital_id,
@@ -481,4 +498,3 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
 
 if WEB_ROOT.exists():
     app.mount("/static", StaticFiles(directory=WEB_ROOT), name="static")
-

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
@@ -10,6 +11,7 @@ from app.config import get
 from app.db.engine import create_runtime_engine
 from app.db_access.business_db import BusinessDBClient
 from app.db_access.dbhub_mcp import DBHubMCPClient
+from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
@@ -36,6 +38,7 @@ class AgentState(TypedDict, total=False):
     feedback_preview: dict[str, Any]
     answer: str
     generation_method: str
+    workflow_engine: str
     errors: list[str]
 
 
@@ -53,12 +56,23 @@ TRIAL_MARKERS = ["试运行", "运行SQL", "运行 sql", "执行SQL", "执行 sq
 
 
 def _create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
-    execute_tool = get(f"dbhub_execute_tool_{db_name}", f"execute_sql_{db_name}")
-    source_id = get(f"dbhub_source_{db_name}", db_name)
+    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", db_name).strip("_").lower()
+    execute_tool = get(f"dbhub_execute_tool_{suffix}", f"execute_sql_{suffix}")
+    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", db_name))
     endpoint = get("dbhub_mcp_url", "http://127.0.0.1:8080/mcp")
     timeout_seconds = int(get("dbhub_timeout_seconds", "10"))
     client = DBHubMCPClient(endpoint, execute_tool, timeout_seconds, source_id)
     return BusinessDBClient(client.execute_sql, source_id=source_id, tool_name=execute_tool)
+
+
+def _create_metadata_provider(db_name: str = "hospital_demo_data") -> DBHubMetadataProvider:
+    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", db_name).strip("_").lower()
+    execute_tool = get(f"dbhub_execute_tool_{suffix}", f"execute_sql_{suffix}")
+    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", db_name))
+    endpoint = get("dbhub_mcp_url", "http://127.0.0.1:8080/mcp")
+    timeout_seconds = int(get("dbhub_timeout_seconds", "10"))
+    client = DBHubMCPClient(endpoint, execute_tool, timeout_seconds, source_id)
+    return DBHubMetadataProvider(client.execute_sql)
 
 
 def _start_trace(session_id: str, hospital_id: str | None, query: str) -> tuple[str, TraceRecorder | None]:
@@ -122,6 +136,14 @@ def detect_intent(query: str) -> str:
     if any(marker in compact for marker in TRIAL_MARKERS):
         return "trial_run"
     return "query"
+
+
+def langgraph_installed() -> bool:
+    return find_spec("langgraph") is not None
+
+
+def workflow_engine_name() -> str:
+    return "langgraph" if langgraph_installed() else "deterministic_fallback"
 
 
 def _intent_prompt(query: str, memory_context: dict[str, Any] | None = None) -> str:
@@ -348,8 +370,11 @@ def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client:
 def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLMClient | None = None) -> AgentState:
     try:
         from langgraph.graph import END, StateGraph
-    except Exception:
+    except Exception as exc:
+        state["workflow_engine"] = "deterministic_fallback"
+        state.setdefault("errors", []).append(f"LangGraph unavailable, using deterministic fallback: {exc}")
         return _run_deterministic(state, tools, llm_client)
+    state["workflow_engine"] = "langgraph"
 
     def intent_node(s: AgentState) -> AgentState:
         intent_data = _detect_intent(s["query"], llm_client, s.setdefault("errors", []), s.get("memory_context"))
@@ -447,7 +472,9 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
     graph.add_edge("trial_run", END)
     graph.add_edge("diagnose", END)
     graph.add_edge("metadata_sync", END)
-    return graph.compile().invoke(state)
+    result = graph.compile().invoke(state)
+    result["workflow_engine"] = "langgraph"
+    return result
 
 
 def _localize_diagnose_text(text: str) -> str:
@@ -578,6 +605,7 @@ def run_chat(
             rule_id=str(result.get("rule_id") or ""),
         )
     result.setdefault("generation_method", "tool")
+    result.setdefault("workflow_engine", workflow_engine_name())
     result.setdefault("session_id", active_session_id)
     result.setdefault("memory_context", memory_context)
     result["trace_id"] = trace_id
@@ -959,6 +987,7 @@ def run_chat_stream(
             diag_agent = DiagnoseAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
                 business_db=_create_business_db_client("hospital_demo_data"),
+                metadata_provider=_create_metadata_provider("hospital_demo_data"),
             )
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u53e3\u5f84\u89c4\u5219\u548c\u6570\u636e\u8d28\u91cf"})
             diag_result = diag_agent.run(

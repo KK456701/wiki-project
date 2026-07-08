@@ -10,12 +10,17 @@ import uuid
 from typing import Any
 
 
+class DBHubMCPError(RuntimeError):
+    """DBHub MCP 调用失败。"""
+
+
 class DBHubMCPClient:
     def __init__(self, endpoint: str, execute_tool: str, timeout_seconds: int = 10, source_id: str = ""):
         self.endpoint = endpoint.rstrip("/")
         self.execute_tool = execute_tool
         self.timeout_seconds = timeout_seconds
         self.source_id = source_id or execute_tool
+        self.last_duration_ms = 0
 
     def execute_sql(self, sql: str) -> list[dict[str, Any]]:
         payload = {
@@ -30,10 +35,10 @@ class DBHubMCPClient:
         started = time.perf_counter()
         data = _post_json(self.endpoint, payload, self.timeout_seconds)
         if "error" in data:
-            raise RuntimeError(f"DBHub MCP 调用失败: {data['error']}")
+            raise DBHubMCPError(f"DBHub MCP 调用失败: {data['error']}")
         rows = _extract_rows(data.get("result", data))
         if rows is None:
-            raise RuntimeError("DBHub MCP 返回格式中没有可解析的 rows")
+            raise DBHubMCPError("DBHub MCP 返回格式中没有可解析的 rows")
         self.last_duration_ms = int((time.perf_counter() - started) * 1000)
         return rows
 
@@ -47,14 +52,17 @@ def _post_json(url: str, payload: dict[str, Any], timeout_seconds: int) -> dict[
     request = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        },
         method="POST",
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return _loads_json_or_sse(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"无法访问 DBHub MCP: {exc}") from exc
+        raise DBHubMCPError(f"无法访问 DBHub MCP: {exc}") from exc
 
 
 def _get_json(url: str, timeout_seconds: int) -> dict[str, Any]:
@@ -62,7 +70,22 @@ def _get_json(url: str, timeout_seconds: int) -> dict[str, Any]:
         with urllib.request.urlopen(url, timeout=timeout_seconds) as response:
             return json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"无法访问 DBHub API: {exc}") from exc
+        raise DBHubMCPError(f"无法访问 DBHub API: {exc}") from exc
+
+
+def _loads_json_or_sse(text: str) -> dict[str, Any]:
+    stripped = text.strip()
+    if not stripped:
+        return {}
+    if stripped.startswith("{"):
+        return json.loads(stripped)
+    data_lines = []
+    for line in stripped.splitlines():
+        if line.startswith("data:"):
+            data_lines.append(line.removeprefix("data:").strip())
+    if data_lines:
+        return json.loads("\n".join(data_lines))
+    return json.loads(stripped)
 
 
 def _extract_rows(payload: Any) -> list[dict[str, Any]] | None:
@@ -74,6 +97,10 @@ def _extract_rows(payload: Any) -> list[dict[str, Any]] | None:
         value = payload.get(key)
         if isinstance(value, list):
             return [dict(row) for row in value if isinstance(row, dict)]
+        if isinstance(value, dict):
+            rows = _extract_rows(value)
+            if rows is not None:
+                return rows
     structured = payload.get("structuredContent")
     if isinstance(structured, dict):
         rows = _extract_rows(structured)

@@ -75,6 +75,17 @@ class DiagnoseFormattingTest(unittest.TestCase):
 
 
 class AgentWorkflowTest(unittest.TestCase):
+    def test_run_chat_reports_workflow_engine(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+
+            result = run_chat("hello", hospital_id="hospital_001", kb_root=root)
+
+            self.assertIn(result["workflow_engine"], {"langgraph", "deterministic_fallback"})
+            if result["workflow_engine"] == "deterministic_fallback":
+                self.assertTrue(any("LangGraph" in err for err in result.get("errors", [])))
+
     def test_greeting_is_chat_and_does_not_reuse_previous_rule_context(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

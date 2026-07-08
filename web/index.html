@@ -337,6 +337,43 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 .diff-table td { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; background: #fff; }
 .diff-table .changed { background: #fff6e8; }
 .changed-badge { display: inline-block; background: var(--amber); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 999px; margin-left: 4px; }
+.mcp-panel { display: grid; gap: 14px; }
+.mcp-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.mcp-toolbar select {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+.mcp-status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdfc;
+  color: var(--ink-soft);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mcp-source-grid { display: grid; gap: 10px; }
+.mcp-source-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+.mcp-source-card h3 { margin: 0 0 8px; font-size: 16px; }
+.mcp-tool-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mcp-tool-pill {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--teal-soft);
+  color: var(--teal-deep);
+  font: 650 12px/1.2 var(--mono);
+}
 .login-screen { position: fixed; inset: 0; background: var(--paper); display: grid; place-items: center; z-index: 200; }
 .login-screen[hidden] { display: none; }
 .login-card {
@@ -406,6 +443,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
     <div class="topbar-actions">
       <span id="userInfo" class="user-info"></span>
       <label class="hospital-inline"><span>医院</span><input id="hospitalId" value="hospital_001" /></label>
+      <button id="mcpButton" class="btn btn-ghost">MCP</button>
       <button id="reviewButton" class="btn btn-secondary">审批</button>
       <button id="newSessionButton" class="btn btn-ghost">新会话</button>
     </div>
@@ -425,6 +463,30 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <span id="sessionLabel"></span>
     </div>
   </footer>
+</div>
+
+<!-- MCP 测试弹窗 -->
+<div id="mcpModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>DBHub MCP 测试</h2><div style="color:#5b677a;font-size:14px;">查看本地数据库工具，并通过 DBHub 同步元数据。</div></div>
+      <button class="ghost" data-close="mcpModal">关闭</button>
+    </header>
+    <div class="dialog-body">
+      <div class="mcp-panel">
+        <div class="mcp-toolbar">
+          <button id="loadMcpSourcesButton" type="button">查看数据源/工具</button>
+          <select id="mcpDbSelect" aria-label="选择数据库">
+            <option value="hospital_demo_data">hospital_demo_data</option>
+            <option value="wiki_agent_runtime">wiki_agent_runtime</option>
+          </select>
+          <button id="syncMcpMetadataButton" type="button">通过 DBHub 同步元数据</button>
+        </div>
+        <div id="mcpStatus" class="mcp-status">点击“查看数据源/工具”确认 DBHub sidecar 是否已连接。</div>
+        <div id="mcpSourceList" class="mcp-source-grid"></div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- 口径差异确认弹窗 -->
@@ -536,6 +598,13 @@ var messages = document.getElementById("messages");
 var sessionLabel = document.getElementById("sessionLabel");
 var reviewButton = document.getElementById("reviewButton");
 var newSessionButton = document.getElementById("newSessionButton");
+var mcpButton = document.getElementById("mcpButton");
+var mcpModal = document.getElementById("mcpModal");
+var loadMcpSourcesButton = document.getElementById("loadMcpSourcesButton");
+var syncMcpMetadataButton = document.getElementById("syncMcpMetadataButton");
+var mcpDbSelect = document.getElementById("mcpDbSelect");
+var mcpStatus = document.getElementById("mcpStatus");
+var mcpSourceList = document.getElementById("mcpSourceList");
 var feedbackModal = document.getElementById("feedbackModal");
 var feedbackMeta = document.getElementById("feedbackMeta");
 var comparison = document.getElementById("comparison");
@@ -610,6 +679,14 @@ reviewButton.addEventListener("click", function() {
   reviewModal.hidden = false; switchReviewTab("caliber"); loadPendingReviews();
 });
 
+mcpButton.addEventListener("click", function() {
+  mcpModal.hidden = false;
+  loadMcpSources();
+});
+
+loadMcpSourcesButton.addEventListener("click", loadMcpSources);
+syncMcpMetadataButton.addEventListener("click", syncMcpMetadata);
+
 loginSubmit.addEventListener("click", async function() {
   var pwd = loginPassword.value.trim();
   if (!pwd) return;
@@ -646,6 +723,81 @@ queryInput.addEventListener("keydown", function(e) {
 function levelName(level) {
   var names = { hospital:"医院口径", company:"公司口径", national:"国标口径" };
   return names[level] || level || "未知";
+}
+
+function renderMcpSources(sources) {
+  mcpSourceList.innerHTML = "";
+  if (!sources || !sources.length) {
+    mcpSourceList.innerHTML = '<div class="mcp-status">未发现 DBHub 数据源。请确认 sidecar 已启动并加载 dbhub.local.toml。</div>';
+    return;
+  }
+  sources.forEach(function(source) {
+    var card = document.createElement("div");
+    card.className = "mcp-source-card";
+    var title = document.createElement("h3");
+    title.textContent = source.id + " · " + (source.type || "unknown");
+    var meta = document.createElement("div");
+    meta.className = "review-meta";
+    meta.textContent = (source.host || "") + (source.port ? ":" + source.port : "") + " / " + (source.database || "");
+    var tools = document.createElement("div");
+    tools.className = "mcp-tool-list";
+    (source.tools || []).forEach(function(tool) {
+      var pill = document.createElement("span");
+      pill.className = "mcp-tool-pill";
+      pill.textContent = tool.name + (tool.readonly ? " · 只读" : "");
+      tools.appendChild(pill);
+    });
+    card.append(title, meta, tools);
+    mcpSourceList.appendChild(card);
+  });
+}
+
+async function loadMcpSources() {
+  loadMcpSourcesButton.disabled = true;
+  mcpStatus.textContent = "正在连接 DBHub sidecar...";
+  try {
+    var resp = await fetch("/api/mcp/dbhub/sources");
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "DBHub 数据源读取失败");
+    renderMcpSources(data.sources || []);
+    mcpStatus.textContent = "DBHub 连接正常：" + (data.sources || []).length + " 个数据源。";
+  } catch (e) {
+    mcpSourceList.innerHTML = "";
+    mcpStatus.textContent = "DBHub 连接失败：" + e.message;
+  } finally {
+    loadMcpSourcesButton.disabled = false;
+  }
+}
+
+async function syncMcpMetadata() {
+  var dbName = mcpDbSelect.value;
+  var hospitalId = hospitalIdInput.value.trim() || "hospital_001";
+  syncMcpMetadataButton.disabled = true;
+  mcpStatus.textContent = "正在通过 DBHub MCP 同步 " + dbName + " 的元数据...";
+  try {
+    var resp = await fetch("/api/metadata/sync", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ hospital_id: hospitalId, db_name: dbName, source: "dbhub" }),
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "元数据同步失败");
+    mcpStatus.textContent = [
+      "同步成功",
+      "医院：" + data.hospital_id,
+      "数据库：" + data.db_name,
+      "来源：" + data.metadata_source,
+      "表数量：" + data.table_count,
+      "字段数量：" + data.column_count,
+      "批次：" + data.batch_id,
+      "结构变更：" + ((data.changes || []).length) + " 项",
+      "受影响指标：" + ((data.affected_rules || []).length) + " 项",
+    ].join("\n");
+  } catch (e) {
+    mcpStatus.textContent = "同步失败：" + e.message;
+  } finally {
+    syncMcpMetadataButton.disabled = false;
+  }
 }
 
 function optionText(option) {

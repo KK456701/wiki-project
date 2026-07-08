@@ -1,30 +1,34 @@
-# Copy this file to config.yaml and adjust values for your local environment.
+# 复制本文件为 config.yaml，并按本地环境修改。
 
-# Runtime database for Agent memory, review records and diagnosis logs.
+# 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
 runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
 
-# Read-only business database used by SQL trial runs and diagnosis checks.
-business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
+# 业务库方言。业务库读操作在 FastAPI 主链路中通过 DBHub MCP 执行。
 business_db_dialect: "mysql"
 
-# DBHub MCP sidecar. Business database reads should go through this MCP tool in production.
+# DBHub MCP sidecar：用于访问医院业务库和运行库。
 dbhub_api_url: "http://127.0.0.1:8080"
+dbhub_http_url: "http://127.0.0.1:8080"
 dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
 dbhub_timeout_seconds: 10
-dbhub_source_hospital_demo_data: "hospital_demo_data"
-dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
 
-# Metadata cache.
+# DBHub 多数据源启动后，一般会暴露为 execute_sql_<source_id>。
+dbhub_source_id_hospital_demo_data: "hospital_demo_data"
+dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
+dbhub_source_id_wiki_agent_runtime: "wiki_agent_runtime"
+dbhub_execute_tool_wiki_agent_runtime: "execute_sql_wiki_agent_runtime"
+
+# 元数据缓存最大有效时间。
 metadata_max_age_hours: 24
 
-# SQL trial run safety.
+# SQL 试运行安全控制。
 allow_sql_trial_run: true
 sql_run_timeout_seconds: 10
 
-# Admin password for local MVP review pages. Change before real deployment.
+# 本地 MVP 审批页管理员密码。正式部署前必须修改。
 admin_password: "CHANGE_ME"
 
-# Ollama local model.
+# Ollama 本地模型。
 ollama_model: "qwen3:4B-instruct"
 ollama_base_url: "http://127.0.0.1:11434"
 ollama_timeout_seconds: 20

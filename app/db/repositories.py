@@ -45,11 +45,17 @@ def _parse_datetime(value: datetime | str | None) -> datetime | None:
 def log_sync_table(engine: Engine, hospital_id: str, db_name: str, table_name: str,
                    table_comment: str, table_type: str, batch_id: str) -> None:
     with engine.connect() as conn:
-        conn.execute(
-            text("""INSERT INTO med_metadata_table (hospital_id, db_name, table_name, table_comment, table_type, sync_batch_id, sync_time)
-                     VALUES (:h, :d, :t, :c, :ty, :b, NOW())
-                     ON DUPLICATE KEY UPDATE table_comment=VALUES(table_comment), table_type=VALUES(table_type), sync_batch_id=VALUES(sync_batch_id), sync_time=NOW()"""),
-            {"h": hospital_id, "d": db_name, "t": table_name, "c": table_comment or "", "ty": table_type or "", "b": batch_id})
+        if engine.dialect.name == "sqlite":
+            conn.execute(
+                text("""INSERT INTO med_metadata_table (hospital_id, db_name, table_name, table_comment, table_type, sync_batch_id, sync_time)
+                         VALUES (:h, :d, :t, :c, :ty, :b, CURRENT_TIMESTAMP)"""),
+                {"h": hospital_id, "d": db_name, "t": table_name, "c": table_comment or "", "ty": table_type or "", "b": batch_id})
+        else:
+            conn.execute(
+                text("""INSERT INTO med_metadata_table (hospital_id, db_name, table_name, table_comment, table_type, sync_batch_id, sync_time)
+                         VALUES (:h, :d, :t, :c, :ty, :b, NOW())
+                         ON DUPLICATE KEY UPDATE table_comment=VALUES(table_comment), table_type=VALUES(table_type), sync_batch_id=VALUES(sync_batch_id), sync_time=NOW()"""),
+                {"h": hospital_id, "d": db_name, "t": table_name, "c": table_comment or "", "ty": table_type or "", "b": batch_id})
         conn.commit()
 
 
@@ -57,12 +63,19 @@ def log_sync_column(engine: Engine, hospital_id: str, db_name: str, table_name: 
                     col_name: str, data_type: str, col_type: str, is_nullable: str,
                     col_key: str, col_default: str, col_comment: str, batch_id: str) -> None:
     with engine.connect() as conn:
-        conn.execute(
-            text("""INSERT INTO med_metadata_column (hospital_id, db_name, table_name, column_name, data_type, column_type, is_nullable, column_key, column_default, column_comment, sync_batch_id, sync_time)
-                     VALUES (:h, :d, :t, :cn, :dt, :ct, :n, :k, :cd, :cc, :b, NOW())
-                     ON DUPLICATE KEY UPDATE data_type=VALUES(data_type), column_type=VALUES(column_type), is_nullable=VALUES(is_nullable), column_key=VALUES(column_key), column_default=VALUES(column_default), column_comment=VALUES(column_comment), sync_batch_id=VALUES(sync_batch_id), sync_time=NOW()"""),
-            {"h": hospital_id, "d": db_name, "t": table_name, "cn": col_name, "dt": data_type or "", "ct": col_type or "",
-             "n": is_nullable or "", "k": col_key or "", "cd": str(col_default or ""), "cc": col_comment or "", "b": batch_id})
+        params = {"h": hospital_id, "d": db_name, "t": table_name, "cn": col_name, "dt": data_type or "", "ct": col_type or "",
+                  "n": is_nullable or "", "k": col_key or "", "cd": str(col_default or ""), "cc": col_comment or "", "b": batch_id}
+        if engine.dialect.name == "sqlite":
+            conn.execute(
+                text("""INSERT INTO med_metadata_column (hospital_id, db_name, table_name, column_name, data_type, column_type, is_nullable, column_key, column_default, column_comment, sync_batch_id, sync_time)
+                         VALUES (:h, :d, :t, :cn, :dt, :ct, :n, :k, :cd, :cc, :b, CURRENT_TIMESTAMP)"""),
+                params)
+        else:
+            conn.execute(
+                text("""INSERT INTO med_metadata_column (hospital_id, db_name, table_name, column_name, data_type, column_type, is_nullable, column_key, column_default, column_comment, sync_batch_id, sync_time)
+                         VALUES (:h, :d, :t, :cn, :dt, :ct, :n, :k, :cd, :cc, :b, NOW())
+                         ON DUPLICATE KEY UPDATE data_type=VALUES(data_type), column_type=VALUES(column_type), is_nullable=VALUES(is_nullable), column_key=VALUES(column_key), column_default=VALUES(column_default), column_comment=VALUES(column_comment), sync_batch_id=VALUES(sync_batch_id), sync_time=NOW()"""),
+                params)
         conn.commit()
 
 
@@ -70,7 +83,7 @@ def log_sync_change(engine: Engine, hospital_id: str, db_name: str, table_name: 
                     field_name: str, change_type: str, change_desc: str, batch_id: str) -> None:
     with engine.connect() as conn:
         conn.execute(
-            text("INSERT INTO med_metadata_sync_log (hospital_id, db_name, table_name, field_name, change_type, change_desc, sync_batch_id, sync_time) VALUES (:h, :d, :t, :f, :c, :cd, :b, NOW())"),
+            text("INSERT INTO med_metadata_sync_log (hospital_id, db_name, table_name, field_name, change_type, change_desc, sync_batch_id, sync_time) VALUES (:h, :d, :t, :f, :c, :cd, :b, CURRENT_TIMESTAMP)" if engine.dialect.name == "sqlite" else "INSERT INTO med_metadata_sync_log (hospital_id, db_name, table_name, field_name, change_type, change_desc, sync_batch_id, sync_time) VALUES (:h, :d, :t, :f, :c, :cd, :b, NOW())"),
             {"h": hospital_id, "d": db_name, "t": table_name or "", "f": field_name or "", "c": change_type, "cd": change_desc or "", "b": batch_id})
         conn.commit()
 

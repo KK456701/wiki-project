@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import Engine
 
 from app.db_access.business_db import BusinessDBClient
+from app.db_access.metadata_provider import MetadataProvider
 from app.diagnose.structure_check import structure_check
 from app.diagnose.rule_check import rule_check
 from app.diagnose.data_check import data_check
@@ -13,10 +14,17 @@ from app.diagnose.report import build_report, save_report
 
 
 class DiagnoseAgent:
-    def __init__(self, kb_root: str | Path, runtime_engine: Engine, business_db: BusinessDBClient):
+    def __init__(
+        self,
+        kb_root: str | Path,
+        runtime_engine: Engine,
+        business_db: BusinessDBClient,
+        metadata_provider: MetadataProvider | None = None,
+    ):
         self.kb_root = Path(kb_root)
         self.runtime_engine = runtime_engine
         self.business_db = business_db
+        self.metadata_provider = metadata_provider
 
     def run(
         self,
@@ -29,7 +37,7 @@ class DiagnoseAgent:
     ) -> dict[str, Any]:
         layers: list[dict[str, Any]] = []
 
-        r1 = structure_check(self.kb_root, self.runtime_engine, hospital_id, rule_id)
+        r1 = structure_check(self.kb_root, self.runtime_engine, hospital_id, rule_id, metadata_provider=self.metadata_provider)
         layers.append(r1)
         if not r1["ok"]:
             return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=1)

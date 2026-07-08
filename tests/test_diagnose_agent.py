@@ -1,4 +1,5 @@
 import json
+import json
 import unittest
 from pathlib import Path
 
@@ -73,6 +74,30 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             self.assertEqual(row["stat_period"], "2026-07-01~2026-08-01")
             self.assertEqual(row["diagnose_status"], "warning")
             self.assertEqual(len(json.loads(row["layer_results"])), 3)
+
+    def test_layer1_can_use_realtime_metadata_provider_when_runtime_cache_is_missing(self) -> None:
+        class FakeMetadataProvider:
+            source_name = "dbhub"
+
+            def list_columns(self, db_name, table_name=None):
+                rows = [
+                    {"table_name": "consult_record", "column_name": "request_time", "data_type": "datetime", "column_type": "datetime", "is_nullable": "NO"},
+                    {"table_name": "consult_record", "column_name": "arrive_time", "data_type": "datetime", "column_type": "datetime", "is_nullable": "YES"},
+                    {"table_name": "consult_record", "column_name": "dept_id", "data_type": "varchar", "column_type": "varchar(64)", "is_nullable": "YES"},
+                ]
+                return [row for row in rows if table_name in (None, row["table_name"])]
+
+        with temp_kb_dir() as root:
+            root = Path(root)
+            _make_diag_kb(root, include_arrive_metadata=False)
+            runtime_engine = _runtime_engine(root / "runtime.db", include_arrive_metadata=False)
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db, metadata_provider=FakeMetadataProvider())
+
+            report = agent.run("hospital_001", "MQSI2025_005", _effective_rule())
+
+            self.assertEqual(report["layers"][0]["metadata_source"], "dbhub")
+            self.assertTrue(report["layers"][0]["ok"])
 
     def test_data_check_quotes_identifiers_by_dialect(self) -> None:
         self.assertEqual(_quote_ident("consult_record", "mysql"), "`consult_record`")

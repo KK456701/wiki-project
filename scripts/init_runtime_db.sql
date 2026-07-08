@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS med_metadata_sync_log (
   sync_time DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS med_metadata_snapshot (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  metadata_source VARCHAR(32) NOT NULL,
+  sync_batch_id VARCHAR(64) NOT NULL,
+  snapshot_json JSON NOT NULL,
+  created_at DATETIME NOT NULL,
+  KEY idx_snapshot_batch (hospital_id, db_name, sync_batch_id)
+);
+
 CREATE TABLE IF NOT EXISTS med_field_mapping (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   hospital_id VARCHAR(64) NOT NULL,

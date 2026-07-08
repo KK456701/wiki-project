@@ -1,0 +1,44 @@
+# 复制为 dbhub.local.toml 后填写真实连接串。
+# dbhub.local.toml 已被 .gitignore 忽略，不要提交真实账号密码。
+
+[[sources]]
+# 业务库：医院业务明细数据，用于元数据同步、字段预校验和诊断只读查询。
+id = "hospital_demo_data"
+# 医院部署时必须替换为只读账号。
+dsn = "mysql://readonly_user:CHANGE_ME@127.0.0.1:3306/hospital_demo_data"
+query_timeout = 10
+connection_timeout = 10
+lazy = true
+
+[[sources]]
+# 运行库：保存 Agent 记忆、审批记录、元数据缓存、诊断报告等。
+id = "wiki_agent_runtime"
+# 医院部署时建议使用只读账号；确需维护表结构时应走数据库管理员流程。
+dsn = "mysql://readonly_user:CHANGE_ME@127.0.0.1:3306/wiki_agent_runtime"
+query_timeout = 10
+connection_timeout = 10
+lazy = true
+
+[[tools]]
+# DBHub 内置只读 SQL 工具。多数据库通过调用参数 source_id 区分。
+name = "execute_sql"
+source = "hospital_demo_data"
+readonly = true
+max_rows = 1000
+
+[[tools]]
+# DBHub 内置只读 SQL 工具。多数据库通过调用参数 source_id 区分。
+name = "execute_sql"
+source = "wiki_agent_runtime"
+readonly = true
+max_rows = 1000
+
+[[tools]]
+# DBHub 内置对象搜索工具，可查看表、字段、索引等对象。
+name = "search_objects"
+source = "hospital_demo_data"
+
+[[tools]]
+# DBHub 内置对象搜索工具，可查看表、字段、索引等对象。
+name = "search_objects"
+source = "wiki_agent_runtime"

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import Engine, text
 
+from app.db_access.metadata_provider import MetadataProvider
 from app.sqlgen.spec_loader import find_spec_dir, load_field_contract, load_hospital_mapping, load_template
 
 LAYER_NAME = "\u7cfb\u7edf\u7ed3\u6784\u6821\u9a8c"
@@ -40,7 +41,20 @@ def _metadata_row(runtime_engine: Engine, hospital_id: str, db_name: str, table_
     return None
 
 
-def structure_check(kb_root: Path, runtime_engine: Engine, hospital_id: str, rule_id: str) -> dict[str, Any]:
+def _provider_metadata_row(provider: MetadataProvider, db_name: str, table_name: str, column_name: str) -> dict[str, Any] | None:
+    for row in provider.list_columns(db_name, table_name):
+        if str(row.get("table_name") or "") == table_name and str(row.get("column_name") or "") == column_name:
+            return dict(row)
+    return None
+
+
+def structure_check(
+    kb_root: Path,
+    runtime_engine: Engine,
+    hospital_id: str,
+    rule_id: str,
+    metadata_provider: MetadataProvider | None = None,
+) -> dict[str, Any]:
     kb_root = Path(kb_root)
     checks: list[dict[str, str]] = []
     spec_dir = find_spec_dir(kb_root, rule_id)
@@ -78,6 +92,7 @@ def structure_check(kb_root: Path, runtime_engine: Engine, hospital_id: str, rul
 
     db_name = str(mapping.get("db_name") or "")
     main_table = str(mapping.get("main_table") or "")
+    metadata_source = getattr(metadata_provider, "source_name", "runtime_cache") if metadata_provider else "runtime_cache"
     if not main_table:
         checks.append(_check("main_table", "fail", "Hospital mapping does not configure main_table.", "Add main_table in the hospital mapping YAML."))
 
@@ -88,7 +103,14 @@ def structure_check(kb_root: Path, runtime_engine: Engine, hospital_id: str, rul
             checks.append(_check(f"mapping.{field_name}", "fail" if required else "warn", f"Business field {field_name} has no hospital mapping.", "Complete field mapping and retry."))
             continue
         table_name, column_name = _normalize_col_ref(str(col_ref), main_table)
-        row = _metadata_row(runtime_engine, hospital_id, db_name, table_name, column_name)
+        try:
+            row = _provider_metadata_row(metadata_provider, db_name, table_name, column_name) if metadata_provider else None
+        except Exception as exc:
+            checks.append(_check("metadata_provider", "warn", f"Realtime metadata provider failed: {exc}", "Using runtime metadata cache as fallback."))
+            metadata_source = "runtime_cache"
+            row = None
+        if not row:
+            row = _metadata_row(runtime_engine, hospital_id, db_name, table_name, column_name)
         if not row:
             checks.append(_check(f"metadata.{field_name}", "fail", f"Metadata missing column {table_name}.{column_name}.", "Sync hospital metadata again, or fix the mapping."))
             continue
@@ -103,16 +125,17 @@ def structure_check(kb_root: Path, runtime_engine: Engine, hospital_id: str, rul
         if required and str(row.get("is_nullable") or "").upper() == "YES":
             checks.append(_check(f"nullable.{field_name}", "warn", f"Required business field {column_name} is nullable in metadata.", "Focus on null rate in data quality checks."))
 
-    return _result(not any(c["status"] == "fail" for c in checks), checks)
+    return _result(not any(c["status"] == "fail" for c in checks), checks, metadata_source=metadata_source)
 
 
-def _result(ok: bool, checks: list[dict[str, str]]) -> dict[str, Any]:
+def _result(ok: bool, checks: list[dict[str, str]], metadata_source: str = "runtime_cache") -> dict[str, Any]:
     failed = [c for c in checks if c["status"] == "fail"]
     return {
         "ok": ok,
         "layer": 1,
         "layer_name": LAYER_NAME,
         "checks": checks,
+        "metadata_source": metadata_source,
         "diagnose_type": TYPE_FAIL if failed else TYPE_OK,
         "problem_detail": "; ".join(c["message"] for c in failed),
         "repair_suggest": "; ".join(c["repair_suggest"] for c in failed if c.get("repair_suggest")),
