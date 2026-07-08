@@ -110,6 +110,81 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(data["table_count"], 1)
             self.assertEqual(data["column_count"], 1)
 
+    def test_metadata_sync_records_trace_node(self) -> None:
+        from app.observability.trace import TraceRecorder
+
+        class FakeDBHubClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def execute_sql(self, sql):
+                if "INFORMATION_SCHEMA.TABLES" in sql:
+                    return [{"TABLE_NAME": "consult_record", "TABLE_COMMENT": "", "TABLE_TYPE": "BASE TABLE"}]
+                if "INFORMATION_SCHEMA.COLUMNS" in sql:
+                    return [
+                        {"TABLE_NAME": "consult_record", "COLUMN_NAME": "id", "DATA_TYPE": "bigint", "COLUMN_TYPE": "bigint", "IS_NULLABLE": "NO", "COLUMN_KEY": "PRI", "COLUMN_DEFAULT": None, "COLUMN_COMMENT": ""}
+                    ]
+                return []
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            runtime_engine = _metadata_trace_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch.object(api_main, "DBHubMCPClient", FakeDBHubClient):
+                response = client.post("/api/metadata/sync", json={"hospital_id": "hospital_001", "db_name": "hospital_demo_data", "source": "dbhub"})
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data["trace_id"].startswith("TRACE_"))
+            trace = TraceRecorder(runtime_engine).get_trace(data["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertEqual(by_name["metadata_sync_mcp"]["output_data"]["batch_id"], data["batch_id"])
+            self.assertEqual(by_name["metadata_sync_mcp"]["output_data"]["table_count"], 1)
+
+    def test_diagnose_api_records_three_layer_trace_nodes(self) -> None:
+        from app.observability.trace import TraceRecorder
+
+        class FakeDiagnoseAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, **kwargs):
+                return {
+                    "ok": True,
+                    "diagnose_status": "warning",
+                    "report_id": "DR_API_TRACE",
+                    "layers": [
+                        {"layer": 1, "ok": True, "diagnose_type": "结构适配正常", "metadata_source": "dbhub", "checks": []},
+                        {"layer": 2, "ok": True, "diagnose_type": "口径规则正常", "checks": []},
+                        {"layer": 3, "ok": True, "diagnose_type": "数据质量风险", "checks": [{"status": "warn", "message": "样本量偏低"}]},
+                    ],
+                }
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            runtime_engine = _trace_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch("app.diagnose.agent.DiagnoseAgent", FakeDiagnoseAgent), \
+                 patch.object(api_main, "create_business_db_client", return_value=object()), \
+                 patch.object(api_main, "create_dbhub_metadata_provider", return_value=object()):
+                response = client.post("/api/diagnose/run", json={"hospital_id": "hospital_001", "rule_id": "R001"})
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data["trace_id"].startswith("TRACE_"))
+            trace = TraceRecorder(runtime_engine).get_trace(data["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertEqual(by_name["diagnose_structure_mcp"]["output_data"]["metadata_source"], "dbhub")
+            self.assertEqual(by_name["diagnose_rule_check"]["status"], "success")
+            self.assertEqual(by_name["diagnose_data_check_mcp"]["status"], "warning")
+
     def test_metadata_sync_dbhub_selects_tool_by_database(self) -> None:
         captured = []
 
@@ -179,12 +254,16 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(approved.json()["status"], "approved_candidate")
 
     def test_review_api_creates_and_approves_hospital_change_request(self) -> None:
+        from app.observability.trace import TraceRecorder
+
         with temp_kb_dir() as tmp:
             root = Path(tmp)
             make_minimal_kb(root, with_hospital=False)
+            runtime_engine = _trace_runtime_engine()
             client = TestClient(app)
 
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root):
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
                 login = client.post("/api/admin/login", json={"password": "admin123"})
                 token = login.json()["token"]
                 headers = {"Authorization": f"Bearer {token}"}
@@ -215,15 +294,27 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(approved.json()["status"], "approved")
             self.assertEqual(effective.json()["effective_level"], "hospital")
             self.assertIn("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", effective.json()["formula"])
+            self.assertTrue(created.json()["trace_id"].startswith("TRACE_"))
+            self.assertTrue(approved.json()["trace_id"].startswith("TRACE_"))
+            created_trace = TraceRecorder(runtime_engine).get_trace(created.json()["trace_id"])
+            approved_trace = TraceRecorder(runtime_engine).get_trace(approved.json()["trace_id"])
+            self.assertEqual(created_trace["nodes"][0]["node_name"], "change_request_submit")
+            approved_nodes = {node["node_name"]: node for node in approved_trace["nodes"]}
+            self.assertIn("approval_apply_override", approved_nodes)
+            self.assertIn("index_rebuild", approved_nodes)
 
 
     def test_review_api_lists_and_restores_hospital_override_versions(self) -> None:
+        from app.observability.trace import TraceRecorder
+
         with temp_kb_dir() as tmp:
             root = Path(tmp)
             make_minimal_kb(root, with_hospital=False)
+            runtime_engine = _trace_runtime_engine()
             client = TestClient(app)
 
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root):
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
                 login = client.post("/api/admin/login", json={"password": "admin123"})
                 headers = {"Authorization": f"Bearer {login.json()['token']}"}
                 first = client.post(
@@ -262,6 +353,11 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(restored.status_code, 200)
             self.assertEqual(restored.json()["active_version_id"], approved_first["active_version_id"])
             self.assertIn("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", effective.json()["formula"])
+            self.assertTrue(restored.json()["trace_id"].startswith("TRACE_"))
+            restored_trace = TraceRecorder(runtime_engine).get_trace(restored.json()["trace_id"])
+            restored_nodes = {node["node_name"]: node for node in restored_trace["nodes"]}
+            self.assertIn("approval_apply_override", restored_nodes)
+            self.assertIn("index_rebuild", restored_nodes)
 
     def test_review_pending_without_admin_token_returns_401(self) -> None:
         client = TestClient(app)
@@ -408,6 +504,55 @@ def _metadata_runtime_engine():
             CREATE TABLE med_metadata_snapshot (
               hospital_id TEXT, db_name TEXT, metadata_source TEXT, sync_batch_id TEXT,
               snapshot_json TEXT, created_at TEXT
+            )
+        """))
+    return engine
+
+
+def _metadata_trace_runtime_engine():
+    engine = _metadata_runtime_engine()
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL UNIQUE,
+              session_id TEXT,
+              hospital_id TEXT,
+              user_id TEXT,
+              user_query TEXT,
+              intent TEXT,
+              final_status TEXT,
+              final_answer_summary TEXT,
+              error_count INTEGER DEFAULT 0,
+              fallback_count INTEGER DEFAULT 0,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE med_agent_trace_node (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trace_id TEXT NOT NULL,
+              node_id TEXT NOT NULL,
+              node_name TEXT NOT NULL,
+              node_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              input_summary TEXT,
+              output_summary TEXT,
+              error_code TEXT,
+              error_message TEXT,
+              tool_name TEXT,
+              db_source TEXT,
+              sql_id TEXT,
+              run_id TEXT,
+              rule_id TEXT,
+              llm_model TEXT,
+              started_at TEXT NOT NULL,
+              ended_at TEXT,
+              duration_ms INTEGER,
+              created_at TEXT NOT NULL
             )
         """))
     return engine

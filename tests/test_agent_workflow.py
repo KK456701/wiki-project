@@ -50,6 +50,77 @@ class FailingLLM:
         raise RuntimeError("ollama unavailable")
 
 
+class FakeSQLGenerationAgent:
+    calls: list[dict[str, object]] = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def generate(self, **kwargs):
+        self.__class__.calls.append(kwargs)
+        result = {
+            "status": "success",
+            "precheck": {
+                "ok": True,
+                "main_table": "consult_record",
+                "field_mapping": {"request_time": "consult_record.request_time"},
+                "missing_mappings": [],
+                "missing_columns": [],
+            },
+            "sql_id": "SQL_TRACE_TEST",
+            "sql_text": "SELECT 50.0 AS index_value FROM consult_record",
+            "sql_status": "validated",
+            "validation": {"ok": True, "message": "SQL 安全校验通过"},
+            "dialect": "mysql",
+            "params": {"arrive_minutes_threshold": 20},
+        }
+        if kwargs.get("trial_run"):
+            result["trial_run"] = {
+                "run_id": "RUN_TRACE_TEST",
+                "status": "success",
+                "result_value": 50.0,
+                "duration_ms": 7,
+                "error_message": None,
+            }
+        return result
+
+
+class FakeDiagnoseAgent:
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    def run(self, **kwargs):
+        return {
+            "ok": True,
+            "diagnose_status": "warning",
+            "report_id": "DR_TRACE_TEST",
+            "layers": [
+                {
+                    "layer": 1,
+                    "layer_name": "结构适配校验",
+                    "ok": True,
+                    "diagnose_type": "结构适配正常",
+                    "checks": [{"status": "pass", "message": "字段存在"}],
+                    "metadata_source": "dbhub",
+                },
+                {
+                    "layer": 2,
+                    "layer_name": "口径规则校验",
+                    "ok": True,
+                    "diagnose_type": "口径规则正常",
+                    "checks": [{"status": "pass", "message": "规则完整"}],
+                },
+                {
+                    "layer": 3,
+                    "layer_name": "数据质量校验",
+                    "ok": True,
+                    "diagnose_type": "数据质量风险",
+                    "checks": [{"status": "warn", "message": "样本量偏低"}],
+                },
+            ],
+        }
+
+
 class DiagnoseFormattingTest(unittest.TestCase):
     def test_warning_layers_show_warning_details_instead_of_normal(self) -> None:
         answer = _format_diagnose_answer({
@@ -328,6 +399,121 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertIn("query", by_name["intent_detect"]["input_data"])
             self.assertEqual(by_name["rule_search"]["output_data"]["rule_id"], "R001")
             self.assertIn("answer_preview", by_name["final_response"]["output_data"])
+
+    def test_query_trace_records_memory_and_effective_rule_nodes(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=True)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+                result = run_chat(
+                    "急会诊及时到位率怎么算？",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    session_id="trace-node-session",
+                )
+
+            trace = TraceRecorder(engine).get_trace(result["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertEqual(by_name["memory_load"]["node_title"], "读取会话记忆")
+            self.assertEqual(by_name["memory_load"]["output_data"]["active_session_id"], "trace-node-session")
+            self.assertEqual(by_name["effective_rule_resolve"]["node_title"], "解析生效口径")
+            self.assertEqual(by_name["effective_rule_resolve"]["output_data"]["effective_level"], "hospital")
+
+    def test_sql_stream_trace_records_generation_nodes(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                events = list(run_chat_stream(
+                    "生成 SQL",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=FakeLLM(intent="generate_sql"),
+                ))
+
+            trace_id = next(data["trace_id"] for event, data in events if event == "meta")
+            trace = TraceRecorder(engine).get_trace(trace_id)
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertIn("field_mapping_precheck", by_name)
+            self.assertIn("sql_generate", by_name)
+            self.assertIn("sql_validate", by_name)
+            self.assertEqual(by_name["field_mapping_precheck"]["output_data"]["ok"], True)
+            self.assertEqual(by_name["sql_generate"]["output_data"]["sql_id"], "SQL_TRACE_TEST")
+            self.assertEqual(by_name["sql_validate"]["output_data"]["ok"], True)
+
+    def test_trial_run_trace_records_mcp_execution_node(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                events = list(run_chat_stream(
+                    "试运行 SQL",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=FakeLLM(intent="trial_run"),
+                ))
+
+            trace_id = next(data["trace_id"] for event, data in events if event == "meta")
+            trace = TraceRecorder(engine).get_trace(trace_id)
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertIn("sql_trial_mcp", by_name)
+            self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["run_id"], "RUN_TRACE_TEST")
+            self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["status"], "success")
+
+    def test_feedback_stream_trace_records_preview_and_final_nodes(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+                events = list(run_chat_stream(
+                    "\u6211\u4eec\u533b\u9662\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u5e94\u8be5\u6309\u0031\u0035\u5206\u949f\u5185\u7b7e\u5230\u8ba1\u7b97",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                ))
+
+            done = next(data for event, data in reversed(events) if event == "done")
+            trace = TraceRecorder(engine).get_trace(done["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertIn("feedback_preview", by_name)
+            self.assertEqual(by_name["feedback_preview"]["output_data"]["target_level"], "hospital")
+            self.assertIn("final_response", by_name)
+
+    def test_diagnose_stream_trace_records_three_layer_nodes(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.diagnose.agent.DiagnoseAgent", FakeDiagnoseAgent):
+                events = list(run_chat_stream(
+                    "\u8bca\u65ad\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                ))
+
+            done = next(data for event, data in reversed(events) if event == "done")
+            trace = TraceRecorder(engine).get_trace(done["trace_id"])
+            by_name = {node["node_name"]: node for node in trace["nodes"]}
+            self.assertEqual(by_name["diagnose_structure_mcp"]["output_data"]["metadata_source"], "dbhub")
+            self.assertEqual(by_name["diagnose_rule_check"]["status"], "success")
+            self.assertEqual(by_name["diagnose_data_check_mcp"]["status"], "warning")
 
     def test_run_chat_stream_meta_contains_trace_id(self) -> None:
         with temp_kb_dir() as tmp:

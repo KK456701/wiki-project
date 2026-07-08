@@ -65,6 +65,36 @@ nodes:
       write_policy: 用户确认后才提交 pending
     failure_hint: 如果这里失败，优先检查反馈意图识别、指标命中和口径差异解析。
 
+  - id: change_request_submit
+    title: 提交口径变更申请
+    type: review
+    description: 用户确认反馈方案后写入 review/pending，等待管理员审批。
+    inputs: [rule_id, hospital_id, requested_definition, requested_formula, submitter_id]
+    outputs: [change_id, status, path]
+    config:
+      write_policy: 只写 pending，不直接修改正式口径
+    failure_hint: 如果这里失败，优先检查变更申请字段、pending 目录权限和 rule_id 是否可解析。
+
+  - id: approval_apply_override
+    title: 审批并应用医院口径
+    type: review
+    description: 管理员审批后生成医院 override 版本，并切换当前生效版本。
+    inputs: [change_id, approver_id, version_id]
+    outputs: [active_version_id, override_path, status]
+    config:
+      target: hospital override
+    failure_hint: 如果这里失败，优先检查审批权限、pending 文件、版本文件和医院口径索引。
+
+  - id: index_rebuild
+    title: 重建运行索引
+    type: kb_tool
+    description: 变更口径生效或恢复历史版本后，重建搜索索引、关系索引和医院 override 索引。
+    inputs: [rule_id, hospital_id, active_version_id]
+    outputs: [status, active_version_id]
+    config:
+      tool: KnowledgeBaseTools.rebuild_runtime_indexes
+    failure_hint: 如果这里失败，优先检查 runtime 索引目录权限、override manifest 和 Markdown 结构。
+
   - id: sql_generate
     title: 生成 SQL
     type: sqlgen
@@ -75,6 +105,17 @@ nodes:
       renderer: Jinja2
       dialects: MySQL / Oracle
     failure_hint: 如果这里失败，优先检查 SQL spec、field_contract 和医院字段映射 YAML。
+
+  - id: field_mapping_precheck
+    title: 预校验字段映射
+    type: metadata_check
+    description: 在生成 SQL 前检查医院字段映射是否完整、映射字段是否存在于运行库元数据缓存。
+    inputs: [rule_id, hospital_id, field_contract, hospital_mapping]
+    outputs: [ok, missing_mappings, missing_columns, main_table, field_mapping]
+    config:
+      tool: precheck_rule_fields
+      metadata_source: med_metadata_column
+    failure_hint: 如果这里失败，优先检查 hospital-mappings、field_contract 和是否已通过 DBHub 同步元数据。
 
   - id: sql_validate
     title: 校验 SQL 安全性
@@ -180,19 +221,48 @@ edges:
   - from: intent_detect
     to: rule_search
     condition: intent in [query, feedback, generate_sql, trial_run, diagnose]
+  - from: intent_detect
+    to: metadata_sync_mcp
+    condition: intent == metadata_sync
   - from: rule_search
     to: effective_rule_resolve
   - from: effective_rule_resolve
     to: feedback_preview
     condition: intent == feedback
+  - from: feedback_preview
+    to: final_response
+    condition: 等待用户确认
+  - from: feedback_preview
+    to: change_request_submit
+    condition: 用户确认提交
+  - from: change_request_submit
+    to: approval_apply_override
+    condition: 管理员审批通过
+  - from: approval_apply_override
+    to: index_rebuild
+  - from: index_rebuild
+    to: final_response
   - from: effective_rule_resolve
+    to: field_mapping_precheck
+    condition: intent in [generate_sql, trial_run]
+  - from: field_mapping_precheck
     to: sql_generate
-    condition: intent == generate_sql
   - from: sql_generate
     to: sql_validate
   - from: sql_validate
     to: sql_trial_mcp
     condition: 用户确认试运行
+  - from: effective_rule_resolve
+    to: diagnose_structure_mcp
+    condition: intent == diagnose
+  - from: diagnose_structure_mcp
+    to: diagnose_rule_check
+  - from: diagnose_rule_check
+    to: diagnose_data_check_mcp
+  - from: diagnose_data_check_mcp
+    to: final_response
+  - from: metadata_sync_mcp
+    to: final_response
   - from: effective_rule_resolve
     to: llm_answer
     condition: intent == query

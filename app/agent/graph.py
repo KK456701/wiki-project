@@ -16,6 +16,7 @@ from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
 from app.observability.trace import TraceRecorder
+from app.observability.workflow_nodes import record_diagnose_trace_nodes
 from app.prompts import answer_prompt_template, intent_prompt_system
 
 
@@ -109,6 +110,147 @@ def _finish_trace(
         recorder.finish_trace(trace_id, final_status, final_answer_summary, intent, error_count, fallback_count)
     except Exception:
         pass
+
+
+def _record_effective_rule_node(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    rule_id: str | None,
+    hospital_id: str | None,
+    effective: dict[str, Any] | None,
+) -> None:
+    if not effective:
+        return
+    _record_trace_node(
+        recorder,
+        trace_id,
+        "effective_rule_resolve",
+        "kb_tool",
+        "success",
+        input_summary=f"{hospital_id or ''}/{rule_id or ''}",
+        output_summary=str(effective.get("effective_level") or ""),
+        rule_id=str(rule_id or ""),
+        input_data={"rule_id": rule_id, "hospital_id": hospital_id},
+        output_data={
+            "rule_id": effective.get("rule_id") or rule_id,
+            "rule_name": effective.get("rule_name"),
+            "effective_level": effective.get("effective_level"),
+            "fallback_chain": effective.get("fallback_chain", []),
+            "warnings": effective.get("warnings", []),
+        },
+        config_data={"tool": "KnowledgeBaseTools.get_effective_rule"},
+    )
+
+
+def _record_sql_trace_nodes(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    result: dict[str, Any],
+    rule_id: str | None,
+    hospital_id: str | None,
+) -> None:
+    precheck = result.get("precheck")
+    if isinstance(precheck, dict):
+        ok = bool(precheck.get("ok"))
+        _record_trace_node(
+            recorder,
+            trace_id,
+            "field_mapping_precheck",
+            "metadata_check",
+            "success" if ok else "failed",
+            input_summary=f"{hospital_id or ''}/{rule_id or ''}",
+            output_summary="通过" if ok else str(precheck.get("message") or precheck.get("error") or "字段预校验未通过"),
+            rule_id=str(rule_id or ""),
+            input_data={"rule_id": rule_id, "hospital_id": hospital_id},
+            output_data={
+                "ok": ok,
+                "missing_mappings": precheck.get("missing_mappings", []),
+                "missing_columns": precheck.get("missing_columns", []),
+                "main_table": precheck.get("main_table", ""),
+                "field_mapping": precheck.get("field_mapping", {}),
+            },
+            config_data={"tool": "precheck_rule_fields", "metadata_source": "med_metadata_column"},
+        )
+
+    if result.get("sql_id") or result.get("sql_text"):
+        _record_trace_node(
+            recorder,
+            trace_id,
+            "sql_generate",
+            "sqlgen",
+            "success" if result.get("status", "success") != "field_precheck_failed" else "skipped",
+            input_summary=str(rule_id or ""),
+            output_summary=str(result.get("sql_id") or ""),
+            rule_id=str(rule_id or ""),
+            sql_id=str(result.get("sql_id") or ""),
+            input_data={
+                "rule_id": rule_id,
+                "hospital_id": hospital_id,
+                "dialect": result.get("dialect"),
+                "params": result.get("params", {}),
+            },
+            output_data={
+                "sql_id": result.get("sql_id"),
+                "sql_status": result.get("sql_status"),
+                "sql_preview": str(result.get("sql_text") or "")[:1500],
+            },
+            config_data={"renderer": "Jinja2", "dialect": result.get("dialect", "")},
+        )
+
+    validation = result.get("validation")
+    if isinstance(validation, dict):
+        ok = bool(validation.get("ok"))
+        _record_trace_node(
+            recorder,
+            trace_id,
+            "sql_validate",
+            "sql_validator",
+            "success" if ok else "failed",
+            input_summary=str(result.get("sql_id") or ""),
+            output_summary=str(validation.get("message") or validation.get("error") or ""),
+            rule_id=str(rule_id or ""),
+            sql_id=str(result.get("sql_id") or ""),
+            input_data={"sql_id": result.get("sql_id"), "rule_id": rule_id},
+            output_data={
+                "ok": ok,
+                "message": validation.get("message"),
+                "error": validation.get("error"),
+            },
+            config_data={"allow": "SELECT", "deny": "DDL / DML / 多语句"},
+        )
+
+    trial = result.get("trial_run")
+    if isinstance(trial, dict) and trial:
+        status = str(trial.get("status") or "")
+        _record_trace_node(
+            recorder,
+            trace_id,
+            "sql_trial_mcp",
+            "mcp_tool",
+            "success" if status in {"success", "empty"} else "failed",
+            input_summary=str(result.get("sql_id") or ""),
+            output_summary=status,
+            rule_id=str(rule_id or ""),
+            sql_id=str(result.get("sql_id") or ""),
+            run_id=str(trial.get("run_id") or ""),
+            tool_name="execute_sql_hospital_demo_data",
+            db_source="hospital_demo_data",
+            duration_ms=int(trial.get("duration_ms") or 0),
+            input_data={
+                "sql_id": result.get("sql_id"),
+                "params": result.get("params", {}),
+                "db_source": "hospital_demo_data",
+            },
+            output_data={
+                "run_id": trial.get("run_id"),
+                "status": status,
+                "result_value": trial.get("result_value"),
+                "duration_ms": trial.get("duration_ms"),
+                "error_message": trial.get("error_message"),
+            },
+            config_data={"tool": "execute_sql_hospital_demo_data", "readonly": True},
+            error_message=str(trial.get("error_message") or ""),
+        )
 
 
 def detect_intent(query: str) -> str:
@@ -558,6 +700,18 @@ def run_chat(
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "memory_load",
+        "memory",
+        "success",
+        input_summary=active_session_id,
+        output_summary=str(memory_context.get("rule_id") or ""),
+        input_data={"session_id": session_id, "active_session_id": active_session_id},
+        output_data={"active_session_id": active_session_id, "memory_context": memory_context},
+        config_data={"storage": "SQLite + JSONL"},
+    )
     state: AgentState = {
         "query": query,
         "hospital_id": hospital_id,
@@ -631,6 +785,13 @@ def run_chat(
                 "priority": "医院口径 > 公司标准 > 国标",
             },
         )
+    _record_effective_rule_node(
+        trace_recorder,
+        trace_id,
+        str(result.get("rule_id") or "") or None,
+        hospital_id,
+        result.get("effective_rule") if isinstance(result.get("effective_rule"), dict) else None,
+    )
     result.setdefault("generation_method", "tool")
     result.setdefault("workflow_engine", workflow_engine_name())
     result.setdefault("session_id", active_session_id)
@@ -708,6 +869,18 @@ def run_chat_stream(
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
+    _record_trace_node(
+        trace_recorder,
+        trace_id,
+        "memory_load",
+        "memory",
+        "success",
+        input_summary=active_session_id,
+        output_summary=str(memory_context.get("rule_id") or ""),
+        input_data={"session_id": session_id, "active_session_id": active_session_id},
+        output_data={"active_session_id": active_session_id, "memory_context": memory_context},
+        config_data={"storage": "SQLite + JSONL"},
+    )
 
     state: AgentState = {
         "query": query,
@@ -867,6 +1040,7 @@ def run_chat_stream(
     effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
     state["effective_rule"] = effective
     state["field_mapping"] = tools.get_field_mapping(rule_id)
+    _record_effective_rule_node(trace_recorder, trace_id, rule_id, state.get("hospital_id"), effective)
 
     # ---- Phase 2: 反馈模式（模板化，无需流式） ----
     if state["intent"] == "feedback":
@@ -886,11 +1060,39 @@ def run_chat_stream(
             "generation_method": "tool", "errors": errors,
             "has_feedback_preview": True,
         })
+        preview = state.get("feedback_preview")
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "feedback_preview",
+            "agent",
+            "success" if preview else "failed",
+            input_summary=query,
+            output_summary=str(rule_id or ""),
+            rule_id=str(rule_id or ""),
+            input_data={"query": query, "rule_id": rule_id, "hospital_id": state.get("hospital_id")},
+            output_data=preview if isinstance(preview, dict) else {"error": "feedback preview missing"},
+            config_data={"write_policy": "用户确认后才提交 pending"},
+        )
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success",
+            output_summary=str(answer)[:500],
+            rule_id=str(rule_id or ""),
+            input_data={"intent": state.get("intent"), "rule_id": rule_id, "generation_method": "tool", "errors": errors},
+            output_data={"answer_preview": str(answer)[:1000], "trace_id": trace_id, "final_status": "success"},
+            config_data={"storage": "ConversationMemory + TraceRecorder"},
+        )
+        _finish_trace(trace_recorder, trace_id, "success", str(answer)[:500], intent=str(state.get("intent", "")), error_count=len(errors))
         yield ("done", {
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "tool",
             "answer": answer, "errors": errors,
             "feedback_preview": state.get("feedback_preview"),
+            "trace_id": trace_id,
         })
         return
 
@@ -922,19 +1124,28 @@ def run_chat_stream(
                 stat_start_time=start, stat_end_time=end, trial_run=False,
                 custom_filters=state.get("_custom_filters", []),
             )
+            _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             if result.get("status") == "field_precheck_failed":
                 answer = f"❌ 暂不能生成 SQL\n\n{result.get('message', '')}"
             else:
-                # 读取映射和规格，用于解释
-                import yaml
-                from app.metadata.precheck import find_spec_dir, load_yaml as _load_yaml
-                spec_dir = find_spec_dir(kb_root, str(rule_id))
-                spec = _load_yaml(spec_dir / "rule_sql_spec.yaml") if spec_dir else {}
-                mapping_path = kb_root / "hospital-mappings" / str(state.get("hospital_id") or "") / f"{rule_id}.yaml"
-                mapping = {}
-                if mapping_path.exists():
-                    with open(mapping_path, encoding="utf-8") as f:
-                        mapping = yaml.safe_load(f) or {}
+                # 解释材料只影响展示，不应把已生成的 SQL 误记为失败。
+                spec: dict[str, Any] = {}
+                mapping: dict[str, Any] = {}
+                try:
+                    import yaml
+                    from app.metadata.precheck import find_spec_dir, load_yaml as _load_yaml
+
+                    spec_dir = find_spec_dir(kb_root, str(rule_id)) if (kb_root / "sql-specs").exists() else None
+                    spec_path = spec_dir / "rule_sql_spec.yaml" if spec_dir else None
+                    if spec_path and spec_path.exists():
+                        spec = _load_yaml(spec_path) or {}
+                    mapping_path = kb_root / "hospital-mappings" / str(state.get("hospital_id") or "") / f"{rule_id}.yaml"
+                    if mapping_path.exists():
+                        with open(mapping_path, encoding="utf-8") as f:
+                            mapping = yaml.safe_load(f) or {}
+                except Exception:
+                    spec = {}
+                    mapping = {}
 
                 field_lines = ["📋 字段映射："]
                 for bf_name in (spec.get("required_business_fields") or []):
@@ -997,16 +1208,43 @@ def run_chat_stream(
             yield ("token", {"text": answer})
         except Exception as exc:
             answer = f"SQL 生成失败：{exc}"
+            _record_trace_node(
+                trace_recorder,
+                trace_id,
+                "sql_generate",
+                "sqlgen",
+                "failed",
+                input_summary=str(rule_id),
+                output_summary="SQL 生成失败",
+                rule_id=str(rule_id or ""),
+                input_data={"rule_id": rule_id, "hospital_id": state.get("hospital_id")},
+                output_data={"error": str(exc)},
+                error_code=type(exc).__name__,
+                error_message=str(exc),
+            )
             yield ("token", {"text": answer})
         memory_store.append_message(active_session_id, "assistant", answer, {
             "intent": state.get("intent"), "rule_id": rule_id,
             "rule_name": effective.get("rule_name"),
             "generation_method": "sqlgen", "errors": errors,
         })
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success" if not errors else "fallback",
+            output_summary=str(answer)[:500],
+            rule_id=str(rule_id or ""),
+            input_data={"intent": state.get("intent"), "rule_id": rule_id, "generation_method": "sqlgen", "errors": errors},
+            output_data={"answer_preview": str(answer)[:1000], "trace_id": trace_id, "final_status": "success" if not errors else "fallback"},
+            config_data={"storage": "ConversationMemory + TraceRecorder"},
+        )
+        _finish_trace(trace_recorder, trace_id, "success" if not errors else "fallback", str(answer)[:500], intent=str(state.get("intent", "")), error_count=len(errors), fallback_count=1 if errors else 0)
         yield ("done", {
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "sqlgen",
-            "answer": answer, "errors": errors,
+            "answer": answer, "errors": errors, "trace_id": trace_id,
         })
         return
 
@@ -1034,6 +1272,7 @@ def run_chat_stream(
                 stat_start_time=start, stat_end_time=end, trial_run=True,
                 custom_filters=state.get("_custom_filters", []),
             )
+            _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             trial = result.get("trial_run", {})
             answer = (
                 f"```sql\n{result.get('sql_text', '')}\n```\n\n"
@@ -1049,16 +1288,45 @@ def run_chat_stream(
             yield ("token", {"text": answer})
         except Exception as exc:
             answer = f"试运行失败：{exc}"
+            _record_trace_node(
+                trace_recorder,
+                trace_id,
+                "sql_trial_mcp",
+                "mcp_tool",
+                "failed",
+                input_summary=str(rule_id),
+                output_summary="试运行失败",
+                rule_id=str(rule_id or ""),
+                input_data={"rule_id": rule_id, "hospital_id": state.get("hospital_id")},
+                output_data={"error": str(exc)},
+                tool_name="execute_sql_hospital_demo_data",
+                db_source="hospital_demo_data",
+                error_code=type(exc).__name__,
+                error_message=str(exc),
+            )
             yield ("token", {"text": answer})
         memory_store.append_message(active_session_id, "assistant", answer, {
             "intent": "trial_run", "rule_id": rule_id,
             "rule_name": effective.get("rule_name"),
             "generation_method": "trial_run", "errors": errors,
         })
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success" if not errors else "fallback",
+            output_summary=str(answer)[:500],
+            rule_id=str(rule_id or ""),
+            input_data={"intent": "trial_run", "rule_id": rule_id, "generation_method": "trial_run", "errors": errors},
+            output_data={"answer_preview": str(answer)[:1000], "trace_id": trace_id, "final_status": "success" if not errors else "fallback"},
+            config_data={"storage": "ConversationMemory + TraceRecorder"},
+        )
+        _finish_trace(trace_recorder, trace_id, "success" if not errors else "fallback", str(answer)[:500], intent="trial_run", error_count=len(errors), fallback_count=1 if errors else 0)
         yield ("done", {
             "session_id": active_session_id, "intent": "trial_run",
             "rule_id": rule_id, "generation_method": "trial_run",
-            "answer": answer, "errors": errors,
+            "answer": answer, "errors": errors, "trace_id": trace_id,
         })
         return
 
@@ -1081,6 +1349,7 @@ def run_chat_stream(
                 hospital_id=str(state.get("hospital_id") or ""),
                 rule_id=str(rule_id), effective_rule=effective,
             )
+            record_diagnose_trace_nodes(trace_recorder, trace_id, diag_result, rule_id, state.get("hospital_id"))
             yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u8bca\u65ad\u7ed3\u679c"})
             answer = _format_diagnose_answer(diag_result)
         except Exception as exc:
@@ -1091,10 +1360,23 @@ def run_chat_stream(
             "rule_name": effective.get("rule_name"),
             "generation_method": "diagnose", "errors": errors,
         })
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success" if not errors else "fallback",
+            output_summary=str(answer)[:500],
+            rule_id=str(rule_id or ""),
+            input_data={"intent": state.get("intent"), "rule_id": rule_id, "generation_method": "diagnose", "errors": errors},
+            output_data={"answer_preview": str(answer)[:1000], "trace_id": trace_id, "final_status": "success" if not errors else "fallback"},
+            config_data={"storage": "ConversationMemory + TraceRecorder"},
+        )
+        _finish_trace(trace_recorder, trace_id, "success" if not errors else "fallback", str(answer)[:500], intent=str(state.get("intent", "")), error_count=len(errors), fallback_count=1 if errors else 0)
         yield ("done", {
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "diagnose",
-            "answer": answer, "errors": errors,
+            "answer": answer, "errors": errors, "trace_id": trace_id,
         })
         return
 

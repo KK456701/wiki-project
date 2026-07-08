@@ -103,6 +103,7 @@ class SQLGenerationAgent:
         result: dict[str, Any] = {
             "sql_id": sql_id, "sql_text": sql_text, "sql_status": sql_status,
             "validation": validation, "dialect": dialect, "params": params,
+            "precheck": precheck,
         }
 
         if trial_run and validation["ok"]:

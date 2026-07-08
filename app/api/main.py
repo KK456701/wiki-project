@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import uuid
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -20,6 +21,12 @@ from app.db_access.business_db import BusinessDBClient
 from app.db_access.dbhub_mcp import DBHubMCPClient, DBHubMCPError, dbhub_sources
 from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
+from app.observability.trace import TraceRecorder
+from app.observability.workflow_nodes import (
+    record_diagnose_trace_nodes,
+    record_metadata_sync_trace_node,
+    record_review_trace_node,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -131,6 +138,31 @@ def create_dbhub_metadata_provider(db_name: str = "hospital_demo_data") -> DBHub
 app = FastAPI(title="Core Rules Wiki Agent", version="0.1.0")
 
 
+def _start_api_trace(hospital_id: str | None, user_query: str) -> tuple[str, TraceRecorder | None]:
+    from app.db.engine import create_runtime_engine
+
+    trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+    try:
+        recorder = TraceRecorder(create_runtime_engine())
+        recorder.start_trace(trace_id, None, hospital_id, user_query)
+        return trace_id, recorder
+    except Exception:
+        return trace_id, None
+
+
+def _finish_api_trace(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    final_status: str,
+    summary: str,
+    intent: str,
+    error_count: int = 0,
+) -> None:
+    if recorder is None:
+        return
+    recorder.finish_trace(trace_id, final_status, summary, intent=intent, error_count=error_count)
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(WEB_ROOT / "index.html")
@@ -169,9 +201,30 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
 
 @app.post("/api/review/change-requests")
 def create_change_request(request: ChangeRequestCreate) -> dict[str, Any]:
+    trace_id, recorder = _start_api_trace(request.hospital_id, f"submit_change_request:{request.rule_id}")
     try:
-        return KnowledgeBaseTools(DEFAULT_KB_ROOT).submit_change_request(request.model_dump())
+        result = KnowledgeBaseTools(DEFAULT_KB_ROOT).submit_change_request(request.model_dump())
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "change_request_submit",
+            "success",
+            request.model_dump(),
+            result,
+        )
+        _finish_api_trace(recorder, trace_id, "success", str(result.get("change_id") or ""), "change_request_submit")
+        result["trace_id"] = trace_id
+        return result
     except KBToolError as exc:
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "change_request_submit",
+            "failed",
+            request.model_dump(),
+            {"status": "failed", "error": str(exc)},
+        )
+        _finish_api_trace(recorder, trace_id, "failed", str(exc), "change_request_submit", error_count=1)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -342,10 +395,39 @@ def approve_change_request(
     _token: str | None = Header(None, alias="Authorization"),
 ) -> dict[str, Any]:
     _require_admin(_token)
+    trace_id, recorder = _start_api_trace(None, f"approve_change_request:{change_id}")
     try:
         approver_id = (body.approver_id if body else None) or "admin"
-        return KnowledgeBaseTools(DEFAULT_KB_ROOT).approve_change_request(change_id, approver_id)
+        result = KnowledgeBaseTools(DEFAULT_KB_ROOT).approve_change_request(change_id, approver_id)
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "approval_apply_override",
+            "success",
+            {"change_id": change_id, "approver_id": approver_id},
+            result,
+        )
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "index_rebuild",
+            "success",
+            {"change_id": change_id, "rule_id": result.get("rule_id"), "hospital_id": result.get("hospital_id")},
+            {"status": "rebuilt", "active_version_id": result.get("active_version_id")},
+        )
+        _finish_api_trace(recorder, trace_id, "success", str(result.get("active_version_id") or ""), "approval_apply_override")
+        result["trace_id"] = trace_id
+        return result
     except KBToolError as exc:
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "approval_apply_override",
+            "failed",
+            {"change_id": change_id},
+            {"status": "failed", "error": str(exc)},
+        )
+        _finish_api_trace(recorder, trace_id, "failed", str(exc), "approval_apply_override", error_count=1)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -371,10 +453,39 @@ def restore_hospital_override_version(
     _token: str | None = Header(None, alias="Authorization"),
 ) -> dict[str, Any]:
     _require_admin(_token)
+    trace_id, recorder = _start_api_trace(hospital_id, f"restore_override:{rule_id}:{version_id}")
     try:
         approver_id = (body.approver_id if body else None) or "admin"
-        return KnowledgeBaseTools(DEFAULT_KB_ROOT).restore_hospital_override_version(rule_id, hospital_id, version_id, approver_id)
+        result = KnowledgeBaseTools(DEFAULT_KB_ROOT).restore_hospital_override_version(rule_id, hospital_id, version_id, approver_id)
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "approval_apply_override",
+            "success",
+            {"rule_id": rule_id, "hospital_id": hospital_id, "version_id": version_id, "approver_id": approver_id},
+            result,
+        )
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "index_rebuild",
+            "success",
+            {"rule_id": rule_id, "hospital_id": hospital_id, "version_id": version_id},
+            {"status": "rebuilt", "active_version_id": result.get("active_version_id")},
+        )
+        _finish_api_trace(recorder, trace_id, "success", str(result.get("active_version_id") or ""), "approval_apply_override")
+        result["trace_id"] = trace_id
+        return result
     except KBToolError as exc:
+        record_review_trace_node(
+            recorder,
+            trace_id,
+            "approval_apply_override",
+            "failed",
+            {"rule_id": rule_id, "hospital_id": hospital_id, "version_id": version_id},
+            {"status": "failed", "error": str(exc)},
+        )
+        _finish_api_trace(recorder, trace_id, "failed", str(exc), "approval_apply_override", error_count=1)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -434,18 +545,26 @@ def metadata_sync(request: MetadataSyncRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.metadata.sync import sync_metadata_from_provider
 
+    runtime_engine = create_runtime_engine()
+    trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+    recorder = TraceRecorder(runtime_engine)
+    recorder.start_trace(trace_id, None, request.hospital_id, f"metadata_sync:{request.db_name}")
     source = (request.source or "dbhub").lower()
     if source != "dbhub":
         raise HTTPException(status_code=400, detail="当前 FastAPI 主链路只允许通过 DBHub MCP 同步业务库元数据")
 
     try:
-        return sync_metadata_from_provider(
-            runtime_engine=create_runtime_engine(),
+        result = sync_metadata_from_provider(
+            runtime_engine=runtime_engine,
             provider=create_dbhub_metadata_provider(request.db_name),
             hospital_id=request.hospital_id,
             db_name=request.db_name,
             kb_root=DEFAULT_KB_ROOT,
         )
+        record_metadata_sync_trace_node(recorder, trace_id, result, request.hospital_id, request.db_name)
+        recorder.finish_trace(trace_id, "success", str(result.get("batch_id") or ""), intent="metadata_sync")
+        result["trace_id"] = trace_id
+        return result
     except DBHubMCPError as exc:
         raise HTTPException(status_code=400, detail=f"DBHub MCP 调用失败: {exc}") from exc
 
@@ -478,15 +597,19 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.diagnose.agent import DiagnoseAgent
 
+    runtime_engine = create_runtime_engine()
+    trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+    recorder = TraceRecorder(runtime_engine)
+    recorder.start_trace(trace_id, None, request.hospital_id, f"diagnose:{request.rule_id}")
     tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = DiagnoseAgent(
         kb_root=DEFAULT_KB_ROOT,
-        runtime_engine=create_runtime_engine(),
+        runtime_engine=runtime_engine,
         business_db=create_business_db_client("hospital_demo_data"),
         metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
     )
-    return agent.run(
+    result = agent.run(
         hospital_id=request.hospital_id,
         rule_id=request.rule_id,
         effective_rule=effective,
@@ -494,6 +617,16 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
         related_sql_id=request.related_sql_id,
         stat_period=request.stat_period,
     )
+    record_diagnose_trace_nodes(recorder, trace_id, result, request.rule_id, request.hospital_id)
+    recorder.finish_trace(
+        trace_id,
+        "success" if result.get("diagnose_status") != "failed" else "failed",
+        str(result.get("report_id") or ""),
+        intent="diagnose",
+        error_count=1 if result.get("diagnose_status") == "failed" else 0,
+    )
+    result["trace_id"] = trace_id
+    return result
 
 
 if WEB_ROOT.exists():
