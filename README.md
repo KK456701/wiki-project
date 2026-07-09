@@ -22,7 +22,7 @@
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL
-- Agent：自定义轻量工作流，预留 LangGraph 风格节点拆分
+- Agent：非流式 `/api/chat` 支持可选 LangGraph StateGraph；主前端 `/api/chat/stream` 采用自定义 Python 流式工作流，并按 Dify/LangGraph 风格记录节点 Trace
 - LLM：Ollama，本地模型默认 `qwen3:4B-instruct`
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
