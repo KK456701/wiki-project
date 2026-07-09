@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from importlib.util import find_spec
 from pathlib import Path
@@ -95,6 +96,10 @@ def _record_trace_node(recorder: TraceRecorder | None, trace_id: str, node_name:
         pass
 
 
+def _elapsed_ms(start: float) -> int:
+    return max(1, int((time.perf_counter() - start) * 1000))
+
+
 def _finish_trace(
     recorder: TraceRecorder | None,
     trace_id: str,
@@ -118,6 +123,7 @@ def _record_effective_rule_node(
     rule_id: str | None,
     hospital_id: str | None,
     effective: dict[str, Any] | None,
+    duration_ms: int = 0,
 ) -> None:
     if not effective:
         return
@@ -139,6 +145,7 @@ def _record_effective_rule_node(
             "warnings": effective.get("warnings", []),
         },
         config_data={"tool": "KnowledgeBaseTools.get_effective_rule"},
+        duration_ms=duration_ms,
     )
 
 
@@ -697,8 +704,10 @@ def run_chat(
 ) -> dict[str, Any]:
     tools = KnowledgeBaseTools(kb_root)
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
+    memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
+    memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
         trace_recorder,
@@ -711,6 +720,7 @@ def run_chat(
         input_data={"session_id": session_id, "active_session_id": active_session_id},
         output_data={"active_session_id": active_session_id, "memory_context": memory_context},
         config_data={"storage": "SQLite + JSONL"},
+        duration_ms=memory_duration_ms,
     )
     state: AgentState = {
         "query": query,
@@ -866,8 +876,10 @@ def run_chat_stream(
     """
     tools = KnowledgeBaseTools(kb_root)
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
+    memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
     memory_context = memory_store.last_rule_context(active_session_id) or {}
+    memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
         trace_recorder,
@@ -880,6 +892,7 @@ def run_chat_stream(
         input_data={"session_id": session_id, "active_session_id": active_session_id},
         output_data={"active_session_id": active_session_id, "memory_context": memory_context},
         config_data={"storage": "SQLite + JSONL"},
+        duration_ms=memory_duration_ms,
     )
 
     state: AgentState = {

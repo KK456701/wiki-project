@@ -13,6 +13,8 @@
 - **版本化医院口径**：医院 override 采用追加版本方式保存，支持历史口径对比和一键恢复历史版本。
 - **SQL 生成与试运行**：根据指标 SQL 规格、字段契约和医院字段映射生成只读 SQL，并支持二步确认试运行。
 - **三层异常诊断**：系统结构校验、口径规则校验、数据质量校验，输出中文诊断结果和风险提示。
+- **DBHub MCP 数据库接入**：通过本地 DBHub sidecar 读取业务库元数据、同步字段快照，并执行只读 SQL 试运行。
+- **Dify-lite 执行链路**：使用 `app/workflows/core_indicator_chat.yaml` 描述节点清单，运行时 Trace 会展示节点职责、状态、耗时、实际入参/出参、配置和故障定位建议；前端默认展示节点摘要，点击“详情”后展开完整信息。
 - **知识库导出与回收合并**：医院可导出本院知识库压缩包，公司管理员上传后生成合并报告，对候选项逐项处理。
 - **会话记忆**：对话记忆写入 SQLite 与 JSONL，支持多轮追问和反馈上下文。
 - **高级前端界面**：单页 HTML 前端，包含流式输出、状态流转、审批、版本、合并上传等操作入口。
@@ -22,6 +24,7 @@
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL
 - Agent：自定义轻量工作流，预留 LangGraph 风格节点拆分
 - LLM：Ollama，本地模型默认 `qwen3:4B-instruct`
+- MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
 - 知识库：Markdown、YAML、JSON 索引
 - 前端：原生 HTML/CSS/JavaScript，SSE 流式输出
@@ -40,8 +43,10 @@
 |   +-- llm/
 |   +-- memory/
 |   +-- metadata/
+|   +-- observability/
 |   +-- prompts/
 |   +-- sqlgen/
+|   +-- workflows/
 +-- core-rules-wiki/
 |   +-- indexes/
 |   +-- wiki/
@@ -56,6 +61,8 @@
 |   +-- init_demo_hospital_db.sql
 |   +-- kb_agent_demo.py
 +-- tests/
++-- tools/
+|   +-- dbhub/
 +-- web/
 |   +-- index.html
 +-- config.yaml
@@ -113,10 +120,36 @@ mysql -uroot -p123456 < scripts\init_demo_hospital_db.sql
 python scripts\rebuild_runtime_indexes.py
 ```
 
-### 5. 启动服务
+### 5. 启动 DBHub MCP sidecar
+
+如果需要使用元数据同步、数据库工具查看、SQL 试运行或诊断中的实时元数据能力，需要先启动 DBHub：
 
 ```powershell
-python -B -m uvicorn app.api.main:app --host 127.0.0.1 --port 8765
+cd F:\A-wiki-project\tools\dbhub
+npm install
+npx @bytebase/dbhub@latest --transport http --host 127.0.0.1 --port 8080 --config F:\A-wiki-project\tools\dbhub\dbhub.local.toml
+```
+
+默认 Workbench：
+
+```text
+http://127.0.0.1:8080/
+```
+
+项目默认期望 DBHub MCP HTTP 地址为：
+
+```yaml
+dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
+dbhub_source_hospital_demo_data: "hospital_demo_data"
+dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
+```
+
+如果本地 MySQL 账号不同，请同步修改 `tools/dbhub/dbhub.local.toml` 中的连接串。
+
+### 6. 启动服务
+
+```powershell
+python -B -m uvicorn app.api.main:app --host 127.0.0.1 --port 8765 --reload
 ```
 
 打开：
@@ -152,6 +185,33 @@ Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health
 7. SSE 流式输出
 
 如 LLM 输出未通过事实校验，系统会回退到知识库模板答案，避免给出不可靠结论。
+
+### 执行链路与故障定位
+
+每次对话、元数据同步、诊断、变更提交和审批都会生成 `trace_id`。前端消息下方的“执行链路”按钮会打开 Trace 弹窗：
+
+- 默认只展示节点摘要：节点标题、节点 ID、状态、类型、耗时和职责说明。
+- 点击具体节点的“详情”后，才展开本次入参、本次出参、节点配置、期望入参/出参和定位建议。
+- 如果节点没有真实计时，前端显示“未计时”，不会再把未测量的节点误展示为 `0ms`。
+- 节点说明来自 `app/workflows/core_indicator_chat.yaml`，运行数据来自 `TraceRecorder`。
+
+典型节点包括：
+
+```text
+memory_load -> intent_detect -> rule_search -> effective_rule_resolve -> final_response
+```
+
+SQL 链路会继续展开：
+
+```text
+field_mapping_precheck -> sql_generate -> sql_validate -> sql_trial_mcp
+```
+
+诊断链路会继续展开：
+
+```text
+diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
+```
 
 ### 医院口径反馈与审批
 
@@ -227,6 +287,7 @@ Content-Type: application/zip
 | `/api/health` | GET | 健康检查 |
 | `/api/chat` | POST | 非流式对话 |
 | `/api/chat/stream` | POST | SSE 流式对话 |
+| `/api/traces/{trace_id}` | GET | 查看执行链路 Trace |
 | `/api/kb/search` | POST | 知识库检索 |
 | `/api/kb/rules/{rule_id}/effective` | GET | 查询医院生效口径 |
 | `/api/review/change-requests` | POST | 创建口径变更申请 |
@@ -237,6 +298,7 @@ Content-Type: application/zip
 | `/api/review/hospital-overrides/{hospital_id}/{rule_id}/versions/{version_id}/restore` | POST | 恢复历史版本 |
 | `/api/admin/login` | POST | 管理员登录 |
 | `/api/admin/logout` | POST | 管理员登出 |
+| `/api/mcp/dbhub/sources` | GET | 查看 DBHub 数据源/工具 |
 | `/api/metadata/sync` | POST | 同步业务库元数据 |
 | `/api/sql/generate` | POST | 生成或试运行 SQL |
 | `/api/diagnose/run` | POST | 执行异常诊断 |
@@ -303,6 +365,8 @@ python -B -m unittest discover -s tests -v
 - 索引重建
 - SQL 生成安全校验
 - 诊断 Agent 三层检查
+- DBHub MCP 元数据同步和业务库只读调用
+- 执行链路 Trace、workflow manifest 注解和前端节点详情展示
 - 知识库导出与合并
 - API 基础流程
 

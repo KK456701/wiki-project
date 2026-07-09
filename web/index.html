@@ -312,6 +312,10 @@ body::before {
 .trace-node.fallback, .trace-node.warning { border-left-color: var(--amber); background: #fffaf0; }
 .trace-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .trace-title { font-size: 18px; font-weight: 850; color: var(--ink); }
+.trace-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.trace-toggle { padding: 6px 10px; }
+.trace-detail { display: grid; gap: 10px; }
+.trace-detail[hidden] { display: none; }
 .trace-status {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -922,37 +926,53 @@ async function showTrace(traceId) {
       nodeId.className = "review-meta";
       nodeId.textContent = node.node_name || "unknown";
       titleWrap.append(title, nodeId);
+      var actions = document.createElement("div");
+      actions.className = "trace-actions";
       var status = document.createElement("span");
       status.className = "trace-status";
       status.textContent = node.status || "unknown";
-      titleRow.append(titleWrap, status);
+      var toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "ghost trace-toggle";
+      toggle.textContent = "详情";
+      actions.append(status, toggle);
+      titleRow.append(titleWrap, actions);
       var meta = document.createElement("div");
       meta.className = "review-meta";
-      meta.textContent = "类型：" + (node.manifest_type || node.node_type || "") + "  耗时：" + (node.duration_ms || 0) + "ms" + (node.tool_name ? "  工具：" + node.tool_name : "") + (node.db_source ? "  数据源：" + node.db_source : "");
+      var durationText = node.duration_ms && node.duration_ms > 0 ? node.duration_ms + "ms" : "未计时";
+      meta.textContent = "类型：" + (node.manifest_type || node.node_type || "") + "  耗时：" + durationText + (node.tool_name ? "  工具：" + node.tool_name : "") + (node.db_source ? "  数据源：" + node.db_source : "");
       var desc = document.createElement("div");
       desc.className = "trace-desc";
       desc.textContent = node.node_description || "";
       box.append(titleRow, meta);
       if (desc.textContent) box.appendChild(desc);
-      appendTraceSection(box, "本次入参", node.input_data, node.input_summary || "无");
-      appendTraceSection(box, "本次出参", node.output_data, node.output_summary || "无");
-      appendTraceSection(box, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
+      var detail = document.createElement("div");
+      detail.className = "trace-detail";
+      detail.hidden = true;
+      appendTraceSection(detail, "本次入参", node.input_data, node.input_summary || "无");
+      appendTraceSection(detail, "本次出参", node.output_data, node.output_summary || "无");
+      appendTraceSection(detail, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
       var fields = document.createElement("div");
       fields.className = "trace-field-list";
       fields.textContent = "期望入参：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望出参：" + ((node.expected_outputs || []).join(", ") || "无");
-      box.appendChild(fields);
+      detail.appendChild(fields);
       if (node.failure_hint) {
         var hint = document.createElement("div");
         hint.className = "trace-hint";
         hint.textContent = "定位建议：" + node.failure_hint;
-        box.appendChild(hint);
+        detail.appendChild(hint);
       }
       if (node.error_message) {
         var err = document.createElement("div");
         err.style.color = "#a64536";
         err.textContent = "错误：" + node.error_message;
-        box.appendChild(err);
+        detail.appendChild(err);
       }
+      toggle.addEventListener("click", function() {
+        detail.hidden = !detail.hidden;
+        toggle.textContent = detail.hidden ? "详情" : "收起";
+      });
+      box.appendChild(detail);
       traceNodeList.appendChild(box);
     });
   } catch (e) {
