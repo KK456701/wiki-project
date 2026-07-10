@@ -1,6 +1,71 @@
 CREATE DATABASE IF NOT EXISTS wiki_agent_runtime DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE wiki_agent_runtime;
 
+CREATE TABLE IF NOT EXISTS med_index_standard (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  index_code VARCHAR(64) NOT NULL,
+  index_name VARCHAR(128) NOT NULL,
+  index_type VARCHAR(32) NOT NULL,
+  index_desc TEXT NOT NULL,
+  stat_cycle VARCHAR(32) NOT NULL DEFAULT 'month',
+  numerator_rule TEXT NOT NULL,
+  denominator_rule TEXT NOT NULL,
+  filter_rule TEXT,
+  exclude_rule TEXT,
+  rely_table_field JSON NOT NULL,
+  standard_sql LONGTEXT NOT NULL,
+  rule_params JSON NOT NULL,
+  source_path VARCHAR(512),
+  version VARCHAR(64) NOT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_standard_code (index_code),
+  KEY idx_standard_name (index_name),
+  KEY idx_standard_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS med_index_hospital_custom (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  custom_numerator TEXT,
+  custom_denominator TEXT,
+  custom_filter TEXT,
+  exclude_rule TEXT,
+  custom_params JSON NOT NULL,
+  custom_sql LONGTEXT,
+  version INT NOT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
+  approval_status VARCHAR(32) NOT NULL,
+  effective_from DATETIME,
+  effective_to DATETIME,
+  oper_user VARCHAR(64),
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_hospital_index (hospital_id, index_code),
+  KEY idx_hospital_custom_status (hospital_id, status, approval_status)
+);
+
+CREATE TABLE IF NOT EXISTS med_index_hospital_custom_version (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  change_id VARCHAR(64) NOT NULL,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  snapshot_json JSON NOT NULL,
+  source_version INT,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64),
+  approver_id VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  approved_at DATETIME,
+  UNIQUE KEY uk_custom_change (change_id),
+  UNIQUE KEY uk_hospital_index_version (hospital_id, index_code, version),
+  KEY idx_custom_version_status (hospital_id, index_code, approval_status)
+);
+
 CREATE TABLE IF NOT EXISTS med_metadata_table (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   hospital_id VARCHAR(64) NOT NULL,
@@ -170,4 +235,28 @@ CREATE TABLE IF NOT EXISTS med_agent_trace_node (
   INDEX idx_trace_node_trace_id (trace_id),
   INDEX idx_trace_node_status (status),
   INDEX idx_trace_node_rule_id (rule_id)
+);
+
+CREATE TABLE IF NOT EXISTS med_recovery_task (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  task_id VARCHAR(64) NOT NULL UNIQUE,
+  task_type VARCHAR(64) NOT NULL,
+  task_name VARCHAR(255) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  current_step VARCHAR(128),
+  trace_id VARCHAR(64),
+  request_id VARCHAR(64),
+  hospital_id VARCHAR(64),
+  rule_id VARCHAR(64),
+  payload_json TEXT,
+  result_json TEXT,
+  error_message TEXT,
+  retry_count INT DEFAULT 0,
+  recoverable_action VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  completed_at DATETIME,
+  INDEX idx_recovery_status (status),
+  INDEX idx_recovery_type (task_type),
+  INDEX idx_recovery_trace (trace_id)
 );
