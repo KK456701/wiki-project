@@ -8,6 +8,11 @@
   min-height: 74px;
 }
 
+.monitoring-dialog > header .ghost {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .monitoring-meta {
   margin-top: 5px;
   color: var(--muted);

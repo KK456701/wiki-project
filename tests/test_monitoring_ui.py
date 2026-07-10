@@ -33,6 +33,13 @@ class MonitoringUiTest(unittest.TestCase):
         self.assertIn(".monitoring-workbench", css)
         self.assertIn(".monitoring-plan-layout", css)
         self.assertIn("@media (max-width: 760px)", css)
+        self.assertIn(
+            ".monitoring-dialog > header .ghost {\n"
+            "  flex: 0 0 auto;\n"
+            "  white-space: nowrap;\n"
+            "}",
+            css,
+        )
 
     def test_monitoring_script_manages_plans_and_manual_runs(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
