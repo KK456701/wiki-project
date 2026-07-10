@@ -107,6 +107,28 @@ def _rule_engine():
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE med_index_hospital_custom_version (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  change_id TEXT NOT NULL UNIQUE,
+                  hospital_id TEXT NOT NULL,
+                  index_code TEXT NOT NULL,
+                  version INTEGER NOT NULL,
+                  approval_status TEXT NOT NULL,
+                  snapshot_json TEXT NOT NULL,
+                  source_version INTEGER,
+                  change_type TEXT NOT NULL,
+                  oper_user TEXT,
+                  approver_id TEXT,
+                  created_at TEXT NOT NULL,
+                  approved_at TEXT,
+                  UNIQUE (hospital_id, index_code, version)
+                )
+                """
+            )
+        )
     return engine
 
 
