@@ -154,8 +154,48 @@ class AgentWorkflowTest(unittest.TestCase):
             result = run_chat("hello", hospital_id="hospital_001", kb_root=root)
 
             self.assertIn(result["workflow_engine"], {"langgraph", "deterministic_fallback"})
+            self.assertEqual(result["orchestrator"], "core_indicator_orchestrator")
+            self.assertEqual(result["agent_owner"], "human_interaction")
             if result["workflow_engine"] == "deterministic_fallback":
                 self.assertTrue(any("LangGraph" in err for err in result.get("errors", [])))
+
+    def test_stream_done_reports_orchestrator_and_owner(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+
+            events = list(
+                run_chat_stream(
+                    "急会诊及时到位率怎么算？",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                )
+            )
+
+        done = next(data for event, data in reversed(events) if event == "done")
+        self.assertEqual(done["orchestrator"], "core_indicator_orchestrator")
+        self.assertEqual(done["agent_owner"], "human_interaction")
+
+    def test_metadata_sync_stream_routes_without_indicator_search(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+
+            events = list(
+                run_chat_stream(
+                    "同步元数据",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                )
+            )
+
+        done = next(data for event, data in reversed(events) if event == "done")
+        self.assertEqual(done["intent"], "metadata_sync")
+        self.assertEqual(done["agent_owner"], "metadata_parsing")
+        self.assertIn("/api/metadata/sync", done["answer"])
+        self.assertIsNone(done["rule_id"])
 
     def test_greeting_is_chat_and_does_not_reuse_previous_rule_context(self) -> None:
         with temp_kb_dir() as tmp:

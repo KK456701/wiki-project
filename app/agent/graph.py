@@ -8,6 +8,12 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
+from app.agents.caliber_adaptation import CaliberAdaptationAgent
+from app.agents.human_interaction import HumanInteractionAgent, detect_intent_by_rule
+from app.agents.indicator_generation import IndicatorGenerationAgent
+from app.agents.metadata_parsing import MetadataParsingAgent
+from app.agents.orchestrator import CoreIndicatorOrchestrator, PreparedRequest
+from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
 from app.config import get
 from app.db.engine import create_runtime_engine
 from app.db_access.business_db import BusinessDBClient
@@ -78,6 +84,37 @@ def _create_metadata_provider(db_name: str = "hospital_demo_data") -> DBHubMetad
     return DBHubMetadataProvider(client.execute_sql)
 
 
+def _create_agent_orchestrator(
+    kb_root: str | Path,
+    tools: Any,
+    llm_client: LLMClient | None,
+) -> CoreIndicatorOrchestrator:
+    from app.diagnose.agent import DiagnoseAgent
+    from app.sqlgen.agent import SQLGenerationAgent
+
+    runtime_engine = create_runtime_engine()
+    business_db = _create_business_db_client("hospital_demo_data")
+    indicator_executor = SQLGenerationAgent(
+        kb_root=kb_root,
+        runtime_engine=runtime_engine,
+        business_db=business_db,
+        rule_repository=None if isinstance(tools, KnowledgeBaseTools) else tools,
+    )
+    diagnosis_executor = DiagnoseAgent(
+        kb_root=kb_root,
+        runtime_engine=runtime_engine,
+        business_db=business_db,
+        metadata_provider=_create_metadata_provider("hospital_demo_data"),
+    )
+    return CoreIndicatorOrchestrator(
+        interaction=HumanInteractionAgent(llm_client),
+        caliber=CaliberAdaptationAgent(tools),
+        indicator_generation=IndicatorGenerationAgent(indicator_executor),
+        diagnosis=RootCauseDiagnosisAgent(diagnosis_executor),
+        metadata=MetadataParsingAgent(runtime_engine, kb_root),
+    )
+
+
 def _start_trace(session_id: str, hospital_id: str | None, query: str) -> tuple[str, TraceRecorder | None]:
     trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
     try:
@@ -116,6 +153,21 @@ def _node_duration(state: dict[str, Any], node_name: str) -> int:
         except (TypeError, ValueError):
             return 0
     return 0
+
+
+def _prepared_request_from_state(state: AgentState) -> PreparedRequest:
+    return PreparedRequest(
+        query=str(state.get("query") or ""),
+        hospital_id=state.get("hospital_id"),
+        intent=str(state.get("intent") or "query"),
+        retrieval_query=str((state.get("search") or {}).get("query") or state.get("query") or ""),
+        rule_id=state.get("rule_id"),
+        search=dict(state.get("search") or {}),
+        effective_rule=dict(state.get("effective_rule") or {}),
+        field_mapping=dict(state.get("field_mapping") or {}),
+        custom_filters=list(state.get("_custom_filters", [])),  # type: ignore[typeddict-item]
+        errors=state.setdefault("errors", []),
+    )
 
 
 def _finish_trace(
@@ -295,29 +347,7 @@ def _record_sql_trace_nodes(
 
 def detect_intent(query: str) -> str:
     """关键词兜底：chat/query/feedback/generate_sql/diagnose/metadata_sync。"""
-    q = (query or "").strip()
-    compact = re.sub(r"\s+", "", q)
-    feedback_actions = ["\u5e94\u8be5", "\u6539\u6210", "\u6539\u4e3a", "\u8c03\u6574\u6210", "\u4fee\u6539\u6210", "\u53cd\u9988", "\u4e0d\u4e00\u81f4"]
-    hospital_subjects = ["\u672c\u9662", "\u6211\u4eec\u533b\u9662", "\u6211\u9662"]
-    query_cues = ["\u54ea\u4e2a", "\u4ec0\u4e48", "\u591a\u5c11", "\u600e\u4e48", "\u5417", "\uff1f", "?", "\u5f53\u524d", "\u91c7\u7528"]
-    if any(marker in compact for marker in feedback_actions):
-        return "feedback"
-    if any(subject in compact for subject in hospital_subjects) and "\u6309" in compact and not any(cue in compact for cue in query_cues):
-        return "feedback"
-    lower = compact.lower()
-    if lower in {item.lower() for item in CHAT_EXACTS}:
-        return "chat"
-    if any(marker in compact for marker in CHAT_MARKERS) and not any(marker in compact for marker in KB_MARKERS):
-        return "chat"
-    if any(marker in compact for marker in SQL_MARKERS):
-        return "generate_sql"
-    if any(marker in compact for marker in DIAG_MARKERS):
-        return "diagnose"
-    if any(marker in compact for marker in SYNC_MARKERS):
-        return "metadata_sync"
-    if any(marker in compact for marker in TRIAL_MARKERS):
-        return "trial_run"
-    return "query"
+    return detect_intent_by_rule(query)
 
 
 def langgraph_installed() -> bool:
@@ -523,18 +553,28 @@ def _get_field_mapping(
         return tools.get_field_mapping(rule_id)
     return tools.get_field_mapping(rule_id, hospital_id or "")
 
-def _run_deterministic(state: AgentState, tools: Any, llm_client: LLMClient | None = None) -> AgentState:
+def _run_deterministic(
+    state: AgentState,
+    tools: Any,
+    llm_client: LLMClient | None = None,
+    orchestrator: CoreIndicatorOrchestrator | None = None,
+) -> AgentState:
+    active_orchestrator = orchestrator or _create_agent_orchestrator(
+        DEFAULT_KB_ROOT, tools, llm_client
+    )
     query = state["query"]
     errors: list[str] = state.setdefault("errors", [])
-    intent_data = _detect_intent(query, llm_client, errors, state.get("memory_context"))
+    intent_data = active_orchestrator.interaction.understand(
+        query, state.get("memory_context"), errors
+    )
     state["intent"] = intent_data["intent"]
     if state["intent"] == "chat":
         state["rule_id"] = None
         state["generation_method"] = "chat"
-        state["answer"] = _answer_chat(query)
+        state["answer"] = active_orchestrator.interaction.chat_answer()
         return state
     search_query = intent_data["retrieval_query"] or query
-    search = tools.search(search_query, limit=5)
+    search = active_orchestrator.caliber.search(search_query, limit=5)
     state["search"] = search
     rule_id = search.get("resolved_rule_id")
     state["rule_id"] = rule_id
@@ -546,31 +586,54 @@ def _run_deterministic(state: AgentState, tools: Any, llm_client: LLMClient | No
         return state
 
     yield ("progress", {"message": "\u5df2\u547d\u4e2d\u6307\u6807\uff0c\u6b63\u5728\u8bfb\u53d6\u533b\u9662\u4f18\u5148\u53e3\u5f84"})
-    effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
+    effective = active_orchestrator.caliber.resolve(
+        rule_id, state.get("hospital_id")
+    )
     state["effective_rule"] = effective
-    state["field_mapping"] = _get_field_mapping(
-        tools, rule_id, state.get("hospital_id")
+    state["field_mapping"] = active_orchestrator.caliber.field_mapping(
+        rule_id, state.get("hospital_id") or ""
     )
 
     if state["intent"] == "feedback":
-        return _preview_feedback(state, tools, effective)
+        state["feedback_preview"] = active_orchestrator.caliber.preview_feedback(
+            str(rule_id), state.get("hospital_id"), query
+        )
+        state["generation_method"] = "tool"
+        state["answer"] = (
+            "检测到本院口径反馈，尚未写入待审批。\n"
+            f"指标名称：{effective['rule_name']}\n"
+            "请在口径差异确认窗口中提交，之后才会进入 pending 等待审批。"
+        )
+        return state
 
-    state["answer"], state["generation_method"] = _generate_answer(query, effective, llm_client, state.setdefault("errors", []))
+    state["answer"], state["generation_method"] = active_orchestrator.interaction.answer(
+        query, effective, state.setdefault("errors", [])
+    )
     return state
 
 
-def _run_langgraph(state: AgentState, tools: Any, llm_client: LLMClient | None = None) -> AgentState:
+def _run_langgraph(
+    state: AgentState,
+    tools: Any,
+    llm_client: LLMClient | None = None,
+    orchestrator: CoreIndicatorOrchestrator | None = None,
+) -> AgentState:
+    active_orchestrator = orchestrator or _create_agent_orchestrator(
+        DEFAULT_KB_ROOT, tools, llm_client
+    )
     try:
         from langgraph.graph import END, StateGraph
     except Exception as exc:
         state["workflow_engine"] = "deterministic_fallback"
         state.setdefault("errors", []).append(f"LangGraph unavailable, using deterministic fallback: {exc}")
-        return _run_deterministic(state, tools, llm_client)
+        return _run_deterministic(state, tools, llm_client, active_orchestrator)
     state["workflow_engine"] = "langgraph"
 
     def intent_node(s: AgentState) -> AgentState:
         node_start = time.perf_counter()
-        intent_data = _detect_intent(s["query"], llm_client, s.setdefault("errors", []), s.get("memory_context"))
+        intent_data = active_orchestrator.interaction.understand(
+            s["query"], s.get("memory_context"), s.setdefault("errors", [])
+        )
         s["intent"] = intent_data["intent"]
         s["_retrieval_query"] = intent_data["retrieval_query"]  # type: ignore[typeddict-unknown-key]
         _record_node_duration(s, "intent_detect", node_start)
@@ -580,14 +643,14 @@ def _run_langgraph(state: AgentState, tools: Any, llm_client: LLMClient | None =
         node_start = time.perf_counter()
         s["rule_id"] = None
         s["generation_method"] = "chat"
-        s["answer"] = _answer_chat(s["query"])
+        s["answer"] = active_orchestrator.interaction.chat_answer()
         _record_node_duration(s, "final_response", node_start)
         return s
 
     def search_node(s: AgentState) -> AgentState:
         node_start = time.perf_counter()
         search_query = s.get("_retrieval_query") or s["query"]  # type: ignore[typeddict-item]
-        s["search"] = tools.search(str(search_query), limit=5)
+        s["search"] = active_orchestrator.caliber.search(str(search_query), limit=5)
         s["rule_id"] = s["search"].get("resolved_rule_id")
         _apply_memory_context_if_needed(s)
         _record_node_duration(s, "rule_search", node_start)
@@ -599,14 +662,18 @@ def _run_langgraph(state: AgentState, tools: Any, llm_client: LLMClient | None =
             s["answer"] = "未命中规则。请提供更明确的指标名称或 rule_id。"
             return s
         effective_start = time.perf_counter()
-        effective = tools.get_effective_rule(str(s["rule_id"]), s.get("hospital_id"))
+        effective = active_orchestrator.caliber.resolve(
+            str(s["rule_id"]), s.get("hospital_id")
+        )
         s["effective_rule"] = effective
-        s["field_mapping"] = _get_field_mapping(
-            tools, str(s["rule_id"]), s.get("hospital_id")
+        s["field_mapping"] = active_orchestrator.caliber.field_mapping(
+            str(s["rule_id"]), s.get("hospital_id") or ""
         )
         _record_node_duration(s, "effective_rule_resolve", effective_start)
         answer_start = time.perf_counter()
-        s["answer"], s["generation_method"] = _generate_answer(s["query"], effective, llm_client, s.setdefault("errors", []))
+        s["answer"], s["generation_method"] = active_orchestrator.interaction.answer(
+            s["query"], effective, s.setdefault("errors", [])
+        )
         _record_node_duration(s, "final_response", answer_start)
         return s
 
@@ -616,11 +683,22 @@ def _run_langgraph(state: AgentState, tools: Any, llm_client: LLMClient | None =
             s["answer"] = "未命中规则，无法记录反馈。请补充指标名称。"
             return s
         effective_start = time.perf_counter()
-        effective = tools.get_effective_rule(str(s["rule_id"]), s.get("hospital_id"))
+        effective = active_orchestrator.caliber.resolve(
+            str(s["rule_id"]), s.get("hospital_id")
+        )
         s["effective_rule"] = effective
         _record_node_duration(s, "effective_rule_resolve", effective_start)
         answer_start = time.perf_counter()
-        result = _preview_feedback(s, tools, effective)
+        s["feedback_preview"] = active_orchestrator.caliber.preview_feedback(
+            str(s["rule_id"]), s.get("hospital_id"), s["query"]
+        )
+        s["generation_method"] = "tool"
+        s["answer"] = (
+            "检测到本院口径反馈，尚未写入待审批。\n"
+            f"指标名称：{effective['rule_name']}\n"
+            "请在口径差异确认窗口中提交，之后才会进入 pending 等待审批。"
+        )
+        result = s
         _record_node_duration(result, "final_response", answer_start)
         return result
 
@@ -762,6 +840,7 @@ def run_chat(
     session_id: str | None = None,
     memory: ConversationMemory | None = None,
     rule_repository: Any | None = None,
+    orchestrator: CoreIndicatorOrchestrator | None = None,
 ) -> dict[str, Any]:
     tools = rule_repository or KnowledgeBaseTools(kb_root)
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
@@ -799,8 +878,13 @@ def run_chat(
     active_llm = llm_client if use_llm else None
     if use_llm and active_llm is None:
         active_llm = OllamaClient()
+    active_orchestrator = orchestrator or _create_agent_orchestrator(
+        kb_root, tools, active_llm
+    )
     try:
-        result = _run_langgraph(state, tools, active_llm)
+        result = _run_langgraph(
+            state, tools, active_llm, orchestrator=active_orchestrator
+        )
     except KBToolError as exc:
         result = {
             **state,
@@ -870,6 +954,10 @@ def run_chat(
     result.setdefault("workflow_engine", workflow_engine_name())
     result.setdefault("session_id", active_session_id)
     result.setdefault("memory_context", memory_context)
+    result["orchestrator"] = active_orchestrator.orchestrator_id
+    result["agent_owner"] = active_orchestrator.owner_for_intent(
+        str(result.get("intent") or "query")
+    )
     result["trace_id"] = trace_id
     effective_rule = result.get("effective_rule") or {}
     memory_store.append_message(
@@ -931,6 +1019,7 @@ def run_chat_stream(
     session_id: str | None = None,
     memory: ConversationMemory | None = None,
     rule_repository: Any | None = None,
+    orchestrator: CoreIndicatorOrchestrator | None = None,
 ) -> Iterator[Tuple[str, dict[str, Any]]]:
     """真正的流式对话：逐 token 从 Ollama 产出并立即 yield。
 
@@ -976,6 +1065,9 @@ def run_chat_stream(
     active_llm = llm_client if use_llm else None
     if use_llm and active_llm is None:
         active_llm = OllamaClient()
+    active_orchestrator = orchestrator or _create_agent_orchestrator(
+        kb_root, tools, active_llm
+    )
 
     yield ("meta", {
         "session_id": active_session_id, "intent": None,
@@ -987,7 +1079,9 @@ def run_chat_stream(
     # ---- Phase 1: 意图识别 + 知识库检索（同步，很快） ----
     errors: list[str] = state.setdefault("errors", [])
     intent_start = time.perf_counter()
-    intent_data = _detect_intent(query, active_llm, errors, memory_context)
+    intent_data = active_orchestrator.interaction.understand(
+        query, memory_context, errors
+    )
     intent_duration_ms = _elapsed_ms(intent_start)
     state["intent"] = intent_data["intent"]
     state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
@@ -1017,7 +1111,7 @@ def run_chat_stream(
 
     if state["intent"] == "chat":
         yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u666e\u901a\u5bf9\u8bdd\u56de\u7b54"})
-        answer = _answer_chat(query)
+        answer = active_orchestrator.interaction.chat_answer()
         yield ("meta", {
             "session_id": active_session_id, "intent": "chat",
             "rule_id": None, "generation_method": "chat",
@@ -1054,6 +1148,48 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": "chat",
             "rule_id": None, "generation_method": "chat",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("chat"),
+        })
+        return
+
+    if state["intent"] == "metadata_sync":
+        answer = "元数据同步请使用 API：POST /api/metadata/sync。需提供 hospital_id、db_name。"
+        yield ("meta", {
+            "session_id": active_session_id,
+            "intent": "metadata_sync",
+            "rule_id": None,
+            "generation_method": "tool",
+        })
+        yield ("token", {"text": answer})
+        memory_store.append_message(active_session_id, "assistant", answer, {
+            "intent": "metadata_sync",
+            "rule_id": None,
+            "generation_method": "tool",
+            "errors": errors,
+        })
+        _record_trace_node(
+            trace_recorder,
+            trace_id,
+            "final_response",
+            "agent",
+            "success",
+            output_summary=answer,
+            input_data={"intent": "metadata_sync", "rule_id": None},
+            output_data={"answer_preview": answer, "trace_id": trace_id, "final_status": "success"},
+            config_data={"storage": "ConversationMemory + TraceRecorder"},
+        )
+        _finish_trace(trace_recorder, trace_id, "success", answer, intent="metadata_sync")
+        yield ("done", {
+            "session_id": active_session_id,
+            "intent": "metadata_sync",
+            "rule_id": None,
+            "generation_method": "tool",
+            "answer": answer,
+            "errors": errors,
+            "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("metadata_sync"),
         })
         return
 
@@ -1061,7 +1197,7 @@ def run_chat_stream(
         yield ("progress", {"message": "\u6b63\u5728\u68c0\u7d22\u672c\u5730 Wiki \u77e5\u8bc6\u5e93"})
         search_query = intent_data["retrieval_query"] or query
         search_start = time.perf_counter()
-        search = tools.search(search_query, limit=5)
+        search = active_orchestrator.caliber.search(search_query, limit=5)
         search_duration_ms = _elapsed_ms(search_start)
     except KBToolError as exc:
         yield ("meta", {
@@ -1073,6 +1209,8 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": None, "generation_method": "tool",
             "answer": f"知识库工具调用失败：{exc}", "errors": [str(exc)],
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent(str(state.get("intent") or "query")),
         })
         return
 
@@ -1119,14 +1257,18 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": None, "generation_method": "tool",
             "answer": answer, "errors": errors,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent(str(state.get("intent") or "query")),
         })
         return
 
     effective_start = time.perf_counter()
-    effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
+    effective = active_orchestrator.caliber.resolve(
+        str(rule_id), state.get("hospital_id")
+    )
     state["effective_rule"] = effective
-    state["field_mapping"] = _get_field_mapping(
-        tools, rule_id, state.get("hospital_id")
+    state["field_mapping"] = active_orchestrator.caliber.field_mapping(
+        str(rule_id), state.get("hospital_id") or ""
     )
     effective_duration_ms = _elapsed_ms(effective_start)
     _record_effective_rule_node(trace_recorder, trace_id, rule_id, state.get("hospital_id"), effective, duration_ms=effective_duration_ms)
@@ -1134,7 +1276,15 @@ def run_chat_stream(
     # ---- Phase 2: 反馈模式（模板化，无需流式） ----
     if state["intent"] == "feedback":
         yield ("progress", {"message": "\u6b63\u5728\u751f\u6210\u53e3\u5f84\u5dee\u5f02\u786e\u8ba4"})
-        state = _preview_feedback(state, tools, effective)
+        state["feedback_preview"] = active_orchestrator.caliber.preview_feedback(
+            str(rule_id), state.get("hospital_id"), query
+        )
+        state["generation_method"] = "tool"
+        state["answer"] = (
+            "检测到本院口径反馈，尚未写入待审批。\n"
+            f"指标名称：{effective['rule_name']}\n"
+            "请在口径差异确认窗口中提交，之后才会进入 pending 等待审批。"
+        )
         answer = str(state.get("answer", ""))
         yield ("meta", {
             "session_id": active_session_id, "intent": state.get("intent"),
@@ -1182,6 +1332,8 @@ def run_chat_stream(
             "answer": answer, "errors": errors,
             "feedback_preview": state.get("feedback_preview"),
             "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("feedback"),
         })
         return
 
@@ -1194,7 +1346,6 @@ def run_chat_stream(
         })
         try:
             from datetime import datetime as dt
-            from app.sqlgen.agent import SQLGenerationAgent
 
             now = dt.now()
             start = f"{now.year}-{now.month:02d}-01 00:00:00"
@@ -1203,16 +1354,11 @@ def run_chat_stream(
             else:
                 end = f"{now.year}-{now.month + 1:02d}-01 00:00:00"
 
-            sql_agent = SQLGenerationAgent(
-                kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_db=_create_business_db_client("hospital_demo_data"),
-                rule_repository=None if isinstance(tools, KnowledgeBaseTools) else tools,
-            )
-            result = sql_agent.generate(
-                query=query, hospital_id=str(state.get("hospital_id") or ""),
-                rule_id=str(rule_id), effective_rule=effective,
-                stat_start_time=start, stat_end_time=end, trial_run=False,
-                custom_filters=state.get("_custom_filters", []),
+            result = active_orchestrator.generate_indicator(
+                _prepared_request_from_state(state),
+                stat_start_time=start,
+                stat_end_time=end,
+                trial_run=False,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             if result.get("status") == "field_precheck_failed":
@@ -1335,6 +1481,8 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "sqlgen",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("generate_sql"),
         })
         return
 
@@ -1346,22 +1494,16 @@ def run_chat_stream(
         })
         try:
             from datetime import datetime as dt
-            from app.sqlgen.agent import SQLGenerationAgent
 
             now = dt.now()
             start = f"{now.year}-{now.month:02d}-01 00:00:00"
             end = f"{now.year}-{now.month + 1:02d}-01 00:00:00" if now.month < 12 else f"{now.year + 1}-01-01 00:00:00"
 
-            sql_agent = SQLGenerationAgent(
-                kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_db=_create_business_db_client("hospital_demo_data"),
-                rule_repository=None if isinstance(tools, KnowledgeBaseTools) else tools,
-            )
-            result = sql_agent.generate(
-                query=query, hospital_id=str(state.get("hospital_id") or ""),
-                rule_id=str(rule_id), effective_rule=effective,
-                stat_start_time=start, stat_end_time=end, trial_run=True,
-                custom_filters=state.get("_custom_filters", []),
+            result = active_orchestrator.generate_indicator(
+                _prepared_request_from_state(state),
+                stat_start_time=start,
+                stat_end_time=end,
+                trial_run=True,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             trial = result.get("trial_run", {})
@@ -1418,6 +1560,8 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": "trial_run",
             "rule_id": rule_id, "generation_method": "trial_run",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("trial_run"),
         })
         return
 
@@ -1428,17 +1572,10 @@ def run_chat_stream(
             "rule_id": rule_id, "generation_method": "diagnose",
         })
         try:
-            from app.diagnose.agent import DiagnoseAgent
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u7cfb\u7edf\u7ed3\u6784\u548c\u5143\u6570\u636e"})
-            diag_agent = DiagnoseAgent(
-                kb_root=kb_root, runtime_engine=create_runtime_engine(),
-                business_db=_create_business_db_client("hospital_demo_data"),
-                metadata_provider=_create_metadata_provider("hospital_demo_data"),
-            )
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u53e3\u5f84\u89c4\u5219\u548c\u6570\u636e\u8d28\u91cf"})
-            diag_result = diag_agent.run(
-                hospital_id=str(state.get("hospital_id") or ""),
-                rule_id=str(rule_id), effective_rule=effective,
+            diag_result = active_orchestrator.diagnose(
+                _prepared_request_from_state(state)
             )
             record_diagnose_trace_nodes(trace_recorder, trace_id, diag_result, rule_id, state.get("hospital_id"))
             yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u8bca\u65ad\u7ed3\u679c"})
@@ -1468,6 +1605,8 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "diagnose",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("diagnose"),
         })
         return
 
@@ -1482,6 +1621,8 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "tool",
             "answer": answer, "errors": errors,
+            "orchestrator": active_orchestrator.orchestrator_id,
+            "agent_owner": active_orchestrator.owner_for_intent("metadata_sync"),
         })
         return
 
@@ -1490,7 +1631,7 @@ def run_chat_stream(
     if active_llm is None:
         # 无 LLM，直接用模板回答
         yield ("progress", {"message": "\u6b63\u5728\u6309\u77e5\u8bc6\u5e93\u6a21\u677f\u751f\u6210\u56de\u7b54"})
-        answer = _answer_from_rule(effective)
+        answer = active_orchestrator.interaction.answer_from_rule(effective)
         generation_method = "tool"
         yield ("meta", {
             "session_id": active_session_id, "intent": state.get("intent"),
@@ -1502,7 +1643,7 @@ def run_chat_stream(
         full_answer = ""
         try:
             yield ("progress", {"message": "\u6b63\u5728\u8c03\u7528 Ollama \u751f\u6210\u6700\u7ec8\u56de\u7b54"})
-            prompt = _build_answer_prompt(query, effective)
+            prompt = active_orchestrator.interaction.build_answer_prompt(query, effective)
             yield ("meta", {
                 "session_id": active_session_id, "intent": state.get("intent"),
                 "rule_id": rule_id, "generation_method": "llm_stream",
@@ -1514,9 +1655,9 @@ def run_chat_stream(
             answer = full_answer.strip()
 
             # 流式生成完成后做 guard 校验
-            if not answer or not _llm_answer_passes_guard(answer, effective):
+            if not answer or not active_orchestrator.interaction.answer_passes_guard(answer, effective):
                 errors.append("LLM_ANSWER_FAILED_FACT_GUARD")
-                fallback = _answer_from_rule(effective)
+                fallback = active_orchestrator.interaction.answer_from_rule(effective)
                 guard_note = "\n\n为避免模型误写公式或 SQL 状态，已切换为知识库标准答案：\n" + fallback
                 yield ("token", {"text": guard_note})
                 answer = fallback
@@ -1524,7 +1665,7 @@ def run_chat_stream(
 
         except Exception as exc:
             errors.append(str(exc))
-            answer = _answer_from_rule(effective)
+            answer = active_orchestrator.interaction.answer_from_rule(effective)
             generation_method = "tool_fallback"
             yield ("token", {"text": answer})
 
@@ -1572,4 +1713,6 @@ def run_chat_stream(
         "session_id": active_session_id, "intent": state.get("intent"),
         "rule_id": rule_id, "generation_method": generation_method,
         "answer": answer, "errors": errors, "trace_id": trace_id,
+        "orchestrator": active_orchestrator.orchestrator_id,
+        "agent_owner": active_orchestrator.owner_for_intent(str(state.get("intent") or "query")),
     })
