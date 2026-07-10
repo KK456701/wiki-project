@@ -1,0 +1,31 @@
+rule_id: MQSI2025_035
+rule_name: 术中自体血回输率
+dialects: [mysql]
+default_params:
+  transfusion_flag_value: 1
+  autologous_flag_value: 1
+description: 术中使用自体血回输的患者数占同期术中输血患者总数的比例，按患者去重。
+numerator:
+  name: 术中使用自体血回输的患者数
+  logic:
+    - intraoperative_transfusion_flag = transfusion_flag_value
+    - autologous_reinfusion_flag = autologous_flag_value
+    - distinct patient_id
+denominator:
+  name: 同期术中输血患者总数
+  logic:
+    - intraoperative_transfusion_flag = transfusion_flag_value
+    - distinct patient_id
+required_business_fields:
+  - hospital_id
+  - patient_id
+  - surgery_time
+  - intraoperative_transfusion_flag
+  - autologous_reinfusion_flag
+required_params:
+  - hospital_id
+  - start_time
+  - end_time
+  - transfusion_flag_value
+  - autologous_flag_value
+result: {column_name: index_value, unit: percent}

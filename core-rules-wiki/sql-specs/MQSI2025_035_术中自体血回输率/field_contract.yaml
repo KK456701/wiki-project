@@ -1,0 +1,9 @@
+rule_id: MQSI2025_035
+business_fields:
+  hospital_id: {type: string, required: true, desc: 医院ID}
+  patient_id: {type: string, required: true, desc: 患者ID}
+  surgery_id: {type: string, required: true, desc: 手术ID}
+  surgery_time: {type: datetime, required: true, desc: 手术时间}
+  intraoperative_transfusion_flag: {type: integer, required: true, desc: 是否术中输血}
+  autologous_reinfusion_flag: {type: integer, required: true, desc: 是否使用自体血回输}
+  dept_id: {type: string, required: false, desc: 科室ID}

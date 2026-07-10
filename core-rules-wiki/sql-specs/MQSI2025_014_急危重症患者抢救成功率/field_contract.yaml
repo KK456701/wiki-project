@@ -1,0 +1,9 @@
+rule_id: MQSI2025_014
+business_fields:
+  hospital_id: {type: string, required: true, desc: 医院ID}
+  patient_id: {type: string, required: true, desc: 患者ID}
+  rescue_id: {type: string, required: true, desc: 抢救事件ID}
+  rescue_time: {type: datetime, required: true, desc: 抢救时间}
+  severity_level: {type: string, required: true, desc: 患者严重程度}
+  rescue_result: {type: string, required: true, desc: 抢救结果}
+  dept_id: {type: string, required: false, desc: 科室ID}

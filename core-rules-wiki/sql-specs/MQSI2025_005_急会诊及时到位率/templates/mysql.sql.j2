@@ -2,20 +2,19 @@ SELECT
   CASE
     WHEN COUNT(*) = 0 THEN 0
     ELSE ROUND(
-      SUM(
-        CASE
-          WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) <= :arrive_minutes_threshold
-          THEN 1 ELSE 0
-        END
-      ) / COUNT(*) * 100,
+      SUM(CASE
+        WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) BETWEEN 0 AND :arrive_minutes_threshold
+        THEN 1 ELSE 0
+      END) * 100.0 / COUNT(*),
       2
     )
-  END AS index_value
+  END AS index_value,
+  COUNT(*) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id
   AND {{ fields.consult_type }} = :consult_type_value
   AND {{ fields.request_time }} >= :start_time
   AND {{ fields.request_time }} < :end_time
 {% for dept in custom_rules.exclude_dept_filters %}
-  AND {{ fields.get('dept_id', 'dept_id') }} != :{{ dept.param }}
+  AND {{ fields.get('dept_id', 'dept_id') }} <> :{{ dept.param }}
 {% endfor %}

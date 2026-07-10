@@ -1,28 +1,32 @@
 rule_id: MQSI2025_001
 rule_name: 患者入院48小时内转科比例
-dialects: [mysql, oracle]
+dialects: [mysql]
 default_params:
-  transfer_hours_threshold: 48
-description: 入院48小时内发生转科的患者人次数占同期入院患者总人次数的比例。
+  transfer_minutes_threshold: 2880
+  excluded_dept_id: ICU
+description: 入院48小时内发生非ICU转科的患者人次数占同期入院患者总人次数的比例。
 numerator:
-  name: 入院48小时内转科患者人次数
+  name: 入院48小时内非ICU转科患者人次数
   logic:
     - transfer_time is not null
-    - transfer_hours <= transfer_hours_threshold
+    - 0 <= transfer_minutes <= transfer_minutes_threshold
+    - from_dept_id != excluded_dept_id
+    - to_dept_id != excluded_dept_id
 denominator:
   name: 同期入院患者总人次数
   logic:
-    - admission_id is not null
+    - distinct admission_id
 required_business_fields:
   - hospital_id
   - admission_id
   - admit_time
   - transfer_time
+  - from_dept_id
+  - to_dept_id
 required_params:
   - hospital_id
   - start_time
   - end_time
-  - transfer_hours_threshold
-result:
-  column_name: index_value
-  unit: percent
+  - transfer_minutes_threshold
+  - excluded_dept_id
+result: {column_name: index_value, unit: percent}

@@ -1,0 +1,29 @@
+rule_id: MQSI2025_014
+rule_name: 急危重症患者抢救成功率
+dialects: [mysql]
+default_params:
+  severity_value: 急危重症
+  success_value: 成功
+description: 急危重症患者抢救成功例次占同期急危重症患者抢救总例次的比例。
+numerator:
+  name: 急危重症患者抢救成功例次
+  logic:
+    - severity_level = severity_value
+    - rescue_result = success_value
+denominator:
+  name: 同期急危重症患者抢救总例次
+  logic:
+    - severity_level = severity_value
+required_business_fields:
+  - hospital_id
+  - rescue_id
+  - rescue_time
+  - severity_level
+  - rescue_result
+required_params:
+  - hospital_id
+  - start_time
+  - end_time
+  - severity_value
+  - success_value
+result: {column_name: index_value, unit: percent}

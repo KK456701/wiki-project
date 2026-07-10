@@ -1,0 +1,17 @@
+SELECT
+  CASE
+    WHEN COUNT(DISTINCT {{ fields.patient_id }}) = 0 THEN 0
+    ELSE ROUND(
+      COUNT(DISTINCT CASE
+        WHEN {{ fields.autologous_reinfusion_flag }} = :autologous_flag_value
+        THEN {{ fields.patient_id }}
+      END) * 100.0 / COUNT(DISTINCT {{ fields.patient_id }}),
+      2
+    )
+  END AS index_value,
+  COUNT(DISTINCT {{ fields.patient_id }}) AS sample_count
+FROM {{ main_table }}
+WHERE {{ fields.hospital_id }} = :hospital_id
+  AND {{ fields.intraoperative_transfusion_flag }} = :transfusion_flag_value
+  AND {{ fields.surgery_time }} >= :start_time
+  AND {{ fields.surgery_time }} < :end_time

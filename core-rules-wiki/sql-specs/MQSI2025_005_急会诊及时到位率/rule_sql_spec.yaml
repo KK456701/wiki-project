@@ -1,18 +1,19 @@
 rule_id: MQSI2025_005
 rule_name: 急会诊及时到位率
-dialects: [mysql, oracle]
+dialects: [mysql]
 default_params:
-  arrive_minutes_threshold: 30
+  arrive_minutes_threshold: 10
+  consult_type_value: 急会诊
 description: 急会诊请求发出后，在指定分钟数内到达现场的急会诊次数占同期急会诊总次数的比例。
 numerator:
   name: 及时到位急会诊次数
   logic:
-    - consult_type = 急会诊
-    - arrive_minutes <= arrive_minutes_threshold
+    - consult_type = consult_type_value
+    - 0 <= arrive_minutes <= arrive_minutes_threshold
 denominator:
   name: 同期急会诊总次数
   logic:
-    - consult_type = 急会诊
+    - consult_type = consult_type_value
 required_business_fields:
   - hospital_id
   - consult_type
@@ -23,6 +24,5 @@ required_params:
   - start_time
   - end_time
   - arrive_minutes_threshold
-result:
-  column_name: index_value
-  unit: percent
+  - consult_type_value
+result: {column_name: index_value, unit: percent}
