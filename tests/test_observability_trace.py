@@ -144,6 +144,27 @@ class TraceRecorderTest(unittest.TestCase):
             self.assertEqual(node["output_data"]["intent"], "query")
             self.assertEqual(node["config_data"]["strategy"], "规则兜底 + LLM")
 
+    def test_failed_node_gets_default_failure_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            jsonl = Path(tmp) / "trace_events.jsonl"
+            recorder = TraceRecorder(self._engine(), jsonl)
+            recorder.start_trace("TRACE_FAILED_NODE", None, None, "生成 SQL")
+            recorder.record_node(
+                "TRACE_FAILED_NODE",
+                "sql_validate",
+                "sql_validator",
+                "failed",
+                input_data={"sql_text": "delete from x", "rule_id": "R001"},
+                output_data={"validation_status": "failed"},
+            )
+            recorder.finish_trace("TRACE_FAILED_NODE", "failed", "SQL 校验失败", intent="generate_sql", error_count=1)
+
+            trace = recorder.get_trace("TRACE_FAILED_NODE")
+            node = trace["nodes"][0]
+            self.assertEqual(node["error_code"], "SQL_VALIDATE_FAILED")
+            self.assertEqual(node["failure_code"], "SQL_VALIDATE_FAILED")
+            self.assertEqual(node["contract_status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()

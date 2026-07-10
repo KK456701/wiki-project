@@ -13,6 +13,30 @@ from tests.test_rule_repository import _rule_engine
 
 
 class ApiTest(unittest.TestCase):
+    def test_admin_can_import_four_mysql_rules(self) -> None:
+        client = TestClient(app)
+        login = client.post("/api/admin/login", json={"password": "admin123"})
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+        imported = {
+            "inserted": ["MQSI2025_001", "MQSI2025_005", "MQSI2025_014", "MQSI2025_035"],
+            "updated": [],
+            "failed": [],
+        }
+
+        with patch.object(
+            api_main,
+            "import_four_indicator_rules",
+            return_value=imported,
+            create=True,
+        ) as importer, patch("app.db.engine.create_runtime_engine", return_value=object()):
+            response = client.post("/api/rules/import-four", headers=headers)
+            unauthorized = client.post("/api/rules/import-four")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), imported)
+        self.assertEqual(unauthorized.status_code, 401)
+        importer.assert_called_once()
+
     def test_change_request_route_uses_mysql_rule_repository(self) -> None:
         class FakeRuleRepository:
             def __init__(self) -> None:

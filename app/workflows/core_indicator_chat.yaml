@@ -19,6 +19,10 @@ nodes:
     description: 读取上轮命中的指标上下文，用于处理“这个指标”等追问。
     inputs: [session_id]
     outputs: [memory_context]
+    required: true
+    on_failure: continue
+    required_inputs: [session_id]
+    required_outputs: [memory_context]
     config:
       storage: SQLite + JSONL
     failure_hint: 如果这里失败，优先检查 runtime/conversations 目录权限和 SQLite 文件状态。
@@ -29,6 +33,10 @@ nodes:
     description: 判断用户是在问指标、反馈口径、生成 SQL、试运行、诊断、同步元数据还是普通聊天。
     inputs: [query, session_memory]
     outputs: [intent, retrieval_query, custom_filters]
+    required: true
+    on_failure: stop
+    required_inputs: [query]
+    required_outputs: [intent]
     config:
       strategy: 规则兜底 + 可选 LLM 意图识别
       prompt: app/prompts/intent.txt
@@ -40,6 +48,10 @@ nodes:
     description: 根据检索 query 在本地 Wiki 索引中查找对应指标，并解析 rule_id。
     inputs: [retrieval_query, hospital_id]
     outputs: [rule_id, matched_documents, search_score]
+    required: true
+    on_failure: stop
+    required_inputs: [retrieval_query]
+    required_outputs: [rule_id]
     config:
       tool: KnowledgeBaseTools.search
       priority: 医院口径 > 公司标准 > 国标
@@ -51,6 +63,10 @@ nodes:
     description: 按医院口径、公司标准、国标的优先级读取当前生效规则。
     inputs: [rule_id, hospital_id]
     outputs: [effective_rule, effective_level]
+    required: true
+    on_failure: stop
+    required_inputs: [rule_id]
+    required_outputs: [effective_rule, effective_level]
     config:
       tool: KnowledgeBaseTools.get_effective_rule
     failure_hint: 如果这里失败，优先检查对应 rule_id 的 Markdown、医院 override 和索引重建结果。
@@ -123,6 +139,10 @@ nodes:
     description: 检查 SQL 是否只读、单语句、主表合法且参数化。
     inputs: [sql_text, rule_id]
     outputs: [validation_status, validation_errors]
+    required: true
+    on_failure: stop
+    required_inputs: [sql_text, rule_id]
+    required_outputs: [validation_status]
     config:
       allow: SELECT
       deny: DDL / DML / 多语句

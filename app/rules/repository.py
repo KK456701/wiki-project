@@ -750,6 +750,24 @@ class FallbackRuleRepository:
         result = self.fallback.get_field_mapping(index_code, hospital_id)
         return self._annotate_fallback(result, warning)
 
+    def build_feedback_preview(
+        self, index_code: str, hospital_id: str | None, user_feedback: str
+    ) -> dict[str, Any]:
+        preview = self.fallback.tools.build_feedback_preview(
+            index_code, hospital_id, user_feedback
+        )
+        effective = self.get_effective_rule(index_code, hospital_id)
+        preview["current_effective_level"] = effective.get("effective_level")
+        preview["current_effective"] = {
+            "level": effective.get("effective_level"),
+            "status": "effective",
+            "definition": effective.get("definition", ""),
+            "formula": effective.get("formula", ""),
+            "implementation_status": effective.get("implementation_status", ""),
+        }
+        preview["rule_source"] = effective.get("rule_source")
+        return preview
+
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.primary.submit_change_request(payload)
 

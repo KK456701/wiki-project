@@ -421,6 +421,60 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(by_name["effective_rule_resolve"]["node_title"], "解析生效口径")
             self.assertEqual(by_name["effective_rule_resolve"]["output_data"]["effective_level"], "hospital")
 
+            for node_name in ["memory_load", "intent_detect", "rule_search", "effective_rule_resolve", "final_response"]:
+                self.assertGreater(by_name[node_name]["duration_ms"], 0, node_name)
+
+    def test_query_accepts_rule_repository_and_traces_mysql_versions(self) -> None:
+        class FakeRuleRepository:
+            def search(self, query, limit=5):
+                return {
+                    "query": query,
+                    "resolved_rule_id": "MQSI2025_005",
+                    "matches": [{"rule_id": "MQSI2025_005"}],
+                }
+
+            def get_effective_rule(self, rule_id, hospital_id):
+                return {
+                    "rule_id": rule_id,
+                    "rule_name": "急会诊及时到位率",
+                    "effective_level": "hospital",
+                    "definition": "急会诊请求发出后及时到位的比例。",
+                    "formula": "急会诊及时到位率 = 20分钟内到位次数 / 急会诊总次数 × 100%",
+                    "implementation_status": "SELECT 1",
+                    "field_status": "configured",
+                    "sql_status": "available",
+                    "warnings": [],
+                    "rule_source": "mysql",
+                    "national_version": "2025",
+                    "hospital_version": 1,
+                    "overridden_fields": ["arrive_minutes_threshold"],
+                }
+
+            def get_field_mapping(self, rule_id, hospital_id=None):
+                return {"rule_id": rule_id, "status": "confirmed", "items": []}
+
+        engine = _trace_runtime_engine()
+        with patch("app.agent.graph.create_runtime_engine", return_value=engine):
+            result = run_chat(
+                "急会诊及时到位率怎么算？",
+                hospital_id="hospital_001",
+                session_id="mysql-rule-session",
+                rule_repository=FakeRuleRepository(),
+            )
+
+        trace = TraceRecorder(engine).get_trace(result["trace_id"])
+        node = {item["node_name"]: item for item in trace["nodes"]}[
+            "effective_rule_resolve"
+        ]
+        self.assertEqual(result["effective_rule"]["rule_source"], "mysql")
+        self.assertEqual(node["output_data"]["rule_source"], "mysql")
+        self.assertEqual(node["output_data"]["national_version"], "2025")
+        self.assertEqual(node["output_data"]["hospital_version"], 1)
+        self.assertEqual(
+            node["output_data"]["overridden_fields"],
+            ["arrive_minutes_threshold"],
+        )
+
     def test_sql_stream_trace_records_generation_nodes(self) -> None:
         FakeSQLGenerationAgent.calls = []
         with temp_kb_dir() as tmp:

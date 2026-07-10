@@ -409,6 +409,23 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   color: var(--teal-deep);
   font: 650 12px/1.2 var(--mono);
 }
+.self-check-list { display: grid; gap: 10px; }
+.self-check-item {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--teal);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+  display: grid;
+  gap: 6px;
+}
+.self-check-item.failed { border-left-color: var(--red); background: #fff8f6; }
+.self-check-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+.self-check-name { font-weight: 850; }
+.self-check-status { font: 750 12px/1.2 var(--mono); color: var(--teal-deep); background: var(--teal-soft); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
+.self-check-item.failed .self-check-status { color: #8b2f22; background: #ffe9e3; border-color: #f2b8ab; }
+.self-check-desc, .self-check-suggestion { color: var(--ink-soft); font-size: 13px; }
+.self-check-suggestion { background: #fff8dc; border: 1px solid #eadb93; border-radius: 8px; padding: 8px 9px; }
 .login-screen { position: fixed; inset: 0; background: var(--paper); display: grid; place-items: center; z-index: 200; }
 .login-screen[hidden] { display: none; }
 .login-card {
@@ -478,6 +495,8 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
     <div class="topbar-actions">
       <span id="userInfo" class="user-info"></span>
       <label class="hospital-inline"><span>医院</span><input id="hospitalId" value="hospital_001" /></label>
+      <button id="selfCheckButton" class="btn btn-ghost">系统自检</button>
+      <button id="recoveryButton" class="btn btn-ghost">恢复中心</button>
       <button id="mcpButton" class="btn btn-ghost">MCP</button>
       <button id="reviewButton" class="btn btn-secondary">审批</button>
       <button id="newSessionButton" class="btn btn-ghost">新会话</button>
@@ -498,6 +517,33 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <span id="sessionLabel"></span>
     </div>
   </footer>
+</div>
+
+<!-- 恢复中心弹窗 -->
+<div id="recoveryModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>恢复中心</h2><div id="recoveryMeta" style="color:#5b677a;font-size:14px;">查看上次中断或可重试的任务。</div></div>
+      <button class="ghost" data-close="recoveryModal">关闭</button>
+    </header>
+    <div class="dialog-body">
+      <div class="merge-toolbar">
+        <button id="refreshRecoveryButton" type="button">刷新</button>
+      </div>
+      <div id="recoveryList" class="self-check-list"></div>
+    </div>
+  </section>
+</div>
+
+<!-- 系统自检弹窗 -->
+<div id="selfCheckModal" class="modal" hidden>
+  <section class="dialog" role="dialog" aria-modal="true">
+    <header>
+      <div><h2>系统自检</h2><div id="selfCheckMeta" style="color:#5b677a;font-size:14px;">查看当前服务和数据库连接状态。</div></div>
+      <button class="ghost" data-close="selfCheckModal">关闭</button>
+    </header>
+    <div class="dialog-body"><div id="selfCheckList" class="self-check-list"></div></div>
+  </section>
 </div>
 
 <!-- MCP 测试弹窗 -->
@@ -614,6 +660,7 @@ var adminToken = sessionStorage.getItem("adminToken") || "";
 var currentUser = JSON.parse(sessionStorage.getItem("currentUser") || "null");
 var latestFeedbackPreview = null;
 var latestTraceId = "";
+var pendingAdminAction = "";
 
 // 未登录则显示登录页
 if (!currentUser) { document.getElementById("loginScreen").hidden = false; }
@@ -633,6 +680,15 @@ var messages = document.getElementById("messages");
 var sessionLabel = document.getElementById("sessionLabel");
 var reviewButton = document.getElementById("reviewButton");
 var newSessionButton = document.getElementById("newSessionButton");
+var selfCheckButton = document.getElementById("selfCheckButton");
+var selfCheckModal = document.getElementById("selfCheckModal");
+var selfCheckMeta = document.getElementById("selfCheckMeta");
+var selfCheckList = document.getElementById("selfCheckList");
+var recoveryButton = document.getElementById("recoveryButton");
+var recoveryModal = document.getElementById("recoveryModal");
+var recoveryMeta = document.getElementById("recoveryMeta");
+var recoveryList = document.getElementById("recoveryList");
+var refreshRecoveryButton = document.getElementById("refreshRecoveryButton");
 var mcpButton = document.getElementById("mcpButton");
 var mcpModal = document.getElementById("mcpModal");
 var loadMcpSourcesButton = document.getElementById("loadMcpSourcesButton");
@@ -709,9 +765,39 @@ function updateAdminUI() {
 }
 updateAdminUI();
 
+function openAdminArea(area) {
+  if (area === "recovery") {
+    recoveryModal.hidden = false;
+    loadRecoveryTasks();
+    return;
+  }
+  reviewModal.hidden = false;
+  switchReviewTab("caliber");
+  loadPendingReviews();
+}
+
+function requireAdminThenOpen(area) {
+  pendingAdminAction = area || "review";
+  if (!adminToken) {
+    loginModal.hidden = false;
+    loginPassword.focus();
+    return;
+  }
+  openAdminArea(pendingAdminAction);
+  pendingAdminAction = "";
+}
+
 reviewButton.addEventListener("click", function() {
-  if (!adminToken) { loginModal.hidden = false; loginPassword.focus(); return; }
-  reviewModal.hidden = false; switchReviewTab("caliber"); loadPendingReviews();
+  requireAdminThenOpen("review");
+});
+
+selfCheckButton.addEventListener("click", function() {
+  selfCheckModal.hidden = false;
+  loadSelfCheck();
+});
+
+recoveryButton.addEventListener("click", function() {
+  requireAdminThenOpen("recovery");
 });
 
 mcpButton.addEventListener("click", function() {
@@ -719,6 +805,7 @@ mcpButton.addEventListener("click", function() {
   loadMcpSources();
 });
 
+refreshRecoveryButton.addEventListener("click", loadRecoveryTasks);
 loadMcpSourcesButton.addEventListener("click", loadMcpSources);
 syncMcpMetadataButton.addEventListener("click", syncMcpMetadata);
 
@@ -735,8 +822,9 @@ loginSubmit.addEventListener("click", async function() {
     updateAdminUI();
     loginModal.hidden = true;
     loginPassword.value = "";
-    reviewModal.hidden = false;
-    loadPendingReviews();
+    var target = pendingAdminAction || "review";
+    pendingAdminAction = "";
+    openAdminArea(target);
   } catch(e) { loginError.textContent = "网络错误"; loginError.hidden = false; }
 });
 
@@ -785,6 +873,158 @@ function renderMcpSources(sources) {
     card.append(title, meta, tools);
     mcpSourceList.appendChild(card);
   });
+}
+
+function renderSelfCheck(data) {
+  selfCheckList.innerHTML = "";
+  selfCheckMeta.textContent = (data.status_text || "未知状态") + " · " + (data.checked_at || "") + " · " + (data.request_id || "");
+  (data.items || []).forEach(function(item) {
+    var box = document.createElement("div");
+    box.className = "self-check-item " + (item.status === "ok" ? "ok" : "failed");
+    var head = document.createElement("div");
+    head.className = "self-check-head";
+    var name = document.createElement("div");
+    name.className = "self-check-name";
+    name.textContent = item.name || item.key || "未知项目";
+    var status = document.createElement("span");
+    status.className = "self-check-status";
+    status.textContent = item.status_text || "未知";
+    head.append(name, status);
+    var desc = document.createElement("div");
+    desc.className = "self-check-desc";
+    desc.textContent = item.description || "";
+    box.append(head, desc);
+    if (item.suggestion) {
+      var suggestion = document.createElement("div");
+      suggestion.className = "self-check-suggestion";
+      suggestion.textContent = "处理建议：" + item.suggestion;
+      box.appendChild(suggestion);
+    }
+    if (item.problem_code) {
+      var code = document.createElement("div");
+      code.className = "review-meta";
+      code.textContent = "问题码：" + item.problem_code + (item.detail ? " · " + item.detail : "");
+      box.appendChild(code);
+    }
+    selfCheckList.appendChild(box);
+  });
+}
+
+async function loadSelfCheck() {
+  selfCheckMeta.textContent = "正在检查服务状态...";
+  selfCheckList.innerHTML = "";
+  try {
+    var resp = await fetch("/api/health/summary");
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "系统自检失败");
+    renderSelfCheck(data);
+  } catch (e) {
+    selfCheckMeta.textContent = "系统自检失败";
+    selfCheckList.innerHTML = "";
+    var box = document.createElement("div");
+    box.className = "self-check-item failed";
+    var head = document.createElement("div");
+    head.className = "self-check-head";
+    var name = document.createElement("div");
+    name.className = "self-check-name";
+    name.textContent = "系统自检";
+    var status = document.createElement("span");
+    status.className = "self-check-status";
+    status.textContent = "异常";
+    var suggestion = document.createElement("div");
+    suggestion.className = "self-check-suggestion";
+    suggestion.textContent = "处理建议：检查后端服务是否正常运行。";
+    var detail = document.createElement("div");
+    detail.className = "review-meta";
+    detail.textContent = "问题详情：" + (e.message || e);
+    head.append(name, status);
+    box.append(head, suggestion, detail);
+    selfCheckList.appendChild(box);
+  }
+}
+
+function renderRecoveryTasks(items) {
+  recoveryList.innerHTML = "";
+  recoveryMeta.textContent = items.length ? "发现 " + items.length + " 个需要处理的任务。" : "没有需要恢复的任务。";
+  if (!items.length) {
+    var empty = document.createElement("div");
+    empty.className = "self-check-item";
+    empty.innerHTML = '<div class="self-check-head"><div class="self-check-name">恢复中心</div><span class="self-check-status">正常</span></div><div class="self-check-desc">当前没有上次中断或可重试的任务。</div>';
+    recoveryList.appendChild(empty);
+    return;
+  }
+  items.forEach(function(item) {
+    var box = document.createElement("div");
+    box.className = "self-check-item " + (item.status === "completed" ? "ok" : "failed");
+    var head = document.createElement("div");
+    head.className = "self-check-head";
+    var name = document.createElement("div");
+    name.className = "self-check-name";
+    name.textContent = item.task_name || item.task_type || "恢复任务";
+    var status = document.createElement("span");
+    status.className = "self-check-status";
+    status.textContent = item.status_text || "未知";
+    head.append(name, status);
+    var desc = document.createElement("div");
+    desc.className = "self-check-desc";
+    desc.textContent = "步骤：" + (item.current_step || "未知") + (item.trace_id ? " · " + item.trace_id : "");
+    var suggestion = document.createElement("div");
+    suggestion.className = "self-check-suggestion";
+    suggestion.textContent = "处理建议：" + (item.suggestion || "查看执行链路后处理。");
+    var meta = document.createElement("div");
+    meta.className = "review-meta";
+    meta.textContent = "任务：" + item.task_id + (item.error_message ? " · " + item.error_message : "");
+    var actions = document.createElement("div");
+    actions.className = "review-actions";
+    if (item.action_text && item.action_text !== "人工确认") {
+      var retry = document.createElement("button");
+      retry.textContent = item.action_text;
+      retry.addEventListener("click", function() { retryRecoveryTask(item.task_id); });
+      actions.appendChild(retry);
+    }
+    var ignore = document.createElement("button");
+    ignore.className = "ghost";
+    ignore.textContent = "忽略";
+    ignore.addEventListener("click", function() { ignoreRecoveryTask(item.task_id); });
+    actions.appendChild(ignore);
+    box.append(head, desc, suggestion, meta, actions);
+    recoveryList.appendChild(box);
+  });
+}
+
+async function loadRecoveryTasks() {
+  recoveryMeta.textContent = "正在读取恢复任务...";
+  recoveryList.innerHTML = "";
+  try {
+    var resp = await fetch("/api/recovery/tasks", { headers:{"Authorization":"Bearer " + adminToken} });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "恢复任务读取失败");
+    renderRecoveryTasks(data.items || []);
+  } catch (e) {
+    recoveryMeta.textContent = "恢复中心加载失败";
+    recoveryList.textContent = e.message || e;
+  }
+}
+
+async function retryRecoveryTask(taskId) {
+  var resp = await fetch("/api/recovery/tasks/" + encodeURIComponent(taskId) + "/retry", {
+    method:"POST",
+    headers:{"Authorization":"Bearer " + adminToken, "Content-Type":"application/json"},
+    body:JSON.stringify({ approver_id: currentUser ? currentUser.accountId : "admin" })
+  });
+  var data = await resp.json();
+  if (!resp.ok) { alert(data.detail || "重试失败"); return; }
+  await loadRecoveryTasks();
+}
+
+async function ignoreRecoveryTask(taskId) {
+  var resp = await fetch("/api/recovery/tasks/" + encodeURIComponent(taskId) + "/ignore", {
+    method:"POST",
+    headers:{"Authorization":"Bearer " + adminToken}
+  });
+  var data = await resp.json();
+  if (!resp.ok) { alert(data.detail || "忽略失败"); return; }
+  await loadRecoveryTasks();
 }
 
 async function loadMcpSources() {
@@ -902,6 +1142,44 @@ function attachTraceButton(message, traceId) {
   message.traceButtonAttached = true;
 }
 
+function formatTraceDuration(ms) {
+  var value = Number(ms || 0);
+  if (!value || value <= 0) return "未计时";
+  if (value >= 1000) return (value / 1000).toFixed(2) + "s";
+  return value + "ms";
+}
+
+function renderTraceTimingSummary(nodes) {
+  var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
+  var totalMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
+  var slowest = timedNodes.reduce(function(current, node) {
+    if (!current || Number(node.duration_ms || 0) > Number(current.duration_ms || 0)) return node;
+    return current;
+  }, null);
+  var box = document.createElement("div");
+  box.className = "self-check-item";
+  var head = document.createElement("div");
+  head.className = "self-check-head";
+  var name = document.createElement("div");
+  name.className = "self-check-name";
+  name.textContent = "阶段耗时总览";
+  var status = document.createElement("span");
+  status.className = "self-check-status";
+  status.textContent = formatTraceDuration(totalMs);
+  head.append(name, status);
+  var desc = document.createElement("div");
+  desc.className = "self-check-desc";
+  desc.textContent = "已计时节点：" + timedNodes.length + " / " + nodes.length;
+  box.append(head, desc);
+  if (slowest) {
+    var slow = document.createElement("div");
+    slow.className = "review-meta";
+    slow.textContent = "最慢节点：" + (slowest.node_title || slowest.node_name || "未知节点") + " · " + formatTraceDuration(slowest.duration_ms);
+    box.appendChild(slow);
+  }
+  return box;
+}
+
 async function showTrace(traceId) {
   traceModal.hidden = false;
   traceMeta.textContent = traceId;
@@ -913,6 +1191,7 @@ async function showTrace(traceId) {
     traceNodeList.innerHTML = "";
     var nodes = data.nodes || [];
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
+    traceNodeList.appendChild(renderTraceTimingSummary(nodes));
     nodes.forEach(function(node) {
       var box = document.createElement("div");
       box.className = "review-item trace-node " + (node.status || "");
@@ -939,8 +1218,12 @@ async function showTrace(traceId) {
       titleRow.append(titleWrap, actions);
       var meta = document.createElement("div");
       meta.className = "review-meta";
-      var durationText = node.duration_ms && node.duration_ms > 0 ? node.duration_ms + "ms" : "未计时";
+      var durationText = formatTraceDuration(node.duration_ms);
+      var ioCheckText = node.contract_status === "ok" ? "正常" : "需要查看";
       meta.textContent = "类型：" + (node.manifest_type || node.node_type || "") + "  耗时：" + durationText + (node.tool_name ? "  工具：" + node.tool_name : "") + (node.db_source ? "  数据源：" + node.db_source : "");
+      if (node.contract_status && node.contract_status !== "ok") {
+        meta.textContent += "  输入输出：" + ioCheckText;
+      }
       var desc = document.createElement("div");
       desc.className = "trace-desc";
       desc.textContent = node.node_description || "";
@@ -949,13 +1232,31 @@ async function showTrace(traceId) {
       var detail = document.createElement("div");
       detail.className = "trace-detail";
       detail.hidden = true;
-      appendTraceSection(detail, "本次入参", node.input_data, node.input_summary || "无");
-      appendTraceSection(detail, "本次出参", node.output_data, node.output_summary || "无");
+      appendTraceSection(detail, "本次输入", node.input_data, node.input_summary || "无");
+      appendTraceSection(detail, "本次输出", node.output_data, node.output_summary || "无");
       appendTraceSection(detail, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
       var fields = document.createElement("div");
       fields.className = "trace-field-list";
-      fields.textContent = "期望入参：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望出参：" + ((node.expected_outputs || []).join(", ") || "无");
+      fields.textContent = "期望输入：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望输出：" + ((node.expected_outputs || []).join(", ") || "无");
       detail.appendChild(fields);
+      var contract = document.createElement("div");
+      contract.className = "trace-field-list";
+      contract.textContent = "输入输出检查：" + ioCheckText
+        + "  |  必要输入：" + ((node.required_inputs || []).join(", ") || "无")
+        + "  |  必要输出：" + ((node.required_outputs || []).join(", ") || "无");
+      detail.appendChild(contract);
+      if ((node.missing_inputs || []).length || (node.missing_outputs || []).length) {
+        var missing = document.createElement("div");
+        missing.className = "trace-hint";
+        missing.textContent = "缺少内容：输入 " + ((node.missing_inputs || []).join(", ") || "无")
+          + "；输出 " + ((node.missing_outputs || []).join(", ") || "无");
+        detail.appendChild(missing);
+      }
+      var failurePolicy = document.createElement("div");
+      failurePolicy.className = "trace-field-list";
+      failurePolicy.textContent = "出错处理：" + (node.on_failure || "continue")
+        + "  |  问题码：" + (node.error_code || node.failure_code || "无");
+      detail.appendChild(failurePolicy);
       if (node.failure_hint) {
         var hint = document.createElement("div");
         hint.className = "trace-hint";

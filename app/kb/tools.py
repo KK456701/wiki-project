@@ -63,6 +63,18 @@ def _safe_filename(text: str) -> str:
     return value[:80]
 
 
+def atomic_write_text(path: Path, content: str, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp_path.write_text(content, encoding=encoding)
+        tmp_path.replace(path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
+
+
 def _section(markdown: str, title: str) -> str:
     pattern = re.compile(rf"^## {re.escape(title)}\s*\n(?P<body>.*?)(?=^## |\Z)", re.M | re.S)
     match = pattern.search(markdown)
@@ -423,7 +435,7 @@ created_at: {created_at}
 
 该变更仅进入 pending，不直接写入正式 wiki。人工审核通过后只生成医院 override，不修改公司标准或国标。
 """
-        path.write_text(content, encoding="utf-8")
+        atomic_write_text(path, content)
         return {
             "change_id": change_id,
             "status": "pending",
@@ -468,7 +480,7 @@ created_at: {created_at}
     def _write_json(self, rel_path: str, data: object) -> None:
         path = self.kb_root / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
     def _active_override_rel_path(self, hospital_id: str, rule_id: str) -> str:
         return f"wiki/hospitals/{hospital_id}/overrides/{rule_id}_override.md"
@@ -543,7 +555,7 @@ created_at: {created_at}
             legacy_path = self.kb_root / legacy_rel_path
             legacy_path.parent.mkdir(parents=True, exist_ok=True)
             if not legacy_path.exists():
-                legacy_path.write_text((self.kb_root / active_rel_path).read_text(encoding="utf-8"), encoding="utf-8")
+                atomic_write_text(legacy_path, (self.kb_root / active_rel_path).read_text(encoding="utf-8"))
             versions.append(
                 {
                     "version_id": legacy_id,
@@ -573,7 +585,7 @@ created_at: {created_at}
         if active_version_path and not (self.kb_root / active_rel_path).exists() and (self.kb_root / active_version_path).exists():
             active_path = self.kb_root / active_rel_path
             active_path.parent.mkdir(parents=True, exist_ok=True)
-            active_path.write_text((self.kb_root / active_version_path).read_text(encoding="utf-8"), encoding="utf-8")
+            atomic_write_text(active_path, (self.kb_root / active_version_path).read_text(encoding="utf-8"))
         return item
 
     def list_hospital_override_versions(self, rule_id_or_name: str, hospital_id: str) -> dict[str, Any]:
@@ -619,7 +631,7 @@ created_at: {created_at}
         active_rel_path = self._active_override_rel_path(hospital_id, rule["rule_id"])
         active_path = self.kb_root / active_rel_path
         active_path.parent.mkdir(parents=True, exist_ok=True)
-        active_path.write_text(version_path.read_text(encoding="utf-8"), encoding="utf-8")
+        atomic_write_text(active_path, version_path.read_text(encoding="utf-8"))
         restored_at = datetime.now().isoformat(timespec="seconds")
         item["path"] = active_rel_path
         item["active_version_id"] = version_id
@@ -727,10 +739,10 @@ created_at: {created_at}
 
         version_path = self.kb_root / version_rel_path
         version_path.parent.mkdir(parents=True, exist_ok=True)
-        version_path.write_text(content, encoding="utf-8")
+        atomic_write_text(version_path, content)
         active_path = self.kb_root / active_rel_path
         active_path.parent.mkdir(parents=True, exist_ok=True)
-        active_path.write_text(content, encoding="utf-8")
+        atomic_write_text(active_path, content)
 
         index = self._read_json("indexes/hospital_override_index.json")
         overrides = index.setdefault("hospital_overrides", [])
@@ -765,8 +777,8 @@ created_at: {created_at}
         approved_path = approved_dir / pending_path.name
         approved_text = pending_path.read_text(encoding="utf-8").replace("status: pending", "status: approved")
         approved_text = approved_text + f"\n## \u5ba1\u6279\u7ed3\u679c\n\n- approved_at: {approved_at}\n- approver_id: {approver_id}\n- active_version_id: {version_id}\n"
-        approved_path.write_text(approved_text, encoding="utf-8")
-        pending_path.write_text(approved_text, encoding="utf-8")
+        atomic_write_text(approved_path, approved_text)
+        atomic_write_text(pending_path, approved_text)
         return {
             "change_id": change_id,
             "status": "approved",
@@ -787,6 +799,6 @@ created_at: {created_at}
         rejected_path = rejected_dir / pending_path.name
         rejected_text = pending_path.read_text(encoding="utf-8").replace("status: pending", "status: rejected")
         rejected_text = rejected_text + f"\n## 审批结果\n\n- rejected_at: {rejected_at}\n- approver_id: {approver_id}\n"
-        rejected_path.write_text(rejected_text, encoding="utf-8")
-        pending_path.write_text(rejected_text, encoding="utf-8")
+        atomic_write_text(rejected_path, rejected_text)
+        atomic_write_text(pending_path, rejected_text)
         return {"change_id": change_id, "status": "rejected", "path": rejected_path.relative_to(self.kb_root).as_posix(), "rejected_at": rejected_at, "approver_id": approver_id}

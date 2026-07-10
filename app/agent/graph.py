@@ -42,6 +42,7 @@ class AgentState(TypedDict, total=False):
     generation_method: str
     workflow_engine: str
     errors: list[str]
+    _node_timings: dict[str, int]
 
 
 FEEDBACK_MARKERS = ["本院", "我们医院", "我院", "应该", "改成", "改为", "调整成", "修改成", "反馈", "按"]
@@ -100,6 +101,23 @@ def _elapsed_ms(start: float) -> int:
     return max(1, int((time.perf_counter() - start) * 1000))
 
 
+def _record_node_duration(state: AgentState, node_name: str, start: float) -> int:
+    duration_ms = _elapsed_ms(start)
+    timings = state.setdefault("_node_timings", {})
+    timings[node_name] = duration_ms
+    return duration_ms
+
+
+def _node_duration(state: dict[str, Any], node_name: str) -> int:
+    timings = state.get("_node_timings")
+    if isinstance(timings, dict):
+        try:
+            return int(timings.get(node_name) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
 def _finish_trace(
     recorder: TraceRecorder | None,
     trace_id: str,
@@ -141,10 +159,14 @@ def _record_effective_rule_node(
             "rule_id": effective.get("rule_id") or rule_id,
             "rule_name": effective.get("rule_name"),
             "effective_level": effective.get("effective_level"),
+            "rule_source": effective.get("rule_source", "wiki"),
+            "national_version": effective.get("national_version"),
+            "hospital_version": effective.get("hospital_version"),
+            "overridden_fields": effective.get("overridden_fields", []),
             "fallback_chain": effective.get("fallback_chain", []),
             "warnings": effective.get("warnings", []),
         },
-        config_data={"tool": "KnowledgeBaseTools.get_effective_rule"},
+        config_data={"tool": "RuleRepository.get_effective_rule"},
         duration_ms=duration_ms,
     )
 
@@ -156,6 +178,14 @@ def _record_sql_trace_nodes(
     rule_id: str | None,
     hospital_id: str | None,
 ) -> None:
+    node_timings = result.get("_node_timings") if isinstance(result.get("_node_timings"), dict) else {}
+
+    def result_duration(node_name: str) -> int:
+        try:
+            return int(node_timings.get(node_name) or 0)
+        except (TypeError, ValueError):
+            return 0
+
     precheck = result.get("precheck")
     if isinstance(precheck, dict):
         ok = bool(precheck.get("ok"))
@@ -177,6 +207,7 @@ def _record_sql_trace_nodes(
                 "field_mapping": precheck.get("field_mapping", {}),
             },
             config_data={"tool": "precheck_rule_fields", "metadata_source": "med_metadata_column"},
+            duration_ms=result_duration("field_mapping_precheck"),
         )
 
     if result.get("sql_id") or result.get("sql_text"):
@@ -202,6 +233,7 @@ def _record_sql_trace_nodes(
                 "sql_preview": str(result.get("sql_text") or "")[:1500],
             },
             config_data={"renderer": "Jinja2", "dialect": result.get("dialect", "")},
+            duration_ms=result_duration("sql_generate"),
         )
 
     validation = result.get("validation")
@@ -224,6 +256,7 @@ def _record_sql_trace_nodes(
                 "error": validation.get("error"),
             },
             config_data={"allow": "SELECT", "deny": "DDL / DML / 多语句"},
+            duration_ms=result_duration("sql_validate"),
         )
 
     trial = result.get("trial_run")
@@ -468,7 +501,7 @@ def _generate_answer(query: str, rule: dict[str, Any], llm_client: LLMClient | N
     return _answer_from_rule(rule), "tool_fallback"
 
 
-def _preview_feedback(state: AgentState, tools: KnowledgeBaseTools, effective: dict[str, Any]) -> AgentState:
+def _preview_feedback(state: AgentState, tools: Any, effective: dict[str, Any]) -> AgentState:
     state["feedback_preview"] = tools.build_feedback_preview(
         str(state["rule_id"]),
         state.get("hospital_id"),
@@ -482,7 +515,15 @@ def _preview_feedback(state: AgentState, tools: KnowledgeBaseTools, effective: d
     )
     return state
 
-def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLMClient | None = None) -> AgentState:
+
+def _get_field_mapping(
+    tools: Any, rule_id: str, hospital_id: str | None
+) -> dict[str, Any]:
+    if isinstance(tools, KnowledgeBaseTools):
+        return tools.get_field_mapping(rule_id)
+    return tools.get_field_mapping(rule_id, hospital_id or "")
+
+def _run_deterministic(state: AgentState, tools: Any, llm_client: LLMClient | None = None) -> AgentState:
     query = state["query"]
     errors: list[str] = state.setdefault("errors", [])
     intent_data = _detect_intent(query, llm_client, errors, state.get("memory_context"))
@@ -507,7 +548,9 @@ def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client:
     yield ("progress", {"message": "\u5df2\u547d\u4e2d\u6307\u6807\uff0c\u6b63\u5728\u8bfb\u53d6\u533b\u9662\u4f18\u5148\u53e3\u5f84"})
     effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
     state["effective_rule"] = effective
-    state["field_mapping"] = tools.get_field_mapping(rule_id)
+    state["field_mapping"] = _get_field_mapping(
+        tools, rule_id, state.get("hospital_id")
+    )
 
     if state["intent"] == "feedback":
         return _preview_feedback(state, tools, effective)
@@ -516,7 +559,7 @@ def _run_deterministic(state: AgentState, tools: KnowledgeBaseTools, llm_client:
     return state
 
 
-def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLMClient | None = None) -> AgentState:
+def _run_langgraph(state: AgentState, tools: Any, llm_client: LLMClient | None = None) -> AgentState:
     try:
         from langgraph.graph import END, StateGraph
     except Exception as exc:
@@ -526,22 +569,28 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
     state["workflow_engine"] = "langgraph"
 
     def intent_node(s: AgentState) -> AgentState:
+        node_start = time.perf_counter()
         intent_data = _detect_intent(s["query"], llm_client, s.setdefault("errors", []), s.get("memory_context"))
         s["intent"] = intent_data["intent"]
         s["_retrieval_query"] = intent_data["retrieval_query"]  # type: ignore[typeddict-unknown-key]
+        _record_node_duration(s, "intent_detect", node_start)
         return s
 
     def chat_node(s: AgentState) -> AgentState:
+        node_start = time.perf_counter()
         s["rule_id"] = None
         s["generation_method"] = "chat"
         s["answer"] = _answer_chat(s["query"])
+        _record_node_duration(s, "final_response", node_start)
         return s
 
     def search_node(s: AgentState) -> AgentState:
+        node_start = time.perf_counter()
         search_query = s.get("_retrieval_query") or s["query"]  # type: ignore[typeddict-item]
         s["search"] = tools.search(str(search_query), limit=5)
         s["rule_id"] = s["search"].get("resolved_rule_id")
         _apply_memory_context_if_needed(s)
+        _record_node_duration(s, "rule_search", node_start)
         return s
 
     def query_node(s: AgentState) -> AgentState:
@@ -549,10 +598,16 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
             s["generation_method"] = "tool"
             s["answer"] = "未命中规则。请提供更明确的指标名称或 rule_id。"
             return s
+        effective_start = time.perf_counter()
         effective = tools.get_effective_rule(str(s["rule_id"]), s.get("hospital_id"))
         s["effective_rule"] = effective
-        s["field_mapping"] = tools.get_field_mapping(str(s["rule_id"]))
+        s["field_mapping"] = _get_field_mapping(
+            tools, str(s["rule_id"]), s.get("hospital_id")
+        )
+        _record_node_duration(s, "effective_rule_resolve", effective_start)
+        answer_start = time.perf_counter()
         s["answer"], s["generation_method"] = _generate_answer(s["query"], effective, llm_client, s.setdefault("errors", []))
+        _record_node_duration(s, "final_response", answer_start)
         return s
 
     def feedback_node(s: AgentState) -> AgentState:
@@ -560,9 +615,14 @@ def _run_langgraph(state: AgentState, tools: KnowledgeBaseTools, llm_client: LLM
             s["generation_method"] = "tool"
             s["answer"] = "未命中规则，无法记录反馈。请补充指标名称。"
             return s
+        effective_start = time.perf_counter()
         effective = tools.get_effective_rule(str(s["rule_id"]), s.get("hospital_id"))
         s["effective_rule"] = effective
-        return _preview_feedback(s, tools, effective)
+        _record_node_duration(s, "effective_rule_resolve", effective_start)
+        answer_start = time.perf_counter()
+        result = _preview_feedback(s, tools, effective)
+        _record_node_duration(result, "final_response", answer_start)
+        return result
 
     def route_after_intent(s: AgentState) -> str:
         return "chat" if s.get("intent") == "chat" else "search"
@@ -701,8 +761,9 @@ def run_chat(
     llm_client: LLMClient | None = None,
     session_id: str | None = None,
     memory: ConversationMemory | None = None,
+    rule_repository: Any | None = None,
 ) -> dict[str, Any]:
-    tools = KnowledgeBaseTools(kb_root)
+    tools = rule_repository or KnowledgeBaseTools(kb_root)
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
@@ -770,6 +831,7 @@ def run_chat(
             "strategy": "规则兜底 + 可选 LLM 意图识别",
             "workflow_engine": result.get("workflow_engine") or workflow_engine_name(),
         },
+        duration_ms=_node_duration(result, "intent_detect"),
     )
     if result.get("search") or result.get("rule_id"):
         search_payload = result.get("search") if isinstance(result.get("search"), dict) else {}
@@ -794,6 +856,7 @@ def run_chat(
                 "tool": "KnowledgeBaseTools.search",
                 "priority": "医院口径 > 公司标准 > 国标",
             },
+            duration_ms=_node_duration(result, "rule_search"),
         )
     _record_effective_rule_node(
         trace_recorder,
@@ -801,6 +864,7 @@ def run_chat(
         str(result.get("rule_id") or "") or None,
         hospital_id,
         result.get("effective_rule") if isinstance(result.get("effective_rule"), dict) else None,
+        duration_ms=_node_duration(result, "effective_rule_resolve"),
     )
     result.setdefault("generation_method", "tool")
     result.setdefault("workflow_engine", workflow_engine_name())
@@ -844,6 +908,7 @@ def run_chat(
         config_data={
             "storage": "ConversationMemory + TraceRecorder",
         },
+        duration_ms=_node_duration(result, "final_response"),
     )
     _finish_trace(
         trace_recorder,
@@ -865,6 +930,7 @@ def run_chat_stream(
     llm_client: LLMClient | None = None,
     session_id: str | None = None,
     memory: ConversationMemory | None = None,
+    rule_repository: Any | None = None,
 ) -> Iterator[Tuple[str, dict[str, Any]]]:
     """真正的流式对话：逐 token 从 Ollama 产出并立即 yield。
 
@@ -874,7 +940,7 @@ def run_chat_stream(
       - ("feedback_preview", {...})  反馈对比预览
       - ("done", {...})         最终结果
     """
-    tools = KnowledgeBaseTools(kb_root)
+    tools = rule_repository or KnowledgeBaseTools(kb_root)
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
@@ -920,7 +986,9 @@ def run_chat_stream(
 
     # ---- Phase 1: 意图识别 + 知识库检索（同步，很快） ----
     errors: list[str] = state.setdefault("errors", [])
+    intent_start = time.perf_counter()
     intent_data = _detect_intent(query, active_llm, errors, memory_context)
+    intent_duration_ms = _elapsed_ms(intent_start)
     state["intent"] = intent_data["intent"]
     state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
     _record_trace_node(
@@ -944,6 +1012,7 @@ def run_chat_stream(
         config_data={
             "strategy": "规则兜底 + 可选 LLM 意图识别",
         },
+        duration_ms=intent_duration_ms,
     )
 
     if state["intent"] == "chat":
@@ -991,7 +1060,9 @@ def run_chat_stream(
     try:
         yield ("progress", {"message": "\u6b63\u5728\u68c0\u7d22\u672c\u5730 Wiki \u77e5\u8bc6\u5e93"})
         search_query = intent_data["retrieval_query"] or query
+        search_start = time.perf_counter()
         search = tools.search(search_query, limit=5)
+        search_duration_ms = _elapsed_ms(search_start)
     except KBToolError as exc:
         yield ("meta", {
             "session_id": active_session_id, "intent": state.get("intent"),
@@ -1030,6 +1101,7 @@ def run_chat_stream(
             "tool": "KnowledgeBaseTools.search",
             "priority": "医院口径 > 公司标准 > 国标",
         },
+        duration_ms=search_duration_ms,
     )
 
     if not rule_id:
@@ -1050,10 +1122,14 @@ def run_chat_stream(
         })
         return
 
+    effective_start = time.perf_counter()
     effective = tools.get_effective_rule(rule_id, state.get("hospital_id"))
     state["effective_rule"] = effective
-    state["field_mapping"] = tools.get_field_mapping(rule_id)
-    _record_effective_rule_node(trace_recorder, trace_id, rule_id, state.get("hospital_id"), effective)
+    state["field_mapping"] = _get_field_mapping(
+        tools, rule_id, state.get("hospital_id")
+    )
+    effective_duration_ms = _elapsed_ms(effective_start)
+    _record_effective_rule_node(trace_recorder, trace_id, rule_id, state.get("hospital_id"), effective, duration_ms=effective_duration_ms)
 
     # ---- Phase 2: 反馈模式（模板化，无需流式） ----
     if state["intent"] == "feedback":
@@ -1130,6 +1206,7 @@ def run_chat_stream(
             sql_agent = SQLGenerationAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
                 business_db=_create_business_db_client("hospital_demo_data"),
+                rule_repository=None if isinstance(tools, KnowledgeBaseTools) else tools,
             )
             result = sql_agent.generate(
                 query=query, hospital_id=str(state.get("hospital_id") or ""),
@@ -1278,6 +1355,7 @@ def run_chat_stream(
             sql_agent = SQLGenerationAgent(
                 kb_root=kb_root, runtime_engine=create_runtime_engine(),
                 business_db=_create_business_db_client("hospital_demo_data"),
+                rule_repository=None if isinstance(tools, KnowledgeBaseTools) else tools,
             )
             result = sql_agent.generate(
                 query=query, hospital_id=str(state.get("hospital_id") or ""),
@@ -1408,6 +1486,7 @@ def run_chat_stream(
         return
 
     # ---- Phase 3: 查询模式 —— 真正的流式 LLM 生成 ----
+    answer_start = time.perf_counter()
     if active_llm is None:
         # 无 LLM，直接用模板回答
         yield ("progress", {"message": "\u6b63\u5728\u6309\u77e5\u8bc6\u5e93\u6a21\u677f\u751f\u6210\u56de\u7b54"})
@@ -1450,6 +1529,7 @@ def run_chat_stream(
             yield ("token", {"text": answer})
 
     # ---- Phase 4: 记录记忆，返回 done ----
+    answer_duration_ms = _elapsed_ms(answer_start)
     memory_store.append_message(active_session_id, "assistant", answer, {
         "intent": state.get("intent"), "rule_id": rule_id,
         "rule_name": effective.get("rule_name"),
@@ -1477,6 +1557,7 @@ def run_chat_stream(
         config_data={
             "storage": "ConversationMemory + TraceRecorder",
         },
+        duration_ms=answer_duration_ms,
     )
     _finish_trace(
         trace_recorder,

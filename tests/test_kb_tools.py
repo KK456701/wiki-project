@@ -3,8 +3,9 @@ import unittest
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
-from app.kb.tools import KnowledgeBaseTools
+from app.kb.tools import KnowledgeBaseTools, atomic_write_text
 
 
 TEST_TMP_ROOT = Path(__file__).resolve().parents[1] / "test_tmp"
@@ -146,6 +147,19 @@ def make_minimal_kb(root: Path, with_hospital: bool = False) -> None:
 
 
 class KnowledgeBaseToolsTest(unittest.TestCase):
+    def test_atomic_write_text_preserves_existing_file_when_replace_fails(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            target = root / "indexes" / "search_index.json"
+            write(target, "old")
+
+            with patch("pathlib.Path.replace", side_effect=OSError("replace failed")):
+                with self.assertRaises(OSError):
+                    atomic_write_text(target, "new")
+
+            self.assertEqual(target.read_text(encoding="utf-8"), "old")
+            self.assertEqual(list(target.parent.glob("*.tmp")), [])
+
     def test_get_effective_rule_prefers_hospital_override(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

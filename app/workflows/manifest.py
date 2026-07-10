@@ -11,6 +11,24 @@ import yaml
 
 WORKFLOW_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, dict[str, Any]] = {}
+_ALLOWED_FAILURE_POLICIES = {"stop", "continue", "fallback"}
+
+
+def _default_failure_code(node_id: str) -> str:
+    safe = "".join(ch if ch.isalnum() else "_" for ch in node_id).strip("_").upper()
+    return f"{safe or 'WORKFLOW_NODE'}_FAILED"
+
+
+def _with_contract_defaults(node: dict[str, Any]) -> dict[str, Any]:
+    node_id = str(node.get("id") or "")
+    enriched = dict(node)
+    enriched.setdefault("required", False)
+    enriched.setdefault("on_failure", "continue")
+    enriched.setdefault("failure_code", _default_failure_code(node_id))
+    enriched.setdefault("required_inputs", [])
+    enriched.setdefault("required_outputs", [])
+    enriched.setdefault("registered", True)
+    return enriched
 
 
 def load_workflow_manifest(workflow_id: str = "core_indicator_chat") -> dict[str, Any]:
@@ -20,6 +38,7 @@ def load_workflow_manifest(workflow_id: str = "core_indicator_chat") -> dict[str
         data.setdefault("workflow_id", workflow_id)
         data.setdefault("nodes", [])
         data.setdefault("edges", [])
+        data["nodes"] = [_with_contract_defaults(dict(node)) for node in data.get("nodes", [])]
         _CACHE[workflow_id] = data
     return deepcopy(_CACHE[workflow_id])
 
@@ -37,7 +56,83 @@ def get_workflow_node(workflow_id: str, node_id: str) -> dict[str, Any]:
         "inputs": [],
         "outputs": [],
         "config": {},
+        "required": False,
+        "on_failure": "continue",
+        "failure_code": _default_failure_code(node_id),
+        "required_inputs": [],
+        "required_outputs": [],
         "failure_hint": "请先补充该节点的 manifest 定义，再定位运行细节。",
+        "registered": False,
+    }
+
+
+def default_failure_code_for_node(node_id: str, workflow_id: str = "core_indicator_chat") -> str:
+    return str(get_workflow_node(workflow_id, node_id).get("failure_code") or _default_failure_code(node_id))
+
+
+def _missing_keys(data: dict[str, Any], required_keys: list[str]) -> list[str]:
+    missing = []
+    for key in required_keys:
+        if key not in data or data.get(key) in (None, ""):
+            missing.append(key)
+    return missing
+
+
+def validate_trace_node_contract(node: dict[str, Any], workflow_id: str = "core_indicator_chat") -> dict[str, Any]:
+    node_id = str(node.get("node_name") or node.get("id") or "")
+    meta = get_workflow_node(workflow_id, node_id)
+    missing_inputs = _missing_keys(dict(node.get("input_data") or {}), list(meta.get("required_inputs") or []))
+    missing_outputs = _missing_keys(dict(node.get("output_data") or {}), list(meta.get("required_outputs") or []))
+    status = "ok"
+    if missing_inputs or missing_outputs or not meta.get("registered", True):
+        status = "warning"
+    return {
+        "contract_status": status,
+        "missing_inputs": missing_inputs,
+        "missing_outputs": missing_outputs,
+        "node_required": bool(meta.get("required", False)),
+        "on_failure": meta.get("on_failure") or "continue",
+        "failure_code": meta.get("failure_code") or _default_failure_code(node_id),
+    }
+
+
+def validate_workflow_manifest(manifest_or_id: dict[str, Any] | str = "core_indicator_chat") -> dict[str, Any]:
+    manifest = load_workflow_manifest(manifest_or_id) if isinstance(manifest_or_id, str) else deepcopy(manifest_or_id)
+    issues: list[dict[str, str]] = []
+    node_ids: set[str] = set()
+
+    for index, raw_node in enumerate(manifest.get("nodes", [])):
+        node = _with_contract_defaults(dict(raw_node))
+        node_id = str(node.get("id") or "")
+        if not node_id:
+            issues.append({"severity": "error", "message": f"nodes[{index}] 缺少 id"})
+            continue
+        if node_id in node_ids:
+            issues.append({"severity": "error", "message": f"节点 id 重复: {node_id}"})
+        node_ids.add(node_id)
+        for field in ("title", "type", "description", "failure_hint"):
+            if not node.get(field):
+                issues.append({"severity": "error", "message": f"节点 {node_id} 缺少 {field}"})
+        if node.get("on_failure") not in _ALLOWED_FAILURE_POLICIES:
+            issues.append({"severity": "error", "message": f"节点 {node_id} on_failure 非法: {node.get('on_failure')}"})
+        for field in ("inputs", "outputs", "required_inputs", "required_outputs"):
+            if not isinstance(node.get(field), list):
+                issues.append({"severity": "error", "message": f"节点 {node_id} 的 {field} 必须是列表"})
+
+    for edge in manifest.get("edges", []):
+        source = str(edge.get("from") or "")
+        target = str(edge.get("to") or "")
+        if source not in node_ids:
+            issues.append({"severity": "error", "message": f"边引用了不存在的起点节点: {source}"})
+        if target not in node_ids:
+            issues.append({"severity": "error", "message": f"边引用了不存在的终点节点: {target}"})
+
+    return {
+        "ok": not any(issue["severity"] == "error" for issue in issues),
+        "workflow_id": manifest.get("workflow_id"),
+        "node_count": len(manifest.get("nodes", [])),
+        "edge_count": len(manifest.get("edges", [])),
+        "issues": issues,
     }
 
 
@@ -53,4 +148,7 @@ def annotate_trace_node(node: dict[str, Any], workflow_id: str = "core_indicator
     annotated["node_config"] = dict(meta.get("config") or {})
     annotated["failure_hint"] = meta.get("failure_hint") or ""
     annotated["manifest_type"] = meta.get("type") or annotated.get("node_type") or ""
+    annotated["required_inputs"] = list(meta.get("required_inputs") or [])
+    annotated["required_outputs"] = list(meta.get("required_outputs") or [])
+    annotated.update(validate_trace_node_contract(annotated, workflow_id))
     return annotated

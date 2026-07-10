@@ -1,6 +1,12 @@
 import unittest
 
-from app.workflows.manifest import annotate_trace_node, get_workflow_node, load_workflow_manifest
+from app.workflows.manifest import (
+    annotate_trace_node,
+    default_failure_code_for_node,
+    get_workflow_node,
+    load_workflow_manifest,
+    validate_workflow_manifest,
+)
 
 
 class WorkflowManifestTest(unittest.TestCase):
@@ -35,6 +41,42 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(annotated["status"], "success")
         self.assertIn("retrieval_query", annotated["expected_inputs"])
         self.assertIn("rule_id", annotated["expected_outputs"])
+
+    def test_manifest_exposes_operational_contract(self) -> None:
+        memory_node = get_workflow_node("core_indicator_chat", "memory_load")
+        sql_node = get_workflow_node("core_indicator_chat", "sql_validate")
+
+        self.assertTrue(memory_node["required"])
+        self.assertEqual(memory_node["on_failure"], "continue")
+        self.assertEqual(memory_node["failure_code"], "MEMORY_LOAD_FAILED")
+        self.assertIn("session_id", memory_node["required_inputs"])
+        self.assertIn("memory_context", memory_node["required_outputs"])
+        self.assertEqual(sql_node["on_failure"], "stop")
+        self.assertEqual(default_failure_code_for_node("sql_validate"), "SQL_VALIDATE_FAILED")
+
+    def test_manifest_validation_reports_unknown_edges(self) -> None:
+        manifest = load_workflow_manifest("core_indicator_chat")
+        manifest["edges"].append({"from": "missing_node", "to": "final_response"})
+
+        result = validate_workflow_manifest(manifest)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("missing_node" in issue["message"] for issue in result["issues"]))
+
+    def test_annotate_trace_node_reports_contract_gaps(self) -> None:
+        runtime = {
+            "node_name": "memory_load",
+            "node_type": "memory",
+            "status": "success",
+            "input_data": {},
+            "output_data": {},
+        }
+
+        annotated = annotate_trace_node(runtime)
+
+        self.assertEqual(annotated["contract_status"], "warning")
+        self.assertIn("session_id", annotated["missing_inputs"])
+        self.assertIn("memory_context", annotated["missing_outputs"])
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from app.db.repositories import (
     insert_trace_node,
     start_trace_record,
 )
-from app.workflows.manifest import annotate_trace_node
+from app.workflows.manifest import annotate_trace_node, default_failure_code_for_node
 
 
 def _now() -> datetime:
@@ -95,6 +95,8 @@ class TraceRecorder:
     ) -> None:
         started_at = _now()
         node_id = f"NODE_{uuid.uuid4().hex[:12]}"
+        if not error_code and status in {"failed", "error"}:
+            error_code = default_failure_code_for_node(node_name)
         payload = {
             "trace_id": trace_id,
             "node_id": node_id,

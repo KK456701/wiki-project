@@ -26,6 +26,7 @@ from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.observability.trace import TraceRecorder
 from app.rules.repository import RuleNotFoundError, create_rule_repository
+from app.rules.importer import import_four_indicator_rules
 from app.observability.workflow_nodes import (
     record_diagnose_trace_nodes,
     record_metadata_sync_trace_node,
@@ -436,6 +437,7 @@ def chat(request: ChatRequest) -> dict[str, Any]:
         kb_root=DEFAULT_KB_ROOT,
         use_llm=request.use_llm,
         session_id=request.session_id,
+        rule_repository=_create_rule_repository(),
     )
 
 
@@ -451,6 +453,7 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
                 kb_root=DEFAULT_KB_ROOT,
                 use_llm=request.use_llm,
                 session_id=request.session_id,
+                rule_repository=_create_rule_repository(),
             ):
                 yield _sse_event(event, data)
         except Exception as exc:
@@ -537,6 +540,21 @@ def health_dependencies(request: Request) -> dict[str, Any]:
 @app.get("/api/health/summary")
 def health_summary(request: Request) -> dict[str, Any]:
     return _build_health_summary(getattr(request.state, "request_id", ""))
+
+
+@app.post("/api/rules/import-four")
+def import_four_rules(
+    authorization: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(authorization)
+    from app.db.engine import create_runtime_engine
+
+    result = import_four_indicator_rules(
+        create_runtime_engine(), DEFAULT_KB_ROOT, "hospital_001"
+    )
+    if result.get("failed"):
+        raise HTTPException(status_code=500, detail=result)
+    return result
 
 
 @app.get("/api/traces/{trace_id}")
@@ -961,12 +979,14 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.sqlgen.agent import SQLGenerationAgent
 
-    tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
+    runtime_engine = create_runtime_engine()
+    tools = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = SQLGenerationAgent(
         kb_root=DEFAULT_KB_ROOT,
-        runtime_engine=create_runtime_engine(),
+        runtime_engine=runtime_engine,
         business_db=create_business_db_client("hospital_demo_data"),
+        rule_repository=tools,
     )
     return agent.generate(
         query=request.query,
@@ -988,7 +1008,7 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
     trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
     recorder = TraceRecorder(runtime_engine)
     recorder.start_trace(trace_id, None, request.hospital_id, f"diagnose:{request.rule_id}")
-    tools = KnowledgeBaseTools(DEFAULT_KB_ROOT)
+    tools = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
     effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
     agent = DiagnoseAgent(
         kb_root=DEFAULT_KB_ROOT,
