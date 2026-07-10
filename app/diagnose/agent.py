@@ -10,6 +10,7 @@ from app.db_access.metadata_provider import MetadataProvider
 from app.diagnose.structure_check import structure_check
 from app.diagnose.rule_check import rule_check
 from app.diagnose.data_check import data_check
+from app.diagnose.caliber_compare import execute_caliber_comparison
 from app.diagnose.report import build_report, save_report
 
 
@@ -34,6 +35,8 @@ class DiagnoseAgent:
         trigger: str = "manual",
         related_sql_id: str | None = None,
         stat_period: str | None = None,
+        caliber_context: dict[str, Any] | None = None,
+        field_mapping: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         layers: list[dict[str, Any]] = []
 
@@ -42,7 +45,31 @@ class DiagnoseAgent:
         if not r1["ok"]:
             return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=1)
 
-        r2 = rule_check(effective_rule)
+        if caliber_context is None or field_mapping is None:
+            comparison = {
+                "applicable": False,
+                "reason": "comparison_context_not_provided",
+                "conclusion_code": "caliber_compare_not_applicable",
+                "blocking": False,
+            }
+        else:
+            try:
+                comparison = execute_caliber_comparison(
+                    runtime_engine=self.runtime_engine,
+                    business_db=self.business_db,
+                    context=caliber_context,
+                    field_mapping=field_mapping,
+                    stat_period=stat_period,
+                )
+            except (TypeError, ValueError) as exc:
+                comparison = {
+                    "applicable": True,
+                    "reason": str(exc),
+                    "conclusion_code": "caliber_compare_invalid_request",
+                    "blocking": True,
+                }
+
+        r2 = rule_check(effective_rule, comparison)
         layers.append(r2)
         if not r2["ok"]:
             return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=2)

@@ -1,9 +1,8 @@
 import json
-import json
 import unittest
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import StaticPool
 
 from app.db_access.query_result import QueryResult
@@ -116,7 +115,7 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             self.assertTrue(all(statement.lower().startswith("select") for statement in business_db.sql))
             self.assertIn(result["diagnose_type"], {"数据质量风险", "数据质量正常"})
 
-    def test_rule_check_has_no_three_caliber_compare(self) -> None:
+    def test_layer2_compares_national_and_hospital_results(self) -> None:
         with temp_kb_dir() as root:
             root = Path(root)
             _make_diag_kb(root, include_arrive_metadata=True)
@@ -124,12 +123,55 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             business_db = _business_db(root / "business.db")
             agent = DiagnoseAgent(root, runtime_engine, business_db)
 
-            report = agent.run("hospital_001", "MQSI2025_005", _effective_rule())
+            report = agent.run(
+                "hospital_001",
+                "MQSI2025_005",
+                _effective_rule(),
+                caliber_context=_comparison_context(),
+                field_mapping=_comparison_mapping(),
+                stat_period="2026-07-01~2026-07-31",
+            )
 
-            self.assertEqual(report["layers"][1]["layer_name"], "口径规则校验")
-            payload = json.dumps(report["layers"][1], ensure_ascii=False)
-            self.assertNotIn("三口径", payload)
-            self.assertNotIn("caliber_compare_mode", payload)
+            layer2 = report["layers"][1]
+            comparison = layer2["caliber_comparison"]
+            self.assertEqual(comparison["conclusion_code"], "caliber_result_diff")
+            self.assertEqual(comparison["national"]["result_value"], 0.0)
+            self.assertEqual(comparison["hospital"]["result_value"], 33.33)
+            self.assertTrue(layer2["ok"])
+            self.assertTrue(
+                any(check["status"] == "warn" for check in layer2["checks"])
+            )
+            self.assertEqual(len(report["layers"]), 3)
+
+    def test_layer2_stops_when_hospital_caliber_execution_fails(self) -> None:
+        with temp_kb_dir() as root:
+            root = Path(root)
+            _make_diag_kb(root, include_arrive_metadata=True)
+            runtime_engine = _runtime_engine(
+                root / "runtime.db", include_arrive_metadata=True
+            )
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db)
+
+            report = agent.run(
+                "hospital_001",
+                "MQSI2025_005",
+                _effective_rule(),
+                caliber_context=_comparison_context(
+                    effective_sql_template=_failing_comparison_sql()
+                ),
+                field_mapping=_comparison_mapping(),
+                stat_period="2026-07-01~2026-07-31",
+            )
+
+            layer2 = report["layers"][1]
+            self.assertFalse(layer2["ok"])
+            self.assertEqual(
+                layer2["conclusion_code"],
+                "hospital_caliber_execution_failed",
+            )
+            self.assertEqual(report["stopped_at_layer"], 2)
+            self.assertEqual(len(report["layers"]), 2)
 
 
 def _make_diag_kb(root: Path, include_arrive_metadata: bool) -> None:
@@ -171,6 +213,13 @@ fields:
 
 def _runtime_engine(path: Path, include_arrive_metadata: bool):
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+
+    @event.listens_for(engine, "connect")
+    def register_now(dbapi_connection, _connection_record):
+        dbapi_connection.create_function(
+            "NOW", 0, lambda: "2026-07-10 12:00:00"
+        )
+
     columns = [
         ("request_time", "datetime", "NO"),
         ("dept_id", "varchar", "YES"),
@@ -208,6 +257,23 @@ def _runtime_engine(path: Path, include_arrive_metadata: bool):
               stat_period TEXT
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE med_sql_run_log (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              run_id TEXT NOT NULL UNIQUE,
+              sql_id TEXT,
+              hospital_id TEXT NOT NULL,
+              rule_id TEXT NOT NULL,
+              stat_start_time TEXT,
+              stat_end_time TEXT,
+              run_status TEXT NOT NULL,
+              result_value REAL,
+              error_message TEXT,
+              duration_ms INTEGER,
+              run_by TEXT,
+              run_time TEXT NOT NULL
+            )
+        """))
         for column_name, data_type, nullable in columns:
             conn.execute(
                 text("INSERT INTO med_metadata_column VALUES "
@@ -223,6 +289,8 @@ def _business_db(path: Path):
         conn.execute(text("""
             CREATE TABLE consult_record (
               consult_id TEXT,
+              hospital_id TEXT,
+              consult_type TEXT,
               request_time TEXT,
               arrive_time TEXT,
               dept_id TEXT
@@ -230,9 +298,9 @@ def _business_db(path: Path):
         """))
         conn.execute(text(
             "INSERT INTO consult_record VALUES "
-            "('1', '2026-07-01 08:00:00', NULL, NULL), "
-            "('2', '2026-07-01 09:00:00', NULL, NULL), "
-            "('3', '2026-07-01 10:00:00', '2026-07-01 10:15:00', 'ED')"
+            "('1', 'hospital_001', '急会诊', '2026-07-01 08:00:00', NULL, NULL), "
+            "('2', 'hospital_001', '急会诊', '2026-07-01 09:00:00', NULL, NULL), "
+            "('3', 'hospital_001', '急会诊', '2026-07-01 10:00:00', '2026-07-01 10:15:00', 'ED')"
         ))
 
     class SQLiteBusinessDB:
@@ -263,6 +331,78 @@ def _effective_rule() -> dict[str, str]:
         "rule_name": "急会诊及时到位率",
         "definition": "急会诊请求发出后，20分钟内到达现场的急会诊次数占同期急会诊总次数的比例。",
         "formula": "急会诊及时到位率 = (急会诊记录中20分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%",
+    }
+
+
+def _comparison_sql() -> str:
+    return """
+SELECT
+  CASE WHEN COUNT(*) = 0 THEN 0
+       ELSE ROUND(
+         SUM(CASE
+               WHEN arrive_time IS NOT NULL
+                AND (julianday(arrive_time) - julianday(request_time)) * 1440
+                    BETWEEN 0 AND :arrive_minutes_threshold
+               THEN 1 ELSE 0
+             END) * 100.0 / COUNT(*),
+         2
+       )
+  END AS index_value,
+  COUNT(*) AS sample_count
+FROM consult_record
+WHERE hospital_id = :hospital_id
+  AND consult_type = :consult_type_value
+  AND request_time >= :start_time
+  AND request_time < :end_time
+""".strip()
+
+
+def _failing_comparison_sql() -> str:
+    return """
+SELECT missing_column AS index_value, COUNT(*) AS sample_count
+FROM consult_record
+WHERE hospital_id = :hospital_id
+  AND request_time >= :start_time
+  AND request_time < :end_time
+""".strip()
+
+
+def _comparison_context(**overrides):
+    payload = {
+        "rule_id": "MQSI2025_005",
+        "hospital_id": "hospital_001",
+        "applicable": True,
+        "national_sql_template": _comparison_sql(),
+        "national_params": {
+            "arrive_minutes_threshold": 10,
+            "consult_type_value": "急会诊",
+        },
+        "national_version": "2025",
+        "effective_sql_template": _comparison_sql(),
+        "effective_params": {
+            "arrive_minutes_threshold": 20,
+            "consult_type_value": "急会诊",
+        },
+        "hospital_version": 1,
+        "overridden_fields": ["arrive_minutes_threshold"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _comparison_mapping():
+    return {
+        "rule_id": "MQSI2025_005",
+        "hospital_id": "hospital_001",
+        "db_name": "his",
+        "main_table": "consult_record",
+        "fields": {
+            "hospital_id": "consult_record.hospital_id",
+            "consult_type": "consult_record.consult_type",
+            "request_time": "consult_record.request_time",
+            "arrive_time": "consult_record.arrive_time",
+        },
+        "filters": {"consult_type_value": "急会诊"},
     }
 
 

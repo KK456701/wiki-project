@@ -51,9 +51,27 @@ class _FakeCaliber:
         self.calls.append(("resolve", rule_id, hospital_id))
         return {"rule_id": rule_id, "rule_name": "急会诊及时到位率", "effective_level": "hospital"}
 
+    def comparison_context_contract(self, rule_id, hospital_id):
+        from app.agents.contracts import CaliberComparisonContext
+
+        self.calls.append(("comparison", rule_id, hospital_id))
+        return CaliberComparisonContext(
+            rule_id=rule_id,
+            hospital_id=hospital_id,
+            applicable=True,
+            national_sql_template="SELECT 1",
+            effective_sql_template="SELECT 2",
+        )
+
     def field_mapping(self, rule_id, hospital_id):
         self.calls.append(("mapping", rule_id, hospital_id))
-        return {"rule_id": rule_id, "hospital_id": hospital_id}
+        return {
+            "rule_id": rule_id,
+            "hospital_id": hospital_id,
+            "db_name": "hospital_demo_data",
+            "main_table": "consult_record",
+            "fields": {"request_time": "consult_record.request_time"},
+        }
 
     def preview_feedback(self, rule_id, hospital_id, query):
         self.calls.append(("preview", rule_id, hospital_id, query))
@@ -232,6 +250,10 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertTrue(indicator.calls[0]["trial_run"])
         self.assertEqual(diagnosed["diagnose_status"], "success")
         self.assertEqual(diagnosis.calls[0]["effective_rule"]["effective_level"], "hospital")
+        self.assertTrue(diagnosis.calls[0]["caliber_context"]["applicable"])
+        self.assertEqual(
+            diagnosis.calls[0]["field_mapping"]["main_table"], "consult_record"
+        )
         self.assertEqual(synced["batch_id"], "B001")
         self.assertEqual(metadata.calls[0]["operation"], "precheck")
         self.assertEqual(metadata.calls[1]["db_name"], "hospital_demo_data")

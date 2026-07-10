@@ -290,6 +290,30 @@ class CoreIndicatorOrchestrator:
             "run_contract",
             self.diagnosis_agent.run,
         )
+        comparison_method = getattr(
+            self.caliber, "comparison_context_contract", None
+        )
+        if callable(comparison_method):
+            comparison_context = comparison_method(
+                str(prepared.rule_id), str(prepared.hospital_id or "")
+            )
+            caliber_context = (
+                comparison_context.model_dump()
+                if hasattr(comparison_context, "model_dump")
+                else dict(comparison_context)
+            )
+        else:
+            caliber_context = {
+                "rule_id": str(prepared.rule_id),
+                "hospital_id": str(prepared.hospital_id or ""),
+                "applicable": False,
+                "reason": "comparison_context_not_supported",
+            }
+        mapping_payload = (
+            prepared.field_mapping.model_dump()
+            if prepared.field_mapping is not None
+            else {}
+        )
         result = diagnose(
             hospital_id=str(prepared.hospital_id or ""),
             rule_id=str(prepared.rule_id),
@@ -297,6 +321,8 @@ class CoreIndicatorOrchestrator:
             trigger=trigger,
             related_sql_id=related_sql_id,
             stat_period=stat_period,
+            caliber_context=caliber_context,
+            field_mapping=mapping_payload,
         )
         contract = (
             result

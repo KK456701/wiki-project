@@ -54,8 +54,18 @@ class CaliberAdaptationAgent:
     def comparison_context_contract(
         self, rule_id: str, hospital_id: str
     ) -> CaliberComparisonContext:
+        comparison = getattr(
+            self.rule_repository, "get_caliber_comparison", None
+        )
+        if not callable(comparison):
+            return CaliberComparisonContext(
+                rule_id=rule_id,
+                hospital_id=hospital_id,
+                applicable=False,
+                reason="comparison_context_not_supported",
+            )
         return CaliberComparisonContext.model_validate(
-            self.rule_repository.get_caliber_comparison(rule_id, hospital_id)
+            comparison(rule_id, hospital_id)
         )
 
     def field_mapping(self, rule_id: str, hospital_id: str) -> dict[str, Any]:
