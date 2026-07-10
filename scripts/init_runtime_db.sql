@@ -133,6 +133,100 @@ CREATE TABLE IF NOT EXISTS med_field_mapping (
   UNIQUE KEY uk_mapping (hospital_id, rule_id, business_field)
 );
 
+CREATE TABLE IF NOT EXISTS med_indicator_draft (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  draft_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  base_index_code VARCHAR(64),
+  proposed_index_code VARCHAR(64) NOT NULL,
+  index_name VARCHAR(128) NOT NULL,
+  index_type VARCHAR(64) NOT NULL,
+  index_desc TEXT NOT NULL,
+  stat_cycle VARCHAR(32) NOT NULL,
+  numerator_rule TEXT NOT NULL,
+  denominator_rule TEXT NOT NULL,
+  filter_rule TEXT,
+  exclude_rule TEXT,
+  metric_type VARCHAR(32) NOT NULL,
+  metadata_requirements JSON NOT NULL,
+  field_mapping JSON NOT NULL,
+  sql_plan JSON NOT NULL,
+  current_sql LONGTEXT,
+  sql_params JSON NOT NULL,
+  sql_id VARCHAR(64),
+  trial_result JSON NOT NULL,
+  trial_draft_version INT,
+  status VARCHAR(32) NOT NULL,
+  current_version INT NOT NULL,
+  formal_index_code VARCHAR(64),
+  generated_by VARCHAR(64),
+  created_by VARCHAR(64) NOT NULL,
+  updated_by VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_draft_hospital_code (hospital_id, proposed_index_code),
+  KEY idx_draft_hospital_status (hospital_id, status),
+  KEY idx_draft_updated (updated_at)
+);
+
+CREATE TABLE IF NOT EXISTS med_indicator_draft_version (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  draft_id VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  snapshot_json JSON NOT NULL,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  UNIQUE KEY uk_draft_version (draft_id, version),
+  KEY idx_draft_version_status (draft_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS med_index_hospital_defined (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  index_name VARCHAR(128) NOT NULL,
+  index_type VARCHAR(64) NOT NULL,
+  index_desc TEXT NOT NULL,
+  stat_cycle VARCHAR(32) NOT NULL,
+  numerator_rule TEXT NOT NULL,
+  denominator_rule TEXT NOT NULL,
+  filter_rule TEXT,
+  exclude_rule TEXT,
+  field_contract JSON NOT NULL,
+  sql_template LONGTEXT NOT NULL,
+  rule_params JSON NOT NULL,
+  version INT NOT NULL,
+  status TINYINT NOT NULL DEFAULT 1,
+  approval_status VARCHAR(32) NOT NULL,
+  effective_from DATETIME,
+  effective_to DATETIME,
+  source_draft_id VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64) NOT NULL,
+  create_time DATETIME NOT NULL,
+  update_time DATETIME NOT NULL,
+  UNIQUE KEY uk_hospital_defined_code (hospital_id, index_code),
+  KEY idx_hospital_defined_status (hospital_id, status, approval_status)
+);
+
+CREATE TABLE IF NOT EXISTS med_index_hospital_defined_version (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  snapshot_json JSON NOT NULL,
+  source_version INT,
+  source_draft_id VARCHAR(64),
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64) NOT NULL,
+  approver_id VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  approved_at DATETIME,
+  UNIQUE KEY uk_hospital_defined_version (hospital_id, index_code, version),
+  KEY idx_hospital_defined_version_status (hospital_id, index_code)
+);
+
 CREATE TABLE IF NOT EXISTS med_generated_sql (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   sql_id VARCHAR(64) NOT NULL UNIQUE,
