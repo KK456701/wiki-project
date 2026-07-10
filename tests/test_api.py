@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 import app.api.main as api_main
 from app.api.main import app
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
+from tests.test_company_kb_repository import _company_engine
 from tests.test_rule_repository import _rule_engine
 
 
@@ -440,10 +441,12 @@ class ApiTest(unittest.TestCase):
             make_minimal_kb(root, with_hospital=True)
             runtime_engine = _rule_engine()
             import_four_indicator_rules(runtime_engine, Path("core-rules-wiki"))
+            company_engine = _company_engine()
             client = TestClient(app)
 
             with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
-                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch("app.db.engine.create_company_engine", return_value=company_engine):
                 exported = client.get("/api/kb/export", params={"hospital_id": "hospital_001"})
                 login = client.post("/api/admin/login", json={"password": "admin123"})
                 headers = {"Authorization": f"Bearer {login.json()['token']}", "Content-Type": "application/zip"}

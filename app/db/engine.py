@@ -9,6 +9,11 @@ def create_runtime_engine() -> Engine:
     return create_engine(url, pool_pre_ping=True)
 
 
+def create_company_engine() -> Engine:
+    url = get("company_db_url", "mysql+pymysql://root:123456@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4")
+    return create_engine(url, pool_pre_ping=True)
+
+
 def create_business_engine() -> Engine:
     url = get("business_db_url", "mysql+pymysql://root:123456@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4")
     return create_engine(url, pool_pre_ping=True)

@@ -3,6 +3,9 @@
 # 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
 runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
 
+# 公司知识中心库：仅在公司回收与发布服务中配置，医院端不需要连接。
+company_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4"
+
 # 业务库方言。业务库读操作在 FastAPI 主链路中通过 DBHub MCP 执行。
 business_db_dialect: "mysql"
 

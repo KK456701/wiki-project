@@ -50,6 +50,13 @@ def _create_rule_repository():
     return create_rule_repository(create_runtime_engine(), DEFAULT_KB_ROOT)
 
 
+def _create_company_repository():
+    from app.db.engine import create_company_engine
+    from app.kb.company_repository import CompanyKnowledgeRepository
+
+    return CompanyKnowledgeRepository(create_company_engine())
+
+
 def _create_agent_orchestrator(
     *,
     runtime_engine: Any | None = None,
@@ -699,9 +706,7 @@ def kb_merge_upload(
 ) -> dict[str, Any]:
     _require_admin(_token)
     try:
-        from app.kb.merge import create_merge_report
-
-        return create_merge_report(DEFAULT_KB_ROOT, payload, uploaded_by="admin")
+        return _create_company_repository().create_merge_report(payload, uploaded_by="admin")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -709,18 +714,14 @@ def kb_merge_upload(
 @app.get("/api/kb/merge/reports")
 def kb_merge_reports(_token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
     _require_admin(_token)
-    from app.kb.merge import list_merge_reports
-
-    return {"items": list_merge_reports(DEFAULT_KB_ROOT)}
+    return {"items": _create_company_repository().list_merge_reports()}
 
 
 @app.get("/api/kb/merge/report/{report_id}")
 def kb_merge_report(report_id: str, _token: str | None = Header(None, alias="Authorization")) -> dict[str, Any]:
     _require_admin(_token)
     try:
-        from app.kb.merge import read_merge_report
-
-        return read_merge_report(DEFAULT_KB_ROOT, report_id)
+        return _create_company_repository().read_merge_report(report_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -734,11 +735,11 @@ def kb_merge_item_approve(
 ) -> dict[str, Any]:
     _require_admin(_token)
     try:
-        from app.kb.merge import approve_merge_item
-
         decision = (body.decision if body else None) or "adopt_as_company_candidate"
         approver_id = (body.approver_id if body else None) or "admin"
-        return approve_merge_item(DEFAULT_KB_ROOT, report_id, item_id, decision, approver_id)
+        return _create_company_repository().approve_merge_item(
+            report_id, item_id, decision, approver_id
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -752,11 +753,11 @@ def kb_merge_item_reject(
 ) -> dict[str, Any]:
     _require_admin(_token)
     try:
-        from app.kb.merge import reject_merge_item
-
         reason = (body.reason if body else None) or ""
         approver_id = (body.approver_id if body else None) or "admin"
-        return reject_merge_item(DEFAULT_KB_ROOT, report_id, item_id, reason, approver_id)
+        return _create_company_repository().reject_merge_item(
+            report_id, item_id, reason, approver_id
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
