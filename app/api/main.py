@@ -217,6 +217,14 @@ def create_dbhub_metadata_provider(db_name: str = "hospital_demo_data") -> DBHub
 
 app = FastAPI(title="Core Rules Wiki Agent", version="0.1.0")
 
+from app.api.indicator_drafts import (
+    published_router as hospital_defined_router,
+    router as indicator_draft_router,
+)
+
+app.include_router(indicator_draft_router)
+app.include_router(hospital_defined_router)
+
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
