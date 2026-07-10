@@ -117,6 +117,20 @@ class EffectiveRule(AgentContract):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CaliberComparisonContext(AgentContract):
+    rule_id: str
+    hospital_id: str
+    applicable: bool = False
+    reason: str = ""
+    national_sql_template: str = ""
+    national_params: dict[str, Any] = Field(default_factory=dict)
+    national_version: str | None = None
+    effective_sql_template: str = ""
+    effective_params: dict[str, Any] = Field(default_factory=dict)
+    hospital_version: int | None = None
+    overridden_fields: list[str] = Field(default_factory=list)
+
+
 class FieldMapping(AgentContract):
     rule_id: str = ""
     hospital_id: str = ""

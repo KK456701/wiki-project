@@ -129,6 +129,22 @@ def _rule_engine():
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE med_index_hospital_defined (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  hospital_id TEXT NOT NULL,
+                  index_code TEXT NOT NULL,
+                  index_name TEXT NOT NULL,
+                  status INTEGER NOT NULL,
+                  approval_status TEXT NOT NULL,
+                  effective_from TEXT,
+                  effective_to TEXT
+                )
+                """
+            )
+        )
     return engine
 
 
@@ -200,6 +216,68 @@ def _seed_custom(
 
 
 class MySQLRuleRepositoryTest(unittest.TestCase):
+    def test_caliber_comparison_keeps_national_and_hospital_sql_separate(self) -> None:
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        _seed_standard(engine)
+        _seed_custom(engine)
+
+        result = MySQLRuleRepository(engine).get_caliber_comparison(
+            "MQSI2025_005", "hospital_001"
+        )
+
+        self.assertTrue(result["applicable"])
+        self.assertEqual(result["national_params"]["arrive_minutes_threshold"], 10)
+        self.assertEqual(result["effective_params"]["arrive_minutes_threshold"], 20)
+        self.assertEqual(result["national_version"], "2025")
+        self.assertEqual(result["hospital_version"], 1)
+        self.assertEqual(
+            result["national_sql_template"], "SELECT 1 AS index_value, 1 AS sample_count"
+        )
+        self.assertEqual(result["effective_sql_template"], result["national_sql_template"])
+
+    def test_caliber_comparison_requires_active_hospital_customization(self) -> None:
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        _seed_standard(engine)
+
+        result = MySQLRuleRepository(engine).get_caliber_comparison(
+            "MQSI2025_005", "hospital_001"
+        )
+
+        self.assertFalse(result["applicable"])
+        self.assertEqual(result["reason"], "no_hospital_customization")
+
+    def test_hospital_defined_indicator_has_no_national_baseline(self) -> None:
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_index_hospital_defined
+                      (hospital_id, index_code, index_name, status, approval_status,
+                       effective_from, effective_to)
+                    VALUES
+                      ('hospital_001', 'HOSP_001', '本院新增指标', 1, 'approved', :now, NULL)
+                    """
+                ),
+                {"now": now},
+            )
+
+        result = MySQLRuleRepository(engine).get_caliber_comparison(
+            "HOSP_001", "hospital_001"
+        )
+
+        self.assertFalse(result["applicable"])
+        self.assertEqual(
+            result["reason"], "hospital_defined_has_no_national_baseline"
+        )
+
     def test_approved_hospital_rule_overrides_national_params(self) -> None:
         from app.rules.repository import MySQLRuleRepository
 
@@ -254,6 +332,9 @@ class _FailingPrimary:
             raise RuleNotFoundError(code_or_name)
         raise RuntimeError("runtime database unavailable")
 
+    def get_caliber_comparison(self, code_or_name, hospital_id):
+        raise RuntimeError("runtime database unavailable")
+
     def search(self, query, limit=5):
         raise RuntimeError("runtime database unavailable")
 
@@ -289,6 +370,20 @@ class _FakeWikiTools:
 
 
 class FallbackRuleRepositoryTest(unittest.TestCase):
+    def test_caliber_comparison_never_uses_wiki_as_hospital_context(self) -> None:
+        from app.rules.repository import FallbackRuleRepository, WikiRuleSource
+
+        repository = FallbackRuleRepository(
+            _FailingPrimary(), WikiRuleSource(_FakeWikiTools())
+        )
+
+        result = repository.get_caliber_comparison(
+            "MQSI2025_005", "hospital_001"
+        )
+
+        self.assertFalse(result["applicable"])
+        self.assertEqual(result["reason"], "rule_store_unavailable")
+
     def test_database_error_falls_back_to_read_only_wiki(self) -> None:
         from app.rules.repository import FallbackRuleRepository, WikiRuleSource
 

@@ -25,6 +25,10 @@ class RuleRepository(Protocol):
         self, index_code_or_name: str, hospital_id: str | None
     ) -> dict[str, Any]: ...
 
+    def get_caliber_comparison(
+        self, index_code_or_name: str, hospital_id: str
+    ) -> dict[str, Any]: ...
+
     def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]: ...
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]: ...
@@ -242,7 +246,11 @@ class MySQLRuleRepository:
                     LIMIT 1
                     """
                 ),
-                {"hospital_id": hospital_id, "now": now, "query": query},
+                {
+                    "hospital_id": hospital_id,
+                    "now": now.isoformat(sep=" ", timespec="seconds"),
+                    "query": query,
+                },
             ).mappings().first()
             if row is None:
                 row = conn.execute(
@@ -259,7 +267,7 @@ class MySQLRuleRepository:
                     ),
                     {
                         "hospital_id": hospital_id,
-                        "now": now,
+                        "now": now.isoformat(sep=" ", timespec="seconds"),
                         "pattern": f"%{query}%",
                     },
                 ).mappings().first()
@@ -364,6 +372,55 @@ class MySQLRuleRepository:
             "rule_source": "mysql",
             "warnings": [],
             "relations": {},
+        }
+
+    def get_caliber_comparison(
+        self, index_code_or_name: str, hospital_id: str
+    ) -> dict[str, Any]:
+        standard = self._find_standard(index_code_or_name)
+        if standard is None:
+            defined = self._find_defined(hospital_id, index_code_or_name)
+            return {
+                "rule_id": str(
+                    (defined or {}).get("index_code") or index_code_or_name
+                ),
+                "hospital_id": hospital_id,
+                "applicable": False,
+                "reason": (
+                    "hospital_defined_has_no_national_baseline"
+                    if defined is not None
+                    else "rule_not_migrated"
+                ),
+            }
+
+        index_code = str(standard["index_code"])
+        custom = self._find_custom(hospital_id, index_code)
+        if custom is None:
+            return {
+                "rule_id": index_code,
+                "hospital_id": hospital_id,
+                "applicable": False,
+                "reason": "no_hospital_customization",
+                "national_sql_template": str(standard.get("standard_sql") or ""),
+                "national_params": _json_dict(standard.get("rule_params")),
+                "national_version": str(standard.get("version") or "") or None,
+            }
+
+        effective = self.get_effective_rule(index_code, hospital_id)
+        return {
+            "rule_id": index_code,
+            "hospital_id": hospital_id,
+            "applicable": True,
+            "reason": "",
+            "national_sql_template": str(standard.get("standard_sql") or ""),
+            "national_params": _json_dict(standard.get("rule_params")),
+            "national_version": str(standard.get("version") or "") or None,
+            "effective_sql_template": str(
+                custom.get("custom_sql") or standard.get("standard_sql") or ""
+            ),
+            "effective_params": dict(effective.get("effective_params") or {}),
+            "hospital_version": int(custom.get("version") or 0),
+            "overridden_fields": list(effective.get("overridden_fields") or []),
         }
 
     @staticmethod
@@ -915,6 +972,24 @@ class FallbackRuleRepository:
             warning = "rule_store_unavailable"
         result = self.fallback.get_effective_rule(index_code_or_name, hospital_id)
         return self._annotate_fallback(result, warning)
+
+    def get_caliber_comparison(
+        self, index_code_or_name: str, hospital_id: str
+    ) -> dict[str, Any]:
+        try:
+            return self.primary.get_caliber_comparison(
+                index_code_or_name, hospital_id
+            )
+        except RuleNotFoundError:
+            reason = "rule_not_migrated"
+        except Exception:
+            reason = "rule_store_unavailable"
+        return {
+            "rule_id": index_code_or_name,
+            "hospital_id": hospital_id,
+            "applicable": False,
+            "reason": reason,
+        }
 
     def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]:
         try:

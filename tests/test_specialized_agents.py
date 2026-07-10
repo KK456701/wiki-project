@@ -18,6 +18,16 @@ class _FakeRuleRepository:
             "effective_level": "hospital",
         }
 
+    def get_caliber_comparison(self, rule_id, hospital_id):
+        self.calls.append(("comparison", rule_id, hospital_id))
+        return {
+            "rule_id": rule_id,
+            "hospital_id": hospital_id,
+            "applicable": True,
+            "national_sql_template": "SELECT 1",
+            "effective_sql_template": "SELECT 2",
+        }
+
     def get_field_mapping(self, rule_id, hospital_id):
         self.calls.append(("mapping", rule_id, hospital_id))
         return {"rule_id": rule_id, "hospital_id": hospital_id}
@@ -48,7 +58,12 @@ class _FakeExecutor:
 class SpecializedAgentTest(unittest.TestCase):
     def test_caliber_agent_owns_rule_repository_operations(self) -> None:
         from app.agents.caliber_adaptation import CaliberAdaptationAgent
-        from app.agents.contracts import EffectiveRule, FieldMapping, RuleSearchResult
+        from app.agents.contracts import (
+            CaliberComparisonContext,
+            EffectiveRule,
+            FieldMapping,
+            RuleSearchResult,
+        )
 
         repository = _FakeRuleRepository()
         agent = CaliberAdaptationAgent(repository)
@@ -56,17 +71,24 @@ class SpecializedAgentTest(unittest.TestCase):
         self.assertEqual(agent.agent_id, "caliber_adaptation")
         search = agent.search_contract("急会诊", 3)
         effective = agent.resolve_contract("MQSI2025_005", "hospital_001")
+        comparison = agent.comparison_context_contract(
+            "MQSI2025_005", "hospital_001"
+        )
         mapping = agent.field_mapping_contract("MQSI2025_005", "hospital_001")
 
         self.assertIsInstance(search, RuleSearchResult)
         self.assertIsInstance(effective, EffectiveRule)
+        self.assertIsInstance(comparison, CaliberComparisonContext)
         self.assertIsInstance(mapping, FieldMapping)
         self.assertEqual(search["resolved_rule_id"], "MQSI2025_005")
         self.assertEqual(effective["effective_level"], "hospital")
         self.assertEqual(mapping["hospital_id"], "hospital_001")
         self.assertEqual(agent.preview_feedback("MQSI2025_005", "hospital_001", "按20分钟")["status"], "preview")
         self.assertEqual(agent.submit_change({"rule_id": "MQSI2025_005"})["status"], "pending")
-        self.assertEqual([call[0] for call in repository.calls], ["search", "resolve", "mapping", "preview", "submit"])
+        self.assertEqual(
+            [call[0] for call in repository.calls],
+            ["search", "resolve", "comparison", "mapping", "preview", "submit"],
+        )
 
     def test_indicator_generation_agent_delegates_structured_generation(self) -> None:
         from app.agents.contracts import SQLGenerationResult

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agents.contracts import EffectiveRule, FieldMapping, RuleSearchResult
+from app.agents.contracts import (
+    CaliberComparisonContext,
+    EffectiveRule,
+    FieldMapping,
+    RuleSearchResult,
+)
 
 
 class CaliberAdaptationAgent:
@@ -44,6 +49,13 @@ class CaliberAdaptationAgent:
     ) -> EffectiveRule:
         return EffectiveRule.model_validate(
             self.rule_repository.get_effective_rule(rule_id, hospital_id)
+        )
+
+    def comparison_context_contract(
+        self, rule_id: str, hospital_id: str
+    ) -> CaliberComparisonContext:
+        return CaliberComparisonContext.model_validate(
+            self.rule_repository.get_caliber_comparison(rule_id, hospital_id)
         )
 
     def field_mapping(self, rule_id: str, hospital_id: str) -> dict[str, Any]:
