@@ -166,7 +166,11 @@ class WorkflowManifestTest(unittest.TestCase):
                 Path(tmp) / "monitoring.jsonl",
             )
             recorder.start_trace(
-                "TRACE_MONITOR_001", None, "hospital_001", "MQSI2025_005"
+                "TRACE_MONITOR_001",
+                None,
+                "hospital_001",
+                "MQSI2025_005",
+                workflow_id="indicator_monitoring",
             )
             record_monitoring_trace_nodes(
                 recorder,
@@ -194,7 +198,12 @@ class WorkflowManifestTest(unittest.TestCase):
                     for name in expected
                 ],
             )
-            recorder.finish_trace("TRACE_MONITOR_001", "success", "完成")
+            recorder.finish_trace(
+                "TRACE_MONITOR_001",
+                "success",
+                "完成",
+                intent="indicator_monitoring",
+            )
             trace = recorder.get_trace("TRACE_MONITOR_001")
 
         self.assertEqual(
@@ -203,6 +212,9 @@ class WorkflowManifestTest(unittest.TestCase):
         serialized = str(trace)
         self.assertIn("33.34", serialized)
         self.assertIn("DR_001", serialized)
+        self.assertEqual(trace["workflow_id"], "indicator_monitoring")
+        self.assertEqual(trace["nodes"][0]["node_title"], "读取指标运行计划")
+        self.assertNotIn("尚未在工作流", serialized)
         self.assertNotIn("SELECT", serialized.upper())
         self.assertNotIn("patient_id", serialized.lower())
 

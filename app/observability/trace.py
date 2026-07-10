@@ -41,15 +41,24 @@ class TraceRecorder:
         self.runtime_engine = runtime_engine
         self.jsonl_path = jsonl_path or Path("runtime") / "trace_events.jsonl"
         self._started_at: dict[str, datetime] = {}
+        self._workflow_ids: dict[str, str] = {}
 
     def _write_jsonl(self, event: dict[str, Any]) -> None:
         self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
         with self.jsonl_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
-    def start_trace(self, trace_id: str, session_id: str | None, hospital_id: str | None, user_query: str | None) -> None:
+    def start_trace(
+        self,
+        trace_id: str,
+        session_id: str | None,
+        hospital_id: str | None,
+        user_query: str | None,
+        workflow_id: str = "core_indicator_chat",
+    ) -> None:
         started_at = _now()
         self._started_at[trace_id] = started_at
+        self._workflow_ids[trace_id] = workflow_id
         try:
             start_trace_record(
                 self.runtime_engine,
@@ -69,6 +78,7 @@ class TraceRecorder:
                     "session_id": session_id,
                     "hospital_id": hospital_id,
                     "user_query": user_query,
+                    "workflow_id": workflow_id,
                     "started_at": _format_time(started_at),
                 }
             )
@@ -96,7 +106,10 @@ class TraceRecorder:
         started_at = _now()
         node_id = f"NODE_{uuid.uuid4().hex[:12]}"
         if not error_code and status in {"failed", "error"}:
-            error_code = default_failure_code_for_node(node_name)
+            error_code = default_failure_code_for_node(
+                node_name,
+                self._workflow_ids.get(trace_id, "core_indicator_chat"),
+            )
         payload = {
             "trace_id": trace_id,
             "node_id": node_id,
@@ -209,11 +222,23 @@ class TraceRecorder:
         return self._annotate_trace(trace)
 
     def _annotate_trace(self, trace: dict[str, Any]) -> dict[str, Any]:
-        trace["nodes"] = [annotate_trace_node(dict(node)) for node in trace.get("nodes", [])]
+        trace_id = str(trace.get("trace_id") or "")
+        workflow_id = str(
+            trace.get("workflow_id")
+            or self._workflow_ids.get(trace_id)
+            or "core_indicator_chat"
+        )
+        trace["workflow_id"] = workflow_id
+        trace["nodes"] = [
+            annotate_trace_node(dict(node), workflow_id)
+            for node in trace.get("nodes", [])
+        ]
         return trace
 
     def _merge_jsonl_node_payloads(self, trace: dict[str, Any]) -> None:
         jsonl_trace = self._get_trace_from_jsonl(str(trace.get("trace_id") or ""))
+        if jsonl_trace.get("workflow_id"):
+            trace["workflow_id"] = jsonl_trace["workflow_id"]
         payloads = {
             node.get("node_id"): node
             for node in jsonl_trace.get("nodes", [])
@@ -262,6 +287,8 @@ class TraceRecorder:
                     "session_id": started.get("session_id"),
                     "hospital_id": started.get("hospital_id"),
                     "user_query": started.get("user_query"),
+                    "workflow_id": started.get("workflow_id")
+                    or "core_indicator_chat",
                     "started_at": started.get("started_at"),
                 }
             )

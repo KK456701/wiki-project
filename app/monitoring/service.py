@@ -78,6 +78,7 @@ class IndicatorRunService:
                     None,
                     str(plan["hospital_id"]),
                     f"monitor:{plan['rule_id']}",
+                    workflow_id="indicator_monitoring",
                 )
             except Exception:
                 pass
