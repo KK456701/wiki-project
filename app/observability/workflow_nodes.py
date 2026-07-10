@@ -34,7 +34,12 @@ def record_diagnose_trace_nodes(
     }
     configs = {
         1: {"provider": "DBHub 实时元数据，失败后回退运行库缓存"},
-        2: {"layer": 2},
+        2: {
+            "layer": 2,
+            "tool": "execute_sql_hospital_demo_data",
+            "readonly": True,
+            "comparison": "国标口径 vs 本院生效口径",
+        },
         3: {"tool": "execute_sql_hospital_demo_data"},
     }
     for index, layer in enumerate(diag_result.get("layers", []), start=1):
@@ -42,17 +47,68 @@ def record_diagnose_trace_nodes(
         if not node_name:
             continue
         status = _layer_status(layer)
+        comparison = (
+            layer.get("caliber_comparison") or {} if index == 2 else {}
+        )
+        national = comparison.get("national") or {}
+        hospital = comparison.get("hospital") or {}
+        comparison_tool = str(
+            national.get("tool_name") or hospital.get("tool_name") or ""
+        )
+        comparison_source = str(
+            national.get("source") or hospital.get("source") or ""
+        )
+        duration_ms = (
+            int(national.get("duration_ms") or 0)
+            + int(hospital.get("duration_ms") or 0)
+            if index == 2
+            else 0
+        )
+        output_summary = str(
+            comparison.get("conclusion_code")
+            or layer.get("diagnose_type")
+            or layer.get("layer_name")
+            or status
+        )
+        input_data = {
+            "rule_id": rule_id,
+            "hospital_id": hospital_id,
+            "layer": index,
+        }
+        if index == 2:
+            input_data.update(
+                {
+                    "caliber_context": {
+                        "applicable": comparison.get("applicable", False),
+                        "overridden_fields": comparison.get(
+                            "overridden_fields", []
+                        ),
+                    },
+                    "field_mapping": {"status": "resolved"},
+                    "stat_period": comparison.get("stat_period"),
+                }
+            )
         recorder.record_node(
             trace_id,
             node_name,
             node_types[index],
             status,
             input_summary=f"{hospital_id or ''}/{rule_id or ''}",
-            output_summary=str(layer.get("diagnose_type") or layer.get("layer_name") or status),
+            output_summary=output_summary,
             rule_id=str(rule_id or ""),
-            tool_name="execute_sql_hospital_demo_data" if index == 3 else "",
-            db_source="hospital_demo_data" if index in {1, 3} else "",
-            input_data={"rule_id": rule_id, "hospital_id": hospital_id, "layer": index},
+            run_id=str(hospital.get("run_id") or national.get("run_id") or ""),
+            tool_name=(
+                comparison_tool
+                if index == 2
+                else ("execute_sql_hospital_demo_data" if index == 3 else "")
+            ),
+            db_source=(
+                comparison_source
+                if index == 2
+                else ("hospital_demo_data" if index in {1, 3} else "")
+            ),
+            duration_ms=duration_ms,
+            input_data=input_data,
             output_data=layer,
             config_data=configs[index],
         )
@@ -111,4 +167,3 @@ def record_review_trace_node(
         output_data=output_data,
         config_data={"storage": "core-rules-wiki review files + runtime indexes"},
     )
-

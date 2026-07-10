@@ -46,6 +46,21 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(node["title"], "合成本院生效口径")
         self.assertIn("不修改国标", node["description"])
 
+    def test_diagnose_rule_node_declares_dual_caliber_execution(self) -> None:
+        node = get_workflow_node("core_indicator_chat", "diagnose_rule_check")
+
+        self.assertIn("国标", node["description"])
+        self.assertIn("本院生效口径", node["description"])
+        self.assertIn("caliber_context", node["inputs"])
+        self.assertIn("field_mapping", node["inputs"])
+        self.assertIn("stat_period", node["inputs"])
+        self.assertIn("caliber_comparison", node["outputs"])
+        self.assertIn("conclusion_code", node["outputs"])
+        self.assertEqual(
+            node["config"]["tool"], "execute_sql_hospital_demo_data"
+        )
+        self.assertTrue(node["config"]["readonly"])
+
     def test_annotate_trace_node_keeps_runtime_fields(self) -> None:
         runtime = {
             "node_name": "rule_search",

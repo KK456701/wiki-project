@@ -125,6 +125,14 @@ mysql -uroot -p123456 < scripts\init_runtime_db.sql
 mysql -uroot -p123456 < scripts\init_demo_hospital_db.sql
 ```
 
+如果运行库来自旧版本，建表命令不会自动给已存在表补列。拉取新版本后再执行一次幂等迁移：
+
+```powershell
+python -B scripts\migrate_runtime_schema.py
+```
+
+该命令只补齐缺失字段，可重复执行；本次会确保诊断报告能够持久化触发来源、三层结果、诊断状态和统计周期。
+
 将首批四个指标从 Wiki 导入 MySQL 规则库：
 
 ```powershell
@@ -283,6 +291,8 @@ field_mapping_precheck -> sql_generate -> sql_validate -> sql_trial_mcp
 diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 ```
 
+其中 `diagnose_rule_check` 不再只是静态公式检查。对于已迁移且存在有效医院定制口径的指标，它会在相同医院、字段映射和统计周期下，通过 DBHub 分别执行纯国标口径和本院生效口径。节点摘要显示对比结论；展开详情后可查看两侧版本、执行状态、聚合结果、样本量、耗时、差值和运行 ID，不展示绑定后的 SQL 或患者明细。
+
 ### 恢复中心
 
 管理员可在前端顶部点击“恢复中心”，查看需要补救的任务。第一批恢复中心覆盖：
@@ -345,8 +355,20 @@ diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 诊断 Agent 会执行三层检查：
 
 - 第 1 层：系统结构校验
-- 第 2 层：口径规则校验
+- 第 2 层：静态口径规则校验，以及国标口径与本院生效口径双执行对比
 - 第 3 层：数据质量校验
+
+双口径结果不同表示本院定制项确实改变了统计结果，系统会给出风险警告并继续第 3 层，不会自动判定哪一侧错误；任一侧执行失败时，才会在第 2 层阻断并给出对应定位建议。无有效医院定制、本院新增指标、MySQL 规则库不可用等场景会明确标记为“不适用”，不会使用 Wiki 伪造医院口径。
+
+可用指标五验证首批双口径诊断。先调用：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/diagnose/run `
+  -ContentType "application/json" `
+  -Body '{"hospital_id":"hospital_001","rule_id":"MQSI2025_005","trigger":"manual","stat_period":"2026-07-01~2026-07-31"}'
+```
+
+在演示数据与默认口径下，第 2 层应显示国标 10 分钟口径约 `33.33`、本院 20 分钟口径约 `66.67`，结论为 `caliber_result_diff`，随后继续执行第 3 层。也可以在前端输入“急会诊及时到位率结果异常，帮我诊断一下”，再点击消息下方“执行链路”，展开“诊断口径规则”节点查看；对话入口未指定周期时默认使用当前自然月。
 
 输出会区分：
 

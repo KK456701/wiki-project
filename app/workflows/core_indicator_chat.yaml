@@ -187,12 +187,15 @@ nodes:
     agent_owner: root_cause_diagnosis
     title: 诊断口径规则
     type: diagnose
-    description: 检查口径规则中的分母、过滤条件和计算逻辑风险。
-    inputs: [rule_id, effective_rule]
-    outputs: [rule_checks]
+    description: 检查静态规则，并在相同医院、字段映射和统计周期下通过 DBHub 分别执行国标口径与本院生效口径，比较执行状态和聚合结果。
+    inputs: [rule_id, effective_rule, caliber_context, field_mapping, stat_period]
+    outputs: [rule_checks, caliber_comparison, conclusion_code]
     config:
       layer: 2
-    failure_hint: 如果这里失败，优先检查规则公式、分子分母和排除条件。
+      tool: execute_sql_hospital_demo_data
+      readonly: true
+      comparison: 国标口径 vs 本院生效口径
+    failure_hint: 如果这里失败，先根据结论检查国标或本院 SQL、参数和字段映射；两侧都失败时再检查 DBHub 与业务库连接。
 
   - id: diagnose_data_check_mcp
     agent_owner: root_cause_diagnosis

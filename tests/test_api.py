@@ -760,6 +760,80 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(data["trace_id"], "TRACE_API_TEST")
         self.assertEqual(data["nodes"][0]["node_name"], "intent_detect")
 
+    def test_diagnose_trace_exposes_dual_caliber_results_and_duration(self) -> None:
+        from app.observability.trace import TraceRecorder
+        from app.observability.workflow_nodes import record_diagnose_trace_nodes
+
+        with temp_kb_dir() as tmp:
+            engine = _trace_runtime_engine()
+            recorder = TraceRecorder(engine, Path(tmp) / "trace.jsonl")
+            recorder.start_trace(
+                "TRACE_CALIBER_TEST", "session_1", "hospital_001", "诊断"
+            )
+            record_diagnose_trace_nodes(
+                recorder,
+                "TRACE_CALIBER_TEST",
+                {
+                    "layers": [
+                        {"layer": 1, "ok": True, "checks": []},
+                        {
+                            "layer": 2,
+                            "ok": True,
+                            "diagnose_type": "口径风险",
+                            "checks": [
+                                {
+                                    "name": "caliber_comparison",
+                                    "status": "warn",
+                                    "message": "双口径结果不同",
+                                }
+                            ],
+                            "conclusion_code": "caliber_result_diff",
+                            "caliber_comparison": {
+                                "applicable": True,
+                                "stat_period": "2026-07-01 00:00:00~2026-08-01 00:00:00",
+                                "conclusion_code": "caliber_result_diff",
+                                "absolute_delta": 33.34,
+                                "national": {
+                                    "version": "2025",
+                                    "result_value": 33.33,
+                                    "duration_ms": 3,
+                                    "run_id": "RUN_NATIONAL",
+                                    "source": "hospital_demo_data",
+                                    "tool_name": "execute_sql_hospital_demo_data",
+                                },
+                                "hospital": {
+                                    "version": 1,
+                                    "result_value": 66.67,
+                                    "duration_ms": 4,
+                                    "run_id": "RUN_HOSPITAL",
+                                    "source": "hospital_demo_data",
+                                    "tool_name": "execute_sql_hospital_demo_data",
+                                },
+                            },
+                        },
+                    ]
+                },
+                "MQSI2025_005",
+                "hospital_001",
+            )
+
+            trace = recorder.get_trace("TRACE_CALIBER_TEST")
+
+        node = next(
+            item
+            for item in trace["nodes"]
+            if item["node_name"] == "diagnose_rule_check"
+        )
+        comparison = node["output_data"]["caliber_comparison"]
+        self.assertEqual(node["status"], "warning")
+        self.assertEqual(node["output_summary"], "caliber_result_diff")
+        self.assertEqual(node["tool_name"], "execute_sql_hospital_demo_data")
+        self.assertEqual(node["db_source"], "hospital_demo_data")
+        self.assertEqual(node["duration_ms"], 7)
+        self.assertEqual(comparison["national"]["result_value"], 33.33)
+        self.assertEqual(comparison["hospital"]["result_value"], 66.67)
+        self.assertNotIn("sql", comparison["national"])
+
     def test_trace_modal_uses_readable_debug_labels(self) -> None:
         html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
 
