@@ -313,6 +313,28 @@ class MonitoringRepository:
             raise LookupError(f"运行结果不存在: {result_id}")
         return result
 
+    def mark_run_result_failed(
+        self, result_id: int, error_code: str, error_message: str
+    ) -> dict[str, Any]:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE med_index_run_result SET "
+                    "run_status='failed', error_code=:error_code, "
+                    "error_message=:error_message, is_abnormal=0 "
+                    "WHERE id=:result_id"
+                ),
+                {
+                    "result_id": result_id,
+                    "error_code": error_code,
+                    "error_message": error_message,
+                },
+            )
+        result = self.get_result_for_retry(result_id)
+        if result is None:
+            raise LookupError(f"运行结果不存在: {result_id}")
+        return result
+
     @staticmethod
     def _alert(row: Any) -> dict[str, Any]:
         return IndicatorAlert.model_validate(dict(row)).model_dump()

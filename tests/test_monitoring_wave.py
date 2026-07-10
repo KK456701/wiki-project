@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 from datetime import datetime
 
 
@@ -79,6 +80,22 @@ class MonitoringPeriodTest(unittest.TestCase):
 
 
 class MonitoringWaveTest(unittest.TestCase):
+    def test_mysql_decimal_baseline_is_normalized_before_comparison(self) -> None:
+        from app.monitoring.wave import detect_wave
+
+        result = detect_wave(
+            66.67,
+            Decimal("50.00"),
+            None,
+            True,
+            20,
+            False,
+            30,
+        )
+
+        self.assertEqual(result["mom_change_rate"], 33.34)
+        self.assertEqual(result["conclusion_code"], "mom_threshold_exceeded")
+
     def test_threshold_is_strict_and_yoy_is_optional(self) -> None:
         from app.monitoring.wave import detect_wave
 

@@ -124,6 +124,26 @@ def _service(orchestrator=None, trace_recorder=None):
 
 
 class MonitoringRunServiceTest(unittest.TestCase):
+    def test_failure_after_result_insert_updates_existing_run_key(self) -> None:
+        _, repository, service = _service()
+
+        with patch(
+            "app.monitoring.service.detect_wave",
+            side_effect=RuntimeError("wave failed"),
+        ):
+            result = service.run_plan(
+                "PLAN_001",
+                stat_period="2026-07-01~2026-07-31",
+                trigger_type="manual",
+                request_id="REQ_WAVE_FAILED",
+            )
+
+        runs = repository.list_results("hospital_001")
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(result["run_status"], "failed")
+        self.assertEqual(result["error_code"], "RuntimeError")
+        self.assertEqual(result["alert"]["alert_type"], "execution_failed")
+
     def test_factory_applies_configured_database_lease_seconds(self) -> None:
         from app.monitoring.factory import create_monitoring_service
 
@@ -178,6 +198,9 @@ class MonitoringRunServiceTest(unittest.TestCase):
             ],
         )
         self.assertEqual(recorder.finished[0][1], "success")
+        self.assertTrue(
+            all(node["duration_ms"] > 0 for node in recorder.nodes)
+        )
         serialized = str(recorder.nodes)
         self.assertNotIn("SELECT", serialized.upper())
         self.assertNotIn("patient_id", serialized.lower())

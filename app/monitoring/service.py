@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -51,6 +52,10 @@ class IndicatorRunService:
             return f"{plan_id}:{period_label}"
         return f"{trigger_type}:{request_id or uuid.uuid4().hex}"
 
+    @staticmethod
+    def _elapsed_ms(started: float) -> int:
+        return max(1, int((time.perf_counter() - started) * 1000))
+
     def run_plan(
         self,
         plan_id: str,
@@ -59,9 +64,12 @@ class IndicatorRunService:
         request_id: str | None = None,
         retry_of_result_id: int | None = None,
     ) -> dict[str, Any]:
+        timings: dict[str, int] = {}
+        stage_started = time.perf_counter()
         plan = self.repository.get_plan(plan_id)
         if plan is None:
             raise MonitoringRunError(f"运行计划不存在: {plan_id}")
+        timings["plan_load"] = self._elapsed_ms(stage_started)
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
         if self.trace_recorder is not None:
             try:
@@ -76,9 +84,11 @@ class IndicatorRunService:
         now = datetime.now().replace(microsecond=0)
         leased = False
         if trigger_type == "scheduled":
+            stage_started = time.perf_counter()
             leased = self.repository.try_acquire_lease(
                 plan_id, self.worker_id, now, self.lease_seconds
             )
+            timings["lease"] = self._elapsed_ms(stage_started)
             if not leased:
                 skipped = {
                     "status": "skipped",
@@ -86,22 +96,36 @@ class IndicatorRunService:
                     "plan_id": plan_id,
                 }
                 return self._complete_trace(
-                    plan, skipped, trace_id, trigger_type, lease_status="contended"
+                    plan,
+                    skipped,
+                    trace_id,
+                    trigger_type,
+                    lease_status="contended",
+                    timings=timings,
                 )
+        else:
+            timings["lease"] = 1
 
         try:
+            stage_started = time.perf_counter()
             period = resolve_run_period(
                 str(plan["frequency"]),
                 stat_period=stat_period,
                 timezone_name=str(plan.get("timezone") or "Asia/Shanghai"),
             )
+            timings["period"] = self._elapsed_ms(stage_started)
             run_key = self._run_key(
                 plan_id, trigger_type, period.label, request_id
             )
             existing = self.repository.get_result_by_run_key(run_key)
             if existing is not None:
                 return self._complete_trace(
-                    plan, existing, trace_id, trigger_type, lease_status="acquired"
+                    plan,
+                    existing,
+                    trace_id,
+                    trigger_type,
+                    lease_status="acquired",
+                    timings=timings,
                 )
 
             prepared = self.orchestrator.prepare_rule_request(
@@ -112,6 +136,7 @@ class IndicatorRunService:
             )
             effective = self._model_dump(prepared.effective_rule)
             mapping = self._model_dump(prepared.field_mapping)
+            stage_started = time.perf_counter()
             generation = self.orchestrator.generate_indicator(
                 prepared,
                 stat_start_time=period.start_text,
@@ -121,6 +146,11 @@ class IndicatorRunService:
                 persist_run_result=False,
             )
             trial = dict(generation.get("trial_run") or {})
+            timings["execute"] = max(
+                1,
+                int(trial.get("duration_ms") or 0),
+                self._elapsed_ms(stage_started),
+            )
             generation_ok = str(generation.get("status") or "success") == "success"
             trial_ok = str(trial.get("status") or "") == "success"
             if not generation_ok or not trial_ok:
@@ -138,7 +168,12 @@ class IndicatorRunService:
                     str(generation.get("status") or trial.get("status") or "failed"),
                 )
                 return self._complete_trace(
-                    plan, failed, trace_id, trigger_type, lease_status="acquired"
+                    plan,
+                    failed,
+                    trace_id,
+                    trigger_type,
+                    lease_status="acquired",
+                    timings=timings,
                 )
 
             no_sample = bool(trial.get("no_sample", False))
@@ -164,15 +199,23 @@ class IndicatorRunService:
                     "run_id": trial.get("run_id"),
                 }
             )
+            stage_started = time.perf_counter()
             result = self._apply_wave(plan, period, result, no_sample)
+            timings["wave"] = self._elapsed_ms(stage_started)
             if result.get("is_abnormal"):
-                result["alert"] = self._create_wave_alert(
+                result["alert"], alert_timings = self._create_wave_alert(
                     plan, prepared, generation, result
                 )
+                timings.update(alert_timings)
             else:
                 result["alert"] = None
             return self._complete_trace(
-                plan, result, trace_id, trigger_type, lease_status="acquired"
+                plan,
+                result,
+                trace_id,
+                trigger_type,
+                lease_status="acquired",
+                timings=timings,
             )
         except Exception as exc:
             if isinstance(exc, MonitoringRunError):
@@ -188,7 +231,12 @@ class IndicatorRunService:
                     type(exc).__name__,
                 )
                 return self._complete_trace(
-                    plan, failed, trace_id, trigger_type, lease_status="acquired"
+                    plan,
+                    failed,
+                    trace_id,
+                    trigger_type,
+                    lease_status="acquired",
+                    timings=timings,
                 )
             if self.trace_recorder is not None:
                 try:
@@ -216,6 +264,7 @@ class IndicatorRunService:
         trigger_type: str,
         *,
         lease_status: str,
+        timings: dict[str, int],
     ) -> dict[str, Any]:
         if self.trace_recorder is None:
             return result
@@ -233,6 +282,7 @@ class IndicatorRunService:
             {
                 "node_name": "monitor_plan_load",
                 "status": "success",
+                "duration_ms": timings.get("plan_load", 1),
                 "input_data": {"plan_id": plan["plan_id"]},
                 "output_data": {
                     "hospital_id": plan["hospital_id"],
@@ -247,6 +297,7 @@ class IndicatorRunService:
             {
                 "node_name": "monitor_lease_acquire",
                 "status": "failed" if lease_status == "contended" else "success",
+                "duration_ms": timings.get("lease", 1),
                 "input_data": {
                     "plan_id": plan["plan_id"],
                     "worker_id": self.worker_id,
@@ -264,6 +315,7 @@ class IndicatorRunService:
                     {
                         "node_name": "monitor_period_resolve",
                         "status": "success",
+                        "duration_ms": timings.get("period", 1),
                         "input_data": {
                             "frequency": plan["frequency"],
                             "timezone": plan.get("timezone"),
@@ -274,7 +326,9 @@ class IndicatorRunService:
                     {
                         "node_name": "monitor_indicator_execute_mcp",
                         "status": "failed" if failed else "success",
-                        "duration_ms": int(result.get("duration_ms") or 0),
+                        "duration_ms": timings.get(
+                            "execute", max(1, int(result.get("duration_ms") or 0))
+                        ),
                         "error_code": str(result.get("error_code") or ""),
                         "error_message": str(result.get("error_message") or ""),
                         "input_data": {
@@ -300,6 +354,7 @@ class IndicatorRunService:
                 {
                     "node_name": "monitor_wave_detect",
                     "status": "success",
+                    "duration_ms": timings.get("wave", 1),
                     "input_data": {
                         "result_value": result.get("result_value"),
                         "thresholds": {
@@ -321,6 +376,7 @@ class IndicatorRunService:
                 {
                     "node_name": "monitor_alert_create",
                     "status": "success",
+                    "duration_ms": timings.get("alert", 1),
                     "input_data": {
                         "result_id": result.get("id"),
                         "conclusion_code": alert.get("conclusion_code"),
@@ -340,6 +396,7 @@ class IndicatorRunService:
                             if alert.get("diagnose_status") == "completed"
                             else "failed"
                         ),
+                        "duration_ms": timings.get("diagnose", 1),
                         "input_data": {
                             "alert_id": alert.get("alert_id"),
                             "hospital_id": plan["hospital_id"],
@@ -420,7 +477,9 @@ class IndicatorRunService:
         prepared: Any,
         generation: dict[str, Any],
         result: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, int]]:
+        timings: dict[str, int] = {}
+        stage_started = time.perf_counter()
         mom = (
             self.repository.get_result_for_retry(int(result["mom_baseline_result_id"]))
             if result.get("mom_baseline_result_id")
@@ -448,6 +507,8 @@ class IndicatorRunService:
                 "diagnose_status": "running",
             }
         )
+        timings["alert"] = self._elapsed_ms(stage_started)
+        stage_started = time.perf_counter()
         try:
             diagnosis = self.orchestrator.diagnose(
                 prepared,
@@ -455,7 +516,7 @@ class IndicatorRunService:
                 related_sql_id=generation.get("sql_id"),
                 stat_period=result["stat_period"],
             )
-            return self.repository.update_alert(
+            updated = self.repository.update_alert(
                 alert["alert_id"],
                 str(plan["hospital_id"]),
                 {
@@ -463,12 +524,16 @@ class IndicatorRunService:
                     "diagnose_report_id": diagnosis.get("report_id"),
                 },
             )
+            timings["diagnose"] = self._elapsed_ms(stage_started)
+            return updated, timings
         except Exception:
-            return self.repository.update_alert(
+            updated = self.repository.update_alert(
                 alert["alert_id"],
                 str(plan["hospital_id"]),
                 {"diagnose_status": "failed"},
             )
+            timings["diagnose"] = self._elapsed_ms(stage_started)
+            return updated, timings
 
     def _save_failure(
         self,
@@ -480,22 +545,28 @@ class IndicatorRunService:
         error_message: str,
         error_code: str,
     ) -> dict[str, Any]:
-        result = self.repository.create_run_result(
-            {
-                "run_key": run_key,
-                "plan_id": plan["plan_id"],
-                "retry_of_result_id": retry_of_result_id,
-                "hospital_id": plan["hospital_id"],
-                "rule_id": plan["rule_id"],
-                "trigger_type": trigger_type,
-                "stat_start_time": period.start,
-                "stat_end_time": period.end,
-                "stat_period": period.label,
-                "run_status": "failed",
-                "result_value": None,
-                "error_code": error_code,
-                "error_message": error_message,
-            }
+        existing = self.repository.get_result_by_run_key(run_key)
+        failure_payload = {
+            "run_key": run_key,
+            "plan_id": plan["plan_id"],
+            "retry_of_result_id": retry_of_result_id,
+            "hospital_id": plan["hospital_id"],
+            "rule_id": plan["rule_id"],
+            "trigger_type": trigger_type,
+            "stat_start_time": period.start,
+            "stat_end_time": period.end,
+            "stat_period": period.label,
+            "run_status": "failed",
+            "result_value": None,
+            "error_code": error_code,
+            "error_message": error_message,
+        }
+        result = (
+            self.repository.mark_run_result_failed(
+                int(existing["id"]), error_code, error_message
+            )
+            if existing is not None
+            else self.repository.create_run_result(failure_payload)
         )
         alert = self.repository.create_alert(
             {

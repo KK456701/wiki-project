@@ -6,7 +6,12 @@ from typing import Any
 def _change_rate(current: float, baseline: float | None) -> float | None:
     if baseline is None or baseline == 0:
         return None
-    return round((current - baseline) / abs(baseline) * 100, 2)
+    current_value = float(current)
+    baseline_value = float(baseline)
+    return round(
+        (current_value - baseline_value) / abs(baseline_value) * 100,
+        2,
+    )
 
 
 def detect_wave(

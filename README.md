@@ -131,7 +131,7 @@ mysql -uroot -p123456 < scripts\init_demo_hospital_db.sql
 python -B scripts\migrate_runtime_schema.py
 ```
 
-该命令只补齐缺失字段，可重复执行；本次会确保诊断报告能够持久化触发来源、三层结果、诊断状态和统计周期。
+该命令只补齐缺失字段和表，可重复执行；当前会同时迁移诊断报告、指标运行计划、运行审计字段和指标预警表。
 
 将首批四个指标从 Wiki 导入 MySQL 规则库：
 
@@ -221,6 +221,16 @@ http://127.0.0.1:8765
 Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health
 ```
 
+指标调度器默认随 FastAPI 启停，在 `config.yaml` 中配置：
+
+```yaml
+monitoring_scheduler_enabled: true
+monitoring_scheduler_timezone: "Asia/Shanghai"
+monitoring_scheduler_lease_seconds: 600
+```
+
+多进程或开发模式重载时，每个进程都可以恢复启用计划；数据库租约和稳定运行键会阻止同一计划、同一统计周期重复执行。
+
 ## 常用工作流
 
 ### 指标问答
@@ -293,6 +303,40 @@ diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 
 其中 `diagnose_rule_check` 不再只是静态公式检查。对于已迁移且存在有效医院定制口径的指标，它会在相同医院、字段映射和统计周期下，通过 DBHub 分别执行纯国标口径和本院生效口径。节点摘要显示对比结论；展开详情后可查看两侧版本、执行状态、聚合结果、样本量、耗时、差值和运行 ID，不展示绑定后的 SQL 或患者明细。
 
+### 指标运算监控与预警
+
+首批四指标支持持久化日/月运行计划、手工重算、波动预警和自动三层诊断。完整监控工作台并入第六批；本批可通过管理 API、系统自检和执行链路验证后端闭环。
+
+- 日计划计算最近一个完整自然日，月计划计算最近一个完整自然月，统计区间统一为 `[start_time, end_time)`。
+- 环比默认启用、阈值 `20%`；同比默认启用、阈值 `30%`，两者可独立关闭或调整。
+- 只有绝对变化率严格大于阈值才预警；等于阈值不预警。
+- 缺少上期或去年同期结果时标记 `baseline_insufficient`，不会误报；分母为零时标记 `no_sample`。
+- 波动预警会自动触发现有结构、口径、数据三层诊断，并关联诊断报告。
+- 执行失败会在恢复中心创建“指标重新运算”任务，重试时保留原失败记录并建立重试关联。
+
+监控链路 manifest：
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8765/api/workflows/indicator_monitoring/validate
+```
+
+链路依次展示计划读取、运行锁、统计周期、DBHub 运算、波动判断、预警和自动诊断。节点详情只保存聚合结果、口径版本、数据源、耗时、预警和报告 ID，不保存绑定后的 SQL 或患者明细。
+
+创建月计划后手工运行示例：
+
+```powershell
+$headers = @{ Authorization = "Bearer <admin_token>" }
+$plan = @{
+  hospital_id = "hospital_001"
+  rule_id = "MQSI2025_005"
+  plan_name = "急会诊月报"
+  frequency = "monthly"
+  run_time = "02:00"
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/monitoring/plans `
+  -Headers $headers -ContentType "application/json" -Body $plan
+```
+
 ### 恢复中心
 
 管理员可在前端顶部点击“恢复中心”，查看需要补救的任务。第一批恢复中心覆盖：
@@ -301,6 +345,7 @@ diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 - 审批并应用医院口径
 - 恢复医院历史口径
 - 索引重建类任务
+- 指标运算失败后的原周期重算
 
 任务状态包括：
 
@@ -449,6 +494,17 @@ Content-Type: application/json
 | `/api/recovery/tasks` | GET | 查看恢复中心任务 |
 | `/api/recovery/tasks/{task_id}/retry` | POST | 重试可恢复任务 |
 | `/api/recovery/tasks/{task_id}/ignore` | POST | 忽略恢复任务 |
+| `/api/monitoring/plans` | GET、POST | 按医院查看或创建指标运行计划 |
+| `/api/monitoring/plans/{plan_id}` | PUT | 修改运行频率、时间和波动阈值 |
+| `/api/monitoring/plans/{plan_id}/enable` | POST | 启用计划并同步到调度器 |
+| `/api/monitoring/plans/{plan_id}/disable` | POST | 停用计划并移除调度任务 |
+| `/api/monitoring/plans/{plan_id}/run` | POST | 按指定或默认完整周期手工重算 |
+| `/api/monitoring/results` | GET | 按医院和指标查看运行审计结果 |
+| `/api/monitoring/alerts` | GET | 按医院和状态查看指标预警 |
+| `/api/monitoring/alerts/{alert_id}/acknowledge` | POST | 确认预警并记录操作人和时间 |
+| `/api/monitoring/alerts/{alert_id}/close` | POST | 关闭预警并记录关闭时间 |
+| `/api/monitoring/alerts/{alert_id}/diagnose` | POST | 手工重新执行预警诊断 |
+| `/api/monitoring/scheduler/scan` | POST | 扫描到期计划，供运维验收使用 |
 | `/api/kb/search` | POST | 知识库检索 |
 | `/api/kb/rules/{rule_id}/effective` | GET | 查询医院生效口径 |
 | `/api/review/change-requests` | POST | 创建口径变更申请 |
@@ -575,7 +631,8 @@ Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health/summary
 返回结构中：
 
 - `status_text` 为 `全部正常` 或 `部分异常`。
-- `items` 包含后端服务、运行数据库、DBHub 服务、业务数据库和流程引擎。
+- `items` 包含后端服务、运行数据库、DBHub 服务、业务数据库、指标调度器和流程引擎。
+- 指标调度器项展示启用计划数、已注册任务数和最近扫描时间。
 - 每个项目都有中文状态、说明、处理建议和问题码。
 
 原始依赖检查接口保留给开发和实施排障：
@@ -591,12 +648,14 @@ RUNTIME_DB_UNAVAILABLE
 BUSINESS_DB_MCP_UNAVAILABLE
 DBHUB_HTTP_UNAVAILABLE
 LANGGRAPH_NOT_INSTALLED
+MONITORING_SCHEDULER_UNAVAILABLE
 ```
 
 工作流校验接口：
 
 ```powershell
 Invoke-RestMethod -Uri http://127.0.0.1:8765/api/workflows/core_indicator_chat/validate
+Invoke-RestMethod -Uri http://127.0.0.1:8765/api/workflows/indicator_monitoring/validate
 ```
 
 如果 `ok=false`，先处理 `issues` 中的节点缺字段、重复节点或边引用不存在节点问题，再继续排查业务链路。
