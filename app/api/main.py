@@ -677,9 +677,13 @@ def recovery_task_retry(
 
 @app.get("/api/kb/export")
 def kb_export(hospital_id: str = "hospital_001") -> Response:
+    from app.db.engine import create_runtime_engine
     from app.kb.export import export_hospital_kb_zip
 
-    data = export_hospital_kb_zip(DEFAULT_KB_ROOT, hospital_id)
+    try:
+        data = export_hospital_kb_zip(create_runtime_engine(), hospital_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"医院知识包导出失败：{exc}") from exc
     filename = f"{hospital_id}_kb_export.zip"
     return Response(
         content=data,

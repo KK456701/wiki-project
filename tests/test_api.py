@@ -433,12 +433,17 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(request.source, "dbhub")
 
     def test_kb_export_and_merge_upload_workflow(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+
         with temp_kb_dir() as tmp:
             root = Path(tmp)
             make_minimal_kb(root, with_hospital=True)
+            runtime_engine = _rule_engine()
+            import_four_indicator_rules(runtime_engine, Path("core-rules-wiki"))
             client = TestClient(app)
 
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root):
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
                 exported = client.get("/api/kb/export", params={"hospital_id": "hospital_001"})
                 login = client.post("/api/admin/login", json={"password": "admin123"})
                 headers = {"Authorization": f"Bearer {login.json()['token']}", "Content-Type": "application/zip"}
