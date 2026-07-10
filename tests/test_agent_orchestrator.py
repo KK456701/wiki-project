@@ -39,6 +39,14 @@ class _FakeCaliber:
         self.calls.append(("search", query, limit))
         return {"resolved_rule_id": "MQSI2025_005" if self.resolve_rule else None, "results": []}
 
+    def search_for_hospital_contract(self, query, hospital_id, limit=5):
+        self.calls.append(("search_for_hospital", query, hospital_id, limit))
+        return {
+            "query": query,
+            "resolved_rule_id": "MQSI2025_005" if self.resolve_rule else None,
+            "matches": [],
+        }
+
     def resolve(self, rule_id, hospital_id):
         self.calls.append(("resolve", rule_id, hospital_id))
         return {"rule_id": rule_id, "rule_name": "急会诊及时到位率", "effective_level": "hospital"}
@@ -132,7 +140,14 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertEqual(prepared.field_mapping["hospital_id"], "hospital_001")
         self.assertEqual(prepared.custom_filters[0]["field"], "dept_id")
         self.assertEqual(interaction.calls[0][0], "understand")
-        self.assertEqual([call[0] for call in caliber.calls], ["search", "resolve", "mapping"])
+        self.assertEqual(
+            caliber.calls[0],
+            ("search_for_hospital", prepared.retrieval_query, "hospital_001", 5),
+        )
+        self.assertEqual(
+            [call[0] for call in caliber.calls],
+            ["search_for_hospital", "resolve", "mapping"],
+        )
 
     def test_staged_preparation_matches_one_shot_prepare(self) -> None:
         orchestrator, _, caliber, *_ = _orchestrator()
@@ -154,7 +169,10 @@ class AgentOrchestratorTest(unittest.TestCase):
 
         self.assertEqual(prepared.rule_id, "MQSI2025_005")
         self.assertEqual(prepared.effective_rule.effective_level, "hospital")
-        self.assertEqual([call[0] for call in caliber.calls], ["search", "resolve", "mapping"])
+        self.assertEqual(
+            [call[0] for call in caliber.calls],
+            ["search_for_hospital", "resolve", "mapping"],
+        )
 
     def test_prepare_rule_request_resolves_without_search(self) -> None:
         orchestrator, _, caliber, *_ = _orchestrator()
@@ -190,7 +208,10 @@ class AgentOrchestratorTest(unittest.TestCase):
 
         self.assertEqual(prepared.rule_id, "MQSI2025_005")
         self.assertEqual(prepared.search["context_source"], "memory_last_rule")
-        self.assertEqual([call[0] for call in caliber.calls], ["search", "resolve", "mapping"])
+        self.assertEqual(
+            [call[0] for call in caliber.calls],
+            ["search_for_hospital", "resolve", "mapping"],
+        )
 
     def test_dispatch_methods_delegate_prepared_context(self) -> None:
         orchestrator, _, _, indicator, diagnosis, metadata = _orchestrator()

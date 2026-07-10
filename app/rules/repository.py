@@ -17,6 +17,10 @@ class RuleNotFoundError(LookupError):
 class RuleRepository(Protocol):
     def search(self, query: str, limit: int = 5) -> dict[str, Any]: ...
 
+    def search_for_hospital(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> dict[str, Any]: ...
+
     def get_effective_rule(
         self, index_code_or_name: str, hospital_id: str | None
     ) -> dict[str, Any]: ...
@@ -48,6 +52,17 @@ def _json_dict(value: Any) -> dict[str, Any]:
     except (TypeError, json.JSONDecodeError):
         return {}
     return dict(parsed) if isinstance(parsed, dict) else {}
+
+
+def _json_value(value: Any, default: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if value is None or value == "":
+        return default
+    try:
+        return json.loads(str(value))
+    except (TypeError, json.JSONDecodeError):
+        return default
 
 
 def _datetime(value: Any) -> datetime | None:
@@ -117,6 +132,54 @@ class MySQLRuleRepository:
             "matches": matches,
         }
 
+    def search_for_hospital(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> dict[str, Any]:
+        pattern = f"%{str(query or '').strip()}%"
+        now = datetime.now()
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT index_code, index_name, index_type, index_desc
+                    FROM med_index_hospital_defined
+                    WHERE hospital_id=:hospital_id AND status=1
+                      AND approval_status='approved'
+                      AND (effective_from IS NULL OR effective_from<=:now)
+                      AND (effective_to IS NULL OR effective_to>=:now)
+                      AND (index_code=:query OR index_name=:query
+                           OR index_name LIKE :pattern OR index_desc LIKE :pattern)
+                    ORDER BY CASE WHEN index_code=:query OR index_name=:query THEN 0 ELSE 1 END,
+                             index_code
+                    LIMIT :limit
+                    """
+                ),
+                {
+                    "hospital_id": hospital_id,
+                    "now": now,
+                    "query": query,
+                    "pattern": pattern,
+                    "limit": int(limit),
+                },
+            ).mappings().all()
+        local_matches = [
+            {
+                "rule_id": row["index_code"],
+                "rule_name": row["index_name"],
+                "category": row["index_type"],
+                "content": row["index_desc"],
+                "type": "mysql_hospital_defined",
+            }
+            for row in rows
+        ]
+        standard = self.search(query, limit=limit)
+        matches = [*local_matches, *standard.get("matches", [])][: int(limit)]
+        return {
+            "query": query,
+            "resolved_rule_id": matches[0]["rule_id"] if matches else None,
+            "matches": matches,
+        }
+
     def _find_standard(self, index_code_or_name: str) -> dict[str, Any] | None:
         query = str(index_code_or_name or "").strip()
         with self.engine.connect() as conn:
@@ -160,11 +223,60 @@ class MySQLRuleRepository:
         item = dict(row) if row is not None else None
         return item if item is not None and _active_now(item, datetime.now()) else None
 
+    def _find_defined(
+        self, hospital_id: str, index_code_or_name: str
+    ) -> dict[str, Any] | None:
+        query = str(index_code_or_name or "").strip()
+        now = datetime.now()
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT * FROM med_index_hospital_defined
+                    WHERE hospital_id=:hospital_id AND status=1
+                      AND approval_status='approved'
+                      AND (effective_from IS NULL OR effective_from<=:now)
+                      AND (effective_to IS NULL OR effective_to>=:now)
+                      AND (index_code=:query OR index_name=:query)
+                    ORDER BY CASE WHEN index_code=:query THEN 0 ELSE 1 END
+                    LIMIT 1
+                    """
+                ),
+                {"hospital_id": hospital_id, "now": now, "query": query},
+            ).mappings().first()
+            if row is None:
+                row = conn.execute(
+                    text(
+                        """
+                        SELECT * FROM med_index_hospital_defined
+                        WHERE hospital_id=:hospital_id AND status=1
+                          AND approval_status='approved'
+                          AND (effective_from IS NULL OR effective_from<=:now)
+                          AND (effective_to IS NULL OR effective_to>=:now)
+                          AND index_name LIKE :pattern
+                        ORDER BY index_code LIMIT 1
+                        """
+                    ),
+                    {
+                        "hospital_id": hospital_id,
+                        "now": now,
+                        "pattern": f"%{query}%",
+                    },
+                ).mappings().first()
+        return dict(row) if row is not None else None
+
     def get_effective_rule(
         self, index_code_or_name: str, hospital_id: str | None = None
     ) -> dict[str, Any]:
         standard = self._find_standard(index_code_or_name)
         if standard is None:
+            defined = (
+                self._find_defined(hospital_id, index_code_or_name)
+                if hospital_id
+                else None
+            )
+            if defined is not None:
+                return self._defined_effective_rule(defined, hospital_id or "")
             raise RuleNotFoundError(f"RULE_NOT_MIGRATED: {index_code_or_name}")
 
         index_code = str(standard["index_code"])
@@ -249,6 +361,46 @@ class MySQLRuleRepository:
             "hospital_version": int(custom.get("version") or 0) if custom else None,
             "overridden_fields": list(dict.fromkeys(overridden_fields)),
             "fallback_chain": ["hospital", "national"],
+            "rule_source": "mysql",
+            "warnings": [],
+            "relations": {},
+        }
+
+    @staticmethod
+    def _defined_effective_rule(
+        item: dict[str, Any], hospital_id: str
+    ) -> dict[str, Any]:
+        name = str(item.get("index_name") or "")
+        numerator = str(item.get("numerator_rule") or "")
+        denominator = str(item.get("denominator_rule") or "")
+        params = _json_dict(item.get("rule_params"))
+        sql_template = str(item.get("sql_template") or "")
+        return {
+            "rule_id": str(item["index_code"]),
+            "index_code": str(item["index_code"]),
+            "rule_name": name,
+            "category": str(item.get("index_type") or ""),
+            "hospital_id": hospital_id,
+            "effective_level": "hospital_defined",
+            "definition": str(item.get("index_desc") or ""),
+            "formula": _formula(name, numerator, denominator),
+            "numerator_rule": numerator,
+            "denominator_rule": denominator,
+            "filter_rule": str(item.get("filter_rule") or ""),
+            "exclude_rule": str(item.get("exclude_rule") or ""),
+            "implementation_status": sql_template,
+            "standard_sql": sql_template,
+            "field_contract": _json_value(item.get("field_contract"), []),
+            "field_status": "configured",
+            "sql_status": "available" if sql_template else "unavailable",
+            "hospital_override": None,
+            "national_rule": {},
+            "national_params": {},
+            "effective_params": params,
+            "national_version": None,
+            "hospital_version": int(item.get("version") or 0),
+            "overridden_fields": [],
+            "fallback_chain": ["hospital_defined"],
             "rule_source": "mysql",
             "warnings": [],
             "relations": {},
@@ -732,6 +884,25 @@ class FallbackRuleRepository:
         except Exception:
             warning = "rule_store_unavailable"
         return self._annotate_fallback(self.fallback.search(query, limit=limit), warning)
+
+    def search_for_hospital(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> dict[str, Any]:
+        try:
+            search = getattr(self.primary, "search_for_hospital", None)
+            result = (
+                search(query, hospital_id, limit=limit)
+                if callable(search)
+                else self.primary.search(query, limit=limit)
+            )
+            if result.get("resolved_rule_id") or result.get("matches"):
+                return {**result, "rule_source": "mysql", "warnings": []}
+            warning = "rule_not_migrated"
+        except Exception:
+            warning = "rule_store_unavailable"
+        return self._annotate_fallback(
+            self.fallback.search(query, limit=limit), warning
+        )
 
     def get_effective_rule(
         self, index_code_or_name: str, hospital_id: str | None

@@ -21,6 +21,21 @@ class CaliberAdaptationAgent:
         payload.setdefault("query", query)
         return RuleSearchResult.model_validate(payload)
 
+    def search_for_hospital(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> dict[str, Any]:
+        search = getattr(self.rule_repository, "search_for_hospital", None)
+        if callable(search):
+            return search(query, hospital_id, limit=limit)
+        return self.search(query, limit=limit)
+
+    def search_for_hospital_contract(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> RuleSearchResult:
+        payload = dict(self.search_for_hospital(query, hospital_id, limit=limit))
+        payload.setdefault("query", query)
+        return RuleSearchResult.model_validate(payload)
+
     def resolve(self, rule_id: str, hospital_id: str | None) -> dict[str, Any]:
         return self.rule_repository.get_effective_rule(rule_id, hospital_id)
 

@@ -106,7 +106,13 @@ class CoreIndicatorOrchestrator:
         if prepared.intent not in RULE_INTENTS:
             return prepared
 
-        if hasattr(self.caliber, "search_contract"):
+        if prepared.hospital_id and hasattr(
+            self.caliber, "search_for_hospital_contract"
+        ):
+            search_result = self.caliber.search_for_hospital_contract(
+                prepared.retrieval_query, prepared.hospital_id, limit=5
+            )
+        elif hasattr(self.caliber, "search_contract"):
             search_result = self.caliber.search_contract(
                 prepared.retrieval_query, limit=5
             )
