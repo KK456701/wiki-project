@@ -42,8 +42,7 @@ class SqlGenerationSafetyTest(unittest.TestCase):
             UnusedBusinessDB(),
             rule_repository=FakeRepository(),
         )
-        with patch("app.sqlgen.agent.precheck_rule_fields", return_value={"ok": True}), \
-             patch("app.sqlgen.agent.insert_generated_sql"):
+        with patch("app.sqlgen.agent.insert_generated_sql"):
             result = agent.generate(
                 query="生成SQL",
                 hospital_id="hospital_001",
@@ -54,6 +53,16 @@ class SqlGenerationSafetyTest(unittest.TestCase):
                 },
                 stat_start_time="2026-07-01",
                 stat_end_time="2026-08-01",
+                precheck={
+                    "ok": True,
+                    "main_table": "consult_record",
+                    "field_mapping": {
+                        "hospital_id": "consult_record.hospital_id",
+                        "request_time": "consult_record.request_time",
+                    },
+                    "missing_mappings": [],
+                    "missing_columns": [],
+                },
             )
 
         self.assertIn("mysql_repository_marker", result["sql_text"])

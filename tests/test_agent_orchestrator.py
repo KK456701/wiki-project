@@ -69,6 +69,16 @@ class _FakeDomainAgent:
         self.calls.append({"provider": provider, "hospital_id": hospital_id, "db_name": db_name})
         return {"batch_id": "B001"}
 
+    def precheck(self, hospital_id, rule_id):
+        self.calls.append({"operation": "precheck", "hospital_id": hospital_id, "rule_id": rule_id})
+        return {
+            "ok": True,
+            "main_table": "consult_record",
+            "field_mapping": {"request_time": "consult_record.request_time"},
+            "missing_mappings": [],
+            "missing_columns": [],
+        }
+
 
 def _orchestrator(intent="query", resolve_rule=True):
     from app.agents.orchestrator import CoreIndicatorOrchestrator
@@ -159,12 +169,36 @@ class AgentOrchestratorTest(unittest.TestCase):
         synced = orchestrator.sync_metadata(object(), "hospital_001", "hospital_demo_data")
 
         self.assertEqual(sql["sql_id"], "SQL_001")
+        self.assertTrue(indicator.calls[0]["precheck"]["ok"])
         self.assertEqual(indicator.calls[0]["rule_id"], "MQSI2025_005")
         self.assertTrue(indicator.calls[0]["trial_run"])
         self.assertEqual(diagnosed["diagnose_status"], "success")
         self.assertEqual(diagnosis.calls[0]["effective_rule"]["effective_level"], "hospital")
         self.assertEqual(synced["batch_id"], "B001")
-        self.assertEqual(metadata.calls[0]["db_name"], "hospital_demo_data")
+        self.assertEqual(metadata.calls[0]["operation"], "precheck")
+        self.assertEqual(metadata.calls[1]["db_name"], "hospital_demo_data")
+
+    def test_precheck_failure_stops_before_indicator_generation(self) -> None:
+        orchestrator, _, _, indicator, _, metadata = _orchestrator()
+        prepared = orchestrator.prepare("生成SQL", "hospital_001")
+
+        def failed_precheck(hospital_id, rule_id):
+            return {
+                "ok": False,
+                "missing_mappings": ["request_time"],
+                "missing_columns": [],
+            }
+
+        metadata.precheck = failed_precheck
+        result = orchestrator.generate_indicator(
+            prepared,
+            stat_start_time="2026-07-01 00:00:00",
+            stat_end_time="2026-08-01 00:00:00",
+        )
+
+        self.assertEqual(result["status"], "field_precheck_failed")
+        self.assertEqual(result["precheck"]["missing_mappings"], ["request_time"])
+        self.assertEqual(indicator.calls, [])
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ from sqlalchemy import Engine
 
 from app.db.repositories import insert_generated_sql, insert_run_result
 from app.db_access.business_db import BusinessDBClient
-from app.metadata.precheck import precheck_rule_fields
 from app.sqlgen.spec_loader import (
     load_hospital_mapping, load_rule_sql_spec, load_template,
 )
@@ -63,13 +62,11 @@ class SQLGenerationAgent:
 
     def generate(self, query: str, hospital_id: str, rule_id: str,
                  effective_rule: dict[str, Any], stat_start_time: str,
-                 stat_end_time: str, trial_run: bool = False,
+                 stat_end_time: str, precheck: dict[str, Any],
+                 trial_run: bool = False,
                  generated_by: str = "agent",
                  custom_filters: list[dict[str, str]] | None = None) -> dict[str, Any]:
         node_timings: dict[str, int] = {}
-        precheck_start = time.perf_counter()
-        precheck = precheck_rule_fields(self.kb_root, self.runtime_engine, hospital_id, rule_id)
-        node_timings["field_mapping_precheck"] = _elapsed_ms(precheck_start)
         if not precheck.get("ok"):
             return {
                 "status": "field_precheck_failed",

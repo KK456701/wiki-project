@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from app.agents.contracts import (
@@ -9,6 +10,7 @@ from app.agents.contracts import (
     EffectiveRule,
     FieldMapping,
     IntentResult,
+    MetadataPrecheckResult,
     MetadataSyncResult,
     PreparedRequest,
     RuleSearchResult,
@@ -148,6 +150,33 @@ class CoreIndicatorOrchestrator:
         generated_by: str = "agent",
     ) -> dict[str, Any]:
         self._require_rule(prepared)
+        precheck_started = time.perf_counter()
+        precheck = getattr(
+            self.metadata, "precheck_contract", self.metadata.precheck
+        )(
+            str(prepared.hospital_id or ""),
+            str(prepared.rule_id),
+        )
+        precheck_contract = (
+            precheck
+            if isinstance(precheck, MetadataPrecheckResult)
+            else MetadataPrecheckResult.model_validate(precheck)
+        )
+        precheck_duration_ms = max(
+            1, int((time.perf_counter() - precheck_started) * 1000)
+        )
+        if not precheck_contract.ok:
+            missing_mappings = precheck_contract.missing_mappings
+            missing_columns = precheck_contract.missing_columns
+            return SQLGenerationResult(
+                status="field_precheck_failed",
+                precheck=precheck_contract,
+                message=(
+                    f"字段预校验未通过。缺失映射: {missing_mappings}。"
+                    f"缺失字段: {missing_columns}"
+                ),
+                node_timings={"field_mapping_precheck": precheck_duration_ms},
+            ).model_dump(by_alias=True, exclude_none=True)
         generate = getattr(
             self.indicator_generation,
             "generate_contract",
@@ -160,6 +189,7 @@ class CoreIndicatorOrchestrator:
             effective_rule=prepared.effective_rule.model_dump(),
             stat_start_time=stat_start_time,
             stat_end_time=stat_end_time,
+            precheck=precheck_contract.model_dump(exclude_none=True),
             trial_run=trial_run,
             generated_by=generated_by,
             custom_filters=[item.model_dump() for item in prepared.custom_filters],
@@ -169,6 +199,7 @@ class CoreIndicatorOrchestrator:
             if isinstance(result, SQLGenerationResult)
             else SQLGenerationResult.model_validate(result)
         )
+        contract.node_timings["field_mapping_precheck"] = precheck_duration_ms
         return contract.model_dump(by_alias=True, exclude_none=True)
 
     def diagnose(

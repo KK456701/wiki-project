@@ -98,6 +98,15 @@ class FakeSQLGenerationAgent:
         return result
 
 
+PRECHECK_OK = {
+    "ok": True,
+    "main_table": "consult_record",
+    "field_mapping": {"request_time": "consult_record.request_time"},
+    "missing_mappings": [],
+    "missing_columns": [],
+}
+
+
 class FakeDiagnoseAgent:
     def __init__(self, *args, **kwargs) -> None:
         pass
@@ -536,7 +545,8 @@ class AgentWorkflowTest(unittest.TestCase):
             engine = _trace_runtime_engine()
 
             with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
-                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
                 events = list(run_chat_stream(
                     "生成 SQL",
                     hospital_id="hospital_001",
@@ -564,7 +574,8 @@ class AgentWorkflowTest(unittest.TestCase):
             engine = _trace_runtime_engine()
 
             with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
-                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
                 first = run_chat(
                     "急会诊及时到位率怎么算？",
                     hospital_id="hospital_001",
@@ -624,7 +635,8 @@ class AgentWorkflowTest(unittest.TestCase):
             engine = _trace_runtime_engine()
 
             with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
-                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
                 events = list(run_chat_stream(
                     "试运行 SQL",
                     hospital_id="hospital_001",
