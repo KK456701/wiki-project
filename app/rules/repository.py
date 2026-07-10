@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy import Engine, text
@@ -283,3 +284,91 @@ class MySQLRuleRepository:
         self, index_code: str, hospital_id: str, version: int, approver_id: str
     ) -> dict[str, Any]:
         raise NotImplementedError("MySQL rule writes are implemented in the versioning task")
+
+
+class WikiRuleSource:
+    """Read-only adapter around the existing file-based knowledge base."""
+
+    def __init__(self, tools: Any) -> None:
+        self.tools = tools
+
+    def search(self, query: str, limit: int = 5) -> dict[str, Any]:
+        return self.tools.search(query, limit=limit)
+
+    def get_effective_rule(
+        self, index_code_or_name: str, hospital_id: str | None
+    ) -> dict[str, Any]:
+        return self.tools.get_effective_rule(index_code_or_name, hospital_id)
+
+    def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]:
+        result = self.tools.get_field_mapping(index_code)
+        return {**result, "hospital_id": hospital_id}
+
+
+class FallbackRuleRepository:
+    def __init__(self, primary: RuleRepository, fallback: WikiRuleSource) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    @staticmethod
+    def _annotate_fallback(result: dict[str, Any], warning: str) -> dict[str, Any]:
+        annotated = dict(result)
+        annotated["rule_source"] = "wiki_fallback"
+        annotated["warnings"] = [*annotated.get("warnings", []), warning]
+        annotated["fallback_chain"] = ["hospital", "national", "wiki_fallback"]
+        return annotated
+
+    def search(self, query: str, limit: int = 5) -> dict[str, Any]:
+        try:
+            result = self.primary.search(query, limit=limit)
+            if result.get("resolved_rule_id") or result.get("matches"):
+                return {**result, "rule_source": "mysql", "warnings": []}
+            warning = "rule_not_migrated"
+        except Exception:
+            warning = "rule_store_unavailable"
+        return self._annotate_fallback(self.fallback.search(query, limit=limit), warning)
+
+    def get_effective_rule(
+        self, index_code_or_name: str, hospital_id: str | None
+    ) -> dict[str, Any]:
+        try:
+            return self.primary.get_effective_rule(index_code_or_name, hospital_id)
+        except RuleNotFoundError:
+            warning = "rule_not_migrated"
+        except Exception:
+            warning = "rule_store_unavailable"
+        result = self.fallback.get_effective_rule(index_code_or_name, hospital_id)
+        return self._annotate_fallback(result, warning)
+
+    def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]:
+        try:
+            result = self.primary.get_field_mapping(index_code, hospital_id)
+            if result.get("fields") or result.get("items"):
+                return {**result, "rule_source": "mysql", "warnings": []}
+            warning = "mapping_not_migrated"
+        except Exception:
+            warning = "rule_store_unavailable"
+        result = self.fallback.get_field_mapping(index_code, hospital_id)
+        return self._annotate_fallback(result, warning)
+
+    def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.primary.submit_change_request(payload)
+
+    def approve_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
+        return self.primary.approve_change_request(change_id, approver_id)
+
+    def list_versions(self, index_code: str, hospital_id: str) -> dict[str, Any]:
+        return self.primary.list_versions(index_code, hospital_id)
+
+    def restore_version(
+        self, index_code: str, hospital_id: str, version: int, approver_id: str
+    ) -> dict[str, Any]:
+        return self.primary.restore_version(index_code, hospital_id, version, approver_id)
+
+
+def create_rule_repository(engine: Engine, kb_root: str | Path) -> RuleRepository:
+    from app.kb.tools import KnowledgeBaseTools
+
+    primary = MySQLRuleRepository(engine)
+    fallback = WikiRuleSource(KnowledgeBaseTools(kb_root))
+    return FallbackRuleRepository(primary, fallback)

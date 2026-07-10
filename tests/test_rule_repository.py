@@ -240,5 +240,88 @@ class MySQLRuleRepositoryTest(unittest.TestCase):
                 self.assertEqual(result["effective_params"]["arrive_minutes_threshold"], 10)
 
 
+class _FailingPrimary:
+    def __init__(self, not_found: bool = False) -> None:
+        self.not_found = not_found
+
+    def get_effective_rule(self, code_or_name, hospital_id):
+        if self.not_found:
+            from app.rules.repository import RuleNotFoundError
+
+            raise RuleNotFoundError(code_or_name)
+        raise RuntimeError("runtime database unavailable")
+
+    def search(self, query, limit=5):
+        raise RuntimeError("runtime database unavailable")
+
+    def get_field_mapping(self, index_code, hospital_id):
+        raise RuntimeError("runtime database unavailable")
+
+    def submit_change_request(self, payload):
+        raise RuntimeError("write failed")
+
+
+class _FakeWikiTools:
+    def __init__(self) -> None:
+        self.write_calls = 0
+
+    def get_effective_rule(self, code_or_name, hospital_id):
+        return {
+            "rule_id": code_or_name,
+            "rule_name": "急危重症患者抢救成功率",
+            "effective_level": "company",
+            "fallback_chain": ["hospital", "company", "national"],
+            "warnings": [],
+        }
+
+    def search(self, query, limit=5):
+        return {"query": query, "resolved_rule_id": "MQSI2025_014", "matches": []}
+
+    def get_field_mapping(self, index_code):
+        return {"rule_id": index_code, "status": "pending_field_mapping", "items": []}
+
+    def submit_change_request(self, payload):
+        self.write_calls += 1
+        return {"status": "pending"}
+
+
+class FallbackRuleRepositoryTest(unittest.TestCase):
+    def test_database_error_falls_back_to_read_only_wiki(self) -> None:
+        from app.rules.repository import FallbackRuleRepository, WikiRuleSource
+
+        wiki = _FakeWikiTools()
+        repository = FallbackRuleRepository(_FailingPrimary(), WikiRuleSource(wiki))
+
+        result = repository.get_effective_rule("MQSI2025_014", "hospital_001")
+
+        self.assertEqual(result["rule_source"], "wiki_fallback")
+        self.assertIn("rule_store_unavailable", result["warnings"])
+        self.assertEqual(
+            result["fallback_chain"], ["hospital", "national", "wiki_fallback"]
+        )
+
+    def test_unmigrated_rule_has_specific_fallback_warning(self) -> None:
+        from app.rules.repository import FallbackRuleRepository, WikiRuleSource
+
+        repository = FallbackRuleRepository(
+            _FailingPrimary(not_found=True), WikiRuleSource(_FakeWikiTools())
+        )
+
+        result = repository.get_effective_rule("MQSI2025_099", "hospital_001")
+
+        self.assertIn("rule_not_migrated", result["warnings"])
+
+    def test_write_failure_never_writes_to_wiki(self) -> None:
+        from app.rules.repository import FallbackRuleRepository, WikiRuleSource
+
+        wiki = _FakeWikiTools()
+        repository = FallbackRuleRepository(_FailingPrimary(), WikiRuleSource(wiki))
+
+        with self.assertRaisesRegex(RuntimeError, "write failed"):
+            repository.submit_change_request({"rule_id": "MQSI2025_005"})
+
+        self.assertEqual(wiki.write_calls, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

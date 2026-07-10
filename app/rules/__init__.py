@@ -1,12 +1,22 @@
 """Structured indicator rule storage."""
 
-from .repository import MySQLRuleRepository, RuleNotFoundError, RuleRepository
+from .repository import (
+    FallbackRuleRepository,
+    MySQLRuleRepository,
+    RuleNotFoundError,
+    RuleRepository,
+    WikiRuleSource,
+    create_rule_repository,
+)
 from .importer import FOUR_INDICATOR_CODES, import_four_indicator_rules
 
 __all__ = [
     "FOUR_INDICATOR_CODES",
+    "FallbackRuleRepository",
     "MySQLRuleRepository",
     "RuleNotFoundError",
     "RuleRepository",
+    "WikiRuleSource",
+    "create_rule_repository",
     "import_four_indicator_rules",
 ]
