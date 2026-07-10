@@ -1,0 +1,110 @@
+workflow_id: indicator_monitoring
+name: 指标定时运算与预警
+description: 按医院运行计划计算指标、比较历史基线、生成预警并自动诊断。
+
+nodes:
+  - id: monitor_plan_load
+    agent_owner: caliber_adaptation
+    title: 读取指标运行计划
+    type: plan_store
+    description: 读取医院、指标、频率和波动阈值，不接触患者数据。
+    inputs: [plan_id]
+    outputs: [hospital_id, rule_id, frequency, thresholds]
+    required: true
+    on_failure: stop
+    required_inputs: [plan_id]
+    required_outputs: [hospital_id, rule_id]
+    config: {table: med_indicator_run_plan}
+    failure_hint: 检查运行计划是否存在、是否属于当前医院。
+
+  - id: monitor_lease_acquire
+    agent_owner: human_interaction
+    title: 获取本次运行锁
+    type: lease
+    description: 使用数据库条件更新避免多个进程重复计算同一计划。
+    inputs: [plan_id, worker_id]
+    outputs: [lease_status]
+    required: true
+    on_failure: stop
+    required_inputs: [plan_id]
+    required_outputs: [lease_status]
+    config: {storage: med_indicator_run_plan, default_seconds: 600}
+    failure_hint: 已有实例运行时等待该次任务结束，不要重复执行。
+
+  - id: monitor_period_resolve
+    agent_owner: caliber_adaptation
+    title: 确定统计周期
+    type: period
+    description: 按日或月确定最近完整自然周期，并定位环比和同比基线。
+    inputs: [frequency, timezone, stat_period]
+    outputs: [stat_start_time, stat_end_time, stat_period]
+    required: true
+    on_failure: stop
+    required_inputs: [frequency]
+    required_outputs: [stat_start_time, stat_end_time]
+    config: {timezone: Asia/Shanghai, interval: half_open}
+    failure_hint: 检查频率、时区和手工统计区间格式。
+
+  - id: monitor_indicator_execute_mcp
+    agent_owner: indicator_generation
+    title: 运算指标结果
+    type: mcp_tool
+    description: 使用已审批生效 SQL 通过 DBHub 只读执行，只保存聚合结果。
+    inputs: [hospital_id, rule_id, stat_start_time, stat_end_time]
+    outputs: [result_value, no_sample, duration_ms, run_id]
+    required: true
+    on_failure: stop
+    required_inputs: [hospital_id, rule_id, stat_start_time, stat_end_time]
+    required_outputs: [result_value]
+    config: {tool: execute_sql_hospital_demo_data, readonly: true}
+    failure_hint: 检查 DBHub、业务库连接、字段映射和生效口径。
+
+  - id: monitor_wave_detect
+    agent_owner: root_cause_diagnosis
+    title: 判断指标波动
+    type: rule
+    description: 比较环比和可选同比结果，严格超过阈值才生成预警。
+    inputs: [result_value, mom_baseline, yoy_baseline, thresholds]
+    outputs: [mom_change_rate, yoy_change_rate, conclusion_code, is_abnormal]
+    required: true
+    on_failure: stop
+    required_inputs: [result_value]
+    required_outputs: [conclusion_code, is_abnormal]
+    config: {comparison: absolute_change_rate, boundary: strict_greater_than}
+    failure_hint: 检查基线周期是否有成功结果以及基线是否为零。
+
+  - id: monitor_alert_create
+    agent_owner: human_interaction
+    title: 创建指标预警
+    type: alert
+    description: 仅在波动超过阈值或执行失败时创建去重预警。
+    inputs: [result_id, conclusion_code]
+    outputs: [alert_id, alert_status]
+    required: false
+    on_failure: continue
+    required_inputs: [result_id, conclusion_code]
+    required_outputs: [alert_id]
+    config: {table: med_indicator_alert}
+    failure_hint: 检查预警表迁移和结果 ID，重复预警会返回已有记录。
+
+  - id: monitor_auto_diagnose
+    agent_owner: root_cause_diagnosis
+    title: 自动排查波动原因
+    type: diagnose
+    description: 对异常结果执行结构、口径和数据三层诊断并关联报告。
+    inputs: [alert_id, hospital_id, rule_id, stat_period]
+    outputs: [diagnose_status, diagnose_report_id]
+    required: false
+    on_failure: continue
+    required_inputs: [alert_id, hospital_id, rule_id]
+    required_outputs: [diagnose_status]
+    config: {workflow: three_layer_diagnosis}
+    failure_hint: 检查元数据、双口径试运行和诊断报告存储。
+
+edges:
+  - {from: monitor_plan_load, to: monitor_lease_acquire}
+  - {from: monitor_lease_acquire, to: monitor_period_resolve}
+  - {from: monitor_period_resolve, to: monitor_indicator_execute_mcp}
+  - {from: monitor_indicator_execute_mcp, to: monitor_wave_detect}
+  - {from: monitor_wave_detect, to: monitor_alert_create, condition: abnormal}
+  - {from: monitor_alert_create, to: monitor_auto_diagnose, condition: alert_created}

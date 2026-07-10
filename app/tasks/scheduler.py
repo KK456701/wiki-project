@@ -24,6 +24,7 @@ class MonitoringScheduler:
         self.backend = backend
         self.trigger_factory = trigger_factory or self._build_trigger
         self._started = False
+        self._last_scan_at: datetime | None = None
 
     @staticmethod
     def _job_id(plan_id: str) -> str:
@@ -110,10 +111,11 @@ class MonitoringScheduler:
         self._register_plan(plan)
 
     def scan_due(self, now: datetime | None = None) -> list[dict[str, Any]]:
-        service = self.service_factory()
+        scan_time = now or datetime.now()
+        self._last_scan_at = scan_time
         return [
-            service.run_plan(str(plan["plan_id"]))
-            for plan in self.repository.list_due_plans(now or datetime.now())
+            self._run_plan(str(plan["plan_id"]))
+            for plan in self.repository.list_due_plans(scan_time)
         ]
 
     def status(self) -> dict[str, Any]:
@@ -133,4 +135,5 @@ class MonitoringScheduler:
             "critical": True,
             "enabled_plan_count": enabled_plan_count,
             "job_count": job_count,
+            "last_scan_at": self._last_scan_at,
         }

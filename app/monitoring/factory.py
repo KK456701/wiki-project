@@ -10,9 +10,11 @@ def create_monitoring_service(runtime_engine: Any | None = None):
         create_dbhub_metadata_provider,
     )
     from app.db.engine import create_runtime_engine
+    from app.config import get_int
     from app.kb.tools import DEFAULT_KB_ROOT
     from app.monitoring.repository import MonitoringRepository
     from app.monitoring.service import IndicatorRunService
+    from app.observability.trace import TraceRecorder
     from app.rules.repository import create_rule_repository
 
     engine = runtime_engine or create_runtime_engine()
@@ -27,4 +29,6 @@ def create_monitoring_service(runtime_engine: Any | None = None):
         runtime_engine=engine,
         repository=MonitoringRepository(engine),
         orchestrator=orchestrator,
+        trace_recorder=TraceRecorder(engine),
+        lease_seconds=get_int("monitoring_scheduler_lease_seconds", 600),
     )

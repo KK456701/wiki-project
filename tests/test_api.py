@@ -977,6 +977,58 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(ignored.json()["status"], "ignored")
         self.assertEqual(listed.json()["items"], [])
 
+    def test_recovery_center_retries_indicator_recompute(self) -> None:
+        from app.db.repositories import create_recovery_task, fail_recovery_task
+
+        class FakeMonitoringService:
+            def retry_result(self, result_id, request_id):
+                return {
+                    "id": result_id + 1,
+                    "retry_of_result_id": result_id,
+                    "run_status": "success",
+                    "request_id": request_id,
+                }
+
+        engine = _trace_runtime_engine()
+        task_id = create_recovery_task(
+            engine,
+            task_type="indicator_recompute",
+            task_name="指标重新运算",
+            current_step="monitor_indicator_execute_mcp",
+            payload={
+                "plan_id": "PLAN_001",
+                "stat_period": "2026-07-01~2026-07-31",
+                "failed_result_id": 7,
+                "hospital_id": "hospital_001",
+                "rule_id": "MQSI2025_005",
+            },
+            hospital_id="hospital_001",
+            rule_id="MQSI2025_005",
+            recoverable_action="retry",
+        )
+        fail_recovery_task(engine, task_id, "dbhub down")
+        client = TestClient(app)
+        with patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch(
+                 "app.monitoring.factory.create_monitoring_service",
+                 return_value=FakeMonitoringService(),
+             ):
+            login = client.post(
+                "/api/admin/login", json={"password": "admin123"}
+            )
+            response = client.post(
+                f"/api/recovery/tasks/{task_id}/retry",
+                headers={
+                    "Authorization": f"Bearer {login.json()['token']}"
+                },
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "completed")
+        self.assertEqual(
+            response.json()["result"]["retry_of_result_id"], 7
+        )
+
     def test_metadata_sync_records_completed_recovery_task(self) -> None:
         class FakeDBHubClient:
             def __init__(self, *args, **kwargs):

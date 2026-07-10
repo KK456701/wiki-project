@@ -125,11 +125,13 @@ class MonitoringSchedulerTest(unittest.TestCase):
 
     def test_scan_due_runs_each_due_plan_once(self):
         scheduler, _, _, service = self._scheduler()
+        now = datetime(2026, 8, 1, 2, 0, 0)
 
-        results = scheduler.scan_due(datetime(2026, 8, 1, 2, 0, 0))
+        results = scheduler.scan_due(now)
 
         self.assertEqual(service.calls, ["PLAN_001"])
         self.assertEqual(results[0]["status"], "success")
+        self.assertEqual(scheduler.status()["last_scan_at"], now)
 
     def test_status_reports_runtime_and_plan_counts(self):
         scheduler, _, _, _ = self._scheduler()

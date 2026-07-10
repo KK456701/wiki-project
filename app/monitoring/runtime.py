@@ -41,6 +41,7 @@ def monitoring_scheduler_status() -> dict[str, Any]:
             "critical": False,
             "enabled_plan_count": 0,
             "job_count": 0,
+            "last_scan_at": None,
         }
     if _scheduler is not None:
         return dict(_scheduler.status())
@@ -51,6 +52,7 @@ def monitoring_scheduler_status() -> dict[str, Any]:
         "error": _scheduler_error or "指标调度器尚未启动",
         "enabled_plan_count": 0,
         "job_count": 0,
+        "last_scan_at": None,
     }
 
 

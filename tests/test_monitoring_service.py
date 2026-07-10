@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.db.repositories import list_recovery_tasks
 from app.monitoring.repository import MonitoringRepository
@@ -66,6 +67,30 @@ class _FakeOrchestrator:
         return dict(self.diagnose_result)
 
 
+class _FakeTraceRecorder:
+    def __init__(self) -> None:
+        self.started = []
+        self.nodes = []
+        self.finished = []
+
+    def start_trace(self, trace_id, session_id, hospital_id, user_query):
+        self.started.append((trace_id, hospital_id, user_query))
+
+    def record_node(self, trace_id, node_name, node_type, status, **kwargs):
+        self.nodes.append(
+            {
+                "trace_id": trace_id,
+                "node_name": node_name,
+                "node_type": node_type,
+                "status": status,
+                **kwargs,
+            }
+        )
+
+    def finish_trace(self, trace_id, final_status, summary, **kwargs):
+        self.finished.append((trace_id, final_status, summary))
+
+
 def _plan(repository: MonitoringRepository, **overrides):
     payload = {
         "plan_id": "PLAN_001",
@@ -82,7 +107,7 @@ def _plan(repository: MonitoringRepository, **overrides):
     return repository.create_plan(payload)
 
 
-def _service(orchestrator=None):
+def _service(orchestrator=None, trace_recorder=None):
     from app.monitoring.service import IndicatorRunService
 
     engine = _monitoring_engine()
@@ -93,11 +118,105 @@ def _service(orchestrator=None):
         repository=repository,
         orchestrator=orchestrator or _FakeOrchestrator(),
         worker_id="worker-test",
+        trace_recorder=trace_recorder,
     )
     return engine, repository, service
 
 
 class MonitoringRunServiceTest(unittest.TestCase):
+    def test_factory_applies_configured_database_lease_seconds(self) -> None:
+        from app.monitoring.factory import create_monitoring_service
+
+        engine = _monitoring_engine()
+        with patch(
+            "app.api.main._create_agent_orchestrator",
+            return_value=_FakeOrchestrator(),
+        ), patch(
+            "app.api.main.create_business_db_client", return_value=object()
+        ), patch(
+            "app.api.main.create_dbhub_metadata_provider", return_value=object()
+        ), patch(
+            "app.rules.repository.create_rule_repository", return_value=object()
+        ), patch("app.config.get_int", return_value=777):
+            service = create_monitoring_service(engine)
+
+        self.assertEqual(service.lease_seconds, 777)
+
+    def test_each_monitoring_run_records_safe_workflow_trace(self) -> None:
+        recorder = _FakeTraceRecorder()
+        _, repository, service = _service(trace_recorder=recorder)
+        repository.create_run_result(
+            _result_payload(
+                run_key="trace-baseline",
+                plan_id="PLAN_001",
+                trigger_type="manual",
+                stat_start_time=datetime(2026, 6, 1),
+                stat_end_time=datetime(2026, 7, 1),
+                stat_period="2026-06-01 00:00:00~2026-07-01 00:00:00",
+                result_value=50.0,
+            )
+        )
+
+        result = service.run_plan(
+            "PLAN_001",
+            stat_period="2026-07-01~2026-07-31",
+            trigger_type="manual",
+            request_id="REQ_TRACE_MONITOR",
+        )
+
+        self.assertTrue(result["trace_id"].startswith("TRACE_"))
+        self.assertEqual(
+            [node["node_name"] for node in recorder.nodes],
+            [
+                "monitor_plan_load",
+                "monitor_lease_acquire",
+                "monitor_period_resolve",
+                "monitor_indicator_execute_mcp",
+                "monitor_wave_detect",
+                "monitor_alert_create",
+                "monitor_auto_diagnose",
+            ],
+        )
+        self.assertEqual(recorder.finished[0][1], "success")
+        serialized = str(recorder.nodes)
+        self.assertNotIn("SELECT", serialized.upper())
+        self.assertNotIn("patient_id", serialized.lower())
+
+    def test_manual_alert_diagnosis_reuses_original_result_context(self) -> None:
+        orchestrator = _FakeOrchestrator()
+        _, repository, service = _service(orchestrator)
+        result = repository.create_run_result(
+            _result_payload(
+                plan_id="PLAN_001",
+                run_key="manual-diagnose",
+                stat_start_time=datetime(2026, 7, 1),
+                stat_end_time=datetime(2026, 8, 1),
+                stat_period="2026-07-01 00:00:00~2026-08-01 00:00:00",
+            )
+        )
+        repository.create_alert(
+            {
+                "alert_id": "ALERT_MANUAL_001",
+                "hospital_id": "hospital_001",
+                "rule_id": "MQSI2025_005",
+                "plan_id": "PLAN_001",
+                "result_id": result["id"],
+                "alert_type": "wave",
+                "conclusion_code": "mom_threshold_exceeded",
+            }
+        )
+
+        alert = service.diagnose_alert(
+            "ALERT_MANUAL_001", "hospital_001"
+        )
+
+        self.assertEqual(alert["diagnose_status"], "completed")
+        self.assertEqual(alert["diagnose_report_id"], "DR_AUTO_001")
+        self.assertEqual(
+            orchestrator.diagnose_calls[0]["stat_period"],
+            "2026-07-01 00:00:00~2026-08-01 00:00:00",
+        )
+
     def test_wave_alert_triggers_diagnosis_and_persists_audit(self) -> None:
         engine, repository, service = _service()
         repository.create_run_result(

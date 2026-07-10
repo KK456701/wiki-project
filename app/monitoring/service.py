@@ -25,12 +25,14 @@ class IndicatorRunService:
         orchestrator: Any,
         worker_id: str | None = None,
         lease_seconds: int = 600,
+        trace_recorder: Any | None = None,
     ) -> None:
         self.runtime_engine = runtime_engine
         self.repository = repository
         self.orchestrator = orchestrator
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
         self.lease_seconds = lease_seconds
+        self.trace_recorder = trace_recorder
 
     @staticmethod
     def _model_dump(value: Any) -> dict[str, Any]:
@@ -60,6 +62,17 @@ class IndicatorRunService:
         plan = self.repository.get_plan(plan_id)
         if plan is None:
             raise MonitoringRunError(f"运行计划不存在: {plan_id}")
+        trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+        if self.trace_recorder is not None:
+            try:
+                self.trace_recorder.start_trace(
+                    trace_id,
+                    None,
+                    str(plan["hospital_id"]),
+                    f"monitor:{plan['rule_id']}",
+                )
+            except Exception:
+                pass
         now = datetime.now().replace(microsecond=0)
         leased = False
         if trigger_type == "scheduled":
@@ -67,11 +80,14 @@ class IndicatorRunService:
                 plan_id, self.worker_id, now, self.lease_seconds
             )
             if not leased:
-                return {
+                skipped = {
                     "status": "skipped",
                     "reason": "lease_not_acquired",
                     "plan_id": plan_id,
                 }
+                return self._complete_trace(
+                    plan, skipped, trace_id, trigger_type, lease_status="contended"
+                )
 
         try:
             period = resolve_run_period(
@@ -84,7 +100,9 @@ class IndicatorRunService:
             )
             existing = self.repository.get_result_by_run_key(run_key)
             if existing is not None:
-                return existing
+                return self._complete_trace(
+                    plan, existing, trace_id, trigger_type, lease_status="acquired"
+                )
 
             prepared = self.orchestrator.prepare_rule_request(
                 query=f"monitor:{plan['rule_id']}",
@@ -106,7 +124,7 @@ class IndicatorRunService:
             generation_ok = str(generation.get("status") or "success") == "success"
             trial_ok = str(trial.get("status") or "") == "success"
             if not generation_ok or not trial_ok:
-                return self._save_failure(
+                failed = self._save_failure(
                     plan,
                     period,
                     run_key,
@@ -118,6 +136,9 @@ class IndicatorRunService:
                         or "指标运算失败"
                     ),
                     str(generation.get("status") or trial.get("status") or "failed"),
+                )
+                return self._complete_trace(
+                    plan, failed, trace_id, trigger_type, lease_status="acquired"
                 )
 
             no_sample = bool(trial.get("no_sample", False))
@@ -150,12 +171,14 @@ class IndicatorRunService:
                 )
             else:
                 result["alert"] = None
-            return result
+            return self._complete_trace(
+                plan, result, trace_id, trigger_type, lease_status="acquired"
+            )
         except Exception as exc:
             if isinstance(exc, MonitoringRunError):
                 raise
             if "period" in locals() and "run_key" in locals():
-                return self._save_failure(
+                failed = self._save_failure(
                     plan,
                     period,
                     run_key,
@@ -164,6 +187,17 @@ class IndicatorRunService:
                     str(exc),
                     type(exc).__name__,
                 )
+                return self._complete_trace(
+                    plan, failed, trace_id, trigger_type, lease_status="acquired"
+                )
+            if self.trace_recorder is not None:
+                try:
+                    self.trace_recorder.finish_trace(
+                        trace_id, "failed", str(exc), intent="indicator_monitoring",
+                        error_count=1,
+                    )
+                except Exception:
+                    pass
             raise
         finally:
             if leased:
@@ -173,6 +207,163 @@ class IndicatorRunService:
                     datetime.now().replace(microsecond=0),
                     plan.get("next_run_at"),
                 )
+
+    def _complete_trace(
+        self,
+        plan: dict[str, Any],
+        result: dict[str, Any],
+        trace_id: str,
+        trigger_type: str,
+        *,
+        lease_status: str,
+    ) -> dict[str, Any]:
+        if self.trace_recorder is None:
+            return result
+        from app.observability.workflow_nodes import record_monitoring_trace_nodes
+
+        payload = {**result, "trace_id": trace_id}
+        run_status = str(result.get("run_status") or result.get("status") or "success")
+        failed = run_status == "failed"
+        period_output = {
+            "stat_start_time": result.get("stat_start_time"),
+            "stat_end_time": result.get("stat_end_time"),
+            "stat_period": result.get("stat_period"),
+        }
+        events = [
+            {
+                "node_name": "monitor_plan_load",
+                "status": "success",
+                "input_data": {"plan_id": plan["plan_id"]},
+                "output_data": {
+                    "hospital_id": plan["hospital_id"],
+                    "rule_id": plan["rule_id"],
+                    "frequency": plan["frequency"],
+                    "thresholds": {
+                        "mom": plan.get("mom_threshold_pct"),
+                        "yoy": plan.get("yoy_threshold_pct"),
+                    },
+                },
+            },
+            {
+                "node_name": "monitor_lease_acquire",
+                "status": "failed" if lease_status == "contended" else "success",
+                "input_data": {
+                    "plan_id": plan["plan_id"],
+                    "worker_id": self.worker_id,
+                },
+                "output_data": {
+                    "lease_status": (
+                        "not_required" if trigger_type != "scheduled" else lease_status
+                    )
+                },
+            },
+        ]
+        if result.get("stat_period"):
+            events.extend(
+                [
+                    {
+                        "node_name": "monitor_period_resolve",
+                        "status": "success",
+                        "input_data": {
+                            "frequency": plan["frequency"],
+                            "timezone": plan.get("timezone"),
+                            "stat_period": result.get("stat_period"),
+                        },
+                        "output_data": period_output,
+                    },
+                    {
+                        "node_name": "monitor_indicator_execute_mcp",
+                        "status": "failed" if failed else "success",
+                        "duration_ms": int(result.get("duration_ms") or 0),
+                        "error_code": str(result.get("error_code") or ""),
+                        "error_message": str(result.get("error_message") or ""),
+                        "input_data": {
+                            "hospital_id": plan["hospital_id"],
+                            "rule_id": plan["rule_id"],
+                            **period_output,
+                        },
+                        "output_data": {
+                            "result_value": result.get("result_value"),
+                            "no_sample": result.get("no_sample"),
+                            "effective_level": result.get("effective_level"),
+                            "national_version": result.get("national_version"),
+                            "hospital_version": result.get("hospital_version"),
+                            "data_source": result.get("data_source"),
+                            "duration_ms": result.get("duration_ms"),
+                            "run_id": result.get("run_id"),
+                        },
+                    },
+                ]
+            )
+        if result.get("wave_status") and not failed:
+            events.append(
+                {
+                    "node_name": "monitor_wave_detect",
+                    "status": "success",
+                    "input_data": {
+                        "result_value": result.get("result_value"),
+                        "thresholds": {
+                            "mom": plan.get("mom_threshold_pct"),
+                            "yoy": plan.get("yoy_threshold_pct"),
+                        },
+                    },
+                    "output_data": {
+                        "mom_change_rate": result.get("mom_change_rate"),
+                        "yoy_change_rate": result.get("yoy_change_rate"),
+                        "conclusion_code": result.get("wave_status"),
+                        "is_abnormal": result.get("is_abnormal"),
+                    },
+                }
+            )
+        alert = result.get("alert") or {}
+        if alert:
+            events.append(
+                {
+                    "node_name": "monitor_alert_create",
+                    "status": "success",
+                    "input_data": {
+                        "result_id": result.get("id"),
+                        "conclusion_code": alert.get("conclusion_code"),
+                    },
+                    "output_data": {
+                        "alert_id": alert.get("alert_id"),
+                        "alert_status": alert.get("status"),
+                    },
+                }
+            )
+            if alert.get("alert_type") == "wave":
+                events.append(
+                    {
+                        "node_name": "monitor_auto_diagnose",
+                        "status": (
+                            "success"
+                            if alert.get("diagnose_status") == "completed"
+                            else "failed"
+                        ),
+                        "input_data": {
+                            "alert_id": alert.get("alert_id"),
+                            "hospital_id": plan["hospital_id"],
+                            "rule_id": plan["rule_id"],
+                            "stat_period": result.get("stat_period"),
+                        },
+                        "output_data": {
+                            "diagnose_status": alert.get("diagnose_status"),
+                            "diagnose_report_id": alert.get("diagnose_report_id"),
+                        },
+                    }
+                )
+        try:
+            record_monitoring_trace_nodes(self.trace_recorder, trace_id, events)
+            self.trace_recorder.finish_trace(
+                trace_id,
+                "failed" if failed else "success",
+                str(result.get("wave_status") or result.get("reason") or run_status),
+                intent="indicator_monitoring",
+                error_count=1 if failed else 0,
+            )
+        except Exception:
+            pass
+        return payload
 
     def _apply_wave(
         self,
@@ -336,6 +527,47 @@ class IndicatorRunService:
         )
         fail_recovery_task(self.runtime_engine, task_id, error_message)
         return {**result, "alert": alert, "recovery_task_id": task_id}
+
+    def diagnose_alert(
+        self, alert_id: str, hospital_id: str
+    ) -> dict[str, Any]:
+        alert = self.repository.get_alert(alert_id, hospital_id)
+        if alert is None:
+            raise MonitoringRunError(f"指标预警不存在: {alert_id}")
+        result = self.repository.get_result(
+            int(alert["result_id"]), hospital_id
+        )
+        if result is None:
+            raise MonitoringRunError(f"预警运行结果不存在: {alert['result_id']}")
+        prepared = self.orchestrator.prepare_rule_request(
+            query=f"diagnose:{alert['rule_id']}",
+            hospital_id=hospital_id,
+            intent="diagnose",
+            rule_id=str(alert["rule_id"]),
+        )
+        self.repository.update_alert(
+            alert_id, hospital_id, {"diagnose_status": "running"}
+        )
+        try:
+            diagnosis = self.orchestrator.diagnose(
+                prepared,
+                trigger="manual_alert",
+                related_sql_id=None,
+                stat_period=str(result.get("stat_period") or ""),
+            )
+            return self.repository.update_alert(
+                alert_id,
+                hospital_id,
+                {
+                    "diagnose_status": "completed",
+                    "diagnose_report_id": diagnosis.get("report_id"),
+                },
+            )
+        except Exception:
+            self.repository.update_alert(
+                alert_id, hospital_id, {"diagnose_status": "failed"}
+            )
+            raise
 
     def retry_result(self, result_id: int, request_id: str) -> dict[str, Any]:
         failed = self.repository.get_result_for_retry(result_id)

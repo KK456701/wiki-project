@@ -231,9 +231,11 @@ from app.api.indicator_drafts import (
     published_router as hospital_defined_router,
     router as indicator_draft_router,
 )
+from app.api.monitoring import router as monitoring_router
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
+app.include_router(monitoring_router)
 
 
 def start_monitoring_scheduler() -> None:
@@ -444,6 +446,7 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
     if key == "monitoring_scheduler":
         item["enabled_plan_count"] = int(check.get("enabled_plan_count") or 0)
         item["job_count"] = int(check.get("job_count") or 0)
+        item["last_scan_at"] = check.get("last_scan_at")
     return item
 
 
@@ -519,6 +522,7 @@ def _format_recovery_task(item: dict[str, Any]) -> dict[str, Any]:
         "approval_apply_override": "先查看执行链路和待审批文件，再决定是否人工重试审批。",
         "index_rebuild": "可直接重试重建索引，不会修改口径正文。",
         "restore_override": "先确认目标历史版本，再决定是否重新恢复。",
+        "indicator_recompute": "确认 DBHub 和业务库正常后，按原统计周期重新运算。",
     }
     formatted = dict(item)
     formatted["status_text"] = _recovery_status_text(status)
@@ -546,6 +550,13 @@ def _retry_recovery_task(runtime_engine, task: dict[str, Any], approver_id: str 
             )
         elif task_type == "index_rebuild":
             result = KnowledgeBaseTools(DEFAULT_KB_ROOT).rebuild_runtime_indexes()
+        elif task_type == "indicator_recompute":
+            from app.monitoring.factory import create_monitoring_service
+
+            result = create_monitoring_service(runtime_engine).retry_result(
+                result_id=int(payload["failed_result_id"]),
+                request_id=str(task.get("request_id") or f"REQ_{uuid.uuid4().hex[:12]}"),
+            )
         else:
             raise ValueError("该任务需要人工确认后重新发起原操作")
         complete_recovery_task(runtime_engine, str(task["task_id"]), result)

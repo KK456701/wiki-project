@@ -5,6 +5,83 @@ from typing import Any
 from app.observability.trace import TraceRecorder
 
 
+_MONITORING_BLOCKED_KEYS = {
+    "patient_id",
+    "patient_name",
+    "patient_no",
+    "id_card",
+    "rows",
+}
+
+
+def _safe_monitoring_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _safe_monitoring_payload(item)
+            for key, item in value.items()
+            if "sql" not in str(key).lower()
+            and str(key).lower() not in _MONITORING_BLOCKED_KEYS
+        }
+    if isinstance(value, list):
+        return [_safe_monitoring_payload(item) for item in value]
+    if isinstance(value, str) and value.lstrip().upper().startswith(
+        ("SELECT ", "INSERT ", "UPDATE ", "DELETE ")
+    ):
+        return "[已脱敏]"
+    return value
+
+
+def record_monitoring_trace_nodes(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    events: list[dict[str, Any]],
+) -> None:
+    if recorder is None:
+        return
+    node_types = {
+        "monitor_plan_load": "plan_store",
+        "monitor_lease_acquire": "lease",
+        "monitor_period_resolve": "period",
+        "monitor_indicator_execute_mcp": "mcp_tool",
+        "monitor_wave_detect": "rule",
+        "monitor_alert_create": "alert",
+        "monitor_auto_diagnose": "diagnose",
+    }
+    for event in events:
+        node_name = str(event["node_name"])
+        input_data = _safe_monitoring_payload(event.get("input_data") or {})
+        output_data = _safe_monitoring_payload(event.get("output_data") or {})
+        config_data = _safe_monitoring_payload(event.get("config_data") or {})
+        recorder.record_node(
+            trace_id,
+            node_name,
+            node_types.get(node_name, "monitoring"),
+            str(event.get("status") or "success"),
+            input_summary=str(event.get("input_summary") or ""),
+            output_summary=str(event.get("output_summary") or ""),
+            error_code=str(event.get("error_code") or ""),
+            error_message=str(event.get("error_message") or ""),
+            tool_name=(
+                "execute_sql_hospital_demo_data"
+                if node_name == "monitor_indicator_execute_mcp"
+                else ""
+            ),
+            db_source=(
+                str(output_data.get("data_source") or "hospital_demo_data")
+                if node_name == "monitor_indicator_execute_mcp"
+                else ""
+            ),
+            run_id=str(output_data.get("run_id") or ""),
+            rule_id=str(
+                input_data.get("rule_id") or output_data.get("rule_id") or ""
+            ),
+            duration_ms=int(event.get("duration_ms") or 0),
+            input_data=input_data,
+            output_data=output_data,
+            config_data=config_data,
+        )
+
+
 def _layer_status(layer: dict[str, Any]) -> str:
     if not layer.get("ok", False):
         return "failed"

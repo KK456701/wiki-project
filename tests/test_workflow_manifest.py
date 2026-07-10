@@ -1,4 +1,8 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from sqlalchemy import create_engine
 
 from app.workflows.manifest import (
     annotate_trace_node,
@@ -138,6 +142,69 @@ class WorkflowManifestTest(unittest.TestCase):
             )["agent_owner"],
             "caliber_adaptation",
         )
+
+    def test_indicator_monitoring_manifest_and_trace_are_complete_and_safe(self) -> None:
+        from app.observability.trace import TraceRecorder
+        from app.observability.workflow_nodes import record_monitoring_trace_nodes
+
+        manifest = load_workflow_manifest("indicator_monitoring")
+        self.assertTrue(validate_workflow_manifest(manifest)["ok"])
+        expected = [
+            "monitor_plan_load",
+            "monitor_lease_acquire",
+            "monitor_period_resolve",
+            "monitor_indicator_execute_mcp",
+            "monitor_wave_detect",
+            "monitor_alert_create",
+            "monitor_auto_diagnose",
+        ]
+        self.assertEqual([node["id"] for node in manifest["nodes"]], expected)
+
+        with TemporaryDirectory() as tmp:
+            recorder = TraceRecorder(
+                create_engine("sqlite+pysqlite:///:memory:", future=True),
+                Path(tmp) / "monitoring.jsonl",
+            )
+            recorder.start_trace(
+                "TRACE_MONITOR_001", None, "hospital_001", "MQSI2025_005"
+            )
+            record_monitoring_trace_nodes(
+                recorder,
+                "TRACE_MONITOR_001",
+                [
+                    {
+                        "node_name": name,
+                        "status": "success",
+                        "duration_ms": (
+                            12 if name == "monitor_indicator_execute_mcp" else 1
+                        ),
+                        "input_data": {
+                            "rule_id": "MQSI2025_005",
+                            "stat_period": "2026-07",
+                            "sql_text": "SELECT patient_id FROM secret",
+                        },
+                        "output_data": {
+                            "result_value": 66.67,
+                            "hospital_version": 1,
+                            "mom_change_rate": 33.34,
+                            "alert_id": "ALERT_001",
+                            "diagnose_report_id": "DR_001",
+                        },
+                    }
+                    for name in expected
+                ],
+            )
+            recorder.finish_trace("TRACE_MONITOR_001", "success", "完成")
+            trace = recorder.get_trace("TRACE_MONITOR_001")
+
+        self.assertEqual(
+            [node["node_name"] for node in trace["nodes"]], expected
+        )
+        serialized = str(trace)
+        self.assertIn("33.34", serialized)
+        self.assertIn("DR_001", serialized)
+        self.assertNotIn("SELECT", serialized.upper())
+        self.assertNotIn("patient_id", serialized.lower())
 
 
 if __name__ == "__main__":
