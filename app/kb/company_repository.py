@@ -346,6 +346,31 @@ class CompanyKnowledgeRepository:
                 )
         return self.read_release(release_id)
 
+    def list_candidates(self, status: str | None = "approved") -> list[dict[str, Any]]:
+        query = "SELECT * FROM company_rule_candidate"
+        params: dict[str, Any] = {}
+        if status:
+            query += " WHERE status=:status"
+            params["status"] = status
+        query += " ORDER BY created_at DESC, candidate_id DESC"
+        with self.engine.connect() as conn:
+            rows = conn.execute(text(query), params).mappings().all()
+        return [
+            {
+                "candidate_id": str(row["candidate_id"]),
+                "package_id": str(row["package_id"]),
+                "item_id": str(row["item_id"]),
+                "source_hospital_id": str(row["source_hospital_id"]),
+                "rule_id": str(row["rule_id"]),
+                "status": str(row["status"]),
+                "created_at": str(row["created_at"]),
+                "created_by": str(row["created_by"]),
+                "release_id": str(row.get("release_id") or ""),
+                "payload": _json_load(row["payload_json"]),
+            }
+            for row in rows
+        ]
+
     def publish_release(self, release_id: str, approver_id: str) -> dict[str, Any]:
         now = _now()
         with self.engine.begin() as conn:

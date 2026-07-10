@@ -497,11 +497,12 @@ class ApiTest(unittest.TestCase):
         with patch("app.db.engine.create_company_engine", return_value=company_engine):
             login = client.post("/api/admin/login", json={"password": "admin123"})
             headers = {"Authorization": f"Bearer {login.json()['token']}"}
+            candidates = client.get("/api/kb/company/candidates", headers=headers)
             created = client.post(
                 "/api/kb/company/releases",
                 headers=headers,
                 json={
-                    "candidate_ids": [candidate["candidate_id"]],
+                    "candidate_ids": [candidates.json()["items"][0]["candidate_id"]],
                     "created_by": "publisher",
                     "notes": "首批医院经验",
                 },
@@ -518,6 +519,10 @@ class ApiTest(unittest.TestCase):
             )
 
         self.assertEqual(created.status_code, 200)
+        self.assertEqual(candidates.status_code, 200)
+        self.assertEqual(
+            candidates.json()["items"][0]["candidate_id"], candidate["candidate_id"]
+        )
         self.assertEqual(created.json()["status"], "draft")
         self.assertEqual(published.status_code, 200)
         self.assertEqual(published.json()["status"], "published")

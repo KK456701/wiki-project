@@ -76,6 +76,7 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
             "adopt_as_company_candidate",
             "admin",
         )
+        candidates = CompanyKnowledgeRepository(engine).list_candidates()
 
         with engine.connect() as conn:
             candidate_count = conn.execute(
@@ -88,6 +89,8 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
         self.assertEqual(approved["status"], "approved_candidate")
         self.assertTrue(approved["candidate_id"].startswith("CAND_"))
         self.assertEqual(candidate_count, 1)
+        self.assertEqual(candidates[0]["candidate_id"], approved["candidate_id"])
+        self.assertEqual(candidates[0]["status"], "approved")
         self.assertIn("10分钟", standard[0])
         self.assertEqual(standard[1], 1)
 

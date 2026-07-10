@@ -780,6 +780,15 @@ def kb_company_releases(
     return {"items": _create_company_repository().list_releases()}
 
 
+@app.get("/api/kb/company/candidates")
+def kb_company_candidates(
+    status: str | None = "approved",
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    return {"items": _create_company_repository().list_candidates(status)}
+
+
 @app.post("/api/kb/company/releases")
 def kb_company_release_create(
     body: CompanyReleaseCreateRequest,

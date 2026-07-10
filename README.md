@@ -416,6 +416,7 @@ Content-Type: application/json
 | `/api/kb/merge/report/{report_id}` | GET | 查看合并报告详情 |
 | `/api/kb/merge/report/{report_id}/items/{item_id}/approve` | POST | 将回收项采纳为候选或保留在医院本地 |
 | `/api/kb/merge/report/{report_id}/items/{item_id}/reject` | POST | 拒绝回收项 |
+| `/api/kb/company/candidates` | GET | 查询待发布或指定状态的公司候选 |
 | `/api/kb/company/releases` | GET、POST | 查看公司发布版本或从候选创建草稿 |
 | `/api/kb/company/releases/{release_id}` | GET | 查看公司发布版本详情 |
 | `/api/kb/company/releases/{release_id}/publish` | POST | 发布公司知识版本并追加标准历史 |
