@@ -4,6 +4,7 @@ from app.agents.caliber_adaptation import CaliberAdaptationAgent
 from app.agents.human_interaction import HumanInteractionAgent
 from app.agents.indicator_generation import IndicatorGenerationAgent
 from app.agents.metadata_parsing import MetadataParsingAgent
+from app.agents.orchestrator import CoreIndicatorOrchestrator, PreparedRequest
 from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
 
 __all__ = [
@@ -11,5 +12,7 @@ __all__ = [
     "HumanInteractionAgent",
     "IndicatorGenerationAgent",
     "MetadataParsingAgent",
+    "CoreIndicatorOrchestrator",
+    "PreparedRequest",
     "RootCauseDiagnosisAgent",
 ]
