@@ -116,7 +116,7 @@ business_db_url: "mysql+pymysql://root:123456@127.0.0.1:3306/hospital_demo_data?
 business_db_dialect: "mysql"
 ```
 
-初始化运行库和演示业务库：
+医院端初始化运行库和演示业务库：
 
 ```powershell
 mysql -uroot -p123456 < scripts\init_runtime_db.sql
@@ -145,6 +145,21 @@ Invoke-RestMethod -Method Post `
   -Uri http://127.0.0.1:8765/api/rules/import-four `
   -Headers @{ Authorization = "Bearer <admin_token>" }
 ```
+
+公司回收与发布服务使用独立的 `wiki_company_kb`，不得与任一医院运行库共用 schema。公司端在 `config.yaml` 增加：
+
+```yaml
+company_db_url: "mysql+pymysql://root:123456@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4"
+```
+
+初始化公司知识中心并写入首批四指标标准版本 1：
+
+```powershell
+mysql -uroot -p123456 < scripts\init_company_kb_db.sql
+python -B scripts\import_company_standard_rules.py
+```
+
+初始化脚本只补齐公司库中缺失的指标，不覆盖已发布标准。后续公司标准变化必须经过“医院回收包、候选审核、公司版本发布”流程。
 
 ### 4. 重建知识库索引
 
@@ -322,13 +337,15 @@ diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 
 ### 知识库导出与回收合并
 
-医院侧导出：
+医院侧从本院 MySQL 当前生效投影导出 `kb-exchange-v2` 知识包：
 
 ```http
 GET /api/kb/export?hospital_id=hospital_001
 ```
 
-公司管理员上传 zip：
+知识包只包含已审批且处于生效期的医院口径差异、已确认字段映射、版本号和逐文件 SHA-256，不包含患者记录、数据库密码、会话、运行日志或未审批版本。历史版本继续保存在医院 MySQL；恢复历史版本会创建一个新版本，下一次导出只携带新的当前版本。
+
+公司管理员上传 ZIP，内容先校验后写入公司 MySQL 暂存区：
 
 ```http
 POST /api/kb/merge/upload
@@ -336,7 +353,31 @@ Authorization: Bearer <admin_token>
 Content-Type: application/zip
 ```
 
-系统生成合并报告后，管理员可以逐项审批、拒绝或作为公司候选口径沉淀。
+系统生成合并报告后，管理员可以逐项拒绝、仅保留医院本地或采纳为公司候选。采纳候选不会立即改变公司标准，需要创建并发布公司版本：
+
+```http
+POST /api/kb/company/releases
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "candidate_ids": ["CAND_xxx"],
+  "created_by": "publisher",
+  "notes": "首批医院经验"
+}
+```
+
+```http
+POST /api/kb/company/releases/{release_id}/publish
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "approver_id": "approver"
+}
+```
+
+发布后通过 `GET /api/kb/company/releases/{release_id}/export` 下载 `company-release-v1`。本批不自动在医院侧应用公司发布包，防止绕过医院审批；后续医院导入时应先比较基础标准版本，再由管理员确认冲突。
 
 ## API 概览
 
@@ -373,6 +414,12 @@ Content-Type: application/zip
 | `/api/kb/merge/upload` | POST | 上传医院知识库 zip |
 | `/api/kb/merge/reports` | GET | 查看合并报告列表 |
 | `/api/kb/merge/report/{report_id}` | GET | 查看合并报告详情 |
+| `/api/kb/merge/report/{report_id}/items/{item_id}/approve` | POST | 将回收项采纳为候选或保留在医院本地 |
+| `/api/kb/merge/report/{report_id}/items/{item_id}/reject` | POST | 拒绝回收项 |
+| `/api/kb/company/releases` | GET、POST | 查看公司发布版本或从候选创建草稿 |
+| `/api/kb/company/releases/{release_id}` | GET | 查看公司发布版本详情 |
+| `/api/kb/company/releases/{release_id}/publish` | POST | 发布公司知识版本并追加标准历史 |
+| `/api/kb/company/releases/{release_id}/export` | GET | 下载固定内容的公司发布包 |
 
 管理员接口需要请求头：
 
@@ -411,11 +458,10 @@ python scripts\rebuild_runtime_indexes.py
 适用于以下场景：
 
 - 手工修改 Wiki Markdown / YAML 后
-- 审批通过医院口径变更后
-- 恢复医院历史版本后
-- 合并回收知识库后
+- 从原始制度文档重新生成 Wiki 后
+- 人工合并需要继续保存在 Wiki 中的说明文档后
 
-系统内置的审批、恢复和合并流程会在写入后触发索引维护，保证检索、相关性、医院 override 优先级和关系索引保持一致。
+医院口径审批、版本恢复、医院知识包导出、公司回收和公司版本发布均直接读写各自 MySQL，不依赖 Wiki 索引重建。Wiki 索引只服务于制度文档检索和 MySQL 故障时的只读兜底。
 
 ## 测试
 

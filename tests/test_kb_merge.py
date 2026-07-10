@@ -22,6 +22,45 @@ FORMULA_20 = "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = 20\u5206\u949f\
 
 
 class KnowledgeBaseMergeTest(unittest.TestCase):
+    def test_restored_hospital_version_is_the_only_version_exported(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+        from tests.test_rule_repository import _rule_engine
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        repository = MySQLRuleRepository(engine)
+        pending = repository.submit_change_request(
+            {
+                "rule_id": "MQSI2025_005",
+                "hospital_id": "hospital_001",
+                "requested_formula": (
+                    "急会诊及时到位率 = 25分钟内到位次数 / 急会诊总次数 × 100%"
+                ),
+                "submitter_id": "tester",
+            }
+        )
+        repository.approve_change_request(pending["change_id"], "approver")
+        restored = repository.restore_version(
+            "MQSI2025_005", "hospital_001", 1, "restore_admin"
+        )
+
+        data = export_hospital_kb_zip(engine, "hospital_001")
+
+        with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
+            override_names = [
+                name
+                for name in zf.namelist()
+                if name == "overrides/MQSI2025_005.yaml"
+            ]
+            override = yaml.safe_load(
+                zf.read("overrides/MQSI2025_005.yaml").decode("utf-8")
+            )
+        self.assertEqual(restored["active_version"], 3)
+        self.assertEqual(override_names, ["overrides/MQSI2025_005.yaml"])
+        self.assertEqual(override["hospital_version"], 3)
+        self.assertEqual(override["custom_params"]["arrive_minutes_threshold"], 20)
+
     def test_export_hospital_kb_zip_reads_current_mysql_projection(self) -> None:
         engine = _hospital_engine()
         now = datetime.now()
