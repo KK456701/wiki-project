@@ -12,7 +12,11 @@ class _FakeRuleRepository:
 
     def get_effective_rule(self, rule_id, hospital_id):
         self.calls.append(("resolve", rule_id, hospital_id))
-        return {"rule_id": rule_id, "effective_level": "hospital"}
+        return {
+            "rule_id": rule_id,
+            "rule_name": "急会诊及时到位率",
+            "effective_level": "hospital",
+        }
 
     def get_field_mapping(self, rule_id, hospital_id):
         self.calls.append(("mapping", rule_id, hospital_id))
@@ -44,41 +48,62 @@ class _FakeExecutor:
 class SpecializedAgentTest(unittest.TestCase):
     def test_caliber_agent_owns_rule_repository_operations(self) -> None:
         from app.agents.caliber_adaptation import CaliberAdaptationAgent
+        from app.agents.contracts import EffectiveRule, FieldMapping, RuleSearchResult
 
         repository = _FakeRuleRepository()
         agent = CaliberAdaptationAgent(repository)
 
         self.assertEqual(agent.agent_id, "caliber_adaptation")
-        self.assertEqual(agent.search("急会诊", 3)["resolved_rule_id"], "MQSI2025_005")
-        self.assertEqual(agent.resolve("MQSI2025_005", "hospital_001")["effective_level"], "hospital")
-        self.assertEqual(agent.field_mapping("MQSI2025_005", "hospital_001")["hospital_id"], "hospital_001")
+        search = agent.search_contract("急会诊", 3)
+        effective = agent.resolve_contract("MQSI2025_005", "hospital_001")
+        mapping = agent.field_mapping_contract("MQSI2025_005", "hospital_001")
+
+        self.assertIsInstance(search, RuleSearchResult)
+        self.assertIsInstance(effective, EffectiveRule)
+        self.assertIsInstance(mapping, FieldMapping)
+        self.assertEqual(search["resolved_rule_id"], "MQSI2025_005")
+        self.assertEqual(effective["effective_level"], "hospital")
+        self.assertEqual(mapping["hospital_id"], "hospital_001")
         self.assertEqual(agent.preview_feedback("MQSI2025_005", "hospital_001", "按20分钟")["status"], "preview")
         self.assertEqual(agent.submit_change({"rule_id": "MQSI2025_005"})["status"], "pending")
         self.assertEqual([call[0] for call in repository.calls], ["search", "resolve", "mapping", "preview", "submit"])
 
     def test_indicator_generation_agent_delegates_structured_generation(self) -> None:
+        from app.agents.contracts import SQLGenerationResult
         from app.agents.indicator_generation import IndicatorGenerationAgent
 
         executor = _FakeExecutor({"sql_id": "SQL_001", "sql_status": "validated"})
         agent = IndicatorGenerationAgent(executor)
-        result = agent.generate(query="生成SQL", hospital_id="hospital_001")
+        result = agent.generate_contract(query="生成SQL", hospital_id="hospital_001")
 
         self.assertEqual(agent.agent_id, "indicator_generation")
+        self.assertIsInstance(result, SQLGenerationResult)
         self.assertEqual(result["sql_id"], "SQL_001")
         self.assertEqual(executor.calls[0]["hospital_id"], "hospital_001")
 
     def test_root_cause_agent_delegates_three_layer_diagnosis(self) -> None:
+        from app.agents.contracts import DiagnosisResult
         from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
 
-        executor = _FakeExecutor({"diagnose_status": "success", "layers": [1, 2, 3]})
+        executor = _FakeExecutor({
+            "ok": True,
+            "diagnose_status": "success",
+            "layers": [
+                {"layer": 1, "layer_name": "结构适配校验", "ok": True},
+                {"layer": 2, "layer_name": "口径规则校验", "ok": True},
+                {"layer": 3, "layer_name": "数据质量校验", "ok": True},
+            ],
+        })
         agent = RootCauseDiagnosisAgent(executor)
-        result = agent.run(hospital_id="hospital_001", rule_id="MQSI2025_005")
+        result = agent.run_contract(hospital_id="hospital_001", rule_id="MQSI2025_005")
 
         self.assertEqual(agent.agent_id, "root_cause_diagnosis")
-        self.assertEqual(result["layers"], [1, 2, 3])
+        self.assertIsInstance(result, DiagnosisResult)
+        self.assertEqual([layer.layer for layer in result.layers], [1, 2, 3])
         self.assertEqual(executor.calls[0]["rule_id"], "MQSI2025_005")
 
     def test_metadata_agent_owns_sync_and_precheck(self) -> None:
+        from app.agents.contracts import MetadataPrecheckResult, MetadataSyncResult
         from app.agents.metadata_parsing import MetadataParsingAgent
 
         calls = []
@@ -99,15 +124,20 @@ class SpecializedAgentTest(unittest.TestCase):
         )
 
         self.assertEqual(agent.agent_id, "metadata_parsing")
-        self.assertEqual(agent.sync(object(), "hospital_001", "hospital_demo_data")["batch_id"], "B001")
-        self.assertTrue(agent.precheck("hospital_001", "MQSI2025_005")["ok"])
+        sync_result = agent.sync_contract(object(), "hospital_001", "hospital_demo_data")
+        precheck_result = agent.precheck_contract("hospital_001", "MQSI2025_005")
+        self.assertIsInstance(sync_result, MetadataSyncResult)
+        self.assertIsInstance(precheck_result, MetadataPrecheckResult)
+        self.assertEqual(sync_result["batch_id"], "B001")
+        self.assertTrue(precheck_result["ok"])
         self.assertEqual([call[0] for call in calls], ["sync", "precheck"])
 
     def test_human_interaction_agent_understands_and_answers(self) -> None:
+        from app.agents.contracts import IntentResult
         from app.agents.human_interaction import HumanInteractionAgent
 
         agent = HumanInteractionAgent()
-        understood = agent.understand("急会诊及时到位率怎么算？")
+        understood = agent.understand_contract("急会诊及时到位率怎么算？")
         answer, method = agent.answer(
             "急会诊及时到位率怎么算？",
             {
@@ -123,6 +153,7 @@ class SpecializedAgentTest(unittest.TestCase):
         )
 
         self.assertEqual(agent.agent_id, "human_interaction")
+        self.assertIsInstance(understood, IntentResult)
         self.assertEqual(understood["intent"], "query")
         self.assertEqual(method, "tool")
         self.assertIn("20分钟", answer)

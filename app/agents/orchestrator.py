@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
 
+from app.agents.contracts import (
+    DiagnosisResult,
+    EffectiveRule,
+    FieldMapping,
+    IntentResult,
+    MetadataSyncResult,
+    PreparedRequest,
+    RuleSearchResult,
+    SQLGenerationResult,
+)
 
 INTENT_OWNERS = {
     "chat": "human_interaction",
@@ -16,20 +25,6 @@ INTENT_OWNERS = {
     "metadata_sync": "metadata_parsing",
 }
 RULE_INTENTS = {"query", "feedback", "generate_sql", "trial_run", "diagnose"}
-
-
-@dataclass
-class PreparedRequest:
-    query: str
-    hospital_id: str | None
-    intent: str
-    retrieval_query: str = ""
-    rule_id: str | None = None
-    search: dict[str, Any] = field(default_factory=dict)
-    effective_rule: dict[str, Any] = field(default_factory=dict)
-    field_mapping: dict[str, Any] = field(default_factory=dict)
-    custom_filters: list[dict[str, Any]] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
 
 
 class CoreIndicatorOrchestrator:
@@ -61,11 +56,16 @@ class CoreIndicatorOrchestrator:
         memory_context: dict[str, Any] | None = None,
     ) -> PreparedRequest:
         errors: list[str] = []
-        understood = self.interaction.understand(
-            query,
-            memory_context=memory_context,
-            errors=errors,
-        )
+        if hasattr(self.interaction, "understand_contract"):
+            understood = self.interaction.understand_contract(
+                query, memory_context=memory_context, errors=errors
+            )
+        else:
+            understood = IntentResult.model_validate(
+                self.interaction.understand(
+                    query, memory_context=memory_context, errors=errors
+                )
+            )
         intent = str(understood.get("intent") or "query")
         prepared = PreparedRequest(
             query=query,
@@ -78,7 +78,18 @@ class CoreIndicatorOrchestrator:
         if intent not in RULE_INTENTS:
             return prepared
 
-        prepared.search = self.caliber.search(prepared.retrieval_query, limit=5)
+        if hasattr(self.caliber, "search_contract"):
+            search_result = self.caliber.search_contract(
+                prepared.retrieval_query, limit=5
+            )
+        else:
+            search_result = self.caliber.search(prepared.retrieval_query, limit=5)
+        if isinstance(search_result, RuleSearchResult):
+            prepared.search = search_result
+        else:
+            search_payload = dict(search_result)
+            search_payload.setdefault("query", prepared.retrieval_query)
+            prepared.search = RuleSearchResult.model_validate(search_payload)
         prepared.rule_id = prepared.search.get("resolved_rule_id")
         if (
             not prepared.rule_id
@@ -92,12 +103,22 @@ class CoreIndicatorOrchestrator:
 
         if not prepared.rule_id:
             return prepared
-        prepared.effective_rule = self.caliber.resolve(
-            prepared.rule_id, hospital_id
-        )
-        prepared.field_mapping = self.caliber.field_mapping(
-            prepared.rule_id, hospital_id or ""
-        )
+        if hasattr(self.caliber, "resolve_contract"):
+            prepared.effective_rule = self.caliber.resolve_contract(
+                prepared.rule_id, hospital_id
+            )
+        else:
+            prepared.effective_rule = EffectiveRule.model_validate(
+                self.caliber.resolve(prepared.rule_id, hospital_id)
+            )
+        if hasattr(self.caliber, "field_mapping_contract"):
+            prepared.field_mapping = self.caliber.field_mapping_contract(
+                prepared.rule_id, hospital_id or ""
+            )
+        else:
+            prepared.field_mapping = FieldMapping.model_validate(
+                self.caliber.field_mapping(prepared.rule_id, hospital_id or "")
+            )
         return prepared
 
     def answer(self, prepared: PreparedRequest) -> tuple[str, str]:
@@ -127,17 +148,28 @@ class CoreIndicatorOrchestrator:
         generated_by: str = "agent",
     ) -> dict[str, Any]:
         self._require_rule(prepared)
-        return self.indicator_generation.generate(
+        generate = getattr(
+            self.indicator_generation,
+            "generate_contract",
+            self.indicator_generation.generate,
+        )
+        result = generate(
             query=prepared.query,
             hospital_id=str(prepared.hospital_id or ""),
             rule_id=str(prepared.rule_id),
-            effective_rule=prepared.effective_rule,
+            effective_rule=prepared.effective_rule.model_dump(),
             stat_start_time=stat_start_time,
             stat_end_time=stat_end_time,
             trial_run=trial_run,
             generated_by=generated_by,
-            custom_filters=prepared.custom_filters,
+            custom_filters=[item.model_dump() for item in prepared.custom_filters],
         )
+        contract = (
+            result
+            if isinstance(result, SQLGenerationResult)
+            else SQLGenerationResult.model_validate(result)
+        )
+        return contract.model_dump(by_alias=True, exclude_none=True)
 
     def diagnose(
         self,
@@ -148,19 +180,37 @@ class CoreIndicatorOrchestrator:
         stat_period: str | None = None,
     ) -> dict[str, Any]:
         self._require_rule(prepared)
-        return self.diagnosis_agent.run(
+        diagnose = getattr(
+            self.diagnosis_agent,
+            "run_contract",
+            self.diagnosis_agent.run,
+        )
+        result = diagnose(
             hospital_id=str(prepared.hospital_id or ""),
             rule_id=str(prepared.rule_id),
-            effective_rule=prepared.effective_rule,
+            effective_rule=prepared.effective_rule.model_dump(),
             trigger=trigger,
             related_sql_id=related_sql_id,
             stat_period=stat_period,
         )
+        contract = (
+            result
+            if isinstance(result, DiagnosisResult)
+            else DiagnosisResult.model_validate(result)
+        )
+        return contract.model_dump(exclude_none=True)
 
     def sync_metadata(
         self, provider: Any, hospital_id: str, db_name: str
     ) -> dict[str, Any]:
-        return self.metadata.sync(provider, hospital_id, db_name)
+        sync = getattr(self.metadata, "sync_contract", self.metadata.sync)
+        result = sync(provider, hospital_id, db_name)
+        contract = (
+            result
+            if isinstance(result, MetadataSyncResult)
+            else MetadataSyncResult.model_validate(result)
+        )
+        return contract.model_dump(exclude_none=True)
 
     @staticmethod
     def _require_rule(prepared: PreparedRequest) -> None:

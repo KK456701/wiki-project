@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Protocol
 
+from app.agents.contracts import IntentResult
 from app.prompts import answer_prompt_template, intent_prompt_system
 
 
@@ -121,6 +122,16 @@ class HumanInteractionAgent:
                 error_list.append(str(exc))
         self._rewrite_contextual_action(result, query, memory_context)
         return result
+
+    def understand_contract(
+        self,
+        query: str,
+        memory_context: dict[str, Any] | None = None,
+        errors: list[str] | None = None,
+    ) -> IntentResult:
+        return IntentResult.model_validate(
+            self.understand(query, memory_context=memory_context, errors=errors)
+        )
 
     @classmethod
     def _rewrite_contextual_action(

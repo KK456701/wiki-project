@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.agents.contracts import DiagnosisResult
+
 
 class RootCauseDiagnosisAgent:
     agent_id = "root_cause_diagnosis"
@@ -13,3 +15,8 @@ class RootCauseDiagnosisAgent:
 
     def run(self, **kwargs: Any) -> dict[str, Any]:
         return self.diagnose_executor.run(**kwargs)
+
+    def run_contract(self, **kwargs: Any) -> DiagnosisResult:
+        return DiagnosisResult.model_validate(
+            self.diagnose_executor.run(**kwargs)
+        )
