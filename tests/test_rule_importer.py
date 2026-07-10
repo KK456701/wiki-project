@@ -43,6 +43,12 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
                     "WHERE index_code='MQSI2025_005'"
                 )
             ).scalar_one()
+            standard_sql = conn.execute(
+                text(
+                    "SELECT standard_sql FROM med_index_standard "
+                    "WHERE index_code='MQSI2025_005'"
+                )
+            ).scalar_one()
             custom_params = conn.execute(
                 text(
                     "SELECT custom_params FROM med_index_hospital_custom "
@@ -57,6 +63,7 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
         self.assertEqual(json.loads(custom_params)["arrive_minutes_threshold"], 20)
         self.assertNotIn("30", standard_params)
         self.assertNotIn("30", custom_params)
+        self.assertIn("exclude_dept_filters", standard_sql)
         self.assertEqual(mapping_groups, 4)
 
 

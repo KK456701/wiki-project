@@ -1,9 +1,10 @@
 """SQL 生成 Agent。"""
 
 import uuid
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from sqlalchemy import Engine
 
@@ -16,6 +17,13 @@ from app.sqlgen.spec_loader import (
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
 from app.sqlgen.runner import run_sql_trial
+
+if TYPE_CHECKING:
+    from app.rules.repository import RuleRepository
+
+
+def _elapsed_ms(start: float) -> int:
+    return max(1, int((time.perf_counter() - start) * 1000))
 
 
 def _extract_params(effective_rule: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
@@ -41,28 +49,49 @@ def _extract_params(effective_rule: dict[str, Any], spec: dict[str, Any]) -> dic
 
 
 class SQLGenerationAgent:
-    def __init__(self, kb_root: str | Path, runtime_engine: Engine, business_db: BusinessDBClient):
+    def __init__(
+        self,
+        kb_root: str | Path,
+        runtime_engine: Engine,
+        business_db: BusinessDBClient,
+        rule_repository: "RuleRepository | None" = None,
+    ):
         self.kb_root = Path(kb_root)
         self.runtime_engine = runtime_engine
         self.business_db = business_db
+        self.rule_repository = rule_repository
 
     def generate(self, query: str, hospital_id: str, rule_id: str,
                  effective_rule: dict[str, Any], stat_start_time: str,
                  stat_end_time: str, trial_run: bool = False,
                  generated_by: str = "agent",
                  custom_filters: list[dict[str, str]] | None = None) -> dict[str, Any]:
+        node_timings: dict[str, int] = {}
+        precheck_start = time.perf_counter()
         precheck = precheck_rule_fields(self.kb_root, self.runtime_engine, hospital_id, rule_id)
+        node_timings["field_mapping_precheck"] = _elapsed_ms(precheck_start)
         if not precheck.get("ok"):
             return {
                 "status": "field_precheck_failed",
                 "precheck": precheck,
+                "_node_timings": node_timings,
                 "message": f"字段预校验未通过。缺失映射: {precheck.get('missing_mappings', [])}。缺失字段: {precheck.get('missing_columns', [])}",
             }
 
-        mapping = load_hospital_mapping(self.kb_root, hospital_id, rule_id)
-        spec = load_rule_sql_spec(self.kb_root, rule_id)
+        generate_start = time.perf_counter()
+        if self.rule_repository is not None:
+            mapping = self.rule_repository.get_field_mapping(rule_id, hospital_id)
+            spec = None
+            template_str = str(effective_rule.get("standard_sql") or "")
+            params = dict(effective_rule.get("effective_params") or {})
+        else:
+            mapping = load_hospital_mapping(self.kb_root, hospital_id, rule_id)
+            spec = load_rule_sql_spec(self.kb_root, rule_id)
+            template_str = load_template(
+                self.kb_root, rule_id, mapping.get("dialect", "mysql")
+            )
+            params = _extract_params(effective_rule, spec)
         dialect = mapping.get("dialect", "mysql")
-        template_str = load_template(self.kb_root, rule_id, dialect)
 
         # 合并 YAML 配置的 custom_rules + LLM 提取的 custom_filters
         custom_rules: dict[str, Any] = dict(mapping.get("custom_rules") or {})
@@ -87,11 +116,12 @@ class SQLGenerationAgent:
 
         sql_text = render_sql(template_str, mapped_fields, mapping.get("main_table", ""), custom_rules)
 
+        validation_start = time.perf_counter()
         validation = validate_select_sql(sql_text, hospital_id, mapping.get("main_table", ""))
+        node_timings["sql_validate"] = _elapsed_ms(validation_start)
         sql_id = f"SQL_{uuid.uuid4().hex[:12]}"
         sql_status = "validated" if validation["ok"] else "invalid"
 
-        params = _extract_params(effective_rule, spec)
         if mapping.get("filters", {}).get("consult_type_value"):
             params["consult_type_value"] = mapping["filters"]["consult_type_value"]
         for index, value in enumerate(custom_rules.get("exclude_depts") or []):
@@ -99,11 +129,13 @@ class SQLGenerationAgent:
 
         insert_generated_sql(self.runtime_engine, sql_id, hospital_id, rule_id, dialect, sql_text,
                              sql_status, validation.get("message", validation.get("error", "")), generated_by)
+        node_timings["sql_generate"] = _elapsed_ms(generate_start)
 
         result: dict[str, Any] = {
             "sql_id": sql_id, "sql_text": sql_text, "sql_status": sql_status,
             "validation": validation, "dialect": dialect, "params": params,
             "precheck": precheck,
+            "_node_timings": node_timings,
         }
 
         if trial_run and validation["ok"]:

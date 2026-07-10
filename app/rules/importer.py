@@ -77,7 +77,10 @@ FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id
   AND {{ fields.consult_type }} = :consult_type_value
   AND {{ fields.request_time }} >= :start_time
-  AND {{ fields.request_time }} < :end_time""",
+  AND {{ fields.request_time }} < :end_time
+{% for dept in custom_rules.exclude_dept_filters %}
+  AND {{ fields.get('dept_id', 'dept_id') }} <> :{{ dept.param }}
+{% endfor %}""",
     },
     "MQSI2025_014": {
         "index_name": "急危重症患者抢救成功率",

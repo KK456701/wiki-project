@@ -56,6 +56,7 @@ def run_sql_trial(
     run_id = f"RUN_{uuid.uuid4().hex[:12]}"
     start = time.time()
     result_value: float | None = None
+    no_sample = False
     error_message: str | None = None
     run_status = "success"
 
@@ -69,7 +70,11 @@ def run_sql_trial(
         executable_sql = _bind_sql_params(sql_text, bound_params)
         query_result = business_db.execute_select(executable_sql)
         first_row = query_result.rows[0] if query_result.rows else {}
-        first_value = next(iter(first_row.values()), None) if first_row else None
+        first_value = first_row.get("index_value") if first_row else None
+        if first_value is None and first_row:
+            first_value = next(iter(first_row.values()), None)
+        if first_row.get("sample_count") is not None:
+            no_sample = int(first_row["sample_count"] or 0) == 0
         result_value = float(first_value) if first_value is not None else None
         run_status = "success" if result_value is not None else "empty"
     except Exception as exc:
@@ -99,6 +104,7 @@ def run_sql_trial(
         "sql_id": sql_id,
         "status": run_status,
         "result_value": result_value,
+        "no_sample": no_sample,
         "error_message": error_message,
         "duration_ms": duration_ms,
     }

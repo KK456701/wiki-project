@@ -7,11 +7,88 @@ import yaml
 from app.agent.graph import detect_intent
 from app.db_access.query_result import QueryResult
 from app.sqlgen.runner import run_sql_trial
+from app.sqlgen.agent import SQLGenerationAgent
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
 
 
 class SqlGenerationSafetyTest(unittest.TestCase):
+    def test_generation_uses_mysql_repository_template_and_params(self) -> None:
+        class FakeRepository:
+            def get_field_mapping(self, rule_id, hospital_id):
+                return {
+                    "dialect": "mysql",
+                    "main_table": "consult_record",
+                    "fields": {
+                        "hospital_id": "consult_record.hospital_id",
+                        "request_time": "consult_record.request_time",
+                    },
+                }
+
+        class UnusedBusinessDB:
+            def execute_select(self, sql):
+                raise AssertionError("trial run must not execute")
+
+        template = (
+            "SELECT :arrive_minutes_threshold AS index_value, 1 AS sample_count "
+            "FROM {{ main_table }} /* mysql_repository_marker */ "
+            "WHERE {{ fields.hospital_id }}=:hospital_id "
+            "AND {{ fields.request_time }}>=:start_time "
+            "AND {{ fields.request_time }}<:end_time"
+        )
+        agent = SQLGenerationAgent(
+            Path("core-rules-wiki"),
+            object(),
+            UnusedBusinessDB(),
+            rule_repository=FakeRepository(),
+        )
+        with patch("app.sqlgen.agent.precheck_rule_fields", return_value={"ok": True}), \
+             patch("app.sqlgen.agent.insert_generated_sql"):
+            result = agent.generate(
+                query="生成SQL",
+                hospital_id="hospital_001",
+                rule_id="MQSI2025_005",
+                effective_rule={
+                    "standard_sql": template,
+                    "effective_params": {"arrive_minutes_threshold": 20},
+                },
+                stat_start_time="2026-07-01",
+                stat_end_time="2026-08-01",
+            )
+
+        self.assertIn("mysql_repository_marker", result["sql_text"])
+        self.assertEqual(result["params"]["arrive_minutes_threshold"], 20)
+
+    def test_trial_run_marks_zero_denominator_as_no_sample(self) -> None:
+        class FakeBusinessDB:
+            def execute_select(self, sql):
+                return QueryResult(
+                    rows=[{"index_value": "0", "sample_count": 0}],
+                    row_count=1,
+                    source="hospital_demo_data",
+                    tool_name="execute_sql_hospital_demo_data",
+                    duration_ms=2,
+                )
+
+        with patch("app.sqlgen.runner.insert_sql_run_log"):
+            result = run_sql_trial(
+                object(),
+                FakeBusinessDB(),
+                "SQL_EMPTY",
+                "SELECT 0 AS index_value, 0 AS sample_count FROM consult_record "
+                "WHERE hospital_id=:hospital_id AND request_time>=:start_time "
+                "AND request_time<:end_time",
+                "hospital_001",
+                "MQSI2025_005",
+                "2026-07-01",
+                "2026-08-01",
+                {},
+                "tester",
+            )
+
+        self.assertEqual(result["result_value"], 0.0)
+        self.assertTrue(result["no_sample"])
+
     def test_validator_rejects_main_table_only_in_comment(self) -> None:
         sql = "SELECT * FROM other_table WHERE x=:start_time AND y=:end_time -- consult_record"
 
