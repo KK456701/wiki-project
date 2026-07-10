@@ -13,6 +13,7 @@
 - trial_run: 要求试运行 SQL（试运行、运行SQL、执行SQL）
 - diagnose: 要求排查异常、诊断问题
 - metadata_sync: 要求同步元数据或表结构
+- create_indicator: 创建一个新的指标设计稿
 
 重要区分规则：
 - "你好"、"谢谢" → intent=chat
@@ -20,6 +21,7 @@
 - "我们医院XX指标改成20分钟" → intent=feedback
 - "生成急会诊及时到位率的SQL" → intent=generate_sql
 - "试运行"、"运行SQL" → intent=trial_run
+- "创建一个夜间急会诊指标" → intent=create_indicator
 - 如果用户提到"排除XX科室"、"不算XX"、"多次转科"等条件，在 custom_filters 中提取：
   · "排除ICU" → {{"field":"dept_id","operator":"!=","value":"ICU"}}
   · "算多次"、"多次分别算" → {{"count_multiple":true}}
@@ -27,7 +29,7 @@
 
 JSON 格式：
 {{
-  "intent": "chat / query / feedback / generate_sql / trial_run / diagnose / metadata_sync",
+  "intent": "chat / query / feedback / generate_sql / trial_run / diagnose / metadata_sync / create_indicator",
   "question_type": "指标公式查询/指标定义查询/制度分类查询/指标列表查询/原文依据查询/本院口径查询/反馈修正/SQL生成/异常排查/元数据同步/其他",
   "indicator_name": "涉及的指标名称，没有则为空",
   "theme_name": "涉及的制度主题，没有则为空",

@@ -109,6 +109,7 @@ class AgentOrchestratorTest(unittest.TestCase):
             "trial_run": "indicator_generation",
             "diagnose": "root_cause_diagnosis",
             "metadata_sync": "metadata_parsing",
+            "create_indicator": "indicator_generation",
         }
 
         self.assertEqual(

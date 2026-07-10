@@ -25,6 +25,7 @@ INTENT_OWNERS = {
     "trial_run": "indicator_generation",
     "diagnose": "root_cause_diagnosis",
     "metadata_sync": "metadata_parsing",
+    "create_indicator": "indicator_generation",
 }
 RULE_INTENTS = {"query", "feedback", "generate_sql", "trial_run", "diagnose"}
 
@@ -261,6 +262,13 @@ class CoreIndicatorOrchestrator:
         )
         contract.node_timings["field_mapping_precheck"] = precheck_duration_ms
         return contract.model_dump(by_alias=True, exclude_none=True)
+
+    def create_indicator_draft(
+        self, query: str, hospital_id: str, actor_id: str
+    ) -> dict[str, Any]:
+        return self.indicator_generation.create_draft(
+            query, hospital_id, actor_id
+        )
 
     def diagnose(
         self,

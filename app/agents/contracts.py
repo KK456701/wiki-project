@@ -15,6 +15,7 @@ IntentType = Literal[
     "trial_run",
     "diagnose",
     "metadata_sync",
+    "create_indicator",
 ]
 
 
