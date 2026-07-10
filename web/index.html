@@ -514,6 +514,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   .indicator-detail-head, .indicator-mapping-row { grid-template-columns: 1fr; display: grid; }
 }
 </style>
+<link rel="stylesheet" href="/static/monitoring.css" />
 </head>
 <body>
 
@@ -546,6 +547,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <label class="hospital-inline"><span>医院</span><input id="hospitalId" value="hospital_001" /></label>
       <button id="selfCheckButton" class="btn btn-ghost">系统自检</button>
       <button id="recoveryButton" class="btn btn-ghost">恢复中心</button>
+      <button id="monitoringButton" class="btn btn-ghost">指标监控</button>
       <button id="mcpButton" class="btn btn-ghost">MCP</button>
       <button id="indicatorDraftButton" class="btn btn-ghost">指标设计稿</button>
       <button id="reviewButton" class="btn btn-secondary">审批</button>
@@ -714,6 +716,101 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <button class="ghost" data-close="historyModal">关闭</button>
     </header>
     <div class="dialog-body"><div id="historyList" class="version-list"></div></div>
+  </section>
+</div>
+
+<!-- 指标监控工作台 -->
+<div id="monitoringModal" class="modal" hidden>
+  <section class="dialog monitoring-dialog" role="dialog" aria-modal="true" aria-labelledby="monitoringTitle">
+    <header>
+      <div>
+        <h2 id="monitoringTitle">指标监控</h2>
+        <div id="monitoringMeta" class="monitoring-meta">查看运行计划、结果和预警。</div>
+      </div>
+      <button class="ghost" data-close="monitoringModal">关闭</button>
+    </header>
+
+    <div class="monitoring-tabs" role="tablist" aria-label="指标监控视图">
+      <button id="monitoringPlansTab" class="monitoring-tab active" type="button" role="tab" aria-selected="true">运行计划</button>
+      <button id="monitoringResultsTab" class="monitoring-tab" type="button" role="tab" aria-selected="false">运行结果</button>
+      <button id="monitoringAlertsTab" class="monitoring-tab" type="button" role="tab" aria-selected="false">预警处理 <span id="monitoringAlertCount" class="monitoring-count" hidden></span></button>
+    </div>
+
+    <div class="monitoring-workbench">
+      <div id="monitoringNotice" class="monitoring-notice" hidden></div>
+
+      <section id="monitoringPlansPanel" class="monitoring-panel" role="tabpanel">
+        <div class="monitoring-plan-layout">
+          <aside class="monitoring-plan-sidebar">
+            <div class="monitoring-sidebar-head">
+              <strong>运行计划</strong>
+              <button id="newMonitoringPlanButton" type="button">新建计划</button>
+            </div>
+            <input id="monitoringPlanSearch" class="monitoring-input" type="search" placeholder="搜索指标或编码" aria-label="搜索运行计划" />
+            <div id="monitoringPlanList" class="monitoring-plan-list"></div>
+          </aside>
+          <div id="monitoringPlanDetail" class="monitoring-plan-detail">
+            <div class="monitoring-empty">选择一个运行计划，或创建第一个计划。</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="monitoringResultsPanel" class="monitoring-panel" role="tabpanel" hidden>
+        <div class="monitoring-toolbar">
+          <label>指标编码<input id="monitoringResultRuleFilter" class="monitoring-input" placeholder="例如 MQSI2025_005" /></label>
+          <button id="refreshMonitoringResultsButton" class="ghost" type="button">刷新结果</button>
+        </div>
+        <div id="monitoringResultsList" class="monitoring-list"></div>
+      </section>
+
+      <section id="monitoringAlertsPanel" class="monitoring-panel" role="tabpanel" hidden>
+        <div class="monitoring-toolbar">
+          <label>处理状态
+            <select id="monitoringAlertStatusFilter" class="monitoring-input">
+              <option value="">全部状态</option>
+              <option value="open">未处理</option>
+              <option value="acknowledged">已确认</option>
+              <option value="closed">已关闭</option>
+            </select>
+          </label>
+          <button id="refreshMonitoringAlertsButton" class="ghost" type="button">刷新预警</button>
+        </div>
+        <div id="monitoringAlertsList" class="monitoring-list"></div>
+      </section>
+    </div>
+
+    <form id="monitoringPlanForm" class="monitoring-form" hidden>
+      <div class="monitoring-form-head">
+        <div><h3 id="monitoringPlanFormTitle">新建运行计划</h3><p>设置自动运行频率和波动阈值。</p></div>
+        <button id="closeMonitoringPlanFormButton" class="ghost" type="button" aria-label="关闭计划表单">关闭</button>
+      </div>
+      <input id="monitoringPlanId" type="hidden" />
+      <div id="monitoringPlanFormError" class="monitoring-form-error" hidden></div>
+      <div class="monitoring-form-grid">
+        <label>指标编码<input id="monitoringRuleId" class="monitoring-input" required placeholder="MQSI2025_005" /></label>
+        <label>计划名称<input id="monitoringPlanName" class="monitoring-input" required placeholder="急会诊月报" /></label>
+        <label>运行频率
+          <select id="monitoringFrequency" class="monitoring-input">
+            <option value="daily">每日</option>
+            <option value="monthly">每月</option>
+          </select>
+        </label>
+        <label>运行时间<input id="monitoringRunTime" class="monitoring-input" type="time" value="02:00" required /></label>
+        <label id="monitoringDayField">每月执行日<input id="monitoringDayOfMonth" class="monitoring-input" type="number" min="1" max="28" value="1" /></label>
+        <div class="monitoring-threshold-field">
+          <label class="monitoring-toggle"><input id="monitoringMomEnabled" type="checkbox" checked />启用环比</label>
+          <label>环比阈值（%）<input id="monitoringMomThreshold" class="monitoring-input" type="number" min="0.01" max="10000" step="0.01" value="20" /></label>
+        </div>
+        <div class="monitoring-threshold-field">
+          <label class="monitoring-toggle"><input id="monitoringYoyEnabled" type="checkbox" checked />启用同比</label>
+          <label>同比阈值（%）<input id="monitoringYoyThreshold" class="monitoring-input" type="number" min="0.01" max="10000" step="0.01" value="30" /></label>
+        </div>
+      </div>
+      <div class="monitoring-form-actions">
+        <button id="cancelMonitoringPlanButton" class="ghost" type="button">取消</button>
+        <button id="saveMonitoringPlanButton" type="submit">保存计划</button>
+      </div>
+    </form>
   </section>
 </div>
 
@@ -2201,5 +2298,6 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 
 // 欢迎消息由登录后触发，此处不再自动调用
 </script>
+<script src="/static/monitoring.js"></script>
 </body>
 </html>
