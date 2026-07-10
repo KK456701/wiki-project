@@ -9,15 +9,60 @@ from sqlalchemy.pool import StaticPool
 import app.api.main as api_main
 from app.api.main import app
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
+from tests.test_rule_repository import _rule_engine
 
 
 class ApiTest(unittest.TestCase):
+    def test_change_request_route_uses_mysql_rule_repository(self) -> None:
+        class FakeRuleRepository:
+            def __init__(self) -> None:
+                self.submitted = []
+
+            def submit_change_request(self, payload):
+                self.submitted.append(payload)
+                return {
+                    "change_id": "CR_MYSQL",
+                    "rule_id": payload["rule_id"],
+                    "hospital_id": payload["hospital_id"],
+                    "status": "pending",
+                    "approval_status": "pending",
+                }
+
+        repository = FakeRuleRepository()
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            runtime_engine = _trace_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
+                 patch.object(
+                     api_main,
+                     "_create_rule_repository",
+                     return_value=repository,
+                     create=True,
+                 ):
+                response = client.post(
+                    "/api/review/change-requests",
+                    json={
+                        "rule_id": "MQSI2025_005",
+                        "hospital_id": "hospital_001",
+                        "requested_formula": "急会诊及时到位率 = 25分钟内到位次数 / 急会诊总次数 × 100%",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["change_id"], "CR_MYSQL")
+        self.assertEqual(len(repository.submitted), 1)
+
     def test_health_reports_workflow_engine(self) -> None:
         client = TestClient(app)
 
         response = client.get("/api/health")
 
         self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers.get("X-Request-ID"))
         data = response.json()
         self.assertEqual(data["status"], "ok")
         self.assertIn(data["workflow_engine"], {"langgraph", "deterministic_fallback"})
@@ -255,109 +300,122 @@ class ApiTest(unittest.TestCase):
 
     def test_review_api_creates_and_approves_hospital_change_request(self) -> None:
         from app.observability.trace import TraceRecorder
+        from app.rules.importer import import_four_indicator_rules
 
-        with temp_kb_dir() as tmp:
-            root = Path(tmp)
-            make_minimal_kb(root, with_hospital=False)
-            runtime_engine = _trace_runtime_engine()
-            client = TestClient(app)
+        runtime_engine = _trace_runtime_engine(_rule_engine())
+        import_four_indicator_rules(runtime_engine, Path("core-rules-wiki"))
+        client = TestClient(app)
 
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
-                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
-                login = client.post("/api/admin/login", json={"password": "admin123"})
-                token = login.json()["token"]
-                headers = {"Authorization": f"Bearer {token}"}
-                created = client.post(
-                    "/api/review/change-requests",
-                    json={
-                        "rule_id": "R001",
-                        "indicator_name": "????????",
-                        "hospital_id": "hospital_001",
-                        "target_level": "hospital",
-                        "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u7533\u8bf7\u53d1\u51fa\u5230\u533b\u751f\u7b7e\u5230\u4e0d\u8d85\u8fc7\u0032\u0030\u5206\u949f\u7edf\u8ba1\u3002",
-                        "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0032\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
-                        "hospital_feedback": "\u6211\u4eec\u533b\u9662\u6309\u0032\u0030\u5206\u949f\u8ba1\u7b97\u3002",
-                        "original_user_message": "\u6211\u4eec\u533b\u9662\u6309\u0032\u0030\u5206\u949f\u8ba1\u7b97\u3002",
-                    },
-                )
-                pending = client.get("/api/review/pending", headers=headers)
-                approved = client.post(
-                    f"/api/review/change-requests/{created.json()['change_id']}/approve",
-                    headers=headers,
-                )
-                effective = client.get("/api/kb/rules/R001/effective", params={"hospital_id": "hospital_001"})
+        with patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
+            login = client.post("/api/admin/login", json={"password": "admin123"})
+            token = login.json()["token"]
+            headers = {"Authorization": f"Bearer {token}"}
+            created = client.post(
+                "/api/review/change-requests",
+                json={
+                    "rule_id": "MQSI2025_005",
+                    "indicator_name": "急会诊及时到位率",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "本院急会诊按20分钟内到位统计。",
+                    "requested_formula": "急会诊及时到位率 = 20分钟内到位急会诊次数 / 同期急会诊总次数 × 100%",
+                },
+            )
+            pending = client.get("/api/review/pending", headers=headers)
+            approved = client.post(
+                f"/api/review/change-requests/{created.json()['change_id']}/approve",
+                headers=headers,
+            )
+            effective = client.get(
+                "/api/kb/rules/MQSI2025_005/effective",
+                params={"hospital_id": "hospital_001"},
+            )
 
-            self.assertEqual(login.status_code, 200)
-            self.assertEqual(created.status_code, 200)
-            self.assertEqual(pending.status_code, 200)
-            self.assertEqual(len(pending.json()["items"]), 1)
-            self.assertEqual(approved.json()["status"], "approved")
-            self.assertEqual(effective.json()["effective_level"], "hospital")
-            self.assertIn("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", effective.json()["formula"])
-            self.assertTrue(created.json()["trace_id"].startswith("TRACE_"))
-            self.assertTrue(approved.json()["trace_id"].startswith("TRACE_"))
-            created_trace = TraceRecorder(runtime_engine).get_trace(created.json()["trace_id"])
-            approved_trace = TraceRecorder(runtime_engine).get_trace(approved.json()["trace_id"])
-            self.assertEqual(created_trace["nodes"][0]["node_name"], "change_request_submit")
-            approved_nodes = {node["node_name"]: node for node in approved_trace["nodes"]}
-            self.assertIn("approval_apply_override", approved_nodes)
-            self.assertIn("index_rebuild", approved_nodes)
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(pending.status_code, 200)
+        self.assertEqual(len(pending.json()["items"]), 1)
+        self.assertEqual(approved.json()["status"], "approved")
+        self.assertEqual(effective.json()["effective_level"], "hospital")
+        self.assertIn("20分钟", effective.json()["formula"])
+        self.assertTrue(created.json()["trace_id"].startswith("TRACE_"))
+        self.assertTrue(approved.json()["trace_id"].startswith("TRACE_"))
+        created_trace = TraceRecorder(runtime_engine).get_trace(created.json()["trace_id"])
+        approved_trace = TraceRecorder(runtime_engine).get_trace(approved.json()["trace_id"])
+        self.assertEqual(created_trace["nodes"][0]["node_name"], "change_request_submit")
+        approved_nodes = {node["node_name"]: node for node in approved_trace["nodes"]}
+        self.assertIn("approval_apply_override", approved_nodes)
+        self.assertIn("index_rebuild", approved_nodes)
 
 
     def test_review_api_lists_and_restores_hospital_override_versions(self) -> None:
         from app.observability.trace import TraceRecorder
+        from app.rules.importer import import_four_indicator_rules
 
-        with temp_kb_dir() as tmp:
-            root = Path(tmp)
-            make_minimal_kb(root, with_hospital=False)
-            runtime_engine = _trace_runtime_engine()
-            client = TestClient(app)
+        runtime_engine = _trace_runtime_engine(_rule_engine())
+        import_four_indicator_rules(runtime_engine, Path("core-rules-wiki"))
+        client = TestClient(app)
 
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
-                 patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
-                login = client.post("/api/admin/login", json={"password": "admin123"})
-                headers = {"Authorization": f"Bearer {login.json()['token']}"}
-                first = client.post(
-                    "/api/review/change-requests",
-                    json={
-                        "rule_id": "R001",
-                        "hospital_id": "hospital_001",
-                        "target_level": "hospital",
-                        "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u0032\u0030\u5206\u949f\u7edf\u8ba1\u3002",
-                        "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0032\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
-                    },
-                )
-                approved_first = client.post(f"/api/review/change-requests/{first.json()['change_id']}/approve", headers=headers).json()
-                second = client.post(
-                    "/api/review/change-requests",
-                    json={
-                        "rule_id": "R001",
-                        "hospital_id": "hospital_001",
-                        "target_level": "hospital",
-                        "requested_definition": "\u672c\u9662\u6025\u4f1a\u8bca\u6309\u0033\u0030\u5206\u949f\u7edf\u8ba1\u3002",
-                        "requested_formula": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387 = \u0033\u0030\u5206\u949f\u5185\u7b7e\u5230\u6025\u4f1a\u8bca\u6b21\u6570 / \u540c\u671f\u6025\u4f1a\u8bca\u603b\u6b21\u6570 \u00d7 \u0031\u0030\u0030%",
-                    },
-                )
-                approved_second = client.post(f"/api/review/change-requests/{second.json()['change_id']}/approve", headers=headers).json()
-                versions = client.get("/api/review/hospital-overrides/hospital_001/R001/versions", headers=headers)
-                restored = client.post(
-                    f"/api/review/hospital-overrides/hospital_001/R001/versions/{approved_first['active_version_id']}/restore",
-                    headers=headers,
-                    json={"approver_id": "admin_restore"},
-                )
-                effective = client.get("/api/kb/rules/R001/effective", params={"hospital_id": "hospital_001"})
+        with patch("app.db.engine.create_runtime_engine", return_value=runtime_engine):
+            login = client.post("/api/admin/login", json={"password": "admin123"})
+            headers = {"Authorization": f"Bearer {login.json()['token']}"}
+            first = client.post(
+                "/api/review/change-requests",
+                json={
+                    "rule_id": "MQSI2025_005",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "本院急会诊按25分钟统计。",
+                    "requested_formula": "急会诊及时到位率 = 25分钟内签到急会诊次数 / 同期急会诊总次数 × 100%",
+                },
+            )
+            approved_first = client.post(
+                f"/api/review/change-requests/{first.json()['change_id']}/approve",
+                headers=headers,
+            ).json()
+            second = client.post(
+                "/api/review/change-requests",
+                json={
+                    "rule_id": "MQSI2025_005",
+                    "hospital_id": "hospital_001",
+                    "target_level": "hospital",
+                    "requested_definition": "本院急会诊按30分钟统计。",
+                    "requested_formula": "急会诊及时到位率 = 30分钟内签到急会诊次数 / 同期急会诊总次数 × 100%",
+                },
+            )
+            approved_second = client.post(
+                f"/api/review/change-requests/{second.json()['change_id']}/approve",
+                headers=headers,
+            ).json()
+            versions = client.get(
+                "/api/review/hospital-overrides/hospital_001/MQSI2025_005/versions",
+                headers=headers,
+            )
+            restored = client.post(
+                f"/api/review/hospital-overrides/hospital_001/MQSI2025_005/versions/{approved_first['active_version_id']}/restore",
+                headers=headers,
+                json={"approver_id": "admin_restore"},
+            )
+            effective = client.get(
+                "/api/kb/rules/MQSI2025_005/effective",
+                params={"hospital_id": "hospital_001"},
+            )
 
-            self.assertEqual(versions.status_code, 200)
-            self.assertEqual(versions.json()["active_version_id"], approved_second["active_version_id"])
-            self.assertEqual(len(versions.json()["versions"]), 2)
-            self.assertEqual(restored.status_code, 200)
-            self.assertEqual(restored.json()["active_version_id"], approved_first["active_version_id"])
-            self.assertIn("\u0032\u0030\u5206\u949f\u5185\u7b7e\u5230", effective.json()["formula"])
-            self.assertTrue(restored.json()["trace_id"].startswith("TRACE_"))
-            restored_trace = TraceRecorder(runtime_engine).get_trace(restored.json()["trace_id"])
-            restored_nodes = {node["node_name"]: node for node in restored_trace["nodes"]}
-            self.assertIn("approval_apply_override", restored_nodes)
-            self.assertIn("index_rebuild", restored_nodes)
+        self.assertEqual(versions.status_code, 200)
+        self.assertEqual(versions.json()["active_version_id"], approved_second["active_version_id"])
+        self.assertEqual(len(versions.json()["versions"]), 3)
+        self.assertEqual(restored.status_code, 200)
+        self.assertNotEqual(restored.json()["active_version_id"], approved_first["active_version_id"])
+        self.assertEqual(
+            restored.json()["restored_from_version"],
+            int(approved_first["active_version_id"]),
+        )
+        self.assertIn("25分钟", effective.json()["formula"])
+        self.assertTrue(restored.json()["trace_id"].startswith("TRACE_"))
+        restored_trace = TraceRecorder(runtime_engine).get_trace(restored.json()["trace_id"])
+        restored_nodes = {node["node_name"]: node for node in restored_trace["nodes"]}
+        self.assertIn("approval_apply_override", restored_nodes)
+        self.assertIn("index_rebuild", restored_nodes)
 
     def test_review_pending_without_admin_token_returns_401(self) -> None:
         client = TestClient(app)
@@ -409,6 +467,48 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(data["runtime_db"]["ok"])
         self.assertTrue(data["business_db_mcp"]["ok"])
         self.assertTrue(data["dbhub_http"]["ok"])
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["checks"]["runtime_db"]["code"], "OK")
+
+    def test_health_dependencies_reports_degraded_with_failure_codes(self) -> None:
+        class FakeBusinessDB:
+            def check_available(self):
+                return {"ok": False, "error": "access denied"}
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        with patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "create_business_db_client", return_value=FakeBusinessDB()), \
+             patch.object(api_main, "dbhub_sources", side_effect=RuntimeError("dbhub down")):
+            response = client.get("/api/health/dependencies")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "degraded")
+        self.assertEqual(data["checks"]["business_db_mcp"]["code"], "BUSINESS_DB_MCP_UNAVAILABLE")
+        self.assertEqual(data["checks"]["dbhub_http"]["code"], "DBHUB_HTTP_UNAVAILABLE")
+        self.assertTrue(data["request_id"])
+
+    def test_health_summary_returns_readable_self_check(self) -> None:
+        class FakeBusinessDB:
+            def check_available(self):
+                return {"ok": False, "error": "access denied"}
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        with patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "create_business_db_client", return_value=FakeBusinessDB()), \
+             patch.object(api_main, "dbhub_sources", side_effect=RuntimeError("dbhub down")):
+            response = client.get("/api/health/summary")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "系统自检")
+        self.assertEqual(data["status_text"], "部分异常")
+        self.assertTrue(any(item["name"] == "DBHub 服务" for item in data["items"]))
+        self.assertTrue(any(item["status_text"] == "异常" for item in data["items"]))
+        self.assertTrue(any(item["suggestion"] for item in data["items"] if item["status_text"] == "异常"))
+        self.assertNotIn("checks", data)
 
     def test_trace_api_returns_trace_nodes(self) -> None:
         from app.observability.trace import TraceRecorder
@@ -428,9 +528,139 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(data["trace_id"], "TRACE_API_TEST")
         self.assertEqual(data["nodes"][0]["node_name"], "intent_detect")
 
+    def test_trace_modal_uses_readable_debug_labels(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
 
-def _trace_runtime_engine():
-    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        self.assertIn("系统自检", html)
+        self.assertIn("阶段耗时总览", html)
+        self.assertIn("最慢节点", html)
+        self.assertIn("输入输出检查", html)
+        self.assertIn("必要输入", html)
+        self.assertIn("出错处理", html)
+        self.assertIn("问题码", html)
+        self.assertNotIn("契约状态", html)
+
+    def test_workflow_manifest_validate_api(self) -> None:
+        client = TestClient(app)
+
+        manifest = client.get("/api/workflows/core_indicator_chat")
+        validation = client.get("/api/workflows/core_indicator_chat/validate")
+
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(validation.status_code, 200)
+        self.assertEqual(manifest.json()["workflow_id"], "core_indicator_chat")
+        self.assertTrue(validation.json()["ok"])
+        self.assertGreaterEqual(validation.json()["node_count"], 3)
+
+    def test_recovery_center_lists_interrupted_tasks(self) -> None:
+        from app.db.repositories import create_recovery_task
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        task_id = create_recovery_task(
+            engine,
+            task_type="metadata_sync",
+            task_name="同步数据库元数据",
+            current_step="metadata_sync_mcp",
+            payload={"hospital_id": "hospital_001", "db_name": "hospital_demo_data"},
+            trace_id="TRACE_RECOVERY_TEST",
+            request_id="REQ_RECOVERY_TEST",
+            hospital_id="hospital_001",
+            recoverable_action="retry",
+        )
+
+        with patch("app.db.engine.create_runtime_engine", return_value=engine):
+            login = client.post("/api/admin/login", json={"password": "admin123"})
+            response = client.get("/api/recovery/tasks", headers={"Authorization": f"Bearer {login.json()['token']}"})
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "恢复中心")
+        self.assertEqual(data["items"][0]["task_id"], task_id)
+        self.assertEqual(data["items"][0]["status"], "interrupted")
+        self.assertEqual(data["items"][0]["status_text"], "上次中断")
+        self.assertEqual(data["items"][0]["action_text"], "重试")
+
+    def test_recovery_center_can_ignore_task(self) -> None:
+        from app.db.repositories import create_recovery_task
+
+        client = TestClient(app)
+        engine = _trace_runtime_engine()
+        task_id = create_recovery_task(
+            engine,
+            task_type="index_rebuild",
+            task_name="重建运行索引",
+            current_step="index_rebuild",
+            payload={"rule_id": "R001", "hospital_id": "hospital_001"},
+            recoverable_action="retry",
+        )
+
+        with patch("app.db.engine.create_runtime_engine", return_value=engine):
+            login = client.post("/api/admin/login", json={"password": "admin123"})
+            headers = {"Authorization": f"Bearer {login.json()['token']}"}
+            ignored = client.post(f"/api/recovery/tasks/{task_id}/ignore", headers=headers)
+            listed = client.get("/api/recovery/tasks", headers=headers)
+
+        self.assertEqual(ignored.status_code, 200)
+        self.assertEqual(ignored.json()["status"], "ignored")
+        self.assertEqual(listed.json()["items"], [])
+
+    def test_metadata_sync_records_completed_recovery_task(self) -> None:
+        class FakeDBHubClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def execute_sql(self, sql):
+                if "INFORMATION_SCHEMA.TABLES" in sql:
+                    return [{"TABLE_NAME": "consult_record", "TABLE_COMMENT": "", "TABLE_TYPE": "BASE TABLE"}]
+                if "INFORMATION_SCHEMA.COLUMNS" in sql:
+                    return [
+                        {"TABLE_NAME": "consult_record", "COLUMN_NAME": "id", "DATA_TYPE": "bigint", "COLUMN_TYPE": "bigint", "IS_NULLABLE": "NO", "COLUMN_KEY": "PRI", "COLUMN_DEFAULT": None, "COLUMN_COMMENT": ""}
+                    ]
+                return []
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            engine = _metadata_trace_runtime_engine()
+            client = TestClient(app)
+
+            with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
+                 patch("app.db.engine.create_runtime_engine", return_value=engine), \
+                 patch.object(api_main, "DBHubMCPClient", FakeDBHubClient):
+                response = client.post("/api/metadata/sync", json={"hospital_id": "hospital_001", "db_name": "hospital_demo_data", "source": "dbhub"})
+                login = client.post("/api/admin/login", json={"password": "admin123"})
+                tasks = client.get(
+                    "/api/recovery/tasks?include_completed=true",
+                    headers={"Authorization": f"Bearer {login.json()['token']}"},
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(tasks.status_code, 200)
+        item = tasks.json()["items"][0]
+        self.assertEqual(item["task_type"], "metadata_sync")
+        self.assertEqual(item["status"], "completed")
+        self.assertEqual(item["trace_id"], response.json()["trace_id"])
+
+    def test_recovery_center_ui_is_visible(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("恢复中心", html)
+        self.assertIn("/api/recovery/tasks", html)
+        self.assertIn("上次中断", html)
+
+
+    def test_admin_login_returns_to_requested_admin_area(self) -> None:
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("function requireAdminThenOpen(area)", html)
+        self.assertIn('requireAdminThenOpen("recovery")', html)
+        self.assertIn("function openAdminArea(area)", html)
+        self.assertIn('var target = pendingAdminAction || "review";', html)
+        self.assertIn("openAdminArea(target)", html)
+
+
+def _trace_runtime_engine(engine=None):
+    engine = engine or create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     with engine.begin() as conn:
         conn.execute(text("""
             CREATE TABLE med_agent_trace (

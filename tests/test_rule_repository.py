@@ -323,5 +323,76 @@ class FallbackRuleRepositoryTest(unittest.TestCase):
         self.assertEqual(wiki.write_calls, 0)
 
 
+class MySQLRuleVersionTest(unittest.TestCase):
+    def test_approve_and_restore_create_immutable_versions(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        repository = MySQLRuleRepository(engine)
+
+        pending = repository.submit_change_request(
+            {
+                "rule_id": "MQSI2025_005",
+                "hospital_id": "hospital_001",
+                "target_level": "hospital",
+                "requested_definition": "本院急会诊按25分钟内到位统计。",
+                "requested_formula": "急会诊及时到位率 = 25分钟内到位次数 / 急会诊总次数 × 100%",
+                "change_type": "本院口径反馈",
+                "submitter_id": "user_001",
+            }
+        )
+        approved = repository.approve_change_request(pending["change_id"], "admin_a")
+        effective_after_approval = repository.get_effective_rule(
+            "MQSI2025_005", "hospital_001"
+        )
+        restored = repository.restore_version(
+            "MQSI2025_005", "hospital_001", 1, "admin_restore"
+        )
+        effective_after_restore = repository.get_effective_rule(
+            "MQSI2025_005", "hospital_001"
+        )
+        history = repository.list_versions("MQSI2025_005", "hospital_001")
+
+        self.assertEqual(pending["approval_status"], "pending")
+        self.assertEqual(approved["active_version"], 2)
+        self.assertEqual(
+            effective_after_approval["effective_params"]["arrive_minutes_threshold"],
+            25,
+        )
+        self.assertEqual(restored["active_version"], 3)
+        self.assertEqual(
+            effective_after_restore["effective_params"]["arrive_minutes_threshold"],
+            20,
+        )
+        self.assertEqual(history["active_version_id"], "3")
+        self.assertEqual(len(history["versions"]), 3)
+        self.assertNotIn("path", pending)
+
+    def test_pending_change_can_be_listed_and_rejected(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        repository = MySQLRuleRepository(engine)
+        pending = repository.submit_change_request(
+            {
+                "rule_id": "MQSI2025_005",
+                "hospital_id": "hospital_001",
+                "requested_formula": "急会诊及时到位率 = 25分钟内到位次数 / 急会诊总次数 × 100%",
+                "submitter_id": "user_001",
+            }
+        )
+
+        listed = repository.list_pending_changes()
+        rejected = repository.reject_change_request(pending["change_id"], "admin_reject")
+
+        self.assertEqual([item["change_id"] for item in listed], [pending["change_id"]])
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(repository.list_pending_changes(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

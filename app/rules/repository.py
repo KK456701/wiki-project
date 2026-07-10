@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -22,6 +24,10 @@ class RuleRepository(Protocol):
     def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]: ...
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+    def list_pending_changes(self) -> list[dict[str, Any]]: ...
+
+    def reject_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]: ...
 
     def approve_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]: ...
 
@@ -272,18 +278,411 @@ class MySQLRuleRepository:
         }
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError("MySQL rule writes are implemented in the versioning task")
+        index_code = str(payload.get("rule_id") or payload.get("index_code") or "").strip()
+        hospital_id = str(payload.get("hospital_id") or "").strip()
+        if not index_code or not hospital_id:
+            raise ValueError("rule_id 和 hospital_id 不能为空")
+        if str(payload.get("target_level") or "hospital") != "hospital":
+            raise ValueError("仅支持医院定制口径变更")
+
+        requested_formula = str(payload.get("requested_formula") or "").strip()
+        requested_definition = str(payload.get("requested_definition") or "").strip()
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        change_id = f"CR_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+
+        with self.engine.begin() as conn:
+            standard = conn.execute(
+                text("SELECT 1 FROM med_index_standard WHERE index_code=:code AND status=1"),
+                {"code": index_code},
+            ).first()
+            if standard is None:
+                raise RuleNotFoundError(f"RULE_NOT_MIGRATED: {index_code}")
+            current = conn.execute(
+                text(
+                    "SELECT * FROM med_index_hospital_custom "
+                    "WHERE hospital_id=:hospital_id AND index_code=:index_code"
+                ),
+                {"hospital_id": hospital_id, "index_code": index_code},
+            ).mappings().first()
+            snapshot = self._snapshot_from_current(dict(current) if current else {})
+            snapshot["requested_definition"] = requested_definition
+            snapshot["requested_formula"] = requested_formula
+            if index_code == "MQSI2025_005":
+                minute_match = re.search(r"(\d+)\s*分钟", requested_formula)
+                if minute_match is None:
+                    raise ValueError("急会诊口径必须明确分钟阈值")
+                threshold = int(minute_match.group(1))
+                if threshold <= 0:
+                    raise ValueError("分钟阈值必须大于0")
+                params = _json_dict(snapshot.get("custom_params"))
+                params["arrive_minutes_threshold"] = threshold
+                snapshot["custom_params"] = params
+                snapshot["custom_numerator"] = (
+                    f"急会诊请求发出后0至{threshold}分钟内到位的急会诊次数"
+                )
+            version = self._next_version(conn, hospital_id, index_code)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_index_hospital_custom_version
+                      (change_id, hospital_id, index_code, version, approval_status,
+                       snapshot_json, source_version, change_type, oper_user,
+                       approver_id, created_at, approved_at)
+                    VALUES
+                      (:change_id, :hospital_id, :index_code, :version, 'pending',
+                       :snapshot_json, :source_version, :change_type, :oper_user,
+                       NULL, :created_at, NULL)
+                    """
+                ),
+                {
+                    "change_id": change_id,
+                    "hospital_id": hospital_id,
+                    "index_code": index_code,
+                    "version": version,
+                    "snapshot_json": json.dumps(snapshot, ensure_ascii=False),
+                    "source_version": int((current or {}).get("version") or 0) or None,
+                    "change_type": str(payload.get("change_type") or "本院口径反馈"),
+                    "oper_user": str(payload.get("submitter_id") or "unknown"),
+                    "created_at": now,
+                },
+            )
+        return {
+            "change_id": change_id,
+            "rule_id": index_code,
+            "hospital_id": hospital_id,
+            "version": version,
+            "status": "pending",
+            "approval_status": "pending",
+        }
 
     def approve_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
-        raise NotImplementedError("MySQL rule writes are implemented in the versioning task")
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT * FROM med_index_hospital_custom_version "
+                    "WHERE change_id=:change_id"
+                ),
+                {"change_id": change_id},
+            ).mappings().first()
+            if row is None:
+                raise RuleNotFoundError(f"CHANGE_NOT_FOUND: {change_id}")
+            item = dict(row)
+            if item["approval_status"] != "pending":
+                raise ValueError("该变更已处理，不能重复审批")
+            snapshot = _json_dict(item["snapshot_json"])
+            self._write_current(
+                conn,
+                str(item["hospital_id"]),
+                str(item["index_code"]),
+                int(item["version"]),
+                snapshot,
+                approver_id,
+                now,
+            )
+            conn.execute(
+                text(
+                    """
+                    UPDATE med_index_hospital_custom_version
+                    SET approval_status='approved', approver_id=:approver_id,
+                        approved_at=:approved_at
+                    WHERE change_id=:change_id
+                    """
+                ),
+                {"change_id": change_id, "approver_id": approver_id, "approved_at": now},
+            )
+        return {
+            "change_id": change_id,
+            "rule_id": item["index_code"],
+            "hospital_id": item["hospital_id"],
+            "status": "approved",
+            "approval_status": "approved",
+            "active_version": int(item["version"]),
+            "active_version_id": str(item["version"]),
+            "override_path": f"mysql://{item['hospital_id']}/{item['index_code']}",
+            "approver_id": approver_id,
+            "approved_at": now,
+        }
+
+    def list_pending_changes(self) -> list[dict[str, Any]]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT * FROM med_index_hospital_custom_version
+                    WHERE approval_status='pending'
+                    ORDER BY id
+                    """
+                )
+            ).mappings().all()
+        result = []
+        for row in rows:
+            item = dict(row)
+            snapshot = _json_dict(item.get("snapshot_json"))
+            result.append(
+                {
+                    "change_id": item["change_id"],
+                    "rule_id": item["index_code"],
+                    "indicator_name": item["index_code"],
+                    "hospital_id": item["hospital_id"],
+                    "target_level": "hospital",
+                    "change_type": item["change_type"],
+                    "requested_definition": snapshot.get("requested_definition") or "",
+                    "requested_formula": snapshot.get("requested_formula") or "",
+                    "submitter_id": item.get("oper_user") or "",
+                    "status": "pending",
+                    "approval_status": "pending",
+                    "created_at": item.get("created_at"),
+                    "version": int(item["version"]),
+                }
+            )
+        return result
+
+    def reject_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT hospital_id, index_code, approval_status "
+                    "FROM med_index_hospital_custom_version WHERE change_id=:change_id"
+                ),
+                {"change_id": change_id},
+            ).mappings().first()
+            if row is None:
+                raise RuleNotFoundError(f"CHANGE_NOT_FOUND: {change_id}")
+            if row["approval_status"] != "pending":
+                raise ValueError("该变更已处理，不能重复拒绝")
+            conn.execute(
+                text(
+                    """
+                    UPDATE med_index_hospital_custom_version
+                    SET approval_status='rejected', approver_id=:approver_id,
+                        approved_at=:processed_at
+                    WHERE change_id=:change_id
+                    """
+                ),
+                {
+                    "change_id": change_id,
+                    "approver_id": approver_id,
+                    "processed_at": now,
+                },
+            )
+        return {
+            "change_id": change_id,
+            "rule_id": row["index_code"],
+            "hospital_id": row["hospital_id"],
+            "status": "rejected",
+            "approval_status": "rejected",
+            "approver_id": approver_id,
+            "rejected_at": now,
+        }
 
     def list_versions(self, index_code: str, hospital_id: str) -> dict[str, Any]:
-        raise NotImplementedError("MySQL rule writes are implemented in the versioning task")
+        with self.engine.connect() as conn:
+            current = conn.execute(
+                text(
+                    "SELECT version FROM med_index_hospital_custom "
+                    "WHERE hospital_id=:hospital_id AND index_code=:index_code"
+                ),
+                {"hospital_id": hospital_id, "index_code": index_code},
+            ).first()
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT * FROM med_index_hospital_custom_version
+                    WHERE hospital_id=:hospital_id AND index_code=:index_code
+                    ORDER BY version DESC
+                    """
+                ),
+                {"hospital_id": hospital_id, "index_code": index_code},
+            ).mappings().all()
+        active_version = int(current[0]) if current is not None else None
+        versions = []
+        for row in rows:
+            item = dict(row)
+            snapshot = _json_dict(item.get("snapshot_json"))
+            versions.append(
+                {
+                    "version_id": str(item["version"]),
+                    "version": int(item["version"]),
+                    "status": item["approval_status"],
+                    "source": item["change_type"],
+                    "definition": snapshot.get("requested_definition") or "",
+                    "formula": snapshot.get("requested_formula") or "",
+                    "custom_params": _json_dict(snapshot.get("custom_params")),
+                    "approver_id": item.get("approver_id") or "",
+                    "approved_at": item.get("approved_at"),
+                    "created_at": item.get("created_at"),
+                    "active": int(item["version"]) == active_version,
+                }
+            )
+        return {
+            "hospital_id": hospital_id,
+            "rule_id": index_code,
+            "active_version_id": str(active_version) if active_version is not None else None,
+            "versions": versions,
+        }
 
     def restore_version(
         self, index_code: str, hospital_id: str, version: int, approver_id: str
     ) -> dict[str, Any]:
-        raise NotImplementedError("MySQL rule writes are implemented in the versioning task")
+        now = datetime.now().isoformat(sep=" ", timespec="seconds")
+        change_id = f"RESTORE_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    SELECT snapshot_json FROM med_index_hospital_custom_version
+                    WHERE hospital_id=:hospital_id AND index_code=:index_code
+                      AND version=:version AND approval_status='approved'
+                    """
+                ),
+                {
+                    "hospital_id": hospital_id,
+                    "index_code": index_code,
+                    "version": int(version),
+                },
+            ).mappings().first()
+            if row is None:
+                raise RuleNotFoundError(f"VERSION_NOT_FOUND: {hospital_id}/{index_code}/{version}")
+            snapshot = _json_dict(row["snapshot_json"])
+            new_version = self._next_version(conn, hospital_id, index_code)
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_index_hospital_custom_version
+                      (change_id, hospital_id, index_code, version, approval_status,
+                       snapshot_json, source_version, change_type, oper_user,
+                       approver_id, created_at, approved_at)
+                    VALUES
+                      (:change_id, :hospital_id, :index_code, :version, 'approved',
+                       :snapshot_json, :source_version, 'restore', :approver_id,
+                       :approver_id, :created_at, :approved_at)
+                    """
+                ),
+                {
+                    "change_id": change_id,
+                    "hospital_id": hospital_id,
+                    "index_code": index_code,
+                    "version": new_version,
+                    "snapshot_json": json.dumps(snapshot, ensure_ascii=False),
+                    "source_version": int(version),
+                    "approver_id": approver_id,
+                    "created_at": now,
+                    "approved_at": now,
+                },
+            )
+            self._write_current(
+                conn, hospital_id, index_code, new_version, snapshot, approver_id, now
+            )
+        return {
+            "change_id": change_id,
+            "rule_id": index_code,
+            "hospital_id": hospital_id,
+            "status": "approved",
+            "active_version": new_version,
+            "active_version_id": str(new_version),
+            "restored_from_version": int(version),
+            "approver_id": approver_id,
+        }
+
+    @staticmethod
+    def _snapshot_from_current(current: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "custom_numerator": current.get("custom_numerator"),
+            "custom_denominator": current.get("custom_denominator"),
+            "custom_filter": current.get("custom_filter"),
+            "exclude_rule": current.get("exclude_rule"),
+            "custom_params": _json_dict(current.get("custom_params")),
+            "custom_sql": current.get("custom_sql"),
+            "status": int(current.get("status") or 1),
+            "effective_from": current.get("effective_from"),
+            "effective_to": current.get("effective_to"),
+        }
+
+    @staticmethod
+    def _next_version(conn: Any, hospital_id: str, index_code: str) -> int:
+        value = conn.execute(
+            text(
+                """
+                SELECT MAX(version) FROM med_index_hospital_custom_version
+                WHERE hospital_id=:hospital_id AND index_code=:index_code
+                """
+            ),
+            {"hospital_id": hospital_id, "index_code": index_code},
+        ).scalar_one()
+        return int(value or 0) + 1
+
+    @staticmethod
+    def _write_current(
+        conn: Any,
+        hospital_id: str,
+        index_code: str,
+        version: int,
+        snapshot: dict[str, Any],
+        oper_user: str,
+        now: str,
+    ) -> None:
+        params = {
+            "hospital_id": hospital_id,
+            "index_code": index_code,
+            "custom_numerator": snapshot.get("custom_numerator"),
+            "custom_denominator": snapshot.get("custom_denominator"),
+            "custom_filter": snapshot.get("custom_filter"),
+            "exclude_rule": snapshot.get("exclude_rule"),
+            "custom_params": json.dumps(
+                _json_dict(snapshot.get("custom_params")), ensure_ascii=False
+            ),
+            "custom_sql": snapshot.get("custom_sql"),
+            "version": int(version),
+            "status": int(snapshot.get("status") or 1),
+            "effective_from": snapshot.get("effective_from"),
+            "effective_to": snapshot.get("effective_to"),
+            "oper_user": oper_user,
+            "now": now,
+        }
+        exists = conn.execute(
+            text(
+                "SELECT 1 FROM med_index_hospital_custom "
+                "WHERE hospital_id=:hospital_id AND index_code=:index_code"
+            ),
+            params,
+        ).first()
+        if exists is None:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_index_hospital_custom
+                      (hospital_id, index_code, custom_numerator, custom_denominator,
+                       custom_filter, exclude_rule, custom_params, custom_sql,
+                       version, status, approval_status, effective_from, effective_to,
+                       oper_user, create_time, update_time)
+                    VALUES
+                      (:hospital_id, :index_code, :custom_numerator, :custom_denominator,
+                       :custom_filter, :exclude_rule, :custom_params, :custom_sql,
+                       :version, :status, 'approved', :effective_from, :effective_to,
+                       :oper_user, :now, :now)
+                    """
+                ),
+                params,
+            )
+            return
+        conn.execute(
+            text(
+                """
+                UPDATE med_index_hospital_custom
+                SET custom_numerator=:custom_numerator,
+                    custom_denominator=:custom_denominator,
+                    custom_filter=:custom_filter, exclude_rule=:exclude_rule,
+                    custom_params=:custom_params, custom_sql=:custom_sql,
+                    version=:version, status=:status, approval_status='approved',
+                    effective_from=:effective_from, effective_to=:effective_to,
+                    oper_user=:oper_user, update_time=:now
+                WHERE hospital_id=:hospital_id AND index_code=:index_code
+                """
+            ),
+            params,
+        )
 
 
 class WikiRuleSource:
@@ -353,6 +752,12 @@ class FallbackRuleRepository:
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.primary.submit_change_request(payload)
+
+    def list_pending_changes(self) -> list[dict[str, Any]]:
+        return self.primary.list_pending_changes()
+
+    def reject_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
+        return self.primary.reject_change_request(change_id, approver_id)
 
     def approve_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
         return self.primary.approve_change_request(change_id, approver_id)

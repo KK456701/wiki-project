@@ -262,6 +262,214 @@ def get_trace_record(engine: Engine, trace_id: str) -> dict[str, Any] | None:
     return result
 
 
+def ensure_recovery_task_table(engine: Engine) -> None:
+    if engine.dialect.name == "sqlite":
+        ddl = """
+        CREATE TABLE IF NOT EXISTS med_recovery_task (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id TEXT NOT NULL UNIQUE,
+          task_type TEXT NOT NULL,
+          task_name TEXT NOT NULL,
+          status TEXT NOT NULL,
+          current_step TEXT,
+          trace_id TEXT,
+          request_id TEXT,
+          hospital_id TEXT,
+          rule_id TEXT,
+          payload_json TEXT,
+          result_json TEXT,
+          error_message TEXT,
+          retry_count INTEGER DEFAULT 0,
+          recoverable_action TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          completed_at TEXT
+        )
+        """
+    else:
+        ddl = """
+        CREATE TABLE IF NOT EXISTS med_recovery_task (
+          id BIGINT PRIMARY KEY AUTO_INCREMENT,
+          task_id VARCHAR(64) NOT NULL UNIQUE,
+          task_type VARCHAR(64) NOT NULL,
+          task_name VARCHAR(255) NOT NULL,
+          status VARCHAR(32) NOT NULL,
+          current_step VARCHAR(128),
+          trace_id VARCHAR(64),
+          request_id VARCHAR(64),
+          hospital_id VARCHAR(64),
+          rule_id VARCHAR(64),
+          payload_json TEXT,
+          result_json TEXT,
+          error_message TEXT,
+          retry_count INT DEFAULT 0,
+          recoverable_action VARCHAR(64),
+          created_at DATETIME NOT NULL,
+          updated_at DATETIME NOT NULL,
+          completed_at DATETIME,
+          INDEX idx_recovery_status (status),
+          INDEX idx_recovery_type (task_type),
+          INDEX idx_recovery_trace (trace_id)
+        ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+        """
+    with engine.begin() as conn:
+        conn.execute(text(ddl))
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value or {}, ensure_ascii=False, default=str)
+
+
+def _parse_json_text(value: Any) -> Any:
+    if not value:
+        return {}
+    try:
+        return json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+
+
+def create_recovery_task(
+    engine: Engine,
+    task_type: str,
+    task_name: str,
+    current_step: str,
+    payload: dict[str, Any] | None = None,
+    trace_id: str = "",
+    request_id: str = "",
+    hospital_id: str = "",
+    rule_id: str = "",
+    recoverable_action: str = "retry",
+) -> str:
+    ensure_recovery_task_table(engine)
+    task_id = _uid("RT_")
+    now = _now()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_recovery_task
+                  (task_id, task_type, task_name, status, current_step, trace_id, request_id,
+                   hospital_id, rule_id, payload_json, result_json, error_message,
+                   retry_count, recoverable_action, created_at, updated_at, completed_at)
+                VALUES
+                  (:task_id, :task_type, :task_name, 'running', :current_step, :trace_id,
+                   :request_id, :hospital_id, :rule_id, :payload_json, '', '', 0,
+                   :recoverable_action, :created_at, :updated_at, NULL)
+                """
+            ),
+            {
+                "task_id": task_id,
+                "task_type": task_type,
+                "task_name": task_name,
+                "current_step": current_step,
+                "trace_id": trace_id or "",
+                "request_id": request_id or "",
+                "hospital_id": hospital_id or "",
+                "rule_id": rule_id or "",
+                "payload_json": _json_text(payload),
+                "recoverable_action": recoverable_action or "",
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+    return task_id
+
+
+def update_recovery_task(
+    engine: Engine,
+    task_id: str,
+    status: str | None = None,
+    current_step: str | None = None,
+    result: dict[str, Any] | None = None,
+    error_message: str | None = None,
+    increment_retry: bool = False,
+) -> None:
+    ensure_recovery_task_table(engine)
+    updates = ["updated_at=:updated_at"]
+    params: dict[str, Any] = {"task_id": task_id, "updated_at": _now()}
+    if status is not None:
+        updates.append("status=:status")
+        params["status"] = status
+        if status == "completed":
+            updates.append("completed_at=:completed_at")
+            params["completed_at"] = params["updated_at"]
+    if current_step is not None:
+        updates.append("current_step=:current_step")
+        params["current_step"] = current_step
+    if result is not None:
+        updates.append("result_json=:result_json")
+        params["result_json"] = _json_text(result)
+    if error_message is not None:
+        updates.append("error_message=:error_message")
+        params["error_message"] = error_message
+    if increment_retry:
+        updates.append("retry_count=COALESCE(retry_count, 0) + 1")
+    with engine.begin() as conn:
+        conn.execute(
+            text(f"UPDATE med_recovery_task SET {', '.join(updates)} WHERE task_id=:task_id"),
+            params,
+        )
+
+
+def complete_recovery_task(engine: Engine, task_id: str, result: dict[str, Any] | None = None) -> None:
+    update_recovery_task(engine, task_id, status="completed", result=result or {})
+
+
+def fail_recovery_task(engine: Engine, task_id: str, error_message: str, status: str = "failed_retryable") -> None:
+    update_recovery_task(engine, task_id, status=status, error_message=error_message)
+
+
+def ignore_recovery_task(engine: Engine, task_id: str) -> dict[str, Any] | None:
+    update_recovery_task(engine, task_id, status="ignored")
+    return get_recovery_task(engine, task_id)
+
+
+def mark_running_recovery_tasks_interrupted(engine: Engine) -> int:
+    ensure_recovery_task_table(engine)
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                """
+                UPDATE med_recovery_task
+                SET status='interrupted',
+                    error_message=CASE WHEN error_message='' OR error_message IS NULL THEN '服务上次中断，任务未正常收尾。' ELSE error_message END,
+                    updated_at=:updated_at
+                WHERE status='running'
+                """
+            ),
+            {"updated_at": _now()},
+        )
+        return int(result.rowcount or 0)
+
+
+def get_recovery_task(engine: Engine, task_id: str) -> dict[str, Any] | None:
+    ensure_recovery_task_table(engine)
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT * FROM med_recovery_task WHERE task_id=:task_id"),
+            {"task_id": task_id},
+        ).mappings().first()
+    return _recovery_row_to_dict(row) if row else None
+
+
+def list_recovery_tasks(engine: Engine, include_completed: bool = False) -> list[dict[str, Any]]:
+    ensure_recovery_task_table(engine)
+    where = "" if include_completed else "WHERE status NOT IN ('completed', 'ignored')"
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(f"SELECT * FROM med_recovery_task {where} ORDER BY id DESC")
+        ).mappings().all()
+    return [_recovery_row_to_dict(row) for row in rows]
+
+
+def _recovery_row_to_dict(row: Any) -> dict[str, Any]:
+    result = dict(row)
+    result["payload"] = _parse_json_text(result.pop("payload_json", ""))
+    result["result"] = _parse_json_text(result.pop("result_json", ""))
+    return result
+
+
 def insert_diagnose_report(engine: Engine, report_id: str, hospital_id: str, rule_id: str,
                            diagnose_type: str, problem_detail: str, repair_suggest: str,
                            repair_sql: str, trigger_type: str = "manual",
