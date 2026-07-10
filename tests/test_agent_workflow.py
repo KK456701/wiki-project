@@ -1,4 +1,5 @@
 import unittest
+import inspect
 from pathlib import Path
 from unittest.mock import patch
 
@@ -168,6 +169,20 @@ class DiagnoseFormattingTest(unittest.TestCase):
 
 
 class AgentWorkflowTest(unittest.TestCase):
+    def test_graph_does_not_keep_legacy_agent_business_duplicates(self) -> None:
+        import app.agent.graph as graph_module
+
+        source = inspect.getsource(graph_module)
+        for legacy_name in [
+            "_detect_intent",
+            "_apply_memory_context_if_needed",
+            "_generate_answer",
+            "_preview_feedback",
+            "_get_field_mapping",
+        ]:
+            with self.subTest(legacy_name=legacy_name):
+                self.assertNotIn(f"def {legacy_name}(", source)
+
     def test_run_chat_reports_workflow_engine(self) -> None:
         with temp_kb_dir() as tmp:
             root = Path(tmp)

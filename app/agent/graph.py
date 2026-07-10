@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import time
 import uuid
@@ -25,7 +24,6 @@ from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
 from app.observability.trace import TraceRecorder
 from app.observability.workflow_nodes import record_diagnose_trace_nodes
-from app.prompts import answer_prompt_template, intent_prompt_system
 
 
 class LLMClient(Protocol):
@@ -50,19 +48,6 @@ class AgentState(TypedDict, total=False):
     workflow_engine: str
     errors: list[str]
     _node_timings: dict[str, int]
-
-
-FEEDBACK_MARKERS = ["本院", "我们医院", "我院", "应该", "改成", "改为", "调整成", "修改成", "反馈", "按"]
-
-FOLLOW_UP_MARKERS = ["这个", "那个", "它", "上面", "刚才", "之前", "这个指标", "那个指标", "当前", "现在"]
-
-CHAT_EXACTS = {"你好", "您好", "嗨", "hi", "hello", "谢谢", "感谢", "好的", "ok", "OK"}
-CHAT_MARKERS = ["你是谁", "你能做什么", "你可以做什么", "怎么使用", "有什么用", "帮助"]
-KB_MARKERS = ["指标", "口径", "公式", "定义", "计算", "怎么算", "采用", "医院", "公司", "国标", "SQL", "字段", "急会诊", "会诊"]
-SQL_MARKERS = ["生成SQL", "生成 sql", "可执行SQL", "试运行SQL", "SQL怎么写", "生成可执行"]
-DIAG_MARKERS = ["排查", "异常", "为什么不对", "为什么算不出来", "根因", "诊断"]
-SYNC_MARKERS = ["同步元数据", "同步表结构", "扫描字段"]
-TRIAL_MARKERS = ["试运行", "运行SQL", "运行 sql", "执行SQL", "执行 sql"]
 
 
 def _create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
@@ -395,202 +380,6 @@ def langgraph_installed() -> bool:
 def workflow_engine_name() -> str:
     return "langgraph" if langgraph_installed() else "deterministic_fallback"
 
-
-def _intent_prompt(query: str, memory_context: dict[str, Any] | None = None) -> str:
-    history_block = ""
-    if memory_context:
-        last_rule = memory_context.get("rule_name", "")
-        if last_rule:
-            history_block = f"""
-上一轮对话上下文：
-- 上一轮用户查询的指标是：「{last_rule}」
-- 如果当前问题是追问（如"这个"、"当前"、"它"、"现在"），请结合上一轮指标来理解，并在 indicator_name 和 retrieval_query 中明确写出指标名。
-"""
-    return intent_prompt_system().format(history_block=history_block, query=query)
-
-
-def _extract_json_object(text: str) -> dict[str, Any]:
-    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text or "").strip()
-    cleaned = re.sub(r"^```json", "", cleaned).strip()
-    cleaned = re.sub(r"^```", "", cleaned).strip()
-    cleaned = re.sub(r"```$", "", cleaned).strip()
-    match = re.search(r"\{[\s\S]*\}", cleaned)
-    if not match:
-        return {}
-    try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return {}
-
-
-def _detect_intent(
-    query: str,
-    llm_client: LLMClient | None,
-    errors: list[str],
-    memory_context: dict[str, Any] | None = None,
-) -> dict[str, str]:
-    """返回 {"intent":..., "retrieval_query":..., "indicator_name":..., "custom_filters":...}。
-
-    LLM 可用时优先用 LLM 做意图识别 + 查询改写 + 过滤条件提取；
-    LLM 不可用或失败时回退到关键词规则，retrieval_query=原始query。
-    """
-    result: dict[str, Any] = {
-        "intent": detect_intent(query),
-        "retrieval_query": query,
-        "indicator_name": "",
-        "custom_filters": [],
-    }
-    if llm_client is not None:
-        try:
-            data = _extract_json_object(llm_client.generate(_intent_prompt(query, memory_context)))
-            intent = str(data.get("intent", "")).strip().lower()
-            if intent in {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run"}:
-                result["intent"] = intent
-            else:
-                errors.append("LLM_INTENT_INVALID_JSON")
-            retrieval = str(data.get("retrieval_query", "")).strip()
-            if result["intent"] == "chat":
-                result["retrieval_query"] = ""
-            elif retrieval:
-                result["retrieval_query"] = retrieval
-            indicator = str(data.get("indicator_name", "")).strip()
-            if indicator:
-                result["indicator_name"] = indicator
-            filters = data.get("custom_filters")
-            if isinstance(filters, list):
-                result["custom_filters"] = filters
-        except Exception as exc:
-            errors.append(str(exc))
-    return result
-
-
-
-def _apply_memory_context_if_needed(state: AgentState) -> None:
-    if state.get("rule_id"):
-        return
-    context = state.get("memory_context") or {}
-    context_rule_id = context.get("rule_id")
-    if not context_rule_id:
-        return
-    query = state.get("query", "")
-    if not HumanInteractionAgent.can_reuse_memory(
-        query, str(state.get("intent") or "query")
-    ):
-        return
-    state["rule_id"] = str(context_rule_id)
-    search = state.setdefault("search", {"query": query, "matches": []})
-    search["resolved_rule_id"] = str(context_rule_id)
-    search["context_source"] = "memory_last_rule"
-
-
-def _answer_chat(query: str) -> str:
-    return (
-        "你好，我是核心制度指标 Agent。"
-        "我可以帮你查询指标定义、计算公式、当前医院口径、公司标准和国标依据；"
-        "也可以在你反馈本院口径不一致时，生成差异确认并提交审批。"
-    )
-
-
-def _answer_from_rule(rule: dict[str, Any]) -> str:
-    lines = [
-        f"命中指标：{rule['rule_name']}（{rule['rule_id']}）。",
-        f"当前采用层级：{rule['effective_level']}。",
-    ]
-    if "hospital_override_not_configured" in rule.get("warnings", []):
-        lines.append("当前医院未配置已审核本院口径，已按公司标准并回退国标依据回答。")
-    if rule.get("definition"):
-        lines.append(f"定义：{rule['definition']}")
-    if rule.get("formula"):
-        lines.append(f"计算公式：{rule['formula']}")
-    if rule.get("implementation_status"):
-        lines.append(f"实现状态：{rule['implementation_status']}")
-    if rule.get("sql_status") != "available":
-        lines.append("SQL 状态：不可用，原因：字段映射或 SQL 未审核，禁止生成可执行 SQL。")
-    else:
-        lines.append("💡 SQL 状态：可用。你可以直接输入「生成 SQL」，我会为你生成可执行的 SQL 语句并试运行。")
-    return "\n".join(lines)
-
-
-def _process_steps(rule: dict[str, Any]) -> list[str]:
-    steps = [
-        f"识别并命中规则：{rule['rule_name']}（{rule['rule_id']}）",
-        "以国标为基础合成本院生效口径，必要时只读回退 Wiki",
-        f"当前采用层级：{rule['effective_level']}",
-    ]
-    if "hospital_override_not_configured" in rule.get("warnings", []):
-        steps.append("当前医院未配置已审核本院口径，回退公司标准和国标依据")
-    if rule.get("sql_status") != "available":
-        steps.append("字段映射或 SQL 未审核，禁止生成可执行 SQL")
-    else:
-        steps.append("字段映射已确认，可生成 SQL")
-    return steps
-
-
-def _build_answer_prompt(query: str, rule: dict[str, Any]) -> str:
-    steps = "\n".join(f"{idx}. {step}" for idx, step in enumerate(_process_steps(rule), start=1))
-    return answer_prompt_template().format(
-        query=query,
-        steps=steps,
-        rule_name=rule.get("rule_name", ""),
-        rule_id=rule.get("rule_id", ""),
-        effective_level=rule.get("effective_level", ""),
-        definition=rule.get("definition", ""),
-        formula=rule.get("formula", ""),
-        implementation_status=rule.get("implementation_status", ""),
-        field_status=rule.get("field_status", ""),
-        sql_status=rule.get("sql_status", ""),
-        warnings=", ".join(rule.get("warnings", [])),
-    )
-
-
-def _normalize_fact(text: str) -> str:
-    return "".join(str(text).split()).replace("（", "(").replace("）", ")")
-
-
-def _llm_answer_passes_guard(answer: str, rule: dict[str, Any]) -> bool:
-    formula = str(rule.get("formula") or "").strip()
-    if formula and _normalize_fact(formula) not in _normalize_fact(answer):
-        return False
-    if rule.get("sql_status") != "available" and "SQL" not in answer:
-        return False
-    return True
-
-
-def _generate_answer(query: str, rule: dict[str, Any], llm_client: LLMClient | None, errors: list[str]) -> tuple[str, str]:
-    if llm_client is None:
-        return _answer_from_rule(rule), "tool"
-    try:
-        answer = llm_client.generate(_build_answer_prompt(query, rule)).strip()
-        if answer and _llm_answer_passes_guard(answer, rule):
-            return answer, "llm"
-        errors.append("LLM_ANSWER_FAILED_FACT_GUARD")
-        return _answer_from_rule(rule), "llm_guarded_fallback"
-    except Exception as exc:
-        errors.append(str(exc))
-    return _answer_from_rule(rule), "tool_fallback"
-
-
-def _preview_feedback(state: AgentState, tools: Any, effective: dict[str, Any]) -> AgentState:
-    state["feedback_preview"] = tools.build_feedback_preview(
-        str(state["rule_id"]),
-        state.get("hospital_id"),
-        state["query"],
-    )
-    state["generation_method"] = "tool"
-    state["answer"] = (
-        "\u68c0\u6d4b\u5230\u672c\u9662\u53e3\u5f84\u53cd\u9988\uff0c\u5c1a\u672a\u5199\u5165\u5f85\u5ba1\u6279\u3002\n"
-        f"\u6307\u6807\u540d\u79f0\uff1a{effective['rule_name']}\n"
-        "\u8bf7\u5728\u53e3\u5f84\u5dee\u5f02\u786e\u8ba4\u7a97\u53e3\u4e2d\u9009\u62e9\u2018\u8bf7\u6c42\u53d8\u66f4\u2019\uff0c\u63d0\u4ea4\u540e\u624d\u4f1a\u8fdb\u5165 pending \u7b49\u5f85\u5ba1\u6279\u3002"
-    )
-    return state
-
-
-def _get_field_mapping(
-    tools: Any, rule_id: str, hospital_id: str | None
-) -> dict[str, Any]:
-    if isinstance(tools, KnowledgeBaseTools):
-        return tools.get_field_mapping(rule_id)
-    return tools.get_field_mapping(rule_id, hospital_id or "")
 
 def _run_deterministic(
     state: AgentState,

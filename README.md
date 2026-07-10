@@ -20,14 +20,16 @@
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
 - **知识库导出与回收合并**：医院可导出本院知识库压缩包，公司管理员上传后生成合并报告，对候选项逐项处理。
 - **会话记忆**：对话记忆写入 SQLite 与 JSONL，支持多轮追问和反馈上下文。
-- **五类 Agent 统一编排**：元数据解析、指标生成、口径适配、故障根因排查和人机交互 Agent 由 `CoreIndicatorOrchestrator` 统一路由，HTTP、LangGraph 适配器和 SSE 复用同一组领域能力。
+- **五类 Agent 统一编排**：元数据解析、指标生成、口径适配、故障根因排查和人机交互 Agent 由 `CoreIndicatorOrchestrator` 统一路由；HTTP、LangGraph 适配器和 SSE 统一调用“理解请求、检索规则、解析生效口径”三个编排阶段，不再绕过编排器直接访问专业 Agent。
+- **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
+- **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
 - **高级前端界面**：单页 HTML 前端，包含流式输出、状态流转、审批、版本、合并上传等操作入口。
 
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL
 - Agent：非流式 `/api/chat` 支持可选 LangGraph StateGraph；主前端 `/api/chat/stream` 采用自定义 Python 流式工作流，并按 Dify/LangGraph 风格记录节点 Trace
-- 编排：`CoreIndicatorOrchestrator` 负责五类 Agent 路由；LangGraph 和 SSE 只负责执行与流式适配，不承载领域逻辑
+- 编排：`CoreIndicatorOrchestrator` 负责五类 Agent 路由、请求准备、规则检索和口径解析；LangGraph 和 SSE 只负责执行、Trace 与流式适配，不承载领域逻辑
 - LLM：Ollama，本地模型默认 `qwen3:4B-instruct`
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
