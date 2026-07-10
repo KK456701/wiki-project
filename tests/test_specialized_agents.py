@@ -132,6 +132,48 @@ class SpecializedAgentTest(unittest.TestCase):
         self.assertTrue(precheck_result["ok"])
         self.assertEqual([call[0] for call in calls], ["sync", "precheck"])
 
+    def test_metadata_agent_delegates_draft_mapping_workflow(self) -> None:
+        from app.agents.metadata_parsing import MetadataParsingAgent
+
+        class Resolver:
+            def suggest(self, draft_id):
+                return {"draft_id": draft_id, "suggestions": {}}
+
+            def confirm(self, draft_id, expected_version, mappings, actor_id):
+                return {
+                    "draft_id": draft_id,
+                    "current_version": expected_version + 1,
+                    "status": "metadata_ready",
+                }
+
+        agent = MetadataParsingAgent(
+            object(), ".", draft_metadata_resolver=Resolver()
+        )
+
+        suggested = agent.suggest_draft_fields("DRAFT_001")
+        confirmed = agent.confirm_draft_fields(
+            "DRAFT_001", 1, {}, "user_001"
+        )
+
+        self.assertEqual(suggested["draft_id"], "DRAFT_001")
+        self.assertEqual(confirmed["status"], "metadata_ready")
+
+    def test_indicator_generation_agent_renders_structured_draft_sql(self) -> None:
+        from app.agents.indicator_generation import IndicatorGenerationAgent
+
+        calls = []
+
+        def renderer(plan, mappings):
+            calls.append((plan, mappings))
+            return {"sql_text": "SELECT 1", "params": {}}
+
+        agent = IndicatorGenerationAgent(object(), draft_sql_renderer=renderer)
+
+        result = agent.render_draft_sql({"metric_type": "count"}, {})
+
+        self.assertEqual(result["sql_text"], "SELECT 1")
+        self.assertEqual(len(calls), 1)
+
     def test_human_interaction_agent_understands_and_answers(self) -> None:
         from app.agents.contracts import IntentResult
         from app.agents.human_interaction import HumanInteractionAgent

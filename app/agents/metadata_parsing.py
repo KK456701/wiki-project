@@ -19,11 +19,13 @@ class MetadataParsingAgent:
         kb_root: str | Path,
         sync_fn: Callable[..., dict[str, Any]] = sync_metadata_from_provider,
         precheck_fn: Callable[..., dict[str, Any]] = precheck_rule_fields,
+        draft_metadata_resolver: Any | None = None,
     ):
         self.runtime_engine = runtime_engine
         self.kb_root = Path(kb_root)
         self._sync = sync_fn
         self._precheck = precheck_fn
+        self.draft_metadata_resolver = draft_metadata_resolver
 
     def sync(self, provider: Any, hospital_id: str, db_name: str) -> dict[str, Any]:
         return self._sync(
@@ -55,3 +57,22 @@ class MetadataParsingAgent:
         return MetadataPrecheckResult.model_validate(
             self.precheck(hospital_id, rule_id)
         )
+
+    def suggest_draft_fields(self, draft_id: str) -> dict[str, Any]:
+        if self.draft_metadata_resolver is None:
+            raise RuntimeError("指标设计稿元数据能力尚未配置")
+        return self.draft_metadata_resolver.suggest(draft_id)
+
+    def confirm_draft_fields(
+        self,
+        draft_id: str,
+        expected_version: int,
+        mappings: dict[str, dict[str, Any]],
+        actor_id: str,
+    ) -> dict[str, Any]:
+        if self.draft_metadata_resolver is None:
+            raise RuntimeError("指标设计稿元数据能力尚未配置")
+        result = self.draft_metadata_resolver.confirm(
+            draft_id, expected_version, mappings, actor_id
+        )
+        return result if isinstance(result, dict) else result.model_dump(exclude_none=True)

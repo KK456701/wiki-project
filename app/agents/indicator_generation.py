@@ -15,10 +15,16 @@ class IndicatorGenerationAgent:
         sql_executor: Any,
         draft_parser: Any | None = None,
         draft_repository: Any | None = None,
+        draft_sql_renderer: Any | None = None,
     ):
         self.sql_executor = sql_executor
         self.draft_parser = draft_parser
         self.draft_repository = draft_repository
+        if draft_sql_renderer is None:
+            from app.indicators.sql_plan import render_indicator_sql
+
+            draft_sql_renderer = render_indicator_sql
+        self.draft_sql_renderer = draft_sql_renderer
 
     def generate(self, **kwargs: Any) -> dict[str, Any]:
         return self.sql_executor.generate(**kwargs)
@@ -36,3 +42,8 @@ class IndicatorGenerationAgent:
         spec = self.draft_parser.parse(query, hospital_id)
         result = self.draft_repository.create(spec, actor_id)
         return result if isinstance(result, dict) else result.model_dump(exclude_none=True)
+
+    def render_draft_sql(
+        self, plan: dict[str, Any], mappings: dict[str, dict[str, Any]]
+    ) -> dict[str, Any]:
+        return self.draft_sql_renderer(plan, mappings)
