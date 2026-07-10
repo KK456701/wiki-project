@@ -56,6 +56,40 @@ class RuntimeMigrationTest(unittest.TestCase):
             }.issubset(columns)
         )
 
+    def test_monitoring_migration_reports_created_objects_once(self) -> None:
+        from app.monitoring.schema import ensure_monitoring_schema
+
+        engine = create_engine("sqlite://")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE med_index_run_result (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      hospital_id TEXT NOT NULL,
+                      rule_id TEXT NOT NULL,
+                      stat_period TEXT NOT NULL,
+                      result_value REAL,
+                      previous_value REAL,
+                      change_rate REAL,
+                      is_abnormal INTEGER NOT NULL DEFAULT 0,
+                      run_id TEXT,
+                      created_at TEXT NOT NULL
+                    )
+                    """
+                )
+            )
+
+        first = ensure_monitoring_schema(engine)
+        second = ensure_monitoring_schema(engine)
+
+        self.assertEqual(
+            first["created_tables"],
+            ["med_indicator_run_plan", "med_indicator_alert"],
+        )
+        self.assertIn("run_key", first["added_result_columns"])
+        self.assertEqual(second, {"created_tables": [], "added_result_columns": []})
+
 
 if __name__ == "__main__":
     unittest.main()

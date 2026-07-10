@@ -35,3 +35,9 @@ def ensure_diagnose_report_schema(engine: Engine) -> list[str]:
             )
             added.append(column_name)
     return added
+
+
+def ensure_monitoring_schema(engine: Engine) -> dict[str, list[str]]:
+    from app.monitoring.schema import ensure_monitoring_schema as ensure
+
+    return ensure(engine)
