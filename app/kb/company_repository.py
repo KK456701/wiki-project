@@ -259,6 +259,294 @@ class CompanyKnowledgeRepository:
             "approver_id": approver_id,
         }
 
+    def create_release(
+        self,
+        candidate_ids: list[str],
+        created_by: str,
+        notes: str = "",
+    ) -> dict[str, Any]:
+        unique_ids = list(dict.fromkeys(str(value).strip() for value in candidate_ids if str(value).strip()))
+        if not unique_ids:
+            raise CompanyKnowledgeError("RELEASE_CANDIDATES_REQUIRED")
+        release_id = f"REL_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        now = _now()
+        with self.engine.begin() as conn:
+            release_version = int(
+                conn.execute(text("SELECT MAX(version) FROM company_release")).scalar_one()
+                or 0
+            ) + 1
+            candidates: list[dict[str, Any]] = []
+            rule_ids: set[str] = set()
+            for candidate_id in unique_ids:
+                row = conn.execute(
+                    text(
+                        """
+                        SELECT * FROM company_rule_candidate
+                        WHERE candidate_id=:candidate_id
+                        """
+                    ),
+                    {"candidate_id": candidate_id},
+                ).mappings().first()
+                if row is None:
+                    raise CompanyKnowledgeError(f"CANDIDATE_NOT_FOUND: {candidate_id}")
+                candidate = dict(row)
+                if candidate["status"] != "approved" or candidate.get("release_id"):
+                    raise CompanyKnowledgeError(f"CANDIDATE_NOT_AVAILABLE: {candidate_id}")
+                rule_id = str(candidate["rule_id"])
+                if rule_id in rule_ids:
+                    raise CompanyKnowledgeError(f"DUPLICATE_RELEASE_RULE: {rule_id}")
+                rule_ids.add(rule_id)
+                candidates.append(candidate)
+
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO company_release
+                      (release_id, version, status, notes, created_by, created_at)
+                    VALUES
+                      (:release_id, :version, 'draft', :notes, :created_by, :created_at)
+                    """
+                ),
+                {
+                    "release_id": release_id,
+                    "version": release_version,
+                    "notes": notes,
+                    "created_by": created_by,
+                    "created_at": now,
+                },
+            )
+            for candidate in candidates:
+                candidate_id = str(candidate["candidate_id"])
+                payload = _standard_payload(candidate)
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO company_release_item
+                          (release_id, candidate_id, rule_id, payload_json)
+                        VALUES
+                          (:release_id, :candidate_id, :rule_id, :payload_json)
+                        """
+                    ),
+                    {
+                        "release_id": release_id,
+                        "candidate_id": candidate_id,
+                        "rule_id": candidate["rule_id"],
+                        "payload_json": _json_dump(payload),
+                    },
+                )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE company_rule_candidate
+                        SET status='in_release', release_id=:release_id
+                        WHERE candidate_id=:candidate_id
+                        """
+                    ),
+                    {"release_id": release_id, "candidate_id": candidate_id},
+                )
+        return self.read_release(release_id)
+
+    def publish_release(self, release_id: str, approver_id: str) -> dict[str, Any]:
+        now = _now()
+        with self.engine.begin() as conn:
+            release = conn.execute(
+                text("SELECT * FROM company_release WHERE release_id=:release_id"),
+                {"release_id": release_id},
+            ).mappings().first()
+            if release is None:
+                raise CompanyKnowledgeError(f"RELEASE_NOT_FOUND: {release_id}")
+            if release["status"] != "draft":
+                raise CompanyKnowledgeError("RELEASE_ALREADY_PROCESSED")
+            items = conn.execute(
+                text(
+                    """
+                    SELECT * FROM company_release_item
+                    WHERE release_id=:release_id ORDER BY rule_id
+                    """
+                ),
+                {"release_id": release_id},
+            ).mappings().all()
+            if not items:
+                raise CompanyKnowledgeError("RELEASE_ITEMS_REQUIRED")
+
+            for row in items:
+                payload = _json_load(row["payload_json"])
+                if not isinstance(payload, dict):
+                    raise CompanyKnowledgeError("INVALID_RELEASE_RULE_PAYLOAD")
+                rule_id = str(row["rule_id"])
+                current = conn.execute(
+                    text(
+                        """
+                        SELECT version FROM company_standard_rule
+                        WHERE rule_id=:rule_id
+                        """
+                    ),
+                    {"rule_id": rule_id},
+                ).first()
+                rule_version = int(current[0]) + 1 if current is not None else 1
+                version_payload = dict(payload)
+                version_payload["version"] = rule_version
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO company_standard_rule_version
+                          (rule_id, version, payload_json, source_release_id, created_at)
+                        VALUES
+                          (:rule_id, :version, :payload_json, :source_release_id,
+                           :created_at)
+                        """
+                    ),
+                    {
+                        "rule_id": rule_id,
+                        "version": rule_version,
+                        "payload_json": _json_dump(version_payload),
+                        "source_release_id": release_id,
+                        "created_at": now,
+                    },
+                )
+                standard_params = {
+                    "rule_id": rule_id,
+                    "rule_name": str(payload.get("rule_name") or rule_id),
+                    "definition": str(payload.get("definition") or ""),
+                    "formula": str(payload.get("formula") or ""),
+                    "payload_json": _json_dump(version_payload),
+                    "version": rule_version,
+                    "updated_at": now,
+                }
+                if current is None:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO company_standard_rule
+                              (rule_id, rule_name, definition, formula,
+                               payload_json, version, status, updated_at)
+                            VALUES
+                              (:rule_id, :rule_name, :definition, :formula,
+                               :payload_json, :version, 'published', :updated_at)
+                            """
+                        ),
+                        standard_params,
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE company_standard_rule
+                            SET rule_name=:rule_name, definition=:definition,
+                                formula=:formula, payload_json=:payload_json,
+                                version=:version, status='published',
+                                updated_at=:updated_at
+                            WHERE rule_id=:rule_id
+                            """
+                        ),
+                        standard_params,
+                    )
+                conn.execute(
+                    text(
+                        """
+                        UPDATE company_rule_candidate SET status='released'
+                        WHERE candidate_id=:candidate_id AND release_id=:release_id
+                        """
+                    ),
+                    {
+                        "candidate_id": row["candidate_id"],
+                        "release_id": release_id,
+                    },
+                )
+            conn.execute(
+                text(
+                    """
+                    UPDATE company_release
+                    SET status='published', approved_by=:approved_by,
+                        published_at=:published_at
+                    WHERE release_id=:release_id
+                    """
+                ),
+                {
+                    "approved_by": approver_id,
+                    "published_at": now,
+                    "release_id": release_id,
+                },
+            )
+        return self.read_release(release_id)
+
+    def list_releases(self) -> list[dict[str, Any]]:
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT release_id FROM company_release
+                    ORDER BY version DESC
+                    """
+                )
+            ).all()
+        return [self.read_release(str(row[0])) for row in rows]
+
+    def read_release(self, release_id: str) -> dict[str, Any]:
+        with self.engine.connect() as conn:
+            release = conn.execute(
+                text("SELECT * FROM company_release WHERE release_id=:release_id"),
+                {"release_id": release_id},
+            ).mappings().first()
+            if release is None:
+                raise CompanyKnowledgeError(f"RELEASE_NOT_FOUND: {release_id}")
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT candidate_id, rule_id, payload_json
+                    FROM company_release_item
+                    WHERE release_id=:release_id ORDER BY rule_id
+                    """
+                ),
+                {"release_id": release_id},
+            ).mappings().all()
+        return {
+            "release_id": str(release["release_id"]),
+            "version": int(release["version"]),
+            "status": str(release["status"]),
+            "notes": str(release.get("notes") or ""),
+            "created_by": str(release["created_by"]),
+            "approved_by": str(release.get("approved_by") or ""),
+            "created_at": str(release["created_at"]),
+            "published_at": str(release.get("published_at") or ""),
+            "items": [
+                {
+                    "candidate_id": str(row["candidate_id"]),
+                    "rule_id": str(row["rule_id"]),
+                    "payload": _json_load(row["payload_json"]),
+                }
+                for row in rows
+            ],
+        }
+
+    def export_release_zip(self, release_id: str) -> bytes:
+        release = self.read_release(release_id)
+        if release["status"] != "published":
+            raise CompanyKnowledgeError("RELEASE_NOT_PUBLISHED")
+        manifest = {
+            "release_id": release["release_id"],
+            "version": release["version"],
+            "format_version": "company-release-v1",
+            "published_at": release["published_at"],
+            "rule_count": len(release["items"]),
+            "contains_patient_data": False,
+        }
+        files: dict[str, bytes] = {"manifest.yaml": _yaml_bytes(manifest)}
+        for item in release["items"]:
+            files[f"rules/{item['rule_id']}.yaml"] = _yaml_bytes(item["payload"])
+        checksums = {
+            name: hashlib.sha256(content).hexdigest()
+            for name, content in sorted(files.items())
+        }
+        files["checksums.json"] = json.dumps(
+            checksums, ensure_ascii=False, indent=2, sort_keys=True
+        ).encode("utf-8")
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, content in sorted(files.items()):
+                zf.writestr(name, content)
+        return buffer.getvalue()
+
     def _build_items(self, files: dict[str, bytes]) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         override_names = sorted(
@@ -400,6 +688,23 @@ def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, 
     return manifest, files
 
 
+def _standard_payload(candidate: dict[str, Any]) -> dict[str, Any]:
+    source = _json_load(candidate.get("payload_json"))
+    if not isinstance(source, dict):
+        raise CompanyKnowledgeError("INVALID_CANDIDATE_PAYLOAD")
+    rule_id = str(candidate["rule_id"])
+    return {
+        "rule_id": rule_id,
+        "rule_name": str(source.get("rule_name") or rule_id),
+        "definition": str(source.get("definition") or ""),
+        "formula": str(source.get("formula") or ""),
+        "base_standard_version": str(source.get("base_standard_version") or ""),
+        "recommended_params": source.get("custom_params") or {},
+        "source_candidate_id": str(candidate["candidate_id"]),
+        "source_hospital_id": str(candidate["source_hospital_id"]),
+    }
+
+
 def _find_item(conn: Any, report_id: str, item_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
     package = conn.execute(
         text("SELECT * FROM company_kb_package WHERE report_id=:report_id"),
@@ -498,6 +803,10 @@ def _yaml_dict(content: bytes, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise CompanyKnowledgeError(f"YAML_OBJECT_REQUIRED: {name}")
     return value
+
+
+def _yaml_bytes(payload: dict[str, Any]) -> bytes:
+    return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False).encode("utf-8")
 
 
 def _extract_minutes(value: str) -> int | None:

@@ -143,6 +143,16 @@ class MergeItemDecisionRequest(BaseModel):
     reason: str | None = None
 
 
+class CompanyReleaseCreateRequest(BaseModel):
+    candidate_ids: list[str]
+    created_by: str | None = None
+    notes: str | None = None
+
+
+class CompanyReleasePublishRequest(BaseModel):
+    approver_id: str | None = None
+
+
 class RecoveryRetryRequest(BaseModel):
     approver_id: str | None = None
 
@@ -760,6 +770,76 @@ def kb_merge_item_reject(
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/kb/company/releases")
+def kb_company_releases(
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    return {"items": _create_company_repository().list_releases()}
+
+
+@app.post("/api/kb/company/releases")
+def kb_company_release_create(
+    body: CompanyReleaseCreateRequest,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return _create_company_repository().create_release(
+            body.candidate_ids,
+            body.created_by or "admin",
+            body.notes or "",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/kb/company/releases/{release_id}")
+def kb_company_release_detail(
+    release_id: str,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return _create_company_repository().read_release(release_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/kb/company/releases/{release_id}/publish")
+def kb_company_release_publish(
+    release_id: str,
+    body: CompanyReleasePublishRequest | None = None,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return _create_company_repository().publish_release(
+            release_id, (body.approver_id if body else None) or "admin"
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/kb/company/releases/{release_id}/export")
+def kb_company_release_export(
+    release_id: str,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> Response:
+    _require_admin(_token)
+    try:
+        data = _create_company_repository().export_release_zip(release_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{release_id}_company_release.zip"'
+        },
+    )
 
 
 @app.post("/api/admin/login")

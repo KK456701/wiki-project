@@ -12,6 +12,29 @@ from app.kb.company_repository import CompanyKnowledgeError, CompanyKnowledgeRep
 
 
 class CompanyKnowledgeRepositoryTest(unittest.TestCase):
+    def test_company_standard_bootstrap_is_idempotent(self) -> None:
+        from pathlib import Path
+
+        from app.kb.company_importer import import_company_standard_rules
+
+        engine = _company_engine()
+
+        first = import_company_standard_rules(engine, Path("core-rules-wiki"))
+        second = import_company_standard_rules(engine, Path("core-rules-wiki"))
+
+        with engine.connect() as conn:
+            current_count = conn.execute(
+                text("SELECT COUNT(*) FROM company_standard_rule")
+            ).scalar_one()
+            version_count = conn.execute(
+                text("SELECT COUNT(*) FROM company_standard_rule_version")
+            ).scalar_one()
+        self.assertEqual(len(first["inserted"]), 4)
+        self.assertEqual(len(second["skipped"]), 4)
+        self.assertEqual(first["failed"], [])
+        self.assertEqual(current_count, 4)
+        self.assertEqual(version_count, 4)
+
     def test_uploaded_report_survives_repository_recreation(self) -> None:
         engine = _company_engine()
         _insert_company_standard(engine)
@@ -67,6 +90,60 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
         self.assertEqual(candidate_count, 1)
         self.assertIn("10分钟", standard[0])
         self.assertEqual(standard[1], 1)
+
+    def test_publish_release_versions_standard_and_exports_fixed_package(self) -> None:
+        engine = _company_engine()
+        _insert_company_standard(engine)
+        repository = CompanyKnowledgeRepository(engine)
+        report = repository.create_merge_report(_exchange_package(), "admin")
+        item = next(
+            value for value in report["items"] if value["type"] == "caliber_conflict"
+        )
+        approved = repository.approve_merge_item(
+            report["report_id"],
+            item["item_id"],
+            "adopt_as_company_candidate",
+            "reviewer",
+        )
+
+        draft = repository.create_release(
+            [approved["candidate_id"]], "publisher", "首批医院经验"
+        )
+        with engine.connect() as conn:
+            before = conn.execute(
+                text("SELECT formula, version FROM company_standard_rule WHERE rule_id='R001'")
+            ).one()
+        published = repository.publish_release(draft["release_id"], "approver")
+        package = repository.export_release_zip(draft["release_id"])
+
+        with engine.connect() as conn:
+            after = conn.execute(
+                text("SELECT formula, version FROM company_standard_rule WHERE rule_id='R001'")
+            ).one()
+            versions = conn.execute(
+                text(
+                    "SELECT version FROM company_standard_rule_version "
+                    "WHERE rule_id='R001' ORDER BY version"
+                )
+            ).scalars().all()
+        with zipfile.ZipFile(io.BytesIO(package), "r") as zf:
+            manifest = yaml.safe_load(zf.read("manifest.yaml").decode("utf-8"))
+            rule = yaml.safe_load(zf.read("rules/R001.yaml").decode("utf-8"))
+            checksums = json.loads(zf.read("checksums.json").decode("utf-8"))
+            for name, expected in checksums.items():
+                self.assertEqual(hashlib.sha256(zf.read(name)).hexdigest(), expected)
+
+        self.assertEqual(draft["status"], "draft")
+        self.assertIn("10分钟", before[0])
+        self.assertEqual(before[1], 1)
+        self.assertEqual(published["status"], "published")
+        self.assertIn("20分钟", after[0])
+        self.assertEqual(after[1], 2)
+        self.assertEqual(versions, [1, 2])
+        self.assertEqual(manifest["format_version"], "company-release-v1")
+        self.assertEqual(manifest["release_id"], draft["release_id"])
+        self.assertEqual(rule["rule_id"], "R001")
+        self.assertNotIn("hospital_id", rule)
 
 
 def _company_engine():
@@ -168,6 +245,16 @@ def _insert_company_standard(engine) -> None:
                 "formula": payload["formula"],
                 "payload_json": json.dumps(payload, ensure_ascii=False),
             },
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO company_standard_rule_version
+                  (rule_id, version, payload_json, source_release_id, created_at)
+                VALUES ('R001', 1, :payload_json, NULL, '2026-07-10 00:00:00')
+                """
+            ),
+            {"payload_json": json.dumps(payload, ensure_ascii=False)},
         )
 
 

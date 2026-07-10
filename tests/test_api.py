@@ -11,7 +11,11 @@ from sqlalchemy.pool import StaticPool
 import app.api.main as api_main
 from app.api.main import app
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
-from tests.test_company_kb_repository import _company_engine
+from tests.test_company_kb_repository import (
+    _company_engine,
+    _exchange_package,
+    _insert_company_standard,
+)
 from tests.test_rule_repository import _rule_engine
 
 
@@ -471,6 +475,55 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(detail.status_code, 200)
             self.assertEqual(approved.status_code, 200)
             self.assertEqual(approved.json()["status"], "approved_candidate")
+
+    def test_company_release_api_creates_publishes_and_exports_version(self) -> None:
+        from app.kb.company_repository import CompanyKnowledgeRepository
+
+        company_engine = _company_engine()
+        _insert_company_standard(company_engine)
+        repository = CompanyKnowledgeRepository(company_engine)
+        report = repository.create_merge_report(_exchange_package(), "admin")
+        item = next(
+            value for value in report["items"] if value["type"] == "caliber_conflict"
+        )
+        candidate = repository.approve_merge_item(
+            report["report_id"],
+            item["item_id"],
+            "adopt_as_company_candidate",
+            "admin",
+        )
+        client = TestClient(app)
+
+        with patch("app.db.engine.create_company_engine", return_value=company_engine):
+            login = client.post("/api/admin/login", json={"password": "admin123"})
+            headers = {"Authorization": f"Bearer {login.json()['token']}"}
+            created = client.post(
+                "/api/kb/company/releases",
+                headers=headers,
+                json={
+                    "candidate_ids": [candidate["candidate_id"]],
+                    "created_by": "publisher",
+                    "notes": "首批医院经验",
+                },
+            )
+            release_id = created.json()["release_id"]
+            published = client.post(
+                f"/api/kb/company/releases/{release_id}/publish",
+                headers=headers,
+                json={"approver_id": "approver"},
+            )
+            listed = client.get("/api/kb/company/releases", headers=headers)
+            exported = client.get(
+                f"/api/kb/company/releases/{release_id}/export", headers=headers
+            )
+
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(created.json()["status"], "draft")
+        self.assertEqual(published.status_code, 200)
+        self.assertEqual(published.json()["status"], "published")
+        self.assertEqual(listed.json()["items"][0]["release_id"], release_id)
+        self.assertEqual(exported.status_code, 200)
+        self.assertEqual(exported.headers["content-type"], "application/zip")
 
     def test_review_api_creates_and_approves_hospital_change_request(self) -> None:
         from app.observability.trace import TraceRecorder
