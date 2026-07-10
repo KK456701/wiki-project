@@ -155,6 +155,14 @@ def _node_duration(state: dict[str, Any], node_name: str) -> int:
     return 0
 
 
+def _search_match_count(search: dict[str, Any]) -> int:
+    for key in ("matches", "results"):
+        value = search.get(key)
+        if isinstance(value, list):
+            return len(value)
+    return 0
+
+
 def _prepared_request_from_state(state: AgentState) -> PreparedRequest:
     return PreparedRequest(
         query=str(state.get("query") or ""),
@@ -435,8 +443,9 @@ def _apply_memory_context_if_needed(state: AgentState) -> None:
     if not context_rule_id:
         return
     query = state.get("query", "")
-    can_use_context = state.get("intent") == "feedback" or any(marker in query for marker in FOLLOW_UP_MARKERS)
-    if not can_use_context:
+    if not HumanInteractionAgent.can_reuse_memory(
+        query, str(state.get("intent") or "query")
+    ):
         return
     state["rule_id"] = str(context_rule_id)
     search = state.setdefault("search", {"query": query, "matches": []})
@@ -568,6 +577,8 @@ def _run_deterministic(
         query, state.get("memory_context"), errors
     )
     state["intent"] = intent_data["intent"]
+    state["_rewritten_query"] = intent_data.get("rewritten_query", query)  # type: ignore[typeddict-unknown-key]
+    state["_indicator_name"] = intent_data.get("indicator_name", "")  # type: ignore[typeddict-unknown-key]
     if state["intent"] == "chat":
         state["rule_id"] = None
         state["generation_method"] = "chat"
@@ -575,6 +586,8 @@ def _run_deterministic(
         return state
     search_query = intent_data["retrieval_query"] or query
     search = active_orchestrator.caliber.search(search_query, limit=5)
+    if intent_data.get("context_source"):
+        search.setdefault("context_source", intent_data["context_source"])
     state["search"] = search
     rule_id = search.get("resolved_rule_id")
     state["rule_id"] = rule_id
@@ -636,6 +649,9 @@ def _run_langgraph(
         )
         s["intent"] = intent_data["intent"]
         s["_retrieval_query"] = intent_data["retrieval_query"]  # type: ignore[typeddict-unknown-key]
+        s["_rewritten_query"] = intent_data.get("rewritten_query", s["query"])  # type: ignore[typeddict-unknown-key]
+        s["_indicator_name"] = intent_data.get("indicator_name", "")  # type: ignore[typeddict-unknown-key]
+        s["_context_source"] = intent_data.get("context_source")  # type: ignore[typeddict-unknown-key]
         _record_node_duration(s, "intent_detect", node_start)
         return s
 
@@ -651,6 +667,8 @@ def _run_langgraph(
         node_start = time.perf_counter()
         search_query = s.get("_retrieval_query") or s["query"]  # type: ignore[typeddict-item]
         s["search"] = active_orchestrator.caliber.search(str(search_query), limit=5)
+        if s.get("_context_source"):  # type: ignore[typeddict-item]
+            s["search"].setdefault("context_source", s["_context_source"])  # type: ignore[typeddict-item]
         s["rule_id"] = s["search"].get("resolved_rule_id")
         _apply_memory_context_if_needed(s)
         _record_node_duration(s, "rule_search", node_start)
@@ -909,6 +927,8 @@ def run_chat(
         output_data={
             "intent": result.get("intent"),
             "retrieval_query": (result.get("search") or {}).get("query", query) if isinstance(result.get("search"), dict) else query,
+            "rewritten_query": result.get("_rewritten_query", query),
+            "indicator_name": result.get("_indicator_name", ""),
             "custom_filters": result.get("_custom_filters", []),
         },
         config_data={
@@ -934,7 +954,8 @@ def run_chat(
             },
             output_data={
                 "rule_id": result.get("rule_id"),
-                "matched_count": len(search_payload.get("results", [])) if isinstance(search_payload.get("results"), list) else 0,
+                "matched_count": _search_match_count(search_payload),
+                "context_source": search_payload.get("context_source"),
             },
             config_data={
                 "tool": "RuleRepository.search",
@@ -1085,6 +1106,8 @@ def run_chat_stream(
     intent_duration_ms = _elapsed_ms(intent_start)
     state["intent"] = intent_data["intent"]
     state["_custom_filters"] = intent_data.get("custom_filters", [])  # type: ignore[typeddict-unknown-key]
+    state["_rewritten_query"] = intent_data.get("rewritten_query", query)  # type: ignore[typeddict-unknown-key]
+    state["_indicator_name"] = intent_data.get("indicator_name", "")  # type: ignore[typeddict-unknown-key]
     _record_trace_node(
         trace_recorder,
         trace_id,
@@ -1101,6 +1124,9 @@ def run_chat_stream(
         output_data={
             "intent": state.get("intent"),
             "retrieval_query": intent_data.get("retrieval_query"),
+            "rewritten_query": intent_data.get("rewritten_query", query),
+            "indicator_name": intent_data.get("indicator_name", ""),
+            "context_source": intent_data.get("context_source"),
             "custom_filters": intent_data.get("custom_filters", []),
         },
         config_data={
@@ -1194,10 +1220,12 @@ def run_chat_stream(
         return
 
     try:
-        yield ("progress", {"message": "\u6b63\u5728\u68c0\u7d22\u672c\u5730 Wiki \u77e5\u8bc6\u5e93"})
+        yield ("progress", {"message": "正在检索 MySQL 指标规则库"})
         search_query = intent_data["retrieval_query"] or query
         search_start = time.perf_counter()
         search = active_orchestrator.caliber.search(search_query, limit=5)
+        if intent_data.get("context_source"):
+            search.setdefault("context_source", intent_data["context_source"])
         search_duration_ms = _elapsed_ms(search_start)
     except KBToolError as exc:
         yield ("meta", {
@@ -1233,7 +1261,8 @@ def run_chat_stream(
         },
         output_data={
             "rule_id": rule_id,
-            "matched_count": len(search.get("results", [])) if isinstance(search.get("results"), list) else 0,
+            "matched_count": _search_match_count(search),
+            "context_source": search.get("context_source"),
         },
         config_data={
             "tool": "RuleRepository.search",

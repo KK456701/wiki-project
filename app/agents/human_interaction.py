@@ -22,6 +22,18 @@ DIAG_MARKERS = ["排查", "异常", "为什么不对", "为什么算不出来", 
 SYNC_MARKERS = ["同步元数据", "同步表结构", "扫描字段"]
 TRIAL_MARKERS = ["试运行", "运行SQL", "运行 sql", "执行SQL", "执行 sql"]
 
+ACTION_QUERY_TEMPLATES = {
+    "generate_sql": "生成{rule_name} SQL",
+    "trial_run": "试运行{rule_name} SQL",
+    "diagnose": "诊断{rule_name}",
+}
+
+CONTEXT_ONLY_ACTIONS = {
+    "generate_sql": {"生成sql", "生成可执行sql"},
+    "trial_run": {"试运行", "试运行sql", "运行sql", "执行sql"},
+    "diagnose": {"诊断", "排查", "异常诊断", "根因排查"},
+}
+
 
 def detect_intent_by_rule(query: str) -> str:
     q = (query or "").strip()
@@ -79,35 +91,64 @@ class HumanInteractionAgent:
         result: dict[str, Any] = {
             "intent": detect_intent_by_rule(query),
             "retrieval_query": query,
+            "rewritten_query": query,
             "indicator_name": "",
             "custom_filters": [],
         }
-        if self.llm_client is None:
-            return result
-        try:
-            data = _extract_json_object(
-                self.llm_client.generate(self._intent_prompt(query, memory_context))
-            )
-            intent = str(data.get("intent", "")).strip().lower()
-            valid = {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run"}
-            if intent in valid:
-                result["intent"] = intent
-            else:
-                error_list.append("LLM_INTENT_INVALID_JSON")
-            retrieval = str(data.get("retrieval_query", "")).strip()
-            if result["intent"] == "chat":
-                result["retrieval_query"] = ""
-            elif retrieval:
-                result["retrieval_query"] = retrieval
-            indicator = str(data.get("indicator_name", "")).strip()
-            if indicator:
-                result["indicator_name"] = indicator
-            filters = data.get("custom_filters")
-            if isinstance(filters, list):
-                result["custom_filters"] = filters
-        except Exception as exc:
-            error_list.append(str(exc))
+        if self.llm_client is not None:
+            try:
+                data = _extract_json_object(
+                    self.llm_client.generate(self._intent_prompt(query, memory_context))
+                )
+                intent = str(data.get("intent", "")).strip().lower()
+                valid = {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run"}
+                if intent in valid:
+                    result["intent"] = intent
+                else:
+                    error_list.append("LLM_INTENT_INVALID_JSON")
+                retrieval = str(data.get("retrieval_query", "")).strip()
+                if result["intent"] == "chat":
+                    result["retrieval_query"] = ""
+                elif retrieval:
+                    result["retrieval_query"] = retrieval
+                indicator = str(data.get("indicator_name", "")).strip()
+                if indicator:
+                    result["indicator_name"] = indicator
+                filters = data.get("custom_filters")
+                if isinstance(filters, list):
+                    result["custom_filters"] = filters
+            except Exception as exc:
+                error_list.append(str(exc))
+        self._rewrite_contextual_action(result, query, memory_context)
         return result
+
+    @classmethod
+    def _rewrite_contextual_action(
+        cls,
+        result: dict[str, Any],
+        query: str,
+        memory_context: dict[str, Any] | None,
+    ) -> None:
+        intent = str(result.get("intent") or "")
+        template = ACTION_QUERY_TEMPLATES.get(intent)
+        if not template:
+            return
+        rule_name = str(result.get("indicator_name") or "").strip()
+        memory_rule_name = str((memory_context or {}).get("rule_name") or "").strip()
+        uses_memory = bool(
+            memory_rule_name
+            and cls.can_reuse_memory(query, intent)
+            and (not rule_name or rule_name == memory_rule_name)
+        )
+        if not rule_name and uses_memory:
+            rule_name = memory_rule_name
+        if not rule_name:
+            return
+        if uses_memory:
+            result["context_source"] = "memory_last_rule"
+        result["indicator_name"] = rule_name
+        result["retrieval_query"] = rule_name
+        result["rewritten_query"] = template.format(rule_name=rule_name)
 
     def answer(
         self,
@@ -193,7 +234,10 @@ class HumanInteractionAgent:
 
     @staticmethod
     def can_reuse_memory(query: str, intent: str) -> bool:
-        return intent == "feedback" or any(marker in query for marker in FOLLOW_UP_MARKERS)
+        if intent == "feedback" or any(marker in query for marker in FOLLOW_UP_MARKERS):
+            return True
+        compact = re.sub(r"[\s，。！？、,.!?]+", "", query or "").lower()
+        return compact in CONTEXT_ONLY_ACTIONS.get(intent, set())
 
     @staticmethod
     def _intent_prompt(

@@ -5,7 +5,12 @@ from unittest.mock import patch
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
-from app.agent.graph import _format_diagnose_answer, run_chat, run_chat_stream
+from app.agent.graph import (
+    _format_diagnose_answer,
+    _search_match_count,
+    run_chat,
+    run_chat_stream,
+)
 from app.observability.trace import TraceRecorder
 from app.memory.store import ConversationMemory
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
@@ -48,6 +53,14 @@ class BadFormulaLLM:
 class FailingLLM:
     def generate(self, prompt: str) -> str:
         raise RuntimeError("ollama unavailable")
+
+
+class ContextOnlySQLCommandLLM:
+    def generate(self, prompt: str) -> str:
+        return (
+            '{"intent":"generate_sql","indicator_name":"急会诊及时到位率",'
+            '"retrieval_query":"生成 SQL","custom_filters":[]}'
+        )
 
 
 class FakeSQLGenerationAgent:
@@ -541,6 +554,67 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(by_name["field_mapping_precheck"]["output_data"]["ok"], True)
             self.assertEqual(by_name["sql_generate"]["output_data"]["sql_id"], "SQL_TRACE_TEST")
             self.assertEqual(by_name["sql_validate"]["output_data"]["ok"], True)
+
+    def test_sql_command_reuses_previous_session_rule_context(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent):
+                first = run_chat(
+                    "急会诊及时到位率怎么算？",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                    session_id="sql-memory-session",
+                    memory=memory,
+                )
+                events = list(run_chat_stream(
+                    "生成 SQL",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=ContextOnlySQLCommandLLM(),
+                    session_id=first["session_id"],
+                    memory=memory,
+                ))
+
+            done = next(data for event, data in reversed(events) if event == "done")
+            trace = TraceRecorder(engine).get_trace(done["trace_id"])
+            search_node = next(
+                node for node in trace["nodes"] if node["node_name"] == "rule_search"
+            )
+            intent_node = next(
+                node for node in trace["nodes"] if node["node_name"] == "intent_detect"
+            )
+
+            self.assertEqual(done["intent"], "generate_sql")
+            self.assertEqual(done["rule_id"], "R001")
+            self.assertEqual(len(FakeSQLGenerationAgent.calls), 1)
+            self.assertEqual(
+                intent_node["output_data"]["rewritten_query"],
+                "生成急会诊及时到位率 SQL",
+            )
+            self.assertEqual(
+                intent_node["output_data"]["retrieval_query"],
+                "急会诊及时到位率",
+            )
+            self.assertEqual(
+                intent_node["output_data"]["context_source"],
+                "memory_last_rule",
+            )
+            self.assertEqual(
+                search_node["input_data"]["retrieval_query"],
+                "急会诊及时到位率",
+            )
+
+    def test_search_match_count_accepts_mysql_repository_shape(self) -> None:
+        self.assertEqual(_search_match_count({"matches": [{}, {}]}), 2)
+        self.assertEqual(_search_match_count({"results": [{}]}), 1)
 
     def test_trial_run_trace_records_mcp_execution_node(self) -> None:
         FakeSQLGenerationAgent.calls = []

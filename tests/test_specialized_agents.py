@@ -127,6 +127,33 @@ class SpecializedAgentTest(unittest.TestCase):
         self.assertEqual(method, "tool")
         self.assertIn("20分钟", answer)
 
+    def test_human_interaction_reuses_memory_for_contextual_actions(self) -> None:
+        from app.agents.human_interaction import HumanInteractionAgent
+
+        for query, intent in [
+            ("生成 SQL", "generate_sql"),
+            ("试运行", "trial_run"),
+            ("诊断", "diagnose"),
+            ("按20分钟计算", "feedback"),
+        ]:
+            with self.subTest(intent=intent):
+                self.assertTrue(HumanInteractionAgent.can_reuse_memory(query, intent))
+
+    def test_human_interaction_rewrites_context_only_sql_command(self) -> None:
+        from app.agents.human_interaction import HumanInteractionAgent
+
+        understood = HumanInteractionAgent().understand(
+            "生成 SQL",
+            {
+                "rule_id": "MQSI2025_005",
+                "rule_name": "急会诊及时到位率",
+            },
+        )
+
+        self.assertEqual(understood["intent"], "generate_sql")
+        self.assertEqual(understood["rewritten_query"], "生成急会诊及时到位率 SQL")
+        self.assertEqual(understood["retrieval_query"], "急会诊及时到位率")
+
 
 if __name__ == "__main__":
     unittest.main()
