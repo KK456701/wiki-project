@@ -34,6 +34,28 @@ class MonitoringUiTest(unittest.TestCase):
         self.assertIn(".monitoring-plan-layout", css)
         self.assertIn("@media (max-width: 760px)", css)
 
+    def test_monitoring_script_manages_plans_and_manual_runs(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "monitoring.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "function openMonitoringWorkbench",
+            "function loadMonitoringHealth",
+            "function loadMonitoringPlans",
+            "function saveMonitoringPlan",
+            "function setMonitoringPlanStatus",
+            "function runMonitoringPlan",
+            '"/api/monitoring/plans"',
+            '"enable"',
+            '"disable"',
+            '"/run"',
+            '"/api/health/summary"',
+            "showTrace(result.trace_id)",
+        ):
+            self.assertIn(marker, js)
+        self.assertIn('requireAdminThenOpen("monitoring")', html)
+        self.assertIn('area === "monitoring"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

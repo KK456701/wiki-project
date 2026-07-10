@@ -862,6 +862,7 @@ var recoveryModal = document.getElementById("recoveryModal");
 var recoveryMeta = document.getElementById("recoveryMeta");
 var recoveryList = document.getElementById("recoveryList");
 var refreshRecoveryButton = document.getElementById("refreshRecoveryButton");
+var monitoringButton = document.getElementById("monitoringButton");
 var mcpButton = document.getElementById("mcpButton");
 var mcpModal = document.getElementById("mcpModal");
 var loadMcpSourcesButton = document.getElementById("loadMcpSourcesButton");
@@ -956,6 +957,10 @@ function openAdminArea(area) {
     loadRecoveryTasks();
     return;
   }
+  if (area === "monitoring") {
+    window.openMonitoringWorkbench();
+    return;
+  }
   reviewModal.hidden = false;
   switchReviewTab("caliber");
   loadPendingReviews();
@@ -983,6 +988,10 @@ selfCheckButton.addEventListener("click", function() {
 
 recoveryButton.addEventListener("click", function() {
   requireAdminThenOpen("recovery");
+});
+
+monitoringButton.addEventListener("click", function() {
+  requireAdminThenOpen("monitoring");
 });
 
 mcpButton.addEventListener("click", function() {
