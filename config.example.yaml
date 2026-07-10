@@ -28,6 +28,11 @@ metadata_max_age_hours: 24
 allow_sql_trial_run: true
 sql_run_timeout_seconds: 10
 
+# 指标运算调度器。关闭后仍可通过管理接口手动重算。
+monitoring_scheduler_enabled: true
+monitoring_scheduler_timezone: "Asia/Shanghai"
+monitoring_scheduler_lease_seconds: 600
+
 # 本地 MVP 审批页管理员密码。正式部署前必须修改。
 admin_password: "CHANGE_ME"
 

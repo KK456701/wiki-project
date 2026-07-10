@@ -25,6 +25,15 @@ from app.db_access.dbhub_mcp import DBHubMCPClient, DBHubMCPError, dbhub_sources
 from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.observability.trace import TraceRecorder
+from app.monitoring.repository import MonitoringRepository
+from app.monitoring.runtime import (
+    get_monitoring_scheduler,
+    monitoring_scheduler_status,
+    set_monitoring_scheduler,
+    set_monitoring_scheduler_disabled,
+    set_monitoring_scheduler_error,
+)
+from app.monitoring.schema import ensure_monitoring_schema
 from app.rules.repository import RuleNotFoundError, create_rule_repository
 from app.rules.importer import import_four_indicator_rules
 from app.observability.workflow_nodes import (
@@ -32,6 +41,7 @@ from app.observability.workflow_nodes import (
     record_metadata_sync_trace_node,
     record_review_trace_node,
 )
+from app.tasks.scheduler import MonitoringScheduler
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -226,6 +236,44 @@ app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
 
 
+def start_monitoring_scheduler() -> None:
+    if get("monitoring_scheduler_enabled", "true").strip().lower() not in {
+        "true", "1", "yes", "on"
+    }:
+        set_monitoring_scheduler_disabled()
+        return
+    try:
+        from app.db.engine import create_runtime_engine
+        from app.db.repositories import mark_running_recovery_tasks_interrupted
+        from app.monitoring.factory import create_monitoring_service
+
+        engine = create_runtime_engine()
+        ensure_monitoring_schema(engine)
+        mark_running_recovery_tasks_interrupted(engine)
+        scheduler = MonitoringScheduler(
+            MonitoringRepository(engine),
+            service_factory=lambda: create_monitoring_service(engine),
+            timezone_name=get(
+                "monitoring_scheduler_timezone", "Asia/Shanghai"
+            ),
+        )
+        scheduler.start()
+        set_monitoring_scheduler(scheduler)
+    except Exception as exc:
+        logger.exception("monitoring scheduler startup failed")
+        set_monitoring_scheduler_error(str(exc))
+
+
+def stop_monitoring_scheduler() -> None:
+    scheduler = get_monitoring_scheduler()
+    if scheduler is not None:
+        scheduler.shutdown()
+
+
+app.add_event_handler("startup", start_monitoring_scheduler)
+app.add_event_handler("shutdown", stop_monitoring_scheduler)
+
+
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
@@ -341,6 +389,8 @@ def _collect_dependency_checks() -> dict[str, dict[str, Any]]:
     except Exception as exc:
         checks["dbhub_http"] = _dependency_check(False, "DBHUB_HTTP_UNAVAILABLE", error=str(exc))
 
+    checks["monitoring_scheduler"] = monitoring_scheduler_status()
+
     return checks
 
 
@@ -351,6 +401,7 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
         "business_db_mcp": "业务数据库",
         "dbhub_http": "DBHub 服务",
         "langgraph": "流程引擎",
+        "monitoring_scheduler": "指标调度器",
     }
     descriptions = {
         "fastapi": "负责页面和接口请求。",
@@ -358,6 +409,7 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
         "business_db_mcp": "通过 DBHub 访问医院业务数据。",
         "dbhub_http": "提供数据库工具、元数据同步和 SQL 试运行能力。",
         "langgraph": "非流式接口可使用的流程编排引擎。",
+        "monitoring_scheduler": "按运行计划定时计算指标，并触发波动预警。",
     }
     suggestions = {
         "runtime_db": "检查 runtime 数据库是否已初始化，以及 config.yaml 中 runtime_db_url 是否正确。",
@@ -365,6 +417,7 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
         "dbhub_http": "检查 DBHub sidecar 是否运行在 127.0.0.1:8080，并确认 dbhub.local.toml 连接串正确。",
         "langgraph": "如果需要 LangGraph 流程能力，请安装 langgraph；主前端流式问答不依赖它。",
         "fastapi": "检查后端服务日志。",
+        "monitoring_scheduler": "检查运行数据库迁移、APScheduler 依赖和调度器配置。",
     }
     ok = bool(check.get("ok", False))
     if key == "langgraph" and not ok:
@@ -378,7 +431,7 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
             "problem_code": str(check.get("code") or ""),
             "detail": "",
         }
-    return {
+    item = {
         "key": key,
         "name": names.get(key, key),
         "status": "ok" if ok else "failed",
@@ -388,12 +441,19 @@ def _health_summary_item(key: str, check: dict[str, Any]) -> dict[str, Any]:
         "problem_code": "" if ok else str(check.get("code") or ""),
         "detail": "" if ok else str(check.get("error") or ""),
     }
+    if key == "monitoring_scheduler":
+        item["enabled_plan_count"] = int(check.get("enabled_plan_count") or 0)
+        item["job_count"] = int(check.get("job_count") or 0)
+    return item
 
 
 def _build_health_summary(request_id: str) -> dict[str, Any]:
     checks = _collect_dependency_checks()
     status = _health_status(checks)
-    order = ["fastapi", "runtime_db", "dbhub_http", "business_db_mcp", "langgraph"]
+    order = [
+        "fastapi", "runtime_db", "dbhub_http", "business_db_mcp",
+        "monitoring_scheduler", "langgraph",
+    ]
     return {
         "title": "系统自检",
         "status": status,

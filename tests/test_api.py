@@ -20,6 +20,11 @@ from tests.test_rule_repository import _rule_engine
 
 
 class ApiTest(unittest.TestCase):
+    def tearDown(self) -> None:
+        from app.monitoring.runtime import reset_monitoring_scheduler
+
+        reset_monitoring_scheduler()
+
     def test_domain_endpoints_do_not_bypass_orchestrator_rule_preparation(self) -> None:
         self.assertNotIn(".caliber.", inspect.getsource(api_main.sql_generate))
         self.assertNotIn(".caliber.", inspect.getsource(api_main.diagnose_run))
@@ -741,6 +746,66 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(any(item["status_text"] == "异常" for item in data["items"]))
         self.assertTrue(any(item["suggestion"] for item in data["items"] if item["status_text"] == "异常"))
         self.assertNotIn("checks", data)
+
+    def test_monitoring_scheduler_lifecycle_updates_health_summary(self) -> None:
+        class FakeScheduler:
+            def __init__(self) -> None:
+                self.started = 0
+                self.stopped = 0
+
+            def start(self):
+                self.started += 1
+
+            def shutdown(self):
+                self.stopped += 1
+
+            def status(self):
+                return {
+                    "ok": True,
+                    "code": "OK",
+                    "critical": True,
+                    "enabled_plan_count": 1,
+                    "job_count": 1,
+                }
+
+        scheduler = FakeScheduler()
+        engine = _trace_runtime_engine()
+        with patch.object(api_main, "get", return_value="true"), \
+             patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "ensure_monitoring_schema"), \
+             patch.object(api_main, "MonitoringRepository"), \
+             patch.object(api_main, "MonitoringScheduler", return_value=scheduler):
+            api_main.start_monitoring_scheduler()
+            summary = api_main._build_health_summary("REQ_SCHEDULER")
+            api_main.stop_monitoring_scheduler()
+
+        item = next(
+            item for item in summary["items"]
+            if item["key"] == "monitoring_scheduler"
+        )
+        self.assertEqual(scheduler.started, 1)
+        self.assertEqual(scheduler.stopped, 1)
+        self.assertEqual(item["status"], "ok")
+        self.assertEqual(item["enabled_plan_count"], 1)
+
+    def test_monitoring_scheduler_start_failure_degrades_without_raising(self) -> None:
+        engine = _trace_runtime_engine()
+        with patch.object(api_main, "get", return_value="true"), \
+             patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "ensure_monitoring_schema", side_effect=RuntimeError("schema down")), \
+             patch.object(api_main.logger, "exception"):
+            api_main.start_monitoring_scheduler()
+            summary = api_main._build_health_summary("REQ_SCHEDULER_FAIL")
+
+        item = next(
+            item for item in summary["items"]
+            if item["key"] == "monitoring_scheduler"
+        )
+        self.assertEqual(summary["status"], "degraded")
+        self.assertEqual(item["status"], "failed")
+        self.assertEqual(
+            item["problem_code"], "MONITORING_SCHEDULER_UNAVAILABLE"
+        )
 
     def test_trace_api_returns_trace_nodes(self) -> None:
         from app.observability.trace import TraceRecorder
