@@ -13,6 +13,146 @@ from tests.test_rule_repository import _rule_engine
 
 
 class ApiTest(unittest.TestCase):
+    def test_api_exposes_agent_orchestrator_factory(self) -> None:
+        self.assertTrue(callable(api_main._create_agent_orchestrator))
+
+    def test_sql_endpoint_delegates_to_agent_orchestrator(self) -> None:
+        class FakeCaliber:
+            def resolve(self, rule_id, hospital_id):
+                return {"rule_id": rule_id, "effective_level": "hospital"}
+
+        class FakeOrchestrator:
+            caliber = FakeCaliber()
+            calls = []
+
+            def generate_indicator(self, prepared, **kwargs):
+                self.calls.append((prepared, kwargs))
+                return {"sql_id": "SQL_ORCHESTRATED", "sql_status": "validated"}
+
+        class LegacySQLAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def generate(self, **kwargs):
+                return {"sql_id": "SQL_LEGACY", "sql_status": "validated"}
+
+        class FakeRepository:
+            def get_effective_rule(self, rule_id, hospital_id):
+                return {"rule_id": rule_id, "effective_level": "hospital"}
+
+        orchestrator = FakeOrchestrator()
+        request = api_main.SqlGenerateRequest(
+            query="生成 SQL",
+            hospital_id="hospital_001",
+            rule_id="MQSI2025_005",
+            stat_start_time="2026-07-01 00:00:00",
+            stat_end_time="2026-08-01 00:00:00",
+        )
+        with patch.object(api_main, "_create_agent_orchestrator", return_value=orchestrator), \
+             patch.object(api_main, "create_rule_repository", return_value=FakeRepository()), \
+             patch("app.db.engine.create_runtime_engine", return_value=object()), \
+             patch("app.sqlgen.agent.SQLGenerationAgent", LegacySQLAgent), \
+             patch.object(api_main, "create_business_db_client", return_value=object()):
+            result = api_main.sql_generate(request)
+
+        self.assertEqual(result["sql_id"], "SQL_ORCHESTRATED")
+        self.assertEqual(len(orchestrator.calls), 1)
+        self.assertEqual(orchestrator.calls[0][0].rule_id, "MQSI2025_005")
+
+    def test_diagnose_endpoint_delegates_to_agent_orchestrator(self) -> None:
+        class FakeCaliber:
+            def resolve(self, rule_id, hospital_id):
+                return {"rule_id": rule_id, "effective_level": "hospital"}
+
+        class FakeOrchestrator:
+            caliber = FakeCaliber()
+            calls = []
+
+            def diagnose(self, prepared, **kwargs):
+                self.calls.append((prepared, kwargs))
+                return {
+                    "diagnose_status": "success",
+                    "report_id": "DR_ORCHESTRATED",
+                    "layers": [],
+                }
+
+        class LegacyDiagnoseAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def run(self, **kwargs):
+                return {"diagnose_status": "success", "report_id": "DR_LEGACY", "layers": []}
+
+        class FakeRepository:
+            def get_effective_rule(self, rule_id, hospital_id):
+                return {"rule_id": rule_id, "effective_level": "hospital"}
+
+        orchestrator = FakeOrchestrator()
+        engine = _trace_runtime_engine()
+        with patch.object(api_main, "_create_agent_orchestrator", return_value=orchestrator), \
+             patch.object(api_main, "create_rule_repository", return_value=FakeRepository()), \
+             patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch("app.diagnose.agent.DiagnoseAgent", LegacyDiagnoseAgent), \
+             patch.object(api_main, "create_business_db_client", return_value=object()), \
+             patch.object(api_main, "create_dbhub_metadata_provider", return_value=object()):
+            result = api_main.diagnose_run(
+                api_main.DiagnoseRequest(
+                    hospital_id="hospital_001",
+                    rule_id="MQSI2025_005",
+                )
+            )
+
+        self.assertEqual(result["report_id"], "DR_ORCHESTRATED")
+        self.assertEqual(len(orchestrator.calls), 1)
+        self.assertEqual(orchestrator.calls[0][0].rule_id, "MQSI2025_005")
+
+    def test_metadata_endpoint_delegates_to_agent_orchestrator(self) -> None:
+        class FakeOrchestrator:
+            calls = []
+
+            def sync_metadata(self, provider, hospital_id, db_name):
+                self.calls.append((provider, hospital_id, db_name))
+                return {
+                    "hospital_id": hospital_id,
+                    "db_name": db_name,
+                    "metadata_source": "dbhub",
+                    "table_count": 1,
+                    "column_count": 2,
+                    "batch_id": "B_ORCHESTRATED",
+                    "changes": [],
+                    "affected_rules": [],
+                }
+
+        orchestrator = FakeOrchestrator()
+        engine = _metadata_trace_runtime_engine()
+        client = TestClient(app)
+        legacy_result = {
+            "hospital_id": "hospital_001",
+            "db_name": "hospital_demo_data",
+            "metadata_source": "dbhub",
+            "table_count": 0,
+            "column_count": 0,
+            "batch_id": "B_LEGACY",
+            "changes": [],
+            "affected_rules": [],
+        }
+        with patch.object(api_main, "_create_agent_orchestrator", return_value=orchestrator), \
+             patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "create_dbhub_metadata_provider", return_value=object()), \
+             patch("app.metadata.sync.sync_metadata_from_provider", return_value=legacy_result):
+            response = client.post(
+                "/api/metadata/sync",
+                json={
+                    "hospital_id": "hospital_001",
+                    "db_name": "hospital_demo_data",
+                    "source": "dbhub",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["batch_id"], "B_ORCHESTRATED")
+        self.assertEqual(len(orchestrator.calls), 1)
+
     def test_admin_can_import_four_mysql_rules(self) -> None:
         client = TestClient(app)
         login = client.post("/api/admin/login", json={"password": "admin123"})

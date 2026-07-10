@@ -50,6 +50,52 @@ def _create_rule_repository():
     return create_rule_repository(create_runtime_engine(), DEFAULT_KB_ROOT)
 
 
+def _create_agent_orchestrator(
+    *,
+    runtime_engine: Any | None = None,
+    rule_repository: Any | None = None,
+    business_db: Any | None = None,
+    metadata_provider: Any | None = None,
+):
+    from app.agents.caliber_adaptation import CaliberAdaptationAgent
+    from app.agents.human_interaction import HumanInteractionAgent
+    from app.agents.indicator_generation import IndicatorGenerationAgent
+    from app.agents.metadata_parsing import MetadataParsingAgent
+    from app.agents.orchestrator import CoreIndicatorOrchestrator
+    from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
+    from app.db.engine import create_runtime_engine
+    from app.diagnose.agent import DiagnoseAgent
+    from app.sqlgen.agent import SQLGenerationAgent
+
+    engine = runtime_engine or create_runtime_engine()
+    rules = rule_repository or create_rule_repository(engine, DEFAULT_KB_ROOT)
+    db_client = business_db or create_business_db_client("hospital_demo_data")
+    metadata = metadata_provider or create_dbhub_metadata_provider(
+        "hospital_demo_data"
+    )
+    return CoreIndicatorOrchestrator(
+        interaction=HumanInteractionAgent(),
+        caliber=CaliberAdaptationAgent(rules),
+        indicator_generation=IndicatorGenerationAgent(
+            SQLGenerationAgent(
+                kb_root=DEFAULT_KB_ROOT,
+                runtime_engine=engine,
+                business_db=db_client,
+                rule_repository=rules,
+            )
+        ),
+        diagnosis=RootCauseDiagnosisAgent(
+            DiagnoseAgent(
+                kb_root=DEFAULT_KB_ROOT,
+                runtime_engine=engine,
+                business_db=db_client,
+                metadata_provider=metadata,
+            )
+        ),
+        metadata=MetadataParsingAgent(engine, DEFAULT_KB_ROOT),
+    )
+
+
 class ChatRequest(BaseModel):
     query: str
     hospital_id: str | None = "hospital_001"
@@ -931,7 +977,6 @@ def dbhub_sources_api() -> dict[str, Any]:
 def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.db.repositories import complete_recovery_task, create_recovery_task, fail_recovery_task
-    from app.metadata.sync import sync_metadata_from_provider
 
     runtime_engine = create_runtime_engine()
     trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
@@ -953,12 +998,15 @@ def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, A
     )
 
     try:
-        result = sync_metadata_from_provider(
+        metadata_provider = create_dbhub_metadata_provider(payload.db_name)
+        orchestrator = _create_agent_orchestrator(
             runtime_engine=runtime_engine,
-            provider=create_dbhub_metadata_provider(payload.db_name),
-            hospital_id=payload.hospital_id,
-            db_name=payload.db_name,
-            kb_root=DEFAULT_KB_ROOT,
+            metadata_provider=metadata_provider,
+        )
+        result = orchestrator.sync_metadata(
+            metadata_provider,
+            payload.hospital_id,
+            payload.db_name,
         )
         record_metadata_sync_trace_node(recorder, trace_id, result, payload.hospital_id, payload.db_name)
         recorder.finish_trace(trace_id, "success", str(result.get("batch_id") or ""), intent="metadata_sync")
@@ -976,23 +1024,26 @@ def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, A
 
 @app.post("/api/sql/generate")
 def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
+    from app.agents.orchestrator import PreparedRequest
     from app.db.engine import create_runtime_engine
-    from app.sqlgen.agent import SQLGenerationAgent
 
     runtime_engine = create_runtime_engine()
-    tools = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
-    effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
-    agent = SQLGenerationAgent(
-        kb_root=DEFAULT_KB_ROOT,
+    rules = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
+    orchestrator = _create_agent_orchestrator(
         runtime_engine=runtime_engine,
         business_db=create_business_db_client("hospital_demo_data"),
-        rule_repository=tools,
+        rule_repository=rules,
     )
-    return agent.generate(
+    effective = orchestrator.caliber.resolve(request.rule_id, request.hospital_id)
+    prepared = PreparedRequest(
         query=request.query,
         hospital_id=request.hospital_id,
+        intent="trial_run" if request.trial_run else "generate_sql",
         rule_id=request.rule_id,
         effective_rule=effective,
+    )
+    return orchestrator.generate_indicator(
+        prepared,
         stat_start_time=request.stat_start_time,
         stat_end_time=request.stat_end_time,
         trial_run=request.trial_run,
@@ -1001,25 +1052,30 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
 
 @app.post("/api/diagnose/run")
 def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
+    from app.agents.orchestrator import PreparedRequest
     from app.db.engine import create_runtime_engine
-    from app.diagnose.agent import DiagnoseAgent
 
     runtime_engine = create_runtime_engine()
     trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
     recorder = TraceRecorder(runtime_engine)
     recorder.start_trace(trace_id, None, request.hospital_id, f"diagnose:{request.rule_id}")
-    tools = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
-    effective = tools.get_effective_rule(request.rule_id, request.hospital_id)
-    agent = DiagnoseAgent(
-        kb_root=DEFAULT_KB_ROOT,
+    rules = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
+    orchestrator = _create_agent_orchestrator(
         runtime_engine=runtime_engine,
         business_db=create_business_db_client("hospital_demo_data"),
+        rule_repository=rules,
         metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
     )
-    result = agent.run(
+    effective = orchestrator.caliber.resolve(request.rule_id, request.hospital_id)
+    prepared = PreparedRequest(
+        query=f"diagnose:{request.rule_id}",
         hospital_id=request.hospital_id,
+        intent="diagnose",
         rule_id=request.rule_id,
         effective_rule=effective,
+    )
+    result = orchestrator.diagnose(
+        prepared,
         trigger=request.trigger,
         related_sql_id=request.related_sql_id,
         stat_period=request.stat_period,
