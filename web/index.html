@@ -1149,6 +1149,16 @@ function formatTraceDuration(ms) {
   return value + "ms";
 }
 
+function agentOwnerName(value) {
+  return ({
+    metadata_parsing: "元数据解析 Agent",
+    indicator_generation: "指标生成 Agent",
+    caliber_adaptation: "口径适配 Agent",
+    root_cause_diagnosis: "故障根因排查 Agent",
+    human_interaction: "人机交互 Agent",
+  })[value] || value || "未指定";
+}
+
 function renderTraceTimingSummary(nodes) {
   var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
   var totalMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
@@ -1235,6 +1245,10 @@ async function showTrace(traceId) {
       appendTraceSection(detail, "本次输入", node.input_data, node.input_summary || "无");
       appendTraceSection(detail, "本次输出", node.output_data, node.output_summary || "无");
       appendTraceSection(detail, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
+      var owner = document.createElement("div");
+      owner.className = "trace-field-list";
+      owner.textContent = "负责 Agent：" + agentOwnerName(node.agent_owner);
+      detail.appendChild(owner);
       var fields = document.createElement("div");
       fields.className = "trace-field-list";
       fields.textContent = "期望输入：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望输出：" + ((node.expected_outputs || []).join(", ") || "无");

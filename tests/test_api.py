@@ -702,6 +702,7 @@ class ApiTest(unittest.TestCase):
         self.assertIn("必要输入", html)
         self.assertIn("出错处理", html)
         self.assertIn("问题码", html)
+        self.assertIn("负责 Agent", html)
         self.assertNotIn("契约状态", html)
 
     def test_workflow_manifest_validate_api(self) -> None:

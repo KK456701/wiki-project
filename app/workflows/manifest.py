@@ -12,6 +12,13 @@ import yaml
 WORKFLOW_ROOT = Path(__file__).resolve().parent
 _CACHE: dict[str, dict[str, Any]] = {}
 _ALLOWED_FAILURE_POLICIES = {"stop", "continue", "fallback"}
+_ALLOWED_AGENT_OWNERS = {
+    "metadata_parsing",
+    "indicator_generation",
+    "caliber_adaptation",
+    "root_cause_diagnosis",
+    "human_interaction",
+}
 
 
 def _default_failure_code(node_id: str) -> str:
@@ -28,6 +35,7 @@ def _with_contract_defaults(node: dict[str, Any]) -> dict[str, Any]:
     enriched.setdefault("required_inputs", [])
     enriched.setdefault("required_outputs", [])
     enriched.setdefault("registered", True)
+    enriched.setdefault("agent_owner", "")
     return enriched
 
 
@@ -63,6 +71,7 @@ def get_workflow_node(workflow_id: str, node_id: str) -> dict[str, Any]:
         "required_outputs": [],
         "failure_hint": "请先补充该节点的 manifest 定义，再定位运行细节。",
         "registered": False,
+        "agent_owner": "",
     }
 
 
@@ -115,6 +124,8 @@ def validate_workflow_manifest(manifest_or_id: dict[str, Any] | str = "core_indi
                 issues.append({"severity": "error", "message": f"节点 {node_id} 缺少 {field}"})
         if node.get("on_failure") not in _ALLOWED_FAILURE_POLICIES:
             issues.append({"severity": "error", "message": f"节点 {node_id} on_failure 非法: {node.get('on_failure')}"})
+        if node.get("agent_owner") not in _ALLOWED_AGENT_OWNERS:
+            issues.append({"severity": "error", "message": f"节点 {node_id} agent_owner 非法: {node.get('agent_owner')}"})
         for field in ("inputs", "outputs", "required_inputs", "required_outputs"):
             if not isinstance(node.get(field), list):
                 issues.append({"severity": "error", "message": f"节点 {node_id} 的 {field} 必须是列表"})
@@ -148,6 +159,7 @@ def annotate_trace_node(node: dict[str, Any], workflow_id: str = "core_indicator
     annotated["node_config"] = dict(meta.get("config") or {})
     annotated["failure_hint"] = meta.get("failure_hint") or ""
     annotated["manifest_type"] = meta.get("type") or annotated.get("node_type") or ""
+    annotated["agent_owner"] = meta.get("agent_owner") or ""
     annotated["required_inputs"] = list(meta.get("required_inputs") or [])
     annotated["required_outputs"] = list(meta.get("required_outputs") or [])
     annotated.update(validate_trace_node_contract(annotated, workflow_id))

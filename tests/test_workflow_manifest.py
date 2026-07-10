@@ -10,6 +10,21 @@ from app.workflows.manifest import (
 
 
 class WorkflowManifestTest(unittest.TestCase):
+    def test_every_manifest_node_has_specialized_agent_owner(self) -> None:
+        manifest = load_workflow_manifest("core_indicator_chat")
+        allowed = {
+            "metadata_parsing",
+            "indicator_generation",
+            "caliber_adaptation",
+            "root_cause_diagnosis",
+            "human_interaction",
+        }
+
+        self.assertTrue(manifest["nodes"])
+        for node in manifest["nodes"]:
+            with self.subTest(node=node["id"]):
+                self.assertIn(node["agent_owner"], allowed)
+
     def test_load_core_indicator_chat_manifest(self) -> None:
         manifest = load_workflow_manifest("core_indicator_chat")
 
@@ -47,6 +62,7 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(annotated["status"], "success")
         self.assertIn("retrieval_query", annotated["expected_inputs"])
         self.assertIn("rule_id", annotated["expected_outputs"])
+        self.assertEqual(annotated["agent_owner"], "caliber_adaptation")
 
     def test_manifest_exposes_operational_contract(self) -> None:
         memory_node = get_workflow_node("core_indicator_chat", "memory_load")

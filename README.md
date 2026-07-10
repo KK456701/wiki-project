@@ -20,12 +20,14 @@
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
 - **知识库导出与回收合并**：医院可导出本院知识库压缩包，公司管理员上传后生成合并报告，对候选项逐项处理。
 - **会话记忆**：对话记忆写入 SQLite 与 JSONL，支持多轮追问和反馈上下文。
+- **五类 Agent 统一编排**：元数据解析、指标生成、口径适配、故障根因排查和人机交互 Agent 由 `CoreIndicatorOrchestrator` 统一路由，HTTP、LangGraph 适配器和 SSE 复用同一组领域能力。
 - **高级前端界面**：单页 HTML 前端，包含流式输出、状态流转、审批、版本、合并上传等操作入口。
 
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL
 - Agent：非流式 `/api/chat` 支持可选 LangGraph StateGraph；主前端 `/api/chat/stream` 采用自定义 Python 流式工作流，并按 Dify/LangGraph 风格记录节点 Trace
+- 编排：`CoreIndicatorOrchestrator` 负责五类 Agent 路由；LangGraph 和 SSE 只负责执行与流式适配，不承载领域逻辑
 - LLM：Ollama，本地模型默认 `qwen3:4B-instruct`
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
@@ -220,6 +222,7 @@ Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health
 
 - 默认只展示节点摘要：节点标题、节点 ID、状态、类型、耗时和职责说明。
 - 点击具体节点的“详情”后，才展开本次入参、本次出参、节点配置、期望入参/出参和定位建议。
+- 节点详情中的“负责 Agent”说明该阶段属于五类 Agent 中的哪一个，摘要仍保持精简。
 - 详情中会展示输入输出检查、必要输入/输出、缺少内容、出错处理和问题码。
 - 如果节点没有真实计时，前端显示“未计时”，不会再把未测量的节点误展示为 `0ms`。
 - 节点说明来自 `app/workflows/core_indicator_chat.yaml`，运行数据来自 `TraceRecorder`。

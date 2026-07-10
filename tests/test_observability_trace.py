@@ -143,6 +143,7 @@ class TraceRecorderTest(unittest.TestCase):
             self.assertEqual(node["input_data"]["query"], "急会诊怎么算")
             self.assertEqual(node["output_data"]["intent"], "query")
             self.assertEqual(node["config_data"]["strategy"], "规则兜底 + LLM")
+            self.assertEqual(node["agent_owner"], "human_interaction")
 
     def test_failed_node_gets_default_failure_code(self):
         with tempfile.TemporaryDirectory() as tmp:
