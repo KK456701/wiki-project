@@ -30,6 +30,14 @@ def render_indicator_sql(
         contract.hospital_field,
         *(item.field for item in contract.numerator_conditions),
         *(item.field for item in contract.denominator_conditions),
+        *(
+            item.compare_field
+            for item in [
+                *contract.numerator_conditions,
+                *contract.denominator_conditions,
+            ]
+            if item.compare_field
+        ),
     }
     missing = sorted(field for field in referenced if field not in mappings)
     if missing:
@@ -112,6 +120,17 @@ def _conditions(
                 names.append(f":{name}")
             keyword = "IN" if operator == "in" else "NOT IN"
             clauses.append(f"{column} {keyword} ({', '.join(names)})")
+        elif operator == "minutes_between_lte":
+            if not condition.compare_field:
+                raise SQLPlanError("minutes_between_lte 条件缺少 compare_field")
+            if not isinstance(condition.value, (int, float)) or condition.value < 0:
+                raise SQLPlanError("minutes_between_lte 条件必须提供非负分钟数")
+            params[base] = condition.value
+            clauses.append(
+                "TIMESTAMPDIFF(MINUTE, "
+                f"{columns[condition.compare_field]}, {column}) "
+                f"BETWEEN 0 AND :{base}"
+            )
         else:
             symbols = {
                 "eq": "=",

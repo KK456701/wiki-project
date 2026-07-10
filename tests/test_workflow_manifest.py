@@ -100,6 +100,30 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertIn("session_id", annotated["missing_inputs"])
         self.assertIn("memory_context", annotated["missing_outputs"])
 
+    def test_indicator_generation_closed_loop_has_complete_manifest(self) -> None:
+        manifest = load_workflow_manifest("indicator_generation_closed_loop")
+        validation = validate_workflow_manifest(manifest)
+
+        self.assertTrue(validation["ok"])
+        self.assertEqual(
+            [node["id"] for node in manifest["nodes"]],
+            [
+                "draft_parse",
+                "draft_save",
+                "metadata_confirm",
+                "draft_sql_generate",
+                "draft_trial_run",
+                "draft_submit",
+                "draft_publish",
+            ],
+        )
+        self.assertEqual(
+            get_workflow_node(
+                "indicator_generation_closed_loop", "draft_publish"
+            )["agent_owner"],
+            "caliber_adaptation",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

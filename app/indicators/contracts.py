@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 MetricType = Literal["ratio", "count"]
@@ -17,6 +17,7 @@ ConditionOperator = Literal[
     "not_in",
     "is_null",
     "not_null",
+    "minutes_between_lte",
 ]
 
 
@@ -24,6 +25,21 @@ class IndicatorCondition(BaseModel):
     field: str
     operator: ConditionOperator
     value: Any = None
+    compare_field: str | None = None
+
+    @model_validator(mode="after")
+    def validate_duration_condition(self):
+        if self.operator != "minutes_between_lte":
+            return self
+        if not self.compare_field:
+            raise ValueError("minutes_between_lte requires compare_field")
+        if (
+            isinstance(self.value, bool)
+            or not isinstance(self.value, (int, float))
+            or self.value < 0
+        ):
+            raise ValueError("minutes_between_lte requires non-negative minutes")
+        return self
 
 
 class IndicatorSQLPlan(BaseModel):

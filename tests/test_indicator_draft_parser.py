@@ -85,6 +85,94 @@ class IndicatorDraftParserTest(unittest.TestCase):
 
         self.assertEqual(result.base_index_code, "MQSI2025_005")
 
+    def test_parses_duration_condition_and_requires_comparison_field(self) -> None:
+        payload = _ratio_payload()
+        payload["metadata_requirements"] = [
+            "hospital_id",
+            "id",
+            "event_time",
+            "arrive_time",
+            "request_time",
+        ]
+        payload["sql_plan"].update(
+            {
+                "subject_field": "id",
+                "time_field": "event_time",
+                "numerator_conditions": [
+                    {
+                        "field": "arrive_time",
+                        "operator": "minutes_between_lte",
+                        "compare_field": "request_time",
+                        "value": 10,
+                    }
+                ],
+                "denominator_conditions": [],
+            }
+        )
+
+        llm = _FakeLLM(json.dumps(payload, ensure_ascii=False))
+        result = IndicatorDraftParser(llm).parse(
+            "创建10分钟内到位率", "hospital_001"
+        )
+
+        condition = result.sql_plan.numerator_conditions[0]
+        self.assertEqual(condition.compare_field, "request_time")
+        self.assertIn("arrive_time", result.metadata_requirements)
+        self.assertIn("request_time", result.metadata_requirements)
+        self.assertIn("minutes_between_lte", llm.prompts[0])
+
+    def test_retries_once_for_invalid_shapes_and_unknown_condition_fields(self) -> None:
+        invalid = _ratio_payload()
+        invalid["sql_plan"]["numerator_conditions"] = [
+            {
+                "field": "arrive_time",
+                "operator": "minutes_between_lte",
+                "compare_field": "request_时间",
+                "value": 10,
+            }
+        ]
+        repaired = _ratio_payload()
+        repaired["sql_plan"]["numerator_conditions"] = [
+            {
+                "field": "arrive_time",
+                "operator": "minutes_between_lte",
+                "compare_field": "request_time",
+                "value": 10,
+            }
+        ]
+
+        class SequenceLLM:
+            def __init__(self):
+                self.responses = [invalid, repaired]
+                self.prompts = []
+
+            def generate(self, prompt):
+                self.prompts.append(prompt)
+                return json.dumps(self.responses.pop(0), ensure_ascii=False)
+
+        llm = SequenceLLM()
+        result = IndicatorDraftParser(llm).parse(
+            "创建10分钟内到位率", "hospital_001"
+        )
+
+        self.assertEqual(len(llm.prompts), 2)
+        self.assertIn("修正", llm.prompts[1])
+        self.assertEqual(
+            result.sql_plan.numerator_conditions[0].compare_field,
+            "request_time",
+        )
+
+    def test_hospital_scope_field_is_owned_by_the_system(self) -> None:
+        payload = _ratio_payload()
+        payload["sql_plan"]["hospital_field"] = "hospital,omitempty"
+
+        result = IndicatorDraftParser(
+            _FakeLLM(json.dumps(payload, ensure_ascii=False))
+        ).parse("创建指标", "hospital_001")
+
+        self.assertEqual(result.sql_plan.hospital_field, "hospital_id")
+        self.assertNotIn("hospital,omitempty", result.metadata_requirements)
+
 
 class IndicatorDraftAgentBoundaryTest(unittest.TestCase):
     def test_create_indicator_intent_belongs_to_generation_agent(self) -> None:
@@ -141,6 +229,7 @@ def _ratio_payload() -> dict:
             "consult_id",
             "request_time",
             "arrive_time",
+            "consult_type",
         ],
         "required_tables": ["consult_record"],
         "requires_join": False,

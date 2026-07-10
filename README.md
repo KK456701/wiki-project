@@ -13,6 +13,7 @@
 - **反馈与审批**：医院用户反馈口径不一致时先生成差异预览，用户确认后进入 Pending，管理员审批通过后才生效。
 - **版本化医院口径**：医院 override 采用追加版本方式保存，支持历史口径对比和一键恢复历史版本。
 - **SQL 生成与试运行**：根据指标 SQL 规格、字段要求和医院字段映射生成只读 SQL，并支持二步确认试运行。
+- **指标设计稿闭环**：支持从自然语言创建“本院新增指标”，或为已有国标指标创建“本院口径差异”；设计稿依次完成字段确认、确定性 SQL 生成、DBHub 试运行、提交审批和版本化发布，未发布设计稿不参与正式查询。
 - **三层异常诊断**：系统结构校验、口径规则校验、数据质量校验，输出中文诊断结果和风险提示。
 - **DBHub MCP 数据库接入**：通过本地 DBHub sidecar 读取业务库元数据、同步字段快照，并执行只读 SQL 试运行。
 - **Dify-lite 执行链路**：使用 `app/workflows/core_indicator_chat.yaml` 描述节点清单，运行时 Trace 会展示节点职责、状态、耗时、实际入参/出参、配置和故障定位建议；前端默认展示节点摘要，点击“详情”后展开完整信息。
@@ -46,6 +47,7 @@
 |   +-- api/
 |   +-- db/
 |   +-- diagnose/
+|   +-- indicators/
 |   +-- kb/
 |   +-- rules/
 |   +-- llm/
@@ -233,6 +235,23 @@ Invoke-RestMethod -Uri http://127.0.0.1:8765/api/health
 
 如 LLM 输出未通过事实校验，系统会回退到规则模板答案，避免给出不可靠结论。生效口径接口和执行链路会返回 `rule_source`：正常为 `mysql`，数据库异常或指标未迁移时为 `wiki_fallback`，同时附带只读兜底警告。
 
+### 指标设计稿闭环
+
+前端顶部点击“指标设计稿”，输入业务描述后可完成：
+
+```text
+待确认字段 -> 字段已确认 -> SQL 已生成 -> 试运行通过 -> 待审批 -> 已发布
+```
+
+- **指标设计稿**：尚未进入正式规则库的工作副本，可修改并保留不可变版本快照。
+- **本院新增指标**：没有对应国标指标，由本院自行定义；审批后写入 `med_index_hospital_defined`。
+- **本院口径差异**：基于已有国标指标，仅保存本院需要调整的口径；审批后写入 `med_index_hospital_custom`，不修改 `med_index_standard`。
+- 字段从 `med_metadata_column` 最近一次元数据快照中推荐，缺少字段时先在 MCP 页面同步元数据。
+- SQL 不由 LLM 直接编写。LLM 只生成强类型计算计划，系统固定 `hospital_id` 租户范围并确定性渲染参数化 SELECT；当前支持单表比例/计数及两个时间字段的分钟差条件。
+- 任何编辑都会使旧 SQL 和试运行证据失效；只有当前版本试运行成功后才能提交审批。
+
+该闭环的 Dify-lite 节点清单可通过 `/api/workflows/indicator_generation_closed_loop` 查看，并通过 `/api/workflows/indicator_generation_closed_loop/validate` 校验。
+
 ### 执行链路与故障定位
 
 每次对话、元数据同步、诊断、变更提交和审批都会生成 `trace_id`。前端消息下方的“执行链路”按钮会打开 Trace 弹窗：
@@ -392,6 +411,18 @@ Content-Type: application/json
 | `/api/traces/{trace_id}` | GET | 查看执行链路 Trace |
 | `/api/workflows/{workflow_id}` | GET | 查看工作流 manifest |
 | `/api/workflows/{workflow_id}/validate` | GET | 校验工作流 manifest 节点和边 |
+| `/api/indicator-drafts/generate` | POST | 从自然语言生成并保存指标设计稿 |
+| `/api/indicator-drafts` | GET | 按医院和状态查看设计稿 |
+| `/api/indicator-drafts/{draft_id}` | GET、PUT | 查看或创建设计稿新版本 |
+| `/api/indicator-drafts/{draft_id}/metadata-suggestions` | GET | 推荐业务字段对应数据库列 |
+| `/api/indicator-drafts/{draft_id}/metadata-confirm` | POST | 确认当前版本字段映射 |
+| `/api/indicator-drafts/{draft_id}/sql-generate` | POST | 确定性生成并校验当前版本 SQL |
+| `/api/indicator-drafts/{draft_id}/trial-run` | POST | 通过 DBHub 试运行当前版本 SQL |
+| `/api/indicator-drafts/{draft_id}/submit` | POST | 提交已试运行版本等待审批 |
+| `/api/indicator-drafts/{draft_id}/approve` | POST | 管理员批准并发布设计稿 |
+| `/api/indicator-drafts/{draft_id}/reject` | POST | 管理员拒绝设计稿 |
+| `/api/hospital-defined/{hospital_id}/{index_code}/versions` | GET | 查看本院新增指标正式版本 |
+| `/api/hospital-defined/{hospital_id}/{index_code}/versions/{version}/restore` | POST | 恢复本院新增指标历史版本 |
 | `/api/rules/import-four` | POST | 管理员幂等导入首批四指标到 MySQL |
 | `/api/recovery/tasks` | GET | 查看恢复中心任务 |
 | `/api/recovery/tasks/{task_id}/retry` | POST | 重试可恢复任务 |

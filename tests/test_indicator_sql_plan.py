@@ -100,9 +100,63 @@ class IndicatorSQLPlanRendererTest(unittest.TestCase):
         self.assertIn("AS index_value", rendered["sql_text"])
         self.assertNotIn("* 100", rendered["sql_text"])
 
+    def test_duration_condition_uses_parameterized_timestampdiff(self) -> None:
+        payload = _plan().model_dump()
+        payload["numerator_conditions"] = [
+            {
+                "field": "arrive_time",
+                "operator": "minutes_between_lte",
+                "compare_field": "request_time",
+                "value": 10,
+            }
+        ]
+
+        rendered = render_indicator_sql(payload, _confirmed_mappings())
+
+        self.assertIn(
+            "TIMESTAMPDIFF(MINUTE, `request_time`, `arrive_time`) BETWEEN 0 AND :num_0",
+            rendered["sql_text"],
+        )
+        self.assertEqual(rendered["params"]["num_0"], 10)
+        self.assertTrue(
+            validate_select_sql(
+                rendered["sql_text"], "hospital_001", "consult_record"
+            )["ok"]
+        )
+
+    def test_duration_condition_excludes_negative_dirty_intervals(self) -> None:
+        payload = _plan().model_dump()
+        payload["numerator_conditions"] = [
+            {
+                "field": "arrive_time",
+                "operator": "minutes_between_lte",
+                "compare_field": "request_time",
+                "value": 10,
+            }
+        ]
+
+        rendered = render_indicator_sql(payload, _confirmed_mappings())
+
+        self.assertIn(
+            "TIMESTAMPDIFF(MINUTE, `request_time`, `arrive_time`) BETWEEN 0 AND :num_0",
+            rendered["sql_text"],
+        )
+
     def test_rejects_unknown_operator_unconfirmed_field_and_identifier(self) -> None:
         payload = _plan().model_dump()
         payload["numerator_conditions"][0]["operator"] = "contains_sql"
+        with self.assertRaises(ValidationError):
+            IndicatorSQLPlan.model_validate(payload)
+
+        payload = _plan().model_dump()
+        payload["numerator_conditions"] = [
+            {
+                "field": "arrive_time",
+                "operator": "minutes_between_lte",
+                "compare_field": "request_time",
+                "value": "1-than",
+            }
+        ]
         with self.assertRaises(ValidationError):
             IndicatorSQLPlan.model_validate(payload)
 

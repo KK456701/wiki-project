@@ -15,6 +15,10 @@ class DraftParseError(ValueError):
     pass
 
 
+class _RetryableDraftParseError(DraftParseError):
+    pass
+
+
 class LLMClient(Protocol):
     def generate(self, prompt: str) -> str: ...
 
@@ -25,15 +29,37 @@ class IndicatorDraftParser:
 
     def parse(self, query: str, hospital_id: str) -> IndicatorDraftSpec:
         raw = self.llm_client.generate(_prompt(query))
+        try:
+            return self._parse_response(raw, hospital_id)
+        except _RetryableDraftParseError as exc:
+            repaired = self.llm_client.generate(
+                _repair_prompt(query, raw, str(exc))
+            )
+            return self._parse_response(repaired, hospital_id)
+
+    @staticmethod
+    def _parse_response(raw: str, hospital_id: str) -> IndicatorDraftSpec:
         data = _extract_json(raw)
         if not data:
-            raise DraftParseError("无法解析模型返回的指标设计稿，请补充指标定义后重试。")
+            raise _RetryableDraftParseError(
+                "无法解析模型返回的指标设计稿，请补充指标定义后重试。"
+            )
         if any(key in data for key in ("sql", "sql_text", "sql_template")):
             raise DraftParseError("模型不能直接提供SQL，只能生成结构化计算计划。")
+
+        declared_requirements = data.get("metadata_requirements")
+        if not isinstance(declared_requirements, list) or not all(
+            isinstance(value, str) for value in declared_requirements
+        ):
+            raise _RetryableDraftParseError(
+                "metadata_requirements 必须是字符串数组"
+            )
 
         tables = [str(value).strip() for value in data.pop("required_tables", []) if str(value).strip()]
         requires_join = bool(data.pop("requires_join", False))
         sql_plan = data.get("sql_plan") if isinstance(data.get("sql_plan"), dict) else {}
+        sql_plan["hospital_field"] = "hospital_id"
+        data["sql_plan"] = sql_plan
         main_table = str(sql_plan.get("main_table") or "").strip()
         if main_table and main_table not in tables:
             tables.append(main_table)
@@ -46,12 +72,51 @@ class IndicatorDraftParser:
         data["generated_by"] = "llm"
         data["metadata_requirements"] = _requirements(data, sql_plan)
         try:
-            return IndicatorDraftSpec.model_validate(data)
+            contract = IndicatorDraftSpec.model_validate(data)
         except ValidationError as exc:
-            fields = sorted({str(item["loc"][-1]) for item in exc.errors() if item.get("loc")})
-            raise DraftParseError(
+            fields = sorted(
+                {
+                    ".".join(str(value) for value in item["loc"])
+                    for item in exc.errors()
+                    if item.get("loc")
+                }
+            )
+            raise _RetryableDraftParseError(
                 f"指标设计稿结构不完整或不合法：{', '.join(fields) or '未知字段'}"
             ) from exc
+
+        if contract.sql_plan is None:
+            raise _RetryableDraftParseError(
+                "指标设计稿缺少 sql_plan 结构化计算计划"
+            )
+        declared = {value.strip() for value in declared_requirements if value.strip()}
+        referenced = {
+            contract.sql_plan.subject_field,
+            contract.sql_plan.time_field,
+            contract.sql_plan.hospital_field,
+            *(
+                condition.field
+                for condition in [
+                    *contract.sql_plan.numerator_conditions,
+                    *contract.sql_plan.denominator_conditions,
+                ]
+            ),
+            *(
+                condition.compare_field
+                for condition in [
+                    *contract.sql_plan.numerator_conditions,
+                    *contract.sql_plan.denominator_conditions,
+                ]
+                if condition.compare_field
+            ),
+        }
+        unknown = sorted(referenced - declared)
+        if unknown:
+            raise _RetryableDraftParseError(
+                "计算计划使用了未在 metadata_requirements 声明的字段："
+                + ", ".join(unknown)
+            )
+        return contract
 
 
 def _requirements(data: dict[str, Any], sql_plan: dict[str, Any]) -> list[str]:
@@ -68,6 +133,9 @@ def _requirements(data: dict[str, Any], sql_plan: dict[str, Any]) -> list[str]:
         for condition in sql_plan.get(collection) or []:
             if isinstance(condition, dict) and str(condition.get("field") or "").strip():
                 result.append(str(condition["field"]).strip())
+                compare_field = str(condition.get("compare_field") or "").strip()
+                if compare_field:
+                    result.append(compare_field)
     return list(dict.fromkeys(result))
 
 
@@ -100,8 +168,19 @@ def _prompt(query: str) -> str:
 只输出 JSON，不要解释，不要 Markdown，不要输出任何 SQL。
 
 第一版限制：只允许单表；metric_type 只能是 ratio 或 count；条件操作符只能是
-eq、ne、gt、gte、lt、lte、in、not_in、is_null、not_null。
+eq、ne、gt、gte、lt、lte、in、not_in、is_null、not_null、minutes_between_lte。
 如果必须多表关联，设置 requires_join=true，并列出 required_tables。
+
+必须严格遵守这些 JSON 类型：
+- metadata_requirements 和 required_tables 必须是字符串数组。
+- numerator_conditions 和 denominator_conditions 必须是条件对象数组，不能写成字符串。
+- 普通条件对象格式：{{"field":"consult_type","operator":"eq","value":"急会诊"}}。
+- 两个时间字段相差不超过若干分钟时，格式：
+  {{"field":"arrive_time","operator":"minutes_between_lte","compare_field":"request_time","value":10}}。
+- 没有条件时输出空数组 []。
+
+完整结构示例：
+{{"index_name":"急会诊及时到位率","index_type":"会诊制度","index_desc":"统计急会诊请求后10分钟内到位的患者比例","stat_cycle":"month","numerator_rule":"急会诊请求后10分钟内到位的患者数","denominator_rule":"同期急会诊患者总数","filter_rule":"仅统计急会诊","exclude_rule":"","metric_type":"ratio","metadata_requirements":["id","consult_type","request_time","arrive_time","hospital_id"],"required_tables":["consult_record"],"requires_join":false,"sql_plan":{{"main_table":"consult_record","metric_type":"ratio","subject_field":"id","time_field":"request_time","hospital_field":"hospital_id","numerator_conditions":[{{"field":"consult_type","operator":"eq","value":"急会诊"}},{{"field":"arrive_time","operator":"minutes_between_lte","compare_field":"request_time","value":10}}],"denominator_conditions":[{{"field":"consult_type","operator":"eq","value":"急会诊"}}]}},"base_index_code":null}}
 
 JSON 必须包含：
 index_name、index_type、index_desc、stat_cycle、numerator_rule、
@@ -115,3 +194,21 @@ hospital_field、numerator_conditions、denominator_conditions。
 {query}
 
 只输出 JSON。"""
+
+
+def _repair_prompt(query: str, raw: str, error: str) -> str:
+    return f"""你刚才生成的指标设计稿未通过结构校验，请只修正 JSON，不要解释，不要 Markdown，不要输出 SQL。
+校验错误：{error}
+
+必须满足：
+- numerator_rule、denominator_rule、filter_rule、exclude_rule 必须是文本字符串。
+- metadata_requirements 和 required_tables 必须是字符串数组。
+- numerator_conditions 和 denominator_conditions 必须是对象数组。
+- 条件中的 field、compare_field、subject_field、time_field、hospital_field 必须原样出现在 metadata_requirements 中，不能翻译或改写英文字段名。
+- 时间差条件使用 operator=minutes_between_lte，并同时提供 field、compare_field、数值 value。
+- 只允许单表、ratio 或 count，不得输出任何 SQL。
+
+用户原始描述：{query}
+待修正内容：{raw[:6000]}
+
+只输出修正后的 JSON。"""

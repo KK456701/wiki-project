@@ -426,6 +426,45 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 .self-check-item.failed .self-check-status { color: #8b2f22; background: #ffe9e3; border-color: #f2b8ab; }
 .self-check-desc, .self-check-suggestion { color: var(--ink-soft); font-size: 13px; }
 .self-check-suggestion { background: #fff8dc; border: 1px solid #eadb93; border-radius: 8px; padding: 8px 9px; }
+.indicator-dialog { width: min(1180px, 100%); }
+.indicator-create { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--paper-strong); }
+.indicator-create textarea { min-height: 58px; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: var(--ink); font: 14px/1.55 var(--sans); }
+.indicator-create button { align-self: stretch; min-width: 116px; }
+.indicator-workbench { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: 520px; }
+.indicator-sidebar { padding: 16px; border-right: 1px solid var(--line); background: #f8fbfa; }
+.indicator-sidebar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.indicator-sidebar-head strong { font-size: 15px; }
+.indicator-draft-list { display: grid; gap: 8px; }
+.indicator-draft-item { width: 100%; min-height: 76px; padding: 10px 11px; text-align: left; color: var(--ink); background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--line-strong); }
+.indicator-draft-item.active { border-color: var(--teal); border-left-color: var(--teal); background: var(--teal-soft); }
+.indicator-draft-item strong, .indicator-draft-item span { display: block; }
+.indicator-draft-item span { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.indicator-main { min-width: 0; padding: 18px 20px 24px; }
+.indicator-stages { display: grid; grid-template-columns: repeat(6, minmax(88px, 1fr)); margin-bottom: 20px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.indicator-stage { min-height: 54px; padding: 9px 8px; display: grid; place-items: center; text-align: center; color: var(--muted); background: #f7faf9; border-right: 1px solid var(--line); font-size: 12px; font-weight: 750; }
+.indicator-stage:last-child { border-right: 0; }
+.indicator-stage.done { color: var(--teal-deep); background: var(--teal-soft); }
+.indicator-stage.active { color: #fff; background: var(--ink); }
+.indicator-empty { min-height: 330px; display: grid; place-items: center; text-align: center; color: var(--muted); }
+.indicator-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.indicator-detail-head h3 { margin: 0 0 7px; font-size: 21px; letter-spacing: 0; }
+.indicator-kind { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #edf1f8; color: #375276; font-size: 12px; font-weight: 750; }
+.indicator-status { color: var(--teal-deep); background: var(--teal-soft); border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 800; white-space: nowrap; }
+.indicator-rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; margin: 16px 0; }
+.indicator-rule-grid div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.indicator-rule-grid strong { display: block; margin-bottom: 5px; color: var(--muted); font-size: 12px; }
+.indicator-tech { margin: 14px 0; border: 1px solid var(--line); border-radius: 8px; background: #fbfdfc; }
+.indicator-tech summary { cursor: pointer; padding: 11px 13px; font-weight: 750; color: var(--ink-soft); }
+.indicator-tech-body { padding: 0 13px 13px; }
+.indicator-tech pre { max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 var(--mono); }
+.indicator-action-zone { margin-top: 16px; padding-top: 15px; border-top: 2px solid var(--ink); }
+.indicator-action-zone h4 { margin: 0 0 10px; font-size: 15px; }
+.indicator-action-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: end; }
+.indicator-action-row label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.indicator-action-row input, .indicator-action-row select { min-height: 38px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; }
+.indicator-message { margin: 10px 0; padding: 9px 10px; border: 1px solid #e4ce8a; border-radius: 8px; background: #fff8dc; color: #69551a; font-size: 13px; }
+.indicator-mapping-list { display: grid; gap: 8px; margin: 10px 0; }
+.indicator-mapping-row { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(220px, 1.3fr); gap: 10px; align-items: center; }
 .login-screen { position: fixed; inset: 0; background: var(--paper); display: grid; place-items: center; z-index: 200; }
 .login-screen[hidden] { display: none; }
 .login-card {
@@ -456,6 +495,11 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   .composer, .composer-hint { width: calc(100vw - 24px); }
   .message-bubble { max-width: 86vw; }
   .row, .history-lookup { grid-template-columns: 1fr; }
+  .indicator-workbench { grid-template-columns: 1fr; }
+  .indicator-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+  .indicator-stages { grid-template-columns: repeat(3, 1fr); }
+  .indicator-stage:nth-child(3) { border-right: 0; }
+  .indicator-rule-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .brand-title { font-size: 21px; }
@@ -463,6 +507,11 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   .composer { align-items: stretch; flex-direction: column; }
   #sendButton { width: 100%; }
   .composer-hint { flex-direction: column; gap: 4px; }
+  .indicator-create { grid-template-columns: 1fr; }
+  .indicator-stages { grid-template-columns: repeat(2, 1fr); }
+  .indicator-stage:nth-child(3) { border-right: 1px solid var(--line); }
+  .indicator-stage:nth-child(even) { border-right: 0; }
+  .indicator-detail-head, .indicator-mapping-row { grid-template-columns: 1fr; display: grid; }
 }
 </style>
 </head>
@@ -498,6 +547,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <button id="selfCheckButton" class="btn btn-ghost">系统自检</button>
       <button id="recoveryButton" class="btn btn-ghost">恢复中心</button>
       <button id="mcpButton" class="btn btn-ghost">MCP</button>
+      <button id="indicatorDraftButton" class="btn btn-ghost">指标设计稿</button>
       <button id="reviewButton" class="btn btn-secondary">审批</button>
       <button id="newSessionButton" class="btn btn-ghost">新会话</button>
     </div>
@@ -566,6 +616,30 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         <div id="mcpStatus" class="mcp-status">点击“查看数据源/工具”确认 DBHub sidecar 是否已连接。</div>
         <div id="mcpSourceList" class="mcp-source-grid"></div>
       </div>
+    </div>
+  </section>
+</div>
+
+<!-- 指标设计稿工作台 -->
+<div id="indicatorDraftModal" class="modal" hidden>
+  <section class="dialog indicator-dialog" role="dialog" aria-modal="true" aria-labelledby="indicatorDraftTitle">
+    <header>
+      <div><h2 id="indicatorDraftTitle">指标设计稿</h2><div style="color:#5b677a;font-size:14px;">从业务描述开始，完成字段确认、SQL、试运行和审批发布。</div></div>
+      <button class="ghost" data-close="indicatorDraftModal">关闭</button>
+    </header>
+    <div class="indicator-create">
+      <textarea id="indicatorDraftPrompt" placeholder="例如：新建本院急会诊及时到位率指标，统计急会诊请求后 10 分钟内到位的患者比例。已有国标指标的调整请同时说明指标编码。"></textarea>
+      <button id="createIndicatorDraftButton" type="button">生成设计稿</button>
+    </div>
+    <div class="indicator-workbench">
+      <aside class="indicator-sidebar">
+        <div class="indicator-sidebar-head"><strong>本院设计稿</strong><button id="refreshIndicatorDraftsButton" class="ghost" type="button">刷新</button></div>
+        <div id="indicatorDraftList" class="indicator-draft-list"></div>
+      </aside>
+      <section class="indicator-main">
+        <div id="indicatorDraftStages" class="indicator-stages" aria-label="指标设计进度"></div>
+        <div id="indicatorDraftDetail" class="indicator-empty">选择已有设计稿，或先描述一个需要创建的指标。</div>
+      </section>
     </div>
   </section>
 </div>
@@ -661,6 +735,8 @@ var currentUser = JSON.parse(sessionStorage.getItem("currentUser") || "null");
 var latestFeedbackPreview = null;
 var latestTraceId = "";
 var pendingAdminAction = "";
+var currentIndicatorDraft = null;
+var currentIndicatorMetadata = null;
 
 // 未登录则显示登录页
 if (!currentUser) { document.getElementById("loginScreen").hidden = false; }
@@ -696,6 +772,14 @@ var syncMcpMetadataButton = document.getElementById("syncMcpMetadataButton");
 var mcpDbSelect = document.getElementById("mcpDbSelect");
 var mcpStatus = document.getElementById("mcpStatus");
 var mcpSourceList = document.getElementById("mcpSourceList");
+var indicatorDraftButton = document.getElementById("indicatorDraftButton");
+var indicatorDraftModal = document.getElementById("indicatorDraftModal");
+var indicatorDraftPrompt = document.getElementById("indicatorDraftPrompt");
+var createIndicatorDraftButton = document.getElementById("createIndicatorDraftButton");
+var refreshIndicatorDraftsButton = document.getElementById("refreshIndicatorDraftsButton");
+var indicatorDraftList = document.getElementById("indicatorDraftList");
+var indicatorDraftStages = document.getElementById("indicatorDraftStages");
+var indicatorDraftDetail = document.getElementById("indicatorDraftDetail");
 var feedbackModal = document.getElementById("feedbackModal");
 var feedbackMeta = document.getElementById("feedbackMeta");
 var comparison = document.getElementById("comparison");
@@ -766,6 +850,10 @@ function updateAdminUI() {
 updateAdminUI();
 
 function openAdminArea(area) {
+  if (area === "draftApprove") {
+    approveCurrentIndicatorDraft();
+    return;
+  }
   if (area === "recovery") {
     recoveryModal.hidden = false;
     loadRecoveryTasks();
@@ -804,6 +892,17 @@ mcpButton.addEventListener("click", function() {
   mcpModal.hidden = false;
   loadMcpSources();
 });
+
+indicatorDraftButton.addEventListener("click", function() {
+  indicatorDraftModal.hidden = false;
+  loadIndicatorDrafts();
+});
+
+refreshIndicatorDraftsButton.addEventListener("click", function() {
+  loadIndicatorDrafts(currentIndicatorDraft && currentIndicatorDraft.draft_id);
+});
+
+createIndicatorDraftButton.addEventListener("click", createIndicatorDraft);
 
 refreshRecoveryButton.addEventListener("click", loadRecoveryTasks);
 loadMcpSourcesButton.addEventListener("click", loadMcpSources);
@@ -1651,6 +1750,299 @@ historyLookupButton.addEventListener("click", function() {
   if (!ruleId) { alert("请输入 rule_id"); return; }
   showOverrideHistory(ruleId, hospitalId, ruleId);
 });
+
+// ===== 指标设计稿 =====
+var indicatorDraftStatusNames = {
+  metadata_pending: "待确认字段",
+  metadata_ready: "字段已确认",
+  sql_ready: "SQL 已生成",
+  trial_passed: "试运行通过",
+  pending_approval: "待审批",
+  published: "已发布",
+  rejected: "已拒绝"
+};
+var indicatorDraftStageOrder = [
+  ["metadata_pending", "待确认字段"],
+  ["metadata_ready", "字段已确认"],
+  ["sql_ready", "SQL 已生成"],
+  ["trial_passed", "试运行通过"],
+  ["pending_approval", "待审批"],
+  ["published", "已发布"]
+];
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function indicatorActorId() {
+  return currentUser && currentUser.accountId ? currentUser.accountId : "operator";
+}
+
+async function indicatorApi(url, options) {
+  var response = await fetch(url, options || {});
+  var data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "指标设计稿操作失败");
+  return data;
+}
+
+function indicatorDraftKind(draft) {
+  return draft && draft.base_index_code ? "本院口径差异" : "本院新增指标";
+}
+
+function renderIndicatorStages(draft) {
+  indicatorDraftStages.innerHTML = "";
+  var activeIndex = draft ? indicatorDraftStageOrder.findIndex(function(item) { return item[0] === draft.status; }) : -1;
+  if (draft && draft.status === "rejected") activeIndex = 4;
+  indicatorDraftStageOrder.forEach(function(item, index) {
+    var stage = document.createElement("div");
+    stage.className = "indicator-stage" + (index < activeIndex ? " done" : "") + (index === activeIndex ? " active" : "");
+    stage.textContent = item[1];
+    indicatorDraftStages.appendChild(stage);
+  });
+}
+
+async function loadIndicatorDrafts(selectDraftId) {
+  indicatorDraftList.textContent = "加载设计稿...";
+  try {
+    var hospitalId = (hospitalIdInput.value || "hospital_001").trim();
+    var drafts = await indicatorApi("/api/indicator-drafts?hospital_id=" + encodeURIComponent(hospitalId));
+    indicatorDraftList.innerHTML = "";
+    if (!drafts.length) {
+      indicatorDraftList.textContent = "当前医院还没有指标设计稿。";
+      currentIndicatorDraft = null;
+      currentIndicatorMetadata = null;
+      renderIndicatorStages(null);
+      indicatorDraftDetail.className = "indicator-empty";
+      indicatorDraftDetail.textContent = "在上方描述需要创建或调整的指标。";
+      return;
+    }
+    drafts.forEach(function(draft) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "indicator-draft-item" + (draft.draft_id === selectDraftId ? " active" : "");
+      var name = document.createElement("strong");
+      name.textContent = draft.index_name;
+      var meta = document.createElement("span");
+      meta.textContent = indicatorDraftKind(draft) + " · " + (indicatorDraftStatusNames[draft.status] || draft.status) + " · v" + draft.current_version;
+      button.append(name, meta);
+      button.addEventListener("click", function() { selectIndicatorDraft(draft.draft_id); });
+      indicatorDraftList.appendChild(button);
+    });
+    var target = selectDraftId || drafts[0].draft_id;
+    await selectIndicatorDraft(target, true);
+  } catch (error) {
+    indicatorDraftList.textContent = "设计稿加载失败：" + error.message;
+  }
+}
+
+async function selectIndicatorDraft(draftId, keepList) {
+  try {
+    currentIndicatorMetadata = null;
+    currentIndicatorDraft = await indicatorApi("/api/indicator-drafts/" + encodeURIComponent(draftId));
+    if (!keepList) {
+      indicatorDraftList.querySelectorAll(".indicator-draft-item").forEach(function(item) { item.classList.remove("active"); });
+    }
+    renderIndicatorDraftDetail();
+  } catch (error) {
+    indicatorDraftDetail.className = "indicator-empty";
+    indicatorDraftDetail.textContent = "设计稿详情加载失败：" + error.message;
+  }
+}
+
+async function createIndicatorDraft() {
+  var query = indicatorDraftPrompt.value.trim();
+  if (!query) { indicatorDraftPrompt.focus(); return; }
+  createIndicatorDraftButton.disabled = true;
+  createIndicatorDraftButton.textContent = "生成中...";
+  try {
+    var draft = await indicatorApi("/api/indicator-drafts/generate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: query, hospital_id: (hospitalIdInput.value || "hospital_001").trim(), actor_id: indicatorActorId()})
+    });
+    indicatorDraftPrompt.value = "";
+    await loadIndicatorDrafts(draft.draft_id);
+  } catch (error) {
+    indicatorDraftDetail.className = "";
+    indicatorDraftDetail.innerHTML = '<div class="indicator-message">' + escapeHtml(error.message) + '</div>';
+  } finally {
+    createIndicatorDraftButton.disabled = false;
+    createIndicatorDraftButton.textContent = "生成设计稿";
+  }
+}
+
+function renderIndicatorDraftDetail() {
+  var draft = currentIndicatorDraft;
+  if (!draft) return;
+  renderIndicatorStages(draft);
+  indicatorDraftDetail.className = "";
+  var description = draft.index_desc || "未填写指标定义";
+  indicatorDraftDetail.innerHTML =
+    '<div class="indicator-detail-head"><div><h3>' + escapeHtml(draft.index_name) + '</h3>' +
+    '<span class="indicator-kind">' + indicatorDraftKind(draft) + '</span></div>' +
+    '<span class="indicator-status">' + escapeHtml(indicatorDraftStatusNames[draft.status] || draft.status) + '</span></div>' +
+    '<div class="review-meta" style="margin-top:10px;">' + escapeHtml(draft.proposed_index_code) + ' · 当前版本 v' + escapeHtml(draft.current_version) + (draft.base_index_code ? ' · 基于 ' + escapeHtml(draft.base_index_code) : '') + '</div>' +
+    '<p style="color:var(--ink-soft);line-height:1.7;">' + escapeHtml(description) + '</p>' +
+    '<div class="indicator-rule-grid">' +
+      '<div><strong>分子口径</strong>' + escapeHtml(draft.numerator_rule) + '</div>' +
+      '<div><strong>分母口径</strong>' + escapeHtml(draft.denominator_rule) + '</div>' +
+      '<div><strong>统计周期</strong>' + escapeHtml(draft.stat_cycle) + '</div>' +
+      '<div><strong>指标类型</strong>' + escapeHtml(draft.metric_type === "ratio" ? "比例" : "计数") + '</div>' +
+    '</div>' +
+    '<details class="indicator-tech"><summary>查看字段、SQL 与结构化计划</summary><div class="indicator-tech-body">' +
+      '<strong>需要字段</strong><pre>' + escapeHtml(JSON.stringify(draft.metadata_requirements || [], null, 2)) + '</pre>' +
+      '<strong>结构化计划</strong><pre>' + escapeHtml(JSON.stringify(draft.sql_plan || {}, null, 2)) + '</pre>' +
+      '<strong>当前 SQL</strong><pre>' + escapeHtml(draft.current_sql || "尚未生成") + '</pre>' +
+      '<strong>试运行结果</strong><pre>' + escapeHtml(JSON.stringify(draft.trial_result || {}, null, 2)) + '</pre>' +
+    '</div></details>' +
+    '<div id="indicatorDraftActionZone" class="indicator-action-zone"></div>';
+  renderIndicatorDraftAction();
+}
+
+function renderIndicatorDraftAction() {
+  var draft = currentIndicatorDraft;
+  var zone = document.getElementById("indicatorDraftActionZone");
+  if (!draft || !zone) return;
+  if (draft.status === "metadata_pending") {
+    zone.innerHTML = '<h4>下一步：确认业务字段对应的数据库列</h4><div id="indicatorMetadataEditor"><button id="loadIndicatorMetadataButton" type="button">检查字段</button></div>';
+    document.getElementById("loadIndicatorMetadataButton").addEventListener("click", loadIndicatorMetadata);
+    if (currentIndicatorMetadata) renderIndicatorMetadataEditor();
+  } else if (draft.status === "metadata_ready") {
+    zone.innerHTML = '<h4>下一步：根据结构化计划生成安全 SQL</h4><button id="generateIndicatorSqlButton" type="button">生成 SQL</button>';
+    document.getElementById("generateIndicatorSqlButton").addEventListener("click", generateIndicatorSql);
+  } else if (draft.status === "sql_ready") {
+    var today = new Date().toISOString().slice(0, 10);
+    var first = today.slice(0, 8) + "01";
+    zone.innerHTML = '<h4>下一步：选择统计区间试运行</h4><div class="indicator-action-row">' +
+      '<label>开始日期<input id="indicatorTrialStart" type="date" value="' + first + '"></label>' +
+      '<label>结束日期<input id="indicatorTrialEnd" type="date" value="' + today + '"></label>' +
+      '<button id="trialIndicatorSqlButton" type="button">试运行</button></div>';
+    document.getElementById("trialIndicatorSqlButton").addEventListener("click", trialIndicatorSql);
+  } else if (draft.status === "trial_passed") {
+    zone.innerHTML = '<h4>下一步：提交人工审批</h4><div class="indicator-message">提交后将锁定当前设计稿版本，审批通过才会进入本院生效规则。</div><button id="submitIndicatorDraftButton" type="button">提交审批</button>';
+    document.getElementById("submitIndicatorDraftButton").addEventListener("click", submitIndicatorDraft);
+  } else if (draft.status === "pending_approval") {
+    zone.innerHTML = '<h4>等待管理员审批</h4><div class="indicator-message">当前版本已完成试运行。管理员批准后，本院新增指标或本院口径差异才会正式生效。</div><button id="approveIndicatorDraftButton" type="button">管理员批准</button>';
+    document.getElementById("approveIndicatorDraftButton").addEventListener("click", requestIndicatorDraftApproval);
+  } else if (draft.status === "published") {
+    zone.innerHTML = '<h4>指标已发布</h4><div class="indicator-message">正式指标编码：' + escapeHtml(draft.formal_index_code || draft.proposed_index_code) + '。后续对话检索将按当前医院范围命中此指标。</div>';
+  } else {
+    zone.innerHTML = '<h4>设计稿已拒绝</h4><div class="indicator-message">修改口径后会创建新版本，并重新进行字段确认和试运行。</div>';
+  }
+}
+
+async function loadIndicatorMetadata() {
+  var editor = document.getElementById("indicatorMetadataEditor");
+  editor.textContent = "正在读取最近一次元数据快照...";
+  try {
+    currentIndicatorMetadata = await indicatorApi("/api/indicator-drafts/" + encodeURIComponent(currentIndicatorDraft.draft_id) + "/metadata-suggestions");
+    renderIndicatorMetadataEditor();
+  } catch (error) {
+    editor.innerHTML = '<div class="indicator-message">' + escapeHtml(error.message) + '</div>';
+  }
+}
+
+function renderIndicatorMetadataEditor() {
+  var editor = document.getElementById("indicatorMetadataEditor");
+  var suggestions = currentIndicatorMetadata && currentIndicatorMetadata.suggestions || {};
+  editor.innerHTML = '<div class="indicator-mapping-list"></div>';
+  var list = editor.querySelector(".indicator-mapping-list");
+  Object.keys(suggestions).forEach(function(field) {
+    var row = document.createElement("div");
+    row.className = "indicator-mapping-row";
+    var label = document.createElement("strong");
+    label.textContent = field;
+    var select = document.createElement("select");
+    select.dataset.field = field;
+    var candidates = suggestions[field] || [];
+    if (!candidates.length) {
+      var empty = document.createElement("option"); empty.value = ""; empty.textContent = "未找到，请先同步元数据"; select.appendChild(empty);
+    } else {
+      candidates.forEach(function(candidate, index) {
+        var option = document.createElement("option"); option.value = String(index); option.textContent = candidate.table_name + "." + candidate.column_name + " · " + candidate.data_type; select.appendChild(option);
+      });
+    }
+    row.append(label, select); list.appendChild(row);
+  });
+  var button = document.createElement("button");
+  button.type = "button"; button.textContent = "确认字段映射";
+  button.disabled = !!(currentIndicatorMetadata.missing_fields || []).length;
+  button.addEventListener("click", confirmIndicatorMetadata);
+  editor.appendChild(button);
+  if (button.disabled) {
+    var hint = document.createElement("div"); hint.className = "indicator-message"; hint.textContent = "仍缺少字段：" + currentIndicatorMetadata.missing_fields.join("、") + "。请先在 MCP 中同步业务库元数据。"; editor.appendChild(hint);
+  }
+}
+
+async function confirmIndicatorMetadata() {
+  var mappings = {};
+  document.querySelectorAll("#indicatorMetadataEditor select[data-field]").forEach(function(select) {
+    var candidates = currentIndicatorMetadata.suggestions[select.dataset.field] || [];
+    var selected = candidates[Number(select.value)];
+    if (selected) mappings[select.dataset.field] = selected;
+  });
+  await runIndicatorDraftAction("/metadata-confirm", {expected_version: currentIndicatorDraft.current_version, mappings: mappings, actor_id: indicatorActorId()});
+}
+
+async function generateIndicatorSql() {
+  await runIndicatorDraftAction("/sql-generate", {expected_version: currentIndicatorDraft.current_version, actor_id: indicatorActorId()});
+}
+
+async function trialIndicatorSql() {
+  var start = document.getElementById("indicatorTrialStart").value;
+  var end = document.getElementById("indicatorTrialEnd").value;
+  await runIndicatorDraftAction("/trial-run", {expected_version: currentIndicatorDraft.current_version, stat_start_time: start + " 00:00:00", stat_end_time: end + " 23:59:59", actor_id: indicatorActorId()});
+}
+
+async function submitIndicatorDraft() {
+  await runIndicatorDraftAction("/submit", {expected_version: currentIndicatorDraft.current_version, actor_id: indicatorActorId()});
+}
+
+async function runIndicatorDraftAction(path, payload) {
+  var zone = document.getElementById("indicatorDraftActionZone");
+  if (zone) zone.innerHTML = '<div class="indicator-message">正在处理当前步骤...</div>';
+  try {
+    currentIndicatorDraft = await indicatorApi("/api/indicator-drafts/" + encodeURIComponent(currentIndicatorDraft.draft_id) + path, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)
+    });
+    currentIndicatorMetadata = null;
+    await loadIndicatorDrafts(currentIndicatorDraft.draft_id);
+  } catch (error) {
+    renderIndicatorDraftDetail();
+    zone = document.getElementById("indicatorDraftActionZone");
+    if (zone) zone.insertAdjacentHTML("afterbegin", '<div class="indicator-message">' + escapeHtml(error.message) + '</div>');
+  }
+}
+
+function requestIndicatorDraftApproval() {
+  if (!adminToken) {
+    pendingAdminAction = "draftApprove";
+    loginModal.hidden = false;
+    loginPassword.focus();
+    return;
+  }
+  approveCurrentIndicatorDraft();
+}
+
+async function approveCurrentIndicatorDraft() {
+  if (!currentIndicatorDraft) return;
+  try {
+    var result = await indicatorApi("/api/indicator-drafts/" + encodeURIComponent(currentIndicatorDraft.draft_id) + "/approve", {
+      method: "POST",
+      headers: {"Authorization": "Bearer " + adminToken, "Content-Type": "application/json"},
+      body: JSON.stringify({expected_version: currentIndicatorDraft.current_version, approver_id: indicatorActorId()})
+    });
+    await loadIndicatorDrafts(result.draft_id);
+  } catch (error) {
+    if (/401|403|登录|token/i.test(error.message)) {
+      adminToken = ""; sessionStorage.removeItem("adminToken"); updateAdminUI();
+    }
+    var zone = document.getElementById("indicatorDraftActionZone");
+    if (zone) zone.insertAdjacentHTML("afterbegin", '<div class="indicator-message">' + escapeHtml(error.message) + '</div>');
+  }
+}
 
 // ===== 新会话 =====
 
