@@ -133,6 +133,42 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertEqual(interaction.calls[0][0], "understand")
         self.assertEqual([call[0] for call in caliber.calls], ["search", "resolve", "mapping"])
 
+    def test_staged_preparation_matches_one_shot_prepare(self) -> None:
+        orchestrator, _, caliber, *_ = _orchestrator()
+        errors = []
+
+        understood = orchestrator.understand_request(
+            "这个指标怎么算？",
+            {"rule_id": "MQSI2025_005", "rule_name": "急会诊及时到位率"},
+            errors,
+        )
+        prepared = orchestrator.create_request(
+            "这个指标怎么算？", "hospital_001", understood, errors
+        )
+        orchestrator.search_request(
+            prepared,
+            {"rule_id": "MQSI2025_005", "rule_name": "急会诊及时到位率"},
+        )
+        orchestrator.resolve_request(prepared)
+
+        self.assertEqual(prepared.rule_id, "MQSI2025_005")
+        self.assertEqual(prepared.effective_rule.effective_level, "hospital")
+        self.assertEqual([call[0] for call in caliber.calls], ["search", "resolve", "mapping"])
+
+    def test_prepare_rule_request_resolves_without_search(self) -> None:
+        orchestrator, _, caliber, *_ = _orchestrator()
+
+        prepared = orchestrator.prepare_rule_request(
+            query="diagnose:MQSI2025_005",
+            hospital_id="hospital_001",
+            intent="diagnose",
+            rule_id="MQSI2025_005",
+        )
+
+        self.assertEqual(prepared.rule_id, "MQSI2025_005")
+        self.assertEqual(prepared.effective_rule.rule_name, "急会诊及时到位率")
+        self.assertEqual([call[0] for call in caliber.calls], ["resolve", "mapping"])
+
     def test_prepare_chat_skips_rule_repository(self) -> None:
         orchestrator, _, caliber, *_ = _orchestrator(intent="chat")
 

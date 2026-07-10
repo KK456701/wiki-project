@@ -1,5 +1,7 @@
 import unittest
+import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -13,17 +15,19 @@ from tests.test_rule_repository import _rule_engine
 
 
 class ApiTest(unittest.TestCase):
+    def test_domain_endpoints_do_not_bypass_orchestrator_rule_preparation(self) -> None:
+        self.assertNotIn(".caliber.", inspect.getsource(api_main.sql_generate))
+        self.assertNotIn(".caliber.", inspect.getsource(api_main.diagnose_run))
+
     def test_api_exposes_agent_orchestrator_factory(self) -> None:
         self.assertTrue(callable(api_main._create_agent_orchestrator))
 
     def test_sql_endpoint_delegates_to_agent_orchestrator(self) -> None:
-        class FakeCaliber:
-            def resolve(self, rule_id, hospital_id):
-                return {"rule_id": rule_id, "effective_level": "hospital"}
-
         class FakeOrchestrator:
-            caliber = FakeCaliber()
             calls = []
+
+            def prepare_rule_request(self, **kwargs):
+                return SimpleNamespace(**kwargs)
 
             def generate_indicator(self, prepared, **kwargs):
                 self.calls.append((prepared, kwargs))
@@ -60,13 +64,11 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(orchestrator.calls[0][0].rule_id, "MQSI2025_005")
 
     def test_diagnose_endpoint_delegates_to_agent_orchestrator(self) -> None:
-        class FakeCaliber:
-            def resolve(self, rule_id, hospital_id):
-                return {"rule_id": rule_id, "effective_level": "hospital"}
-
         class FakeOrchestrator:
-            caliber = FakeCaliber()
             calls = []
+
+            def prepare_rule_request(self, **kwargs):
+                return SimpleNamespace(**kwargs)
 
             def diagnose(self, prepared, **kwargs):
                 self.calls.append((prepared, kwargs))

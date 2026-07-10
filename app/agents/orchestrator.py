@@ -58,26 +58,51 @@ class CoreIndicatorOrchestrator:
         memory_context: dict[str, Any] | None = None,
     ) -> PreparedRequest:
         errors: list[str] = []
+        understood = self.understand_request(query, memory_context, errors)
+        prepared = self.create_request(query, hospital_id, understood, errors)
+        self.search_request(prepared, memory_context)
+        self.resolve_request(prepared)
+        return prepared
+
+    def understand_request(
+        self,
+        query: str,
+        memory_context: dict[str, Any] | None = None,
+        errors: list[str] | None = None,
+    ) -> IntentResult:
+        error_list = errors if errors is not None else []
         if hasattr(self.interaction, "understand_contract"):
-            understood = self.interaction.understand_contract(
-                query, memory_context=memory_context, errors=errors
+            return self.interaction.understand_contract(
+                query, memory_context=memory_context, errors=error_list
             )
-        else:
-            understood = IntentResult.model_validate(
-                self.interaction.understand(
-                    query, memory_context=memory_context, errors=errors
-                )
+        return IntentResult.model_validate(
+            self.interaction.understand(
+                query, memory_context=memory_context, errors=error_list
             )
-        intent = str(understood.get("intent") or "query")
-        prepared = PreparedRequest(
+        )
+
+    @staticmethod
+    def create_request(
+        query: str,
+        hospital_id: str | None,
+        understood: IntentResult,
+        errors: list[str] | None = None,
+    ) -> PreparedRequest:
+        return PreparedRequest(
             query=query,
             hospital_id=hospital_id,
-            intent=intent,
+            intent=understood.intent,
             retrieval_query=str(understood.get("retrieval_query") or query),
             custom_filters=list(understood.get("custom_filters") or []),
-            errors=errors,
+            errors=errors or [],
         )
-        if intent not in RULE_INTENTS:
+
+    def search_request(
+        self,
+        prepared: PreparedRequest,
+        memory_context: dict[str, Any] | None = None,
+    ) -> PreparedRequest:
+        if prepared.intent not in RULE_INTENTS:
             return prepared
 
         if hasattr(self.caliber, "search_contract"):
@@ -97,31 +122,54 @@ class CoreIndicatorOrchestrator:
             not prepared.rule_id
             and memory_context
             and memory_context.get("rule_id")
-            and self.interaction.can_reuse_memory(query, intent)
+            and self.interaction.can_reuse_memory(prepared.query, prepared.intent)
         ):
             prepared.rule_id = str(memory_context["rule_id"])
             prepared.search["resolved_rule_id"] = prepared.rule_id
             prepared.search["context_source"] = "memory_last_rule"
+        return prepared
 
+    def resolve_request(self, prepared: PreparedRequest) -> PreparedRequest:
         if not prepared.rule_id:
             return prepared
         if hasattr(self.caliber, "resolve_contract"):
             prepared.effective_rule = self.caliber.resolve_contract(
-                prepared.rule_id, hospital_id
+                prepared.rule_id, prepared.hospital_id
             )
         else:
             prepared.effective_rule = EffectiveRule.model_validate(
-                self.caliber.resolve(prepared.rule_id, hospital_id)
+                self.caliber.resolve(prepared.rule_id, prepared.hospital_id)
             )
         if hasattr(self.caliber, "field_mapping_contract"):
             prepared.field_mapping = self.caliber.field_mapping_contract(
-                prepared.rule_id, hospital_id or ""
+                prepared.rule_id, prepared.hospital_id or ""
             )
         else:
             prepared.field_mapping = FieldMapping.model_validate(
-                self.caliber.field_mapping(prepared.rule_id, hospital_id or "")
+                self.caliber.field_mapping(
+                    prepared.rule_id, prepared.hospital_id or ""
+                )
             )
         return prepared
+
+    def prepare_rule_request(
+        self,
+        *,
+        query: str,
+        hospital_id: str | None,
+        intent: str,
+        rule_id: str,
+        custom_filters: list[dict[str, Any]] | None = None,
+    ) -> PreparedRequest:
+        prepared = PreparedRequest(
+            query=query,
+            hospital_id=hospital_id,
+            intent=intent,
+            retrieval_query=rule_id,
+            rule_id=rule_id,
+            custom_filters=custom_filters or [],
+        )
+        return self.resolve_request(prepared)
 
     def answer(self, prepared: PreparedRequest) -> tuple[str, str]:
         if prepared.intent == "chat":
@@ -133,6 +181,18 @@ class CoreIndicatorOrchestrator:
             prepared.effective_rule,
             errors=prepared.errors,
         )
+
+    def chat_answer(self) -> str:
+        return self.interaction.chat_answer()
+
+    def answer_from_rule(self, effective_rule: Any) -> str:
+        return self.interaction.answer_from_rule(effective_rule)
+
+    def build_answer_prompt(self, query: str, effective_rule: Any) -> str:
+        return self.interaction.build_answer_prompt(query, effective_rule)
+
+    def answer_passes_guard(self, answer: str, effective_rule: Any) -> bool:
+        return self.interaction.answer_passes_guard(answer, effective_rule)
 
     def preview_feedback(self, prepared: PreparedRequest) -> dict[str, Any]:
         self._require_rule(prepared)

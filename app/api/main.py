@@ -1024,7 +1024,6 @@ def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, A
 
 @app.post("/api/sql/generate")
 def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
-    from app.agents.orchestrator import PreparedRequest
     from app.db.engine import create_runtime_engine
 
     runtime_engine = create_runtime_engine()
@@ -1034,13 +1033,11 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
         business_db=create_business_db_client("hospital_demo_data"),
         rule_repository=rules,
     )
-    effective = orchestrator.caliber.resolve(request.rule_id, request.hospital_id)
-    prepared = PreparedRequest(
+    prepared = orchestrator.prepare_rule_request(
         query=request.query,
         hospital_id=request.hospital_id,
         intent="trial_run" if request.trial_run else "generate_sql",
         rule_id=request.rule_id,
-        effective_rule=effective,
     )
     return orchestrator.generate_indicator(
         prepared,
@@ -1052,7 +1049,6 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
 
 @app.post("/api/diagnose/run")
 def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
-    from app.agents.orchestrator import PreparedRequest
     from app.db.engine import create_runtime_engine
 
     runtime_engine = create_runtime_engine()
@@ -1066,13 +1062,11 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
         rule_repository=rules,
         metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
     )
-    effective = orchestrator.caliber.resolve(request.rule_id, request.hospital_id)
-    prepared = PreparedRequest(
+    prepared = orchestrator.prepare_rule_request(
         query=f"diagnose:{request.rule_id}",
         hospital_id=request.hospital_id,
         intent="diagnose",
         rule_id=request.rule_id,
-        effective_rule=effective,
     )
     result = orchestrator.diagnose(
         prepared,
