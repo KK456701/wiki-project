@@ -34,6 +34,49 @@ var monitoringYoyThreshold = document.getElementById("monitoringYoyThreshold");
 var saveMonitoringPlanButton = document.getElementById("saveMonitoringPlanButton");
 var cancelMonitoringPlanButton = document.getElementById("cancelMonitoringPlanButton");
 var closeMonitoringPlanFormButton = document.getElementById("closeMonitoringPlanFormButton");
+var monitoringPlansTab = document.getElementById("monitoringPlansTab");
+var monitoringResultsTab = document.getElementById("monitoringResultsTab");
+var monitoringAlertsTab = document.getElementById("monitoringAlertsTab");
+var monitoringPlansPanel = document.getElementById("monitoringPlansPanel");
+var monitoringResultsPanel = document.getElementById("monitoringResultsPanel");
+var monitoringAlertsPanel = document.getElementById("monitoringAlertsPanel");
+var monitoringResultsList = document.getElementById("monitoringResultsList");
+var monitoringAlertsList = document.getElementById("monitoringAlertsList");
+var monitoringResultRuleFilter = document.getElementById("monitoringResultRuleFilter");
+var monitoringAlertStatusFilter = document.getElementById("monitoringAlertStatusFilter");
+var refreshMonitoringResultsButton = document.getElementById("refreshMonitoringResultsButton");
+var refreshMonitoringAlertsButton = document.getElementById("refreshMonitoringAlertsButton");
+var monitoringAlertCount = document.getElementById("monitoringAlertCount");
+
+var monitoringRunStatusNames = {
+  success: "成功",
+  no_sample: "无有效样本",
+  failed: "运行失败",
+  running: "运行中",
+};
+
+var monitoringWaveStatusNames = {
+  baseline_insufficient: "缺少历史基线",
+  within_threshold: "波动正常",
+  mom_threshold_exceeded: "环比超过阈值",
+  yoy_threshold_exceeded: "同比超过阈值",
+  mom_yoy_threshold_exceeded: "环比和同比均超过阈值",
+  no_sample: "无有效样本",
+};
+
+var monitoringAlertStatusNames = {
+  open: "未处理",
+  acknowledged: "已确认",
+  closed: "已关闭",
+};
+
+var monitoringDiagnoseStatusNames = {
+  pending: "等待诊断",
+  running: "诊断中",
+  completed: "诊断完成",
+  failed: "诊断失败",
+  not_applicable: "无需诊断",
+};
 
 function currentMonitoringHospitalId() {
   return (hospitalIdInput.value || "hospital_001").trim() || "hospital_001";
@@ -432,6 +475,7 @@ async function runMonitoringPlan(plan, period, button) {
     );
     monitoringState.latestResult = data;
     if (data.trace_id) monitoringState.latestTraceByResultId[String(data.id)] = data.trace_id;
+    monitoringState.results = [data].concat(monitoringState.results.filter(function(item) { return item.id !== data.id; }));
     showMonitoringNotice(data.run_status === "failed" ? "运行失败，可前往恢复中心重试。" : "指标运行完成，结果和链路已生成。", data.run_status === "failed" ? "failed" : "");
     renderMonitoringPlanDetail();
   } catch (error) {
@@ -442,12 +486,262 @@ async function runMonitoringPlan(plan, period, button) {
   }
 }
 
+function switchMonitoringTab(tab) {
+  monitoringState.tab = tab;
+  var tabs = {
+    plans: monitoringPlansTab,
+    results: monitoringResultsTab,
+    alerts: monitoringAlertsTab,
+  };
+  var panels = {
+    plans: monitoringPlansPanel,
+    results: monitoringResultsPanel,
+    alerts: monitoringAlertsPanel,
+  };
+  Object.keys(tabs).forEach(function(name) {
+    var active = name === tab;
+    tabs[name].classList.toggle("active", active);
+    tabs[name].setAttribute("aria-selected", active ? "true" : "false");
+    panels[name].hidden = !active;
+  });
+  if (tab === "results") loadMonitoringResults();
+  if (tab === "alerts") loadMonitoringAlerts();
+}
+
+function monitoringPercent(value) {
+  return value == null ? "暂无基线" : String(value) + "%";
+}
+
+function monitoringValue(value) {
+  return value == null ? "无" : String(value);
+}
+
+function monitoringDateTime(value) {
+  if (!value) return "未知时间";
+  return String(value).replace("T", " ").slice(0, 19);
+}
+
+function addMonitoringRecordField(container, label, value) {
+  var field = document.createElement("div");
+  var name = document.createElement("span");
+  name.className = "monitoring-kicker";
+  name.textContent = label;
+  var strong = document.createElement("strong");
+  strong.textContent = value;
+  field.append(name, strong);
+  container.appendChild(field);
+}
+
+function renderMonitoringResults() {
+  monitoringResultsList.innerHTML = "";
+  if (!monitoringState.results.length) {
+    monitoringResultsList.innerHTML = '<div class="monitoring-empty">当前医院还没有运行结果。先在“运行计划”中点击“立即运行”。</div>';
+    return;
+  }
+  monitoringState.results.forEach(function(result) {
+    var item = document.createElement("article");
+    item.className = "monitoring-record";
+    var head = document.createElement("div");
+    head.className = "monitoring-detail-head";
+    var heading = document.createElement("div");
+    var title = document.createElement("strong");
+    title.textContent = result.rule_id || "未知指标";
+    var period = document.createElement("div");
+    period.className = "review-meta";
+    period.textContent = result.stat_period || "未记录统计周期";
+    heading.append(title, period);
+    var status = document.createElement("span");
+    status.className = "monitoring-status " + (result.run_status || "");
+    status.textContent = monitoringRunStatusNames[result.run_status] || result.run_status || "未知状态";
+    head.append(heading, status);
+
+    var grid = document.createElement("div");
+    grid.className = "monitoring-record-grid";
+    addMonitoringRecordField(grid, "指标结果", monitoringValue(result.result_value));
+    addMonitoringRecordField(grid, "环比", monitoringPercent(result.mom_change_rate));
+    addMonitoringRecordField(grid, "同比", monitoringPercent(result.yoy_change_rate));
+    addMonitoringRecordField(grid, "波动判断", monitoringWaveStatusNames[result.wave_status] || result.wave_status || "未判断");
+    addMonitoringRecordField(grid, "DBHub 耗时", formatTraceDuration(result.duration_ms));
+
+    var meta = document.createElement("div");
+    meta.className = "review-meta";
+    meta.textContent = "触发方式：" + ({manual:"手工运行", scheduled:"定时运行", retry:"恢复重试"}[result.trigger_type] || result.trigger_type || "未知") + " · 执行时间：" + monitoringDateTime(result.created_at);
+    var actions = document.createElement("div");
+    actions.className = "monitoring-item-actions";
+    var traceId = monitoringState.latestTraceByResultId[String(result.id)] || "";
+    if (traceId) {
+      var trace = document.createElement("button");
+      trace.type = "button";
+      trace.className = "ghost";
+      trace.textContent = "查看执行链路";
+      trace.addEventListener("click", function() { showTrace(traceId); });
+      actions.appendChild(trace);
+    }
+    item.append(head, grid, meta, actions);
+    monitoringResultsList.appendChild(item);
+  });
+}
+
+async function loadMonitoringResults() {
+  monitoringResultsList.innerHTML = '<div class="monitoring-loading">正在读取运行结果...</div>';
+  var path = "/api/monitoring/results?hospital_id=" + encodeURIComponent(currentMonitoringHospitalId());
+  var ruleId = monitoringResultRuleFilter.value.trim();
+  if (ruleId) path += "&rule_id=" + encodeURIComponent(ruleId);
+  try {
+    var data = await monitoringRequest(path);
+    monitoringState.results = data.items || [];
+    if (monitoringState.latestResult && (!ruleId || monitoringState.latestResult.rule_id === ruleId)) {
+      var exists = monitoringState.results.some(function(item) { return item.id === monitoringState.latestResult.id; });
+      if (!exists) monitoringState.results.unshift(monitoringState.latestResult);
+    }
+    renderMonitoringResults();
+  } catch (error) {
+    monitoringResultsList.innerHTML = '<div class="monitoring-empty">' + monitoringEscape(error.message) + "</div>";
+  }
+}
+
+function renderMonitoringAlertActions(container, alert) {
+  if (alert.status === "open") {
+    var acknowledge = document.createElement("button");
+    acknowledge.type = "button";
+    acknowledge.textContent = "确认";
+    acknowledge.addEventListener("click", function() { acknowledgeMonitoringAlert(alert, acknowledge); });
+    container.appendChild(acknowledge);
+  }
+  if (alert.status !== "closed") {
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "ghost";
+    close.textContent = "关闭";
+    close.addEventListener("click", function() { closeMonitoringAlert(alert, close); });
+    container.appendChild(close);
+  }
+  if (alert.diagnose_status === "failed") {
+    var diagnose = document.createElement("button");
+    diagnose.type = "button";
+    diagnose.textContent = "重新诊断";
+    diagnose.addEventListener("click", function() { diagnoseMonitoringAlert(alert, diagnose); });
+    container.appendChild(diagnose);
+  }
+  var traceId = monitoringState.latestTraceByResultId[String(alert.result_id)] || "";
+  if (traceId) {
+    var trace = document.createElement("button");
+    trace.type = "button";
+    trace.className = "ghost";
+    trace.textContent = "查看执行链路";
+    trace.addEventListener("click", function() { showTrace(traceId); });
+    container.appendChild(trace);
+  }
+}
+
+function renderMonitoringAlerts() {
+  monitoringAlertsList.innerHTML = "";
+  if (!monitoringState.alerts.length) {
+    monitoringAlertsList.innerHTML = '<div class="monitoring-empty">当前筛选条件下没有预警。</div>';
+    return;
+  }
+  monitoringState.alerts.forEach(function(alert) {
+    var item = document.createElement("article");
+    item.className = "monitoring-alert";
+    var head = document.createElement("div");
+    head.className = "monitoring-detail-head";
+    var heading = document.createElement("div");
+    var title = document.createElement("strong");
+    title.textContent = alert.rule_id || "未知指标";
+    var type = document.createElement("div");
+    type.className = "review-meta";
+    type.textContent = alert.alert_type === "execution_failed" ? "指标运行失败" : (monitoringWaveStatusNames[alert.conclusion_code] || "指标波动预警");
+    heading.append(title, type);
+    var status = document.createElement("span");
+    status.className = "monitoring-status " + (alert.status || "");
+    status.textContent = monitoringAlertStatusNames[alert.status] || alert.status || "未知状态";
+    head.append(heading, status);
+
+    var grid = document.createElement("div");
+    grid.className = "monitoring-record-grid";
+    addMonitoringRecordField(grid, "当前值", monitoringValue(alert.current_value));
+    addMonitoringRecordField(grid, "环比", monitoringPercent(alert.mom_change_rate));
+    addMonitoringRecordField(grid, "同比", monitoringPercent(alert.yoy_change_rate));
+    addMonitoringRecordField(grid, "自动诊断", monitoringDiagnoseStatusNames[alert.diagnose_status] || alert.diagnose_status || "未知");
+    addMonitoringRecordField(grid, "创建时间", monitoringDateTime(alert.created_at));
+
+    var meta = document.createElement("div");
+    meta.className = "review-meta";
+    meta.textContent = alert.diagnose_report_id ? "诊断报告：" + alert.diagnose_report_id : "尚未关联诊断报告";
+    var actions = document.createElement("div");
+    actions.className = "monitoring-item-actions";
+    renderMonitoringAlertActions(actions, alert);
+    item.append(head, grid, meta, actions);
+    monitoringAlertsList.appendChild(item);
+  });
+}
+
+function updateMonitoringAlertCount() {
+  var count = monitoringState.alerts.filter(function(alert) { return alert.status !== "closed"; }).length;
+  monitoringAlertCount.hidden = count === 0;
+  monitoringAlertCount.textContent = count ? String(count) : "";
+}
+
+async function loadMonitoringAlerts(silent) {
+  if (!silent) monitoringAlertsList.innerHTML = '<div class="monitoring-loading">正在读取预警...</div>';
+  var path = "/api/monitoring/alerts?hospital_id=" + encodeURIComponent(currentMonitoringHospitalId());
+  var status = monitoringAlertStatusFilter.value;
+  if (status) path += "&status=" + encodeURIComponent(status);
+  try {
+    var data = await monitoringRequest(path);
+    monitoringState.alerts = data.items || [];
+    updateMonitoringAlertCount();
+    renderMonitoringAlerts();
+  } catch (error) {
+    if (!silent) monitoringAlertsList.innerHTML = '<div class="monitoring-empty">' + monitoringEscape(error.message) + "</div>";
+  }
+}
+
+function monitoringAlertPayload() {
+  return JSON.stringify({
+    hospital_id: currentMonitoringHospitalId(),
+    actor_id: currentUser ? currentUser.accountId : "admin",
+  });
+}
+
+async function updateMonitoringAlert(alert, action, button) {
+  button.disabled = true;
+  try {
+    await monitoringRequest(
+      "/api/monitoring/alerts/" + encodeURIComponent(alert.alert_id) + "/" + action,
+      {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: monitoringAlertPayload(),
+      }
+    );
+    await loadMonitoringAlerts();
+  } catch (error) {
+    showMonitoringNotice(error.message, "failed");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function acknowledgeMonitoringAlert(alert, button) {
+  return updateMonitoringAlert(alert, "acknowledge", button);
+}
+
+function closeMonitoringAlert(alert, button) {
+  return updateMonitoringAlert(alert, "close", button);
+}
+
+function diagnoseMonitoringAlert(alert, button) {
+  return updateMonitoringAlert(alert, "diagnose", button);
+}
+
 function openMonitoringWorkbench() {
   monitoringModal.hidden = false;
-  monitoringState.tab = "plans";
+  switchMonitoringTab("plans");
   showMonitoringNotice("", "");
   loadMonitoringHealth();
   loadMonitoringPlans();
+  loadMonitoringAlerts(true);
 }
 
 window.openMonitoringWorkbench = openMonitoringWorkbench;
@@ -458,10 +752,20 @@ monitoringFrequency.addEventListener("change", updateMonitoringDayField);
 monitoringPlanForm.addEventListener("submit", saveMonitoringPlan);
 cancelMonitoringPlanButton.addEventListener("click", closeMonitoringPlanForm);
 closeMonitoringPlanFormButton.addEventListener("click", closeMonitoringPlanForm);
+monitoringPlansTab.addEventListener("click", function() { switchMonitoringTab("plans"); });
+monitoringResultsTab.addEventListener("click", function() { switchMonitoringTab("results"); });
+monitoringAlertsTab.addEventListener("click", function() { switchMonitoringTab("alerts"); });
+refreshMonitoringResultsButton.addEventListener("click", loadMonitoringResults);
+refreshMonitoringAlertsButton.addEventListener("click", function() { loadMonitoringAlerts(); });
+monitoringResultRuleFilter.addEventListener("change", loadMonitoringResults);
+monitoringAlertStatusFilter.addEventListener("change", function() { loadMonitoringAlerts(); });
 hospitalIdInput.addEventListener("change", function() {
   if (!monitoringModal.hidden) {
     monitoringState.selectedPlanId = "";
     monitoringState.latestResult = null;
-    loadMonitoringPlans();
+    if (monitoringState.tab === "plans") loadMonitoringPlans();
+    if (monitoringState.tab === "results") loadMonitoringResults();
+    if (monitoringState.tab === "alerts") loadMonitoringAlerts();
+    loadMonitoringHealth();
   }
 });

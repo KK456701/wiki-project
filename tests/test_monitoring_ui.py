@@ -56,6 +56,31 @@ class MonitoringUiTest(unittest.TestCase):
         self.assertIn('requireAdminThenOpen("monitoring")', html)
         self.assertIn('area === "monitoring"', html)
 
+    def test_monitoring_script_handles_results_alerts_and_readable_states(self) -> None:
+        js = (ROOT / "web" / "monitoring.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "function switchMonitoringTab",
+            "function loadMonitoringResults",
+            "function loadMonitoringAlerts",
+            "function acknowledgeMonitoringAlert",
+            "function closeMonitoringAlert",
+            "function diagnoseMonitoringAlert",
+            '"/api/monitoring/results?hospital_id="',
+            '"/api/monitoring/alerts?hospital_id="',
+            '"acknowledge"',
+            '"close"',
+            '"diagnose"',
+            'success: "成功"',
+            'no_sample: "无有效样本"',
+            'failed: "运行失败"',
+            'baseline_insufficient: "缺少历史基线"',
+            'open: "未处理"',
+            'acknowledged: "已确认"',
+            'closed: "已关闭"',
+        ):
+            self.assertIn(marker, js)
+
 
 if __name__ == "__main__":
     unittest.main()
