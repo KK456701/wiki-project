@@ -215,6 +215,9 @@ class MySQLRuleRepositoryTest(unittest.TestCase):
         self.assertEqual(result["rule_source"], "mysql")
         self.assertEqual(result["national_params"]["arrive_minutes_threshold"], 10)
         self.assertEqual(result["effective_params"]["arrive_minutes_threshold"], 20)
+        self.assertIn("20分钟内到位急会诊次数", result["definition"])
+        self.assertNotIn("10分钟内到位急会诊次数", result["definition"])
+        self.assertIn("10分钟内到位急会诊次数", result["national_rule"]["formula"])
         self.assertEqual(result["fallback_chain"], ["hospital", "national"])
 
     def test_inactive_hospital_rule_falls_back_to_national(self) -> None:

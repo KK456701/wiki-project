@@ -25,6 +25,12 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertIn("intent", node["outputs"])
         self.assertIn("失败", node["failure_hint"])
 
+    def test_effective_rule_node_uses_hospital_caliber_composition_wording(self) -> None:
+        node = get_workflow_node("core_indicator_chat", "effective_rule_resolve")
+
+        self.assertEqual(node["title"], "合成本院生效口径")
+        self.assertIn("不修改国标", node["description"])
+
     def test_annotate_trace_node_keeps_runtime_fields(self) -> None:
         runtime = {
             "node_name": "rule_search",

@@ -45,7 +45,7 @@ nodes:
   - id: rule_search
     title: 检索指标规则
     type: kb_tool
-    description: 根据检索 query 在本地 Wiki 索引中查找对应指标，并解析 rule_id。
+    description: 优先在 MySQL 规则库中查找指标；未迁移或数据库异常时只读回退 Wiki，并解析 rule_id。
     inputs: [retrieval_query, hospital_id]
     outputs: [rule_id, matched_documents, search_score]
     required: true
@@ -53,14 +53,14 @@ nodes:
     required_inputs: [retrieval_query]
     required_outputs: [rule_id]
     config:
-      tool: KnowledgeBaseTools.search
-      priority: 医院口径 > 公司标准 > 国标
-    failure_hint: 如果这里失败，优先检查知识库索引、rule_index、search_index 和 hospital_override_index。
+      tool: RuleRepository.search
+      priority: MySQL 规则库 > Wiki 只读兜底
+    failure_hint: 如果这里失败，优先检查 MySQL 规则表；兜底也失败时再检查 Wiki 索引。
 
   - id: effective_rule_resolve
-    title: 解析生效口径
+    title: 合成本院生效口径
     type: kb_tool
-    description: 按医院口径、公司标准、国标的优先级读取当前生效规则。
+    description: 以国标为基础，合入本院已审批且处于生效期的差异项，生成本院执行口径，不修改国标原始记录。
     inputs: [rule_id, hospital_id]
     outputs: [effective_rule, effective_level]
     required: true
@@ -68,8 +68,8 @@ nodes:
     required_inputs: [rule_id]
     required_outputs: [effective_rule, effective_level]
     config:
-      tool: KnowledgeBaseTools.get_effective_rule
-    failure_hint: 如果这里失败，优先检查对应 rule_id 的 Markdown、医院 override 和索引重建结果。
+      tool: RuleRepository.get_effective_rule
+    failure_hint: 如果这里失败，优先检查 MySQL 国标、本院定制口径及生效时间；数据库异常时再检查 Wiki 兜底规则。
 
   - id: feedback_preview
     title: 生成口径反馈预览

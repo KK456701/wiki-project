@@ -418,7 +418,7 @@ class AgentWorkflowTest(unittest.TestCase):
             by_name = {node["node_name"]: node for node in trace["nodes"]}
             self.assertEqual(by_name["memory_load"]["node_title"], "读取会话记忆")
             self.assertEqual(by_name["memory_load"]["output_data"]["active_session_id"], "trace-node-session")
-            self.assertEqual(by_name["effective_rule_resolve"]["node_title"], "解析生效口径")
+            self.assertEqual(by_name["effective_rule_resolve"]["node_title"], "合成本院生效口径")
             self.assertEqual(by_name["effective_rule_resolve"]["output_data"]["effective_level"], "hospital")
 
             for node_name in ["memory_load", "intent_detect", "rule_search", "effective_rule_resolve", "final_response"]:

@@ -445,7 +445,7 @@ def _answer_from_rule(rule: dict[str, Any]) -> str:
 def _process_steps(rule: dict[str, Any]) -> list[str]:
     steps = [
         f"识别并命中规则：{rule['rule_name']}（{rule['rule_id']}）",
-        "按医院口径 > 公司标准 > 国标顺序解析有效规则",
+        "以国标为基础合成本院生效口径，必要时只读回退 Wiki",
         f"当前采用层级：{rule['effective_level']}",
     ]
     if "hospital_override_not_configured" in rule.get("warnings", []):
@@ -853,8 +853,8 @@ def run_chat(
                 "matched_count": len(search_payload.get("results", [])) if isinstance(search_payload.get("results"), list) else 0,
             },
             config_data={
-                "tool": "KnowledgeBaseTools.search",
-                "priority": "医院口径 > 公司标准 > 国标",
+                "tool": "RuleRepository.search",
+                "priority": "MySQL 规则库 > Wiki 只读兜底",
             },
             duration_ms=_node_duration(result, "rule_search"),
         )
@@ -1098,8 +1098,8 @@ def run_chat_stream(
             "matched_count": len(search.get("results", [])) if isinstance(search.get("results"), list) else 0,
         },
         config_data={
-            "tool": "KnowledgeBaseTools.search",
-            "priority": "医院口径 > 公司标准 > 国标",
+            "tool": "RuleRepository.search",
+            "priority": "MySQL 规则库 > Wiki 只读兜底",
         },
         duration_ms=search_duration_ms,
     )

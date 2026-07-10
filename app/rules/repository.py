@@ -207,6 +207,12 @@ class MySQLRuleRepository:
                 sql_template = custom_value
 
         name = str(standard["index_name"])
+        definition = str(standard.get("index_desc") or "")
+        if custom and (
+            numerator != str(standard.get("numerator_rule") or "")
+            or denominator != str(standard.get("denominator_rule") or "")
+        ):
+            definition = f"{numerator}占{denominator}的比例。"
         national_rule = {
             "definition": str(standard.get("index_desc") or ""),
             "formula": _formula(
@@ -224,7 +230,7 @@ class MySQLRuleRepository:
             "category": str(standard.get("index_type") or ""),
             "hospital_id": hospital_id,
             "effective_level": "hospital" if custom else "national",
-            "definition": str(standard.get("index_desc") or ""),
+            "definition": definition,
             "formula": _formula(name, numerator, denominator),
             "numerator_rule": numerator,
             "denominator_rule": denominator,
