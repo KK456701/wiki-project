@@ -13,6 +13,50 @@ from app.sqlgen.validator import validate_select_sql
 
 
 class SqlGenerationSafetyTest(unittest.TestCase):
+    def test_monitoring_can_skip_legacy_result_persistence(self) -> None:
+        class FakeRepository:
+            def get_field_mapping(self, rule_id, hospital_id):
+                return {
+                    "dialect": "mysql",
+                    "main_table": "consult_record",
+                    "fields": {
+                        "hospital_id": "consult_record.hospital_id",
+                        "request_time": "consult_record.request_time",
+                    },
+                }
+
+        template = (
+            "SELECT 50 AS index_value, 1 AS sample_count FROM {{ main_table }} "
+            "WHERE {{ fields.hospital_id }}=:hospital_id "
+            "AND {{ fields.request_time }}>=:start_time "
+            "AND {{ fields.request_time }}<:end_time"
+        )
+        agent = SQLGenerationAgent(
+            Path("core-rules-wiki"),
+            object(),
+            object(),
+            rule_repository=FakeRepository(),
+        )
+        with patch("app.sqlgen.agent.insert_generated_sql"), \
+             patch("app.sqlgen.agent.run_sql_trial", return_value={
+                 "run_id": "RUN_1", "status": "success", "result_value": 50.0
+             }), \
+             patch("app.sqlgen.agent.insert_run_result") as legacy_insert:
+            result = agent.generate(
+                query="monitor",
+                hospital_id="hospital_001",
+                rule_id="MQSI2025_005",
+                effective_rule={"standard_sql": template, "effective_params": {}},
+                stat_start_time="2026-07-01 00:00:00",
+                stat_end_time="2026-08-01 00:00:00",
+                precheck={"ok": True},
+                trial_run=True,
+                persist_run_result=False,
+            )
+
+        self.assertEqual(result["trial_run"]["result_value"], 50.0)
+        legacy_insert.assert_not_called()
+
     def test_generation_uses_mysql_repository_template_and_params(self) -> None:
         class FakeRepository:
             def get_field_mapping(self, rule_id, hospital_id):

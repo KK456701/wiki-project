@@ -65,7 +65,8 @@ class SQLGenerationAgent:
                  stat_end_time: str, precheck: dict[str, Any],
                  trial_run: bool = False,
                  generated_by: str = "agent",
-                 custom_filters: list[dict[str, str]] | None = None) -> dict[str, Any]:
+                 custom_filters: list[dict[str, str]] | None = None,
+                 persist_run_result: bool = True) -> dict[str, Any]:
         node_timings: dict[str, int] = {}
         if not precheck.get("ok"):
             return {
@@ -139,7 +140,7 @@ class SQLGenerationAgent:
             trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
                                    hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by)
             result["trial_run"] = trial
-            if trial.get("result_value") is not None:
+            if persist_run_result and trial.get("result_value") is not None:
                 insert_run_result(self.runtime_engine, hospital_id, rule_id,
                                   f"{stat_start_time}~{stat_end_time}", trial["result_value"], trial["run_id"])
 

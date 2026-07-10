@@ -215,6 +215,7 @@ class CoreIndicatorOrchestrator:
         stat_end_time: str,
         trial_run: bool = False,
         generated_by: str = "agent",
+        persist_run_result: bool = True,
     ) -> dict[str, Any]:
         self._require_rule(prepared)
         precheck_started = time.perf_counter()
@@ -259,6 +260,7 @@ class CoreIndicatorOrchestrator:
             precheck=precheck_contract.model_dump(exclude_none=True),
             trial_run=trial_run,
             generated_by=generated_by,
+            persist_run_result=persist_run_result,
             custom_filters=[item.model_dump() for item in prepared.custom_filters],
         )
         contract = (

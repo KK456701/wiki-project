@@ -258,6 +258,20 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertEqual(metadata.calls[0]["operation"], "precheck")
         self.assertEqual(metadata.calls[1]["db_name"], "hospital_demo_data")
 
+    def test_monitoring_generation_disables_legacy_result_write(self) -> None:
+        orchestrator, _, _, indicator, _, _ = _orchestrator()
+        prepared = orchestrator.prepare("生成SQL", "hospital_001")
+
+        orchestrator.generate_indicator(
+            prepared,
+            stat_start_time="2026-07-01 00:00:00",
+            stat_end_time="2026-08-01 00:00:00",
+            trial_run=True,
+            persist_run_result=False,
+        )
+
+        self.assertFalse(indicator.calls[0]["persist_run_result"])
+
     def test_precheck_failure_stops_before_indicator_generation(self) -> None:
         orchestrator, _, _, indicator, _, metadata = _orchestrator()
         prepared = orchestrator.prepare("生成SQL", "hospital_001")
