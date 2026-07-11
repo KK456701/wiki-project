@@ -10,8 +10,7 @@ class MonitoringUiTest(unittest.TestCase):
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
         for marker in (
-            'id="monitoringButton"',
-            'id="monitoringModal"',
+            'id="monitoringPage"',
             'id="monitoringPlansTab"',
             'id="monitoringResultsTab"',
             'id="monitoringAlertsTab"',
@@ -24,6 +23,8 @@ class MonitoringUiTest(unittest.TestCase):
             'id="monitoringAlertStatusFilter"',
         ):
             self.assertIn(marker, html)
+        self.assertNotIn('id="monitoringButton"', html)
+        self.assertNotIn('id="monitoringModal" class="modal"', html)
         self.assertIn('/static/monitoring.css', html)
         self.assertIn('/static/monitoring.js', html)
 
@@ -44,8 +45,11 @@ class MonitoringUiTest(unittest.TestCase):
     def test_monitoring_script_manages_plans_and_manual_runs(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "web" / "monitoring.js").read_text(encoding="utf-8")
+        workbench_js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
 
         for marker in (
+            'var monitoringPage = document.getElementById("monitoringPage")',
+            "function activateMonitoringPage",
             "function openMonitoringWorkbench",
             "function loadMonitoringHealth",
             "function loadMonitoringPlans",
@@ -60,7 +64,9 @@ class MonitoringUiTest(unittest.TestCase):
             "showTrace(result.trace_id)",
         ):
             self.assertIn(marker, js)
-        self.assertIn('requireAdminThenOpen("monitoring")', html)
+        self.assertNotIn('var monitoringModal = document.getElementById("monitoringModal")', js)
+        self.assertNotIn("monitoringModal.hidden", js)
+        self.assertIn('requireAdminThenOpen("monitoring")', workbench_js)
         self.assertIn('area === "monitoring"', html)
 
     def test_monitoring_script_handles_results_alerts_and_readable_states(self) -> None:

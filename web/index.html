@@ -515,6 +515,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 }
 </style>
 <link rel="stylesheet" href="/static/monitoring.css" />
+<link rel="stylesheet" href="/static/workbench.css" />
 </head>
 <body>
 
@@ -536,39 +537,56 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </div>
 </div>
 
-<div class="app-shell">
-  <header class="topbar">
+<div id="workbenchShell" class="workbench-shell">
+  <header class="workbench-topbar">
     <div class="brand">
       <div class="brand-title">核心制度指标 Agent</div>
-      <div class="brand-subtitle">MySQL 规则主存储：以国标为基础合成本院生效口径，Wiki 提供只读兜底。</div>
+      <div class="brand-subtitle">MySQL 规则主存储 · Wiki 只读兜底</div>
     </div>
     <div class="topbar-actions">
       <span id="userInfo" class="user-info"></span>
       <label class="hospital-inline"><span>医院</span><input id="hospitalId" value="hospital_001" /></label>
       <button id="selfCheckButton" class="btn btn-ghost">系统自检</button>
       <button id="recoveryButton" class="btn btn-ghost">恢复中心</button>
-      <button id="monitoringButton" class="btn btn-ghost">指标监控</button>
-      <button id="mcpButton" class="btn btn-ghost">MCP</button>
-      <button id="indicatorDraftButton" class="btn btn-ghost">指标设计稿</button>
-      <button id="reviewButton" class="btn btn-secondary">审批</button>
-      <button id="newSessionButton" class="btn btn-ghost">新会话</button>
+      <button id="assistantToggleButton" class="btn btn-secondary" type="button" aria-expanded="false" aria-controls="assistantDrawer" hidden>AI 助手</button>
     </div>
   </header>
 
-  <main class="chat-layout">
-    <section id="messages" class="messages" aria-live="polite"></section>
+  <aside id="workbenchNav" class="workbench-nav" aria-label="业务工作台导航">
+    <div class="workbench-nav-heading">业务工作台</div>
+    <button class="workbench-nav-item active" type="button" data-workbench-route="monitoring" aria-current="page">
+      <span class="workbench-nav-index">05</span>
+      <span>指标运算监控</span>
+    </button>
+    <div class="workbench-nav-heading workbench-nav-heading-secondary">现有工具</div>
+    <button id="indicatorDraftButton" class="workbench-tool-item" type="button">指标设计稿</button>
+    <button id="reviewButton" class="workbench-tool-item" type="button">审批与版本</button>
+    <button id="mcpButton" class="workbench-tool-item" type="button">数据库与元数据</button>
+  </aside>
+
+  <main id="workbenchContent" class="workbench-content" aria-live="polite">
+    <div id="workbenchLoading" class="workbench-loading">正在打开业务工作台...</div>
   </main>
 
-  <footer class="composer-wrapper">
-    <form id="chatForm" class="composer">
-      <textarea id="queryInput" rows="1" placeholder="输入问题，例如：急会诊及时到位率怎么算？"></textarea>
-      <button id="sendButton" type="submit">发送</button>
-    </form>
-    <div class="composer-hint">
-      <span>默认使用 Ollama 流式生成；失败或事实校验未通过时自动回退知识库工具答案。</span>
-      <span id="sessionLabel"></span>
+  <aside id="assistantDrawer" class="assistant-drawer" hidden aria-label="AI 助手">
+    <header class="assistant-header">
+      <div><strong>AI 助手</strong><span id="sessionLabel"></span></div>
+      <div class="assistant-header-actions">
+        <button id="newSessionButton" class="ghost" type="button">新会话</button>
+        <button id="assistantCloseButton" class="ghost assistant-close" type="button" aria-label="关闭 AI 助手" title="关闭">×</button>
+      </div>
+    </header>
+    <div class="chat-layout assistant-chat-layout">
+      <section id="messages" class="messages" aria-live="polite"></section>
     </div>
-  </footer>
+    <footer class="composer-wrapper assistant-composer-wrapper">
+      <form id="chatForm" class="composer">
+        <textarea id="queryInput" rows="1" placeholder="输入问题，例如：急会诊及时到位率怎么算？"></textarea>
+        <button id="sendButton" type="submit">发送</button>
+      </form>
+      <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
+    </footer>
+  </aside>
 </div>
 
 <!-- 恢复中心弹窗 -->
@@ -719,15 +737,14 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </section>
 </div>
 
-<!-- 指标监控工作台 -->
-<div id="monitoringModal" class="modal" hidden>
-  <section class="dialog monitoring-dialog" role="dialog" aria-modal="true" aria-labelledby="monitoringTitle">
-    <header>
+<!-- 指标运算监控正式页面：由 workbench.js 挂载到主工作区 -->
+<section id="monitoringPage" class="workbench-page" data-route="monitoring" aria-labelledby="monitoringTitle" hidden>
+  <div class="monitoring-page-surface">
+    <header class="monitoring-page-header">
       <div>
         <h2 id="monitoringTitle">指标监控</h2>
         <div id="monitoringMeta" class="monitoring-meta">查看运行计划、结果和预警。</div>
       </div>
-      <button class="ghost" data-close="monitoringModal">关闭</button>
     </header>
 
     <div class="monitoring-tabs" role="tablist" aria-label="指标监控视图">
@@ -811,8 +828,8 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         <button id="saveMonitoringPlanButton" type="submit">保存计划</button>
       </div>
     </form>
-  </section>
-</div>
+  </div>
+</section>
 
 <div id="traceModal" class="modal" hidden>
   <section class="dialog" role="dialog" aria-modal="true">
@@ -862,7 +879,6 @@ var recoveryModal = document.getElementById("recoveryModal");
 var recoveryMeta = document.getElementById("recoveryMeta");
 var recoveryList = document.getElementById("recoveryList");
 var refreshRecoveryButton = document.getElementById("refreshRecoveryButton");
-var monitoringButton = document.getElementById("monitoringButton");
 var mcpButton = document.getElementById("mcpButton");
 var mcpModal = document.getElementById("mcpModal");
 var loadMcpSourcesButton = document.getElementById("loadMcpSourcesButton");
@@ -926,6 +942,7 @@ loginSubmit2.addEventListener("click", function() {
   loginScreen.hidden = true;
   updateUserUI();
   addWelcomeMessage();
+  if (window.initializeWorkbench) window.initializeWorkbench();
 });
 
 function updateUserUI() {
@@ -988,10 +1005,6 @@ selfCheckButton.addEventListener("click", function() {
 
 recoveryButton.addEventListener("click", function() {
   requireAdminThenOpen("recovery");
-});
-
-monitoringButton.addEventListener("click", function() {
-  requireAdminThenOpen("monitoring");
 });
 
 mcpButton.addEventListener("click", function() {
@@ -2308,5 +2321,6 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 // 欢迎消息由登录后触发，此处不再自动调用
 </script>
 <script src="/static/monitoring.js"></script>
+<script src="/static/workbench.js"></script>
 </body>
 </html>

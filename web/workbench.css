@@ -1,0 +1,405 @@
+body {
+  overflow: hidden;
+  background: #eef3f1;
+}
+
+body::before {
+  display: none;
+}
+
+.workbench-shell {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  grid-template-rows: 72px minmax(0, 1fr);
+  overflow: hidden;
+  background: #eef3f1;
+}
+
+.workbench-topbar {
+  grid-column: 1 / -1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 18px 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  z-index: 40;
+}
+
+.workbench-topbar .brand {
+  min-width: 220px;
+}
+
+.workbench-topbar .brand-title {
+  font-size: 19px;
+  letter-spacing: 0;
+}
+
+.workbench-topbar .brand-title::before {
+  width: 5px;
+  height: 22px;
+  border-radius: 2px;
+  background: var(--teal);
+  box-shadow: none;
+}
+
+.workbench-topbar .brand-subtitle {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.workbench-topbar .topbar-actions {
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+
+.workbench-topbar .btn,
+.workbench-topbar .hospital-inline {
+  height: 38px;
+  white-space: nowrap;
+}
+
+.workbench-nav {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  padding: 18px 12px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: #f8faf9;
+}
+
+.workbench-nav-heading {
+  margin: 0 8px 9px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.workbench-nav-heading-secondary {
+  margin-top: 26px;
+}
+
+.workbench-nav-item,
+.workbench-tool-item {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: transparent;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.workbench-nav-item:hover,
+.workbench-tool-item:hover {
+  border-color: var(--line);
+  background: #fff;
+}
+
+.workbench-nav-item.active {
+  color: var(--teal-deep);
+  border-color: #a9d3ce;
+  border-left: 4px solid var(--teal);
+  background: var(--teal-soft);
+  font-weight: 800;
+}
+
+.workbench-nav-index {
+  min-width: 24px;
+  color: var(--red);
+  font: 800 11px/1 var(--mono);
+}
+
+.workbench-content {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px;
+}
+
+.workbench-loading {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.workbench-page {
+  width: min(1320px, 100%);
+  min-width: 0;
+  min-height: calc(100vh - 112px);
+  margin: 0 auto;
+}
+
+.monitoring-page-surface {
+  position: relative;
+  min-width: 0;
+  min-height: calc(100vh - 112px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.monitoring-page-header {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.monitoring-page-header h2 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.monitoring-page-surface .monitoring-workbench {
+  min-height: calc(100vh - 232px);
+  max-height: none;
+}
+
+.monitoring-page-surface .monitoring-plan-layout {
+  min-height: calc(100vh - 232px);
+}
+
+.monitoring-page-surface .monitoring-form {
+  min-height: 100%;
+}
+
+.assistant-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 80;
+  width: min(400px, 100vw);
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 62px minmax(0, 1fr) auto;
+  border-left: 1px solid var(--line-strong);
+  background: #f8faf9;
+  box-shadow: -18px 0 44px rgba(23, 35, 32, 0.2);
+}
+
+.assistant-drawer[hidden] {
+  display: none;
+}
+
+.assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+
+.assistant-header > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.assistant-header #sessionLabel {
+  overflow: hidden;
+  color: var(--muted);
+  font: 11px/1.3 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.assistant-close {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 22px;
+}
+
+.assistant-chat-layout {
+  min-height: 0;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.assistant-drawer .messages {
+  width: 100%;
+  height: 100%;
+  padding: 16px 14px 28px;
+  overflow-y: auto;
+}
+
+.assistant-drawer .message {
+  gap: 8px;
+  margin: 13px 0;
+}
+
+.assistant-drawer .message-avatar {
+  width: 30px;
+  height: 30px;
+}
+
+.assistant-drawer .message-bubble {
+  max-width: calc(100% - 38px);
+  padding: 11px 12px;
+  font-size: 14px;
+}
+
+.assistant-drawer .welcome-card h2 {
+  font-size: 21px;
+}
+
+.assistant-drawer .welcome-examples {
+  display: grid;
+}
+
+.assistant-composer-wrapper {
+  position: static;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: #fff;
+}
+
+.assistant-drawer .composer {
+  width: 100%;
+  gap: 7px;
+  padding: 7px;
+  box-shadow: none;
+}
+
+.assistant-drawer #queryInput {
+  min-height: 42px;
+  font-size: 14px;
+}
+
+.assistant-drawer #sendButton {
+  min-width: 68px;
+  height: 42px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.assistant-drawer .composer-hint {
+  width: 100%;
+  margin-top: 6px;
+}
+
+@media (max-width: 980px) {
+  .workbench-topbar .brand-subtitle,
+  .workbench-topbar #userInfo {
+    display: none;
+  }
+
+  .workbench-topbar .hospital-inline input {
+    width: 118px;
+  }
+}
+
+@media (max-width: 760px) {
+  .workbench-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .workbench-topbar {
+    grid-column: 1;
+    min-height: 62px;
+    padding: 9px 10px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .workbench-topbar .brand {
+    min-width: 0;
+  }
+
+  .workbench-topbar .brand-title {
+    font-size: 17px;
+  }
+
+  .workbench-topbar .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .workbench-topbar .hospital-inline,
+  .workbench-topbar .btn {
+    flex: 0 0 auto;
+  }
+
+  .workbench-nav {
+    grid-column: 1;
+    grid-row: 2;
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .workbench-nav-heading,
+  .workbench-tool-item {
+    display: none;
+  }
+
+  .workbench-nav-item {
+    width: auto;
+    min-width: max-content;
+    margin: 0;
+  }
+
+  .workbench-content {
+    grid-column: 1;
+    grid-row: 3;
+    padding: 10px;
+  }
+
+  .workbench-page,
+  .monitoring-page-surface {
+    min-height: calc(100vh - 150px);
+  }
+
+  .monitoring-page-header {
+    min-height: 62px;
+    padding: 12px 14px;
+  }
+
+  .monitoring-page-header h2 {
+    font-size: 20px;
+  }
+
+  .monitoring-page-surface .monitoring-workbench,
+  .monitoring-page-surface .monitoring-plan-layout {
+    min-height: calc(100vh - 262px);
+  }
+
+  .assistant-drawer {
+    width: 100vw;
+    border-left: 0;
+  }
+}

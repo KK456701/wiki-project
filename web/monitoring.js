@@ -10,7 +10,7 @@ var monitoringState = {
   latestTraceByResultId: {},
 };
 
-var monitoringModal = document.getElementById("monitoringModal");
+var monitoringPage = document.getElementById("monitoringPage");
 var monitoringMeta = document.getElementById("monitoringMeta");
 var monitoringNotice = document.getElementById("monitoringNotice");
 var monitoringPlanList = document.getElementById("monitoringPlanList");
@@ -115,7 +115,6 @@ async function monitoringRequest(path, options) {
     adminToken = "";
     sessionStorage.removeItem("adminToken");
     updateAdminUI();
-    monitoringModal.hidden = true;
     requireAdminThenOpen("monitoring");
     throw new Error("管理员登录已失效，请重新登录。");
   }
@@ -735,8 +734,7 @@ function diagnoseMonitoringAlert(alert, button) {
   return updateMonitoringAlert(alert, "diagnose", button);
 }
 
-function openMonitoringWorkbench() {
-  monitoringModal.hidden = false;
+function activateMonitoringPage() {
   switchMonitoringTab("plans");
   showMonitoringNotice("", "");
   loadMonitoringHealth();
@@ -744,7 +742,17 @@ function openMonitoringWorkbench() {
   loadMonitoringAlerts(true);
 }
 
+function openMonitoringWorkbench() {
+  if (window.navigateWorkbench) {
+    window.navigateWorkbench("monitoring");
+  } else {
+    monitoringPage.hidden = false;
+  }
+  activateMonitoringPage();
+}
+
 window.openMonitoringWorkbench = openMonitoringWorkbench;
+window.activateMonitoringPage = activateMonitoringPage;
 
 newMonitoringPlanButton.addEventListener("click", function() { openMonitoringPlanForm(null); });
 monitoringPlanSearch.addEventListener("input", renderMonitoringPlanList);
@@ -760,7 +768,7 @@ refreshMonitoringAlertsButton.addEventListener("click", function() { loadMonitor
 monitoringResultRuleFilter.addEventListener("change", loadMonitoringResults);
 monitoringAlertStatusFilter.addEventListener("change", function() { loadMonitoringAlerts(); });
 hospitalIdInput.addEventListener("change", function() {
-  if (!monitoringModal.hidden) {
+  if (!monitoringPage.hidden) {
     monitoringState.selectedPlanId = "";
     monitoringState.latestResult = null;
     if (monitoringState.tab === "plans") loadMonitoringPlans();
