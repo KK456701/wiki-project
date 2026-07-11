@@ -8,6 +8,9 @@ var workbenchNavItems = document.querySelectorAll("[data-workbench-route]");
 var assistantToggleButton = document.getElementById("assistantToggleButton");
 var assistantDrawer = document.getElementById("assistantDrawer");
 var assistantCloseButton = document.getElementById("assistantCloseButton");
+var assistantWorkspace = document.getElementById("assistantWorkspace");
+var assistantHomeMount = document.getElementById("assistantHomeMount");
+var assistantDrawerMount = document.getElementById("assistantDrawerMount");
 
 var WORKBENCH_ROUTES = {
   assistant: {requiresAdmin: false},
@@ -47,6 +50,12 @@ function applyWorkbenchRoute() {
   updateWorkbenchNavigation(route);
   if (workbenchLoading) workbenchLoading.hidden = true;
 
+  if (route === "assistant") {
+    showAssistantPage();
+  } else {
+    prepareBusinessPage();
+  }
+
   if (!currentUser) return;
   if (definition.requiresAdmin && !adminToken) {
     requireAdminThenOpen(route);
@@ -72,7 +81,36 @@ function initializeWorkbench() {
   navigateWorkbench(currentWorkbenchRoute());
 }
 
+function mountAssistantWorkspace(target) {
+  var mount = target === "drawer" ? assistantDrawerMount : assistantHomeMount;
+  if (assistantWorkspace.parentElement !== mount) {
+    mount.appendChild(assistantWorkspace);
+  }
+  assistantWorkspace.classList.toggle("compact", target === "drawer");
+}
+
+function ensureAssistantWelcome() {
+  if (!messages.children.length) addWelcomeMessage();
+}
+
+function showAssistantPage() {
+  assistantDrawer.hidden = true;
+  assistantToggleButton.hidden = true;
+  assistantToggleButton.setAttribute("aria-expanded", "false");
+  mountAssistantWorkspace("home");
+  ensureAssistantWelcome();
+}
+
+function prepareBusinessPage() {
+  assistantDrawer.hidden = true;
+  assistantToggleButton.hidden = false;
+  assistantToggleButton.setAttribute("aria-expanded", "false");
+  mountAssistantWorkspace("drawer");
+}
+
 function openAssistantDrawer() {
+  if (currentWorkbenchRoute() === "assistant") return;
+  mountAssistantWorkspace("drawer");
   assistantDrawer.hidden = false;
   assistantToggleButton.setAttribute("aria-expanded", "true");
   messages.scrollTop = messages.scrollHeight;

@@ -576,29 +576,34 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         <h1 id="assistantPageTitle">今天需要处理哪个指标？</h1>
         <p>问口径、生成 SQL、试运行或诊断异常，结果可以继续进入对应业务页面处理。</p>
       </header>
-      <div id="assistantHomeMount" class="assistant-home-mount"></div>
+      <div id="assistantHomeMount" class="assistant-home-mount">
+        <div id="assistantWorkspace" class="assistant-workspace">
+          <header class="assistant-workspace-header">
+            <div><strong>当前会话</strong><span id="sessionLabel"></span></div>
+            <button id="newSessionButton" class="ghost" type="button">新会话</button>
+          </header>
+          <div class="chat-layout assistant-chat-layout">
+            <section id="messages" class="messages" aria-live="polite"></section>
+          </div>
+          <footer class="composer-wrapper assistant-composer-wrapper">
+            <form id="chatForm" class="composer">
+              <textarea id="queryInput" rows="1" placeholder="输入指标问题或任务，例如：生成急会诊及时到位率 SQL"></textarea>
+              <button id="sendButton" type="submit">发送</button>
+            </form>
+            <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
+          </footer>
+        </div>
+      </div>
     </section>
     <div id="workbenchLoading" class="workbench-loading">正在打开业务工作台...</div>
   </main>
 
   <aside id="assistantDrawer" class="assistant-drawer" hidden aria-label="AI 助手">
-    <header class="assistant-header">
-      <div><strong>AI 助手</strong><span id="sessionLabel"></span></div>
-      <div class="assistant-header-actions">
-        <button id="newSessionButton" class="ghost" type="button">新会话</button>
-        <button id="assistantCloseButton" class="ghost assistant-close" type="button" aria-label="关闭 AI 助手" title="关闭">×</button>
-      </div>
+    <header class="assistant-header assistant-drawer-header">
+      <strong>AI 指标助手</strong>
+      <button id="assistantCloseButton" class="ghost assistant-close" type="button" aria-label="关闭 AI 助手" title="关闭">×</button>
     </header>
-    <div class="chat-layout assistant-chat-layout">
-      <section id="messages" class="messages" aria-live="polite"></section>
-    </div>
-    <footer class="composer-wrapper assistant-composer-wrapper">
-      <form id="chatForm" class="composer">
-        <textarea id="queryInput" rows="1" placeholder="输入问题，例如：急会诊及时到位率怎么算？"></textarea>
-        <button id="sendButton" type="submit">发送</button>
-      </form>
-      <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
-    </footer>
+    <div id="assistantDrawerMount" class="assistant-drawer-mount"></div>
   </aside>
 </div>
 
@@ -954,8 +959,11 @@ loginSubmit2.addEventListener("click", function() {
   sessionStorage.setItem("currentUser", JSON.stringify(currentUser));
   loginScreen.hidden = true;
   updateUserUI();
-  addWelcomeMessage();
-  if (window.initializeWorkbench) window.initializeWorkbench();
+  if (window.navigateWorkbench) {
+    window.navigateWorkbench("assistant");
+  } else if (window.initializeWorkbench) {
+    window.initializeWorkbench();
+  }
 });
 
 function updateUserUI() {

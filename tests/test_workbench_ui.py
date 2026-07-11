@@ -65,6 +65,7 @@ class WorkbenchUiTest(unittest.TestCase):
             js,
         )
         self.assertIn('if (definition.requiresAdmin && !adminToken)', js)
+        self.assertIn('window.navigateWorkbench("assistant")', html)
 
     def test_ai_assistant_drawer_has_accessible_controls(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
@@ -84,6 +85,20 @@ class WorkbenchUiTest(unittest.TestCase):
             'event.key === "Escape"',
         ):
             self.assertIn(marker, js)
+
+    def test_single_chat_workspace_moves_between_home_and_drawer(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
+
+        self.assertEqual(html.count('id="assistantWorkspace"'), 1)
+        self.assertEqual(html.count('id="messages"'), 1)
+        self.assertEqual(html.count('id="chatForm"'), 1)
+        self.assertIn('id="assistantHomeMount"', html)
+        self.assertIn('id="assistantDrawerMount"', html)
+        self.assertIn("function mountAssistantWorkspace", js)
+        self.assertIn("function ensureAssistantWelcome", js)
+        self.assertIn('mountAssistantWorkspace("home")', js)
+        self.assertIn('mountAssistantWorkspace("drawer")', js)
 
 
 if __name__ == "__main__":
