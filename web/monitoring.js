@@ -743,11 +743,8 @@ function activateMonitoringPage() {
 }
 
 function openMonitoringWorkbench() {
-  if (window.navigateWorkbench) {
-    window.navigateWorkbench("monitoring");
-  } else {
-    monitoringPage.hidden = false;
-  }
+  if (window.navigateWorkbench) return window.navigateWorkbench("monitoring");
+  monitoringPage.hidden = false;
   activateMonitoringPage();
 }
 

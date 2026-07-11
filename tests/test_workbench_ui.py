@@ -33,6 +33,22 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn(".assistant-drawer", css)
         self.assertIn("@media (max-width: 760px)", css)
 
+    def test_workbench_script_routes_to_monitoring(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
+
+        for marker in (
+            "function currentWorkbenchRoute",
+            "function navigateWorkbench",
+            "function applyWorkbenchRoute",
+            'window.addEventListener("hashchange"',
+            '"#/monitoring"',
+            "window.openMonitoringWorkbench",
+        ):
+            self.assertIn(marker, js)
+        self.assertIn('data-workbench-route="monitoring"', html)
+        self.assertIn('aria-current="page"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

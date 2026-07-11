@@ -66,6 +66,10 @@ class MonitoringUiTest(unittest.TestCase):
             self.assertIn(marker, js)
         self.assertNotIn('var monitoringModal = document.getElementById("monitoringModal")', js)
         self.assertNotIn("monitoringModal.hidden", js)
+        self.assertIn(
+            'if (window.navigateWorkbench) return window.navigateWorkbench("monitoring")',
+            js,
+        )
         self.assertIn('requireAdminThenOpen("monitoring")', workbench_js)
         self.assertIn('area === "monitoring"', html)
 
