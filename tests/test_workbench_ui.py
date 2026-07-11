@@ -141,6 +141,21 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn('data-short="库"', html)
         self.assertIn('title="指标设计稿"', html)
 
+    def test_immersive_assistant_uses_rail_and_full_height_canvas(self) -> None:
+        css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn("@media (min-width: 761px)", css)
+        self.assertIn(".assistant-immersive", css)
+        self.assertIn("grid-template-columns: 64px minmax(0, 1fr)", css)
+        self.assertIn(".assistant-immersive .workbench-topbar", css)
+        self.assertIn("display: contents", css)
+        self.assertIn(".assistant-immersive .topbar-actions", css)
+        self.assertIn("position: fixed", css)
+        self.assertIn(".assistant-immersive .assistant-page-heading", css)
+        self.assertIn("content: attr(data-short)", css)
+        self.assertIn("content: attr(title)", css)
+        self.assertIn('content: "核心制度指标 Agent · "', css)
+
 
 if __name__ == "__main__":
     unittest.main()

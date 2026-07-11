@@ -512,6 +512,141 @@ body::before {
   }
 }
 
+@media (min-width: 761px) {
+  .workbench-shell.assistant-immersive {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .assistant-immersive .workbench-topbar {
+    display: contents;
+  }
+
+  .assistant-immersive .workbench-topbar .brand {
+    display: none;
+  }
+
+  .assistant-immersive .topbar-actions {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 70;
+    flex-wrap: nowrap;
+    padding: 5px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 10px 26px rgba(23, 35, 32, 0.12);
+  }
+
+  .assistant-immersive .workbench-nav {
+    grid-column: 1;
+    grid-row: 1;
+    z-index: 60;
+    padding: 8px 6px;
+    overflow: visible;
+    border-right-color: rgba(255, 255, 255, 0.14);
+    background: var(--ink);
+  }
+
+  .assistant-immersive .workbench-content {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 12px;
+  }
+
+  .assistant-immersive .assistant-page-heading {
+    display: none;
+  }
+
+  .assistant-immersive .assistant-page {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .assistant-immersive .assistant-workspace-header {
+    padding-right: min(560px, 52vw);
+  }
+
+  .assistant-immersive .assistant-workspace-header strong::before {
+    content: "核心制度指标 Agent · ";
+  }
+
+  .assistant-immersive .workbench-nav-heading,
+  .assistant-immersive .workbench-nav-item > span:last-child {
+    display: none;
+  }
+
+  .assistant-immersive .workbench-nav-item,
+  .assistant-immersive .workbench-tool-item {
+    position: relative;
+    min-height: 44px;
+    justify-content: center;
+    gap: 0;
+    margin: 4px 0;
+    padding: 0;
+    border-color: transparent;
+    color: rgba(255, 255, 255, 0.82);
+    background: transparent;
+    font-size: 0;
+  }
+
+  .assistant-immersive .workbench-nav-item:hover,
+  .assistant-immersive .workbench-tool-item:hover,
+  .assistant-immersive .workbench-nav-item:focus-visible,
+  .assistant-immersive .workbench-tool-item:focus-visible {
+    border-color: rgba(255, 255, 255, 0.24);
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+    outline: 2px solid var(--mint);
+    outline-offset: 1px;
+  }
+
+  .assistant-immersive .workbench-nav-item.active {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    background: var(--teal);
+  }
+
+  .assistant-immersive .workbench-nav-index {
+    min-width: 0;
+    color: inherit;
+    font-size: 11px;
+  }
+
+  .assistant-immersive .workbench-tool-item::before {
+    content: attr(data-short);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .assistant-immersive .workbench-nav [title]::after {
+    content: attr(title);
+    position: absolute;
+    left: 58px;
+    top: 50%;
+    z-index: 80;
+    display: none;
+    padding: 7px 9px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    color: var(--ink);
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(23, 35, 32, 0.16);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    transform: translateY(-50%);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .assistant-immersive .workbench-nav [title]:hover::after,
+  .assistant-immersive .workbench-nav [title]:focus-visible::after {
+    display: block;
+  }
+}
+
 @media (max-width: 760px) {
   .workbench-shell {
     grid-template-columns: 1fr;
