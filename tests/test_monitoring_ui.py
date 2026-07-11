@@ -70,7 +70,8 @@ class MonitoringUiTest(unittest.TestCase):
             'if (window.navigateWorkbench) return window.navigateWorkbench("monitoring")',
             js,
         )
-        self.assertIn('requireAdminThenOpen("monitoring")', workbench_js)
+        self.assertIn('monitoring: {requiresAdmin: true}', workbench_js)
+        self.assertIn("requireAdminThenOpen(route)", workbench_js)
         self.assertIn('area === "monitoring"', html)
 
     def test_monitoring_script_handles_results_alerts_and_readable_states(self) -> None:
@@ -97,6 +98,13 @@ class MonitoringUiTest(unittest.TestCase):
             'closed: "已关闭"',
         ):
             self.assertIn(marker, js)
+
+    def test_monitoring_page_starts_at_top_of_workbench(self) -> None:
+        css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn(".workbench-page[hidden]", css)
+        self.assertIn(".monitoring-page-surface", css)
+        self.assertNotIn("min-height: 420px", css)
 
 
 if __name__ == "__main__":

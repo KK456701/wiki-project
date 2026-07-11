@@ -72,7 +72,7 @@ class WorkbenchUiTest(unittest.TestCase):
         js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
 
         self.assertIn('id="assistantToggleButton" class="btn btn-secondary"', html)
-        self.assertNotIn('aria-controls="assistantDrawer" hidden', html)
+        self.assertIn('aria-controls="assistantDrawer" hidden', html)
         self.assertEqual(html.count('id="messages"'), 1)
         self.assertEqual(html.count('id="chatForm"'), 1)
         for marker in (
@@ -99,6 +99,18 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn("function ensureAssistantWelcome", js)
         self.assertIn('mountAssistantWorkspace("home")', js)
         self.assertIn('mountAssistantWorkspace("drawer")', js)
+
+    def test_ai_home_is_primary_and_loading_placeholder_collapses(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn('class="assistant-page-heading"', html)
+        self.assertIn('id="systemToolsMenu"', html)
+        self.assertIn(".assistant-page", css)
+        self.assertIn(".assistant-home-mount", css)
+        self.assertIn(".assistant-workspace.compact", css)
+        hidden_rule = css[css.index(".workbench-loading[hidden]") :]
+        self.assertIn("display: none", hidden_rule)
 
 
 if __name__ == "__main__":
