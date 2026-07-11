@@ -4,6 +4,9 @@ var workbenchContent = document.getElementById("workbenchContent");
 var workbenchLoading = document.getElementById("workbenchLoading");
 var workbenchMonitoringPage = document.getElementById("monitoringPage");
 var workbenchNavItems = document.querySelectorAll("[data-workbench-route]");
+var assistantToggleButton = document.getElementById("assistantToggleButton");
+var assistantDrawer = document.getElementById("assistantDrawer");
+var assistantCloseButton = document.getElementById("assistantCloseButton");
 
 function currentWorkbenchRoute() {
   var route = window.location.hash.replace(/^#\/?/, "");
@@ -63,6 +66,27 @@ function initializeWorkbench() {
   navigateWorkbench(currentWorkbenchRoute());
 }
 
+function openAssistantDrawer() {
+  assistantDrawer.hidden = false;
+  assistantToggleButton.setAttribute("aria-expanded", "true");
+  messages.scrollTop = messages.scrollHeight;
+  queryInput.focus();
+}
+
+function closeAssistantDrawer() {
+  assistantDrawer.hidden = true;
+  assistantToggleButton.setAttribute("aria-expanded", "false");
+  assistantToggleButton.focus();
+}
+
+function toggleAssistantDrawer() {
+  if (assistantDrawer.hidden) {
+    openAssistantDrawer();
+  } else {
+    closeAssistantDrawer();
+  }
+}
+
 window.initializeWorkbench = initializeWorkbench;
 window.navigateWorkbench = navigateWorkbench;
 window.openMonitoringWorkbench = function() {
@@ -73,6 +97,14 @@ workbenchNavItems.forEach(function(item) {
   item.addEventListener("click", function() {
     navigateWorkbench(item.dataset.workbenchRoute);
   });
+});
+
+assistantToggleButton.addEventListener("click", toggleAssistantDrawer);
+assistantCloseButton.addEventListener("click", closeAssistantDrawer);
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape" && !assistantDrawer.hidden) {
+    closeAssistantDrawer();
+  }
 });
 
 window.addEventListener("hashchange", applyWorkbenchRoute);

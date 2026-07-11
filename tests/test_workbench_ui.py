@@ -49,6 +49,25 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn('data-workbench-route="monitoring"', html)
         self.assertIn('aria-current="page"', html)
 
+    def test_ai_assistant_drawer_has_accessible_controls(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="assistantToggleButton" class="btn btn-secondary"', html)
+        self.assertNotIn('aria-controls="assistantDrawer" hidden', html)
+        self.assertEqual(html.count('id="messages"'), 1)
+        self.assertEqual(html.count('id="chatForm"'), 1)
+        for marker in (
+            "function openAssistantDrawer",
+            "function closeAssistantDrawer",
+            "function toggleAssistantDrawer",
+            'assistantToggleButton.setAttribute("aria-expanded", "true")',
+            'assistantToggleButton.setAttribute("aria-expanded", "false")',
+            'document.addEventListener("keydown"',
+            'event.key === "Escape"',
+        ):
+            self.assertIn(marker, js)
+
 
 if __name__ == "__main__":
     unittest.main()
