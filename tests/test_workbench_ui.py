@@ -33,7 +33,7 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn(".assistant-drawer", css)
         self.assertIn("@media (max-width: 760px)", css)
 
-    def test_workbench_script_routes_to_monitoring(self) -> None:
+    def test_workbench_script_routes_to_registered_pages(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
 
@@ -42,12 +42,29 @@ class WorkbenchUiTest(unittest.TestCase):
             "function navigateWorkbench",
             "function applyWorkbenchRoute",
             'window.addEventListener("hashchange"',
-            '"#/monitoring"',
+            "WORKBENCH_ROUTES",
+            'var target = "#/" +',
             "window.openMonitoringWorkbench",
         ):
             self.assertIn(marker, js)
         self.assertIn('data-workbench-route="monitoring"', html)
         self.assertIn('aria-current="page"', html)
+
+    def test_ai_is_default_route_and_monitoring_alone_requires_admin(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="assistantPage"', html)
+        self.assertIn('data-workbench-route="assistant"', html)
+        self.assertIn('data-workbench-route="monitoring"', html)
+        self.assertIn('assistant: {requiresAdmin: false}', js)
+        self.assertIn('monitoring: {requiresAdmin: true}', js)
+        self.assertIn('return WORKBENCH_ROUTES[route] ? route : "assistant"', js)
+        self.assertIn(
+            'var target = "#/" + (WORKBENCH_ROUTES[route] ? route : "assistant")',
+            js,
+        )
+        self.assertIn('if (definition.requiresAdmin && !adminToken)', js)
 
     def test_ai_assistant_drawer_has_accessible_controls(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")

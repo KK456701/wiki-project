@@ -2,15 +2,21 @@
 
 var workbenchContent = document.getElementById("workbenchContent");
 var workbenchLoading = document.getElementById("workbenchLoading");
+var workbenchAssistantPage = document.getElementById("assistantPage");
 var workbenchMonitoringPage = document.getElementById("monitoringPage");
 var workbenchNavItems = document.querySelectorAll("[data-workbench-route]");
 var assistantToggleButton = document.getElementById("assistantToggleButton");
 var assistantDrawer = document.getElementById("assistantDrawer");
 var assistantCloseButton = document.getElementById("assistantCloseButton");
 
+var WORKBENCH_ROUTES = {
+  assistant: {requiresAdmin: false},
+  monitoring: {requiresAdmin: true},
+};
+
 function currentWorkbenchRoute() {
   var route = window.location.hash.replace(/^#\/?/, "");
-  return route === "monitoring" ? route : "monitoring";
+  return WORKBENCH_ROUTES[route] ? route : "assistant";
 }
 
 function mountWorkbenchPages() {
@@ -33,17 +39,17 @@ function updateWorkbenchNavigation(route) {
 
 function applyWorkbenchRoute() {
   var route = currentWorkbenchRoute();
+  var definition = WORKBENCH_ROUTES[route];
   mountWorkbenchPages();
   document.querySelectorAll(".workbench-page").forEach(function(page) {
-    page.hidden = true;
+    page.hidden = page.dataset.route !== route;
   });
-  workbenchMonitoringPage.hidden = route !== "monitoring";
   updateWorkbenchNavigation(route);
   if (workbenchLoading) workbenchLoading.hidden = true;
 
   if (!currentUser) return;
-  if (!adminToken) {
-    requireAdminThenOpen("monitoring");
+  if (definition.requiresAdmin && !adminToken) {
+    requireAdminThenOpen(route);
     return;
   }
   if (route === "monitoring" && window.activateMonitoringPage) {
@@ -52,7 +58,7 @@ function applyWorkbenchRoute() {
 }
 
 function navigateWorkbench(route) {
-  var target = route === "monitoring" ? "#/monitoring" : "#/monitoring";
+  var target = "#/" + (WORKBENCH_ROUTES[route] ? route : "assistant");
   if (window.location.hash === target) {
     applyWorkbenchRoute();
     return;

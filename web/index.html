@@ -553,9 +553,14 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </header>
 
   <aside id="workbenchNav" class="workbench-nav" aria-label="业务工作台导航">
-    <div class="workbench-nav-heading">业务工作台</div>
-    <button class="workbench-nav-item active" type="button" data-workbench-route="monitoring" aria-current="page">
-      <span class="workbench-nav-index">05</span>
+    <div class="workbench-nav-heading">智能入口</div>
+    <button class="workbench-nav-item active" type="button" data-workbench-route="assistant" aria-current="page">
+      <span class="workbench-nav-index">AI</span>
+      <span>AI 指标助手</span>
+    </button>
+    <div class="workbench-nav-heading workbench-nav-heading-secondary">业务工作台</div>
+    <button class="workbench-nav-item" type="button" data-workbench-route="monitoring">
+      <span class="workbench-nav-index">监控</span>
       <span>指标运算监控</span>
     </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">现有工具</div>
@@ -565,6 +570,14 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </aside>
 
   <main id="workbenchContent" class="workbench-content" aria-live="polite">
+    <section id="assistantPage" class="workbench-page assistant-page" data-route="assistant" aria-labelledby="assistantPageTitle">
+      <header class="assistant-page-heading">
+        <span>AI 指标助手</span>
+        <h1 id="assistantPageTitle">今天需要处理哪个指标？</h1>
+        <p>问口径、生成 SQL、试运行或诊断异常，结果可以继续进入对应业务页面处理。</p>
+      </header>
+      <div id="assistantHomeMount" class="assistant-home-mount"></div>
+    </section>
     <div id="workbenchLoading" class="workbench-loading">正在打开业务工作台...</div>
   </main>
 
