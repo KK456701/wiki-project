@@ -208,30 +208,39 @@ body::before {
 }
 
 .assistant-page {
+  width: 100%;
   min-height: 0;
   height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  max-width: 1040px;
+  max-width: none;
 }
 
 .assistant-page-heading {
-  padding: 8px 8px 18px;
+  min-height: 58px;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 2px 4px 12px;
 }
 
 .assistant-page-heading > span {
+  flex: 0 0 auto;
   color: var(--teal-deep);
   font-size: 12px;
   font-weight: 850;
 }
 
 .assistant-page-heading h1 {
-  margin: 6px 0;
-  font-size: 28px;
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 24px;
   letter-spacing: 0;
 }
 
 .assistant-page-heading p {
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   color: var(--muted);
   font-size: 13px;
@@ -301,6 +310,10 @@ body::before {
 
 .assistant-workspace .message-bubble {
   max-width: min(720px, calc(100% - 48px));
+}
+
+.assistant-workspace:not(.compact) .message-bubble {
+  max-width: min(960px, 82%);
 }
 
 .assistant-workspace .assistant-composer-wrapper {
@@ -478,6 +491,14 @@ body::before {
 .assistant-drawer .composer-hint {
   width: 100%;
   margin-top: 6px;
+}
+
+@media (max-width: 1200px) {
+  .assistant-page-heading {
+    min-height: 0;
+    display: grid;
+    gap: 4px;
+  }
 }
 
 @media (max-width: 980px) {

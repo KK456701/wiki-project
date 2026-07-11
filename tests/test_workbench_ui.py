@@ -112,6 +112,20 @@ class WorkbenchUiTest(unittest.TestCase):
         hidden_rule = css[css.index(".workbench-loading[hidden]") :]
         self.assertIn("display: none", hidden_rule)
 
+    def test_ai_home_uses_full_available_workspace(self) -> None:
+        css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
+
+        assistant_page = css.split(".assistant-page {", 1)[1].split("}", 1)[0]
+        assistant_heading = css.split(".assistant-page-heading {", 1)[1].split("}", 1)[0]
+        self.assertIn("width: 100%", assistant_page)
+        self.assertIn("max-width: none", assistant_page)
+        self.assertNotIn("max-width: 1040px", assistant_page)
+        self.assertIn("display: flex", assistant_heading)
+        self.assertIn("min-height: 58px", assistant_heading)
+        self.assertIn(".assistant-workspace:not(.compact) .message-bubble", css)
+        self.assertIn("max-width: min(960px, 82%)", css)
+        self.assertIn("@media (max-width: 1200px)", css)
+
 
 if __name__ == "__main__":
     unittest.main()
