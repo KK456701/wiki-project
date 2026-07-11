@@ -126,6 +126,21 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn("max-width: min(960px, 82%)", css)
         self.assertIn("@media (max-width: 1200px)", css)
 
+    def test_assistant_route_toggles_immersive_mode(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'var workbenchShell = document.getElementById("workbenchShell")',
+            js,
+        )
+        self.assertIn('workbenchShell.classList.add("assistant-immersive")', js)
+        self.assertIn('workbenchShell.classList.remove("assistant-immersive")', js)
+        self.assertIn('data-short="稿"', html)
+        self.assertIn('data-short="审"', html)
+        self.assertIn('data-short="库"', html)
+        self.assertIn('title="指标设计稿"', html)
+
 
 if __name__ == "__main__":
     unittest.main()

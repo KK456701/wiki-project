@@ -1,5 +1,6 @@
 "use strict";
 
+var workbenchShell = document.getElementById("workbenchShell");
 var workbenchContent = document.getElementById("workbenchContent");
 var workbenchLoading = document.getElementById("workbenchLoading");
 var workbenchAssistantPage = document.getElementById("assistantPage");
@@ -94,6 +95,7 @@ function ensureAssistantWelcome() {
 }
 
 function showAssistantPage() {
+  workbenchShell.classList.add("assistant-immersive");
   assistantDrawer.hidden = true;
   assistantToggleButton.hidden = true;
   assistantToggleButton.setAttribute("aria-expanded", "false");
@@ -102,6 +104,7 @@ function showAssistantPage() {
 }
 
 function prepareBusinessPage() {
+  workbenchShell.classList.remove("assistant-immersive");
   assistantDrawer.hidden = true;
   assistantToggleButton.hidden = false;
   assistantToggleButton.setAttribute("aria-expanded", "false");

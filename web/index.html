@@ -559,19 +559,19 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 
   <aside id="workbenchNav" class="workbench-nav" aria-label="业务工作台导航">
     <div class="workbench-nav-heading">智能入口</div>
-    <button class="workbench-nav-item active" type="button" data-workbench-route="assistant" aria-current="page">
+    <button class="workbench-nav-item active" type="button" data-workbench-route="assistant" aria-current="page" title="AI 指标助手">
       <span class="workbench-nav-index">AI</span>
       <span>AI 指标助手</span>
     </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">业务工作台</div>
-    <button class="workbench-nav-item" type="button" data-workbench-route="monitoring">
+    <button class="workbench-nav-item" type="button" data-workbench-route="monitoring" title="指标运算监控">
       <span class="workbench-nav-index">监控</span>
       <span>指标运算监控</span>
     </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">现有工具</div>
-    <button id="indicatorDraftButton" class="workbench-tool-item" type="button">指标设计稿</button>
-    <button id="reviewButton" class="workbench-tool-item" type="button">审批与版本</button>
-    <button id="mcpButton" class="workbench-tool-item" type="button">数据库与元数据</button>
+    <button id="indicatorDraftButton" class="workbench-tool-item" type="button" data-short="稿" title="指标设计稿">指标设计稿</button>
+    <button id="reviewButton" class="workbench-tool-item" type="button" data-short="审" title="审批与版本">审批与版本</button>
+    <button id="mcpButton" class="workbench-tool-item" type="button" data-short="库" title="数据库与元数据">数据库与元数据</button>
   </aside>
 
   <main id="workbenchContent" class="workbench-content" aria-live="polite">
