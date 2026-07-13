@@ -372,43 +372,6 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 .diff-table td { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; background: #fff; }
 .diff-table .changed { background: #fff6e8; }
 .changed-badge { display: inline-block; background: var(--amber); color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 999px; margin-left: 4px; }
-.mcp-panel { display: grid; gap: 14px; }
-.mcp-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.mcp-toolbar select {
-  min-height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--ink);
-  font: inherit;
-}
-.mcp-status {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  background: #fbfdfc;
-  color: var(--ink-soft);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.mcp-source-grid { display: grid; gap: 10px; }
-.mcp-source-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  background: #fff;
-}
-.mcp-source-card h3 { margin: 0 0 8px; font-size: 16px; }
-.mcp-tool-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mcp-tool-pill {
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  padding: 4px 8px;
-  background: var(--teal-soft);
-  color: var(--teal-deep);
-  font: 650 12px/1.2 var(--mono);
-}
 .self-check-list { display: grid; gap: 10px; }
 .self-check-item {
   border: 1px solid var(--line);
@@ -515,6 +478,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 }
 </style>
 <link rel="stylesheet" href="/static/monitoring.css" />
+<link rel="stylesheet" href="/static/metadata.css" />
 <link rel="stylesheet" href="/static/workbench.css" />
 </head>
 <body>
@@ -568,10 +532,13 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <span class="workbench-nav-index">监控</span>
       <span>指标运算监控</span>
     </button>
+    <button class="workbench-nav-item" type="button" data-workbench-route="metadata" title="数据库与元数据">
+      <span class="workbench-nav-index">数据</span>
+      <span>数据库与元数据</span>
+    </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">现有工具</div>
     <button id="indicatorDraftButton" class="workbench-tool-item" type="button" data-short="稿" title="指标设计稿">指标设计稿</button>
     <button id="reviewButton" class="workbench-tool-item" type="button" data-short="审" title="审批与版本">审批与版本</button>
-    <button id="mcpButton" class="workbench-tool-item" type="button" data-short="库" title="数据库与元数据">数据库与元数据</button>
   </aside>
 
   <main id="workbenchContent" class="workbench-content" aria-live="polite">
@@ -598,6 +565,69 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
           </footer>
         </div>
+      </div>
+    </section>
+    <section id="metadataPage" class="workbench-page metadata-page" data-route="metadata" aria-labelledby="metadataPageTitle" hidden>
+      <div class="metadata-page-surface">
+        <header class="metadata-page-header">
+          <div>
+            <span class="metadata-eyebrow">数据基础</span>
+            <h1 id="metadataPageTitle">数据库与元数据</h1>
+            <p>同步医院业务库的表和字段结构，及时发现可能影响指标运行的变化。</p>
+          </div>
+          <div class="metadata-primary-actions">
+            <label for="metadataDbSelect">医院业务库</label>
+            <select id="metadataDbSelect" aria-label="选择医院业务数据库">
+              <option value="hospital_demo_data">hospital_demo_data</option>
+            </select>
+            <button id="metadataSyncButton" type="button">同步数据库结构</button>
+          </div>
+        </header>
+
+        <div id="metadataNotice" class="metadata-notice" role="status">正在读取数据库结构状态...</div>
+
+        <section id="metadataOverview" class="metadata-status-strip" aria-label="最近同步概览">
+          <div><span>当前医院</span><strong id="metadataHospitalValue">hospital_001</strong></div>
+          <div><span>最近同步</span><strong id="metadataSyncedAtValue">读取中</strong></div>
+          <div><span>数据表</span><strong id="metadataTableCountValue">--</strong></div>
+          <div><span>字段</span><strong id="metadataColumnCountValue">--</strong></div>
+        </section>
+
+        <div class="metadata-impact-grid">
+          <section class="metadata-impact-section" aria-labelledby="metadataChangesTitle">
+            <header>
+              <div><span>最近批次</span><h2 id="metadataChangesTitle">数据库结构变化</h2></div>
+              <span id="metadataChangeCount" class="metadata-count">0</span>
+            </header>
+            <div id="metadataChanges" class="metadata-change-list">
+              <div class="metadata-empty">正在读取最近一次同步记录...</div>
+            </div>
+          </section>
+
+          <section class="metadata-impact-section" aria-labelledby="metadataAffectedTitle">
+            <header>
+              <div><span>影响分析</span><h2 id="metadataAffectedTitle">受影响指标</h2></div>
+              <span id="metadataAffectedCount" class="metadata-count">0</span>
+            </header>
+            <div id="metadataAffectedRules" class="metadata-rule-list">
+              <div class="metadata-empty">同步后将自动检查指标字段映射。</div>
+            </div>
+          </section>
+        </div>
+
+        <details id="metadataConnectionDetails" class="metadata-connection-details">
+          <summary>
+            <span><strong>连接详情</strong><small id="metadataConnectionSummary">正在检查数据源连接...</small></span>
+            <span class="metadata-details-action">展开</span>
+          </summary>
+          <div class="metadata-connection-body">
+            <div class="metadata-connection-toolbar">
+              <p>以下信息供实施人员排查连接问题。医院业务库和系统管理库均使用只读工具访问。</p>
+              <button id="metadataRefreshConnectionButton" class="ghost" type="button">重新检查连接</button>
+            </div>
+            <div id="metadataSourceList" class="metadata-source-list"></div>
+          </div>
+        </details>
       </div>
     </section>
     <div id="workbenchLoading" class="workbench-loading">正在打开业务工作台...</div>
@@ -636,30 +666,6 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <button class="ghost" data-close="selfCheckModal">关闭</button>
     </header>
     <div class="dialog-body"><div id="selfCheckList" class="self-check-list"></div></div>
-  </section>
-</div>
-
-<!-- MCP 测试弹窗 -->
-<div id="mcpModal" class="modal" hidden>
-  <section class="dialog" role="dialog" aria-modal="true">
-    <header>
-      <div><h2>DBHub MCP 测试</h2><div style="color:#5b677a;font-size:14px;">查看本地数据库工具，并通过 DBHub 同步元数据。</div></div>
-      <button class="ghost" data-close="mcpModal">关闭</button>
-    </header>
-    <div class="dialog-body">
-      <div class="mcp-panel">
-        <div class="mcp-toolbar">
-          <button id="loadMcpSourcesButton" type="button">查看数据源/工具</button>
-          <select id="mcpDbSelect" aria-label="选择数据库">
-            <option value="hospital_demo_data">hospital_demo_data</option>
-            <option value="wiki_agent_runtime">wiki_agent_runtime</option>
-          </select>
-          <button id="syncMcpMetadataButton" type="button">通过 DBHub 同步元数据</button>
-        </div>
-        <div id="mcpStatus" class="mcp-status">点击“查看数据源/工具”确认 DBHub sidecar 是否已连接。</div>
-        <div id="mcpSourceList" class="mcp-source-grid"></div>
-      </div>
-    </div>
   </section>
 </div>
 
@@ -875,11 +881,11 @@ var pendingAdminAction = "";
 var currentIndicatorDraft = null;
 var currentIndicatorMetadata = null;
 
-// 未登录则显示登录页
-if (!currentUser) { document.getElementById("loginScreen").hidden = false; }
+// 刷新后复用当前会话，未登录时才显示登录页。
+var loginScreen = document.getElementById("loginScreen");
+loginScreen.hidden = !!currentUser;
 
 // ===== DOM 引用 =====
-var loginScreen = document.getElementById("loginScreen");
 var loginAccount = document.getElementById("loginAccount");
 var loginPassword2 = document.getElementById("loginPassword2");
 var loginError2 = document.getElementById("loginError2");
@@ -902,13 +908,6 @@ var recoveryModal = document.getElementById("recoveryModal");
 var recoveryMeta = document.getElementById("recoveryMeta");
 var recoveryList = document.getElementById("recoveryList");
 var refreshRecoveryButton = document.getElementById("refreshRecoveryButton");
-var mcpButton = document.getElementById("mcpButton");
-var mcpModal = document.getElementById("mcpModal");
-var loadMcpSourcesButton = document.getElementById("loadMcpSourcesButton");
-var syncMcpMetadataButton = document.getElementById("syncMcpMetadataButton");
-var mcpDbSelect = document.getElementById("mcpDbSelect");
-var mcpStatus = document.getElementById("mcpStatus");
-var mcpSourceList = document.getElementById("mcpSourceList");
 var indicatorDraftButton = document.getElementById("indicatorDraftButton");
 var indicatorDraftModal = document.getElementById("indicatorDraftModal");
 var indicatorDraftPrompt = document.getElementById("indicatorDraftPrompt");
@@ -1033,11 +1032,6 @@ recoveryButton.addEventListener("click", function() {
   requireAdminThenOpen("recovery");
 });
 
-mcpButton.addEventListener("click", function() {
-  mcpModal.hidden = false;
-  loadMcpSources();
-});
-
 indicatorDraftButton.addEventListener("click", function() {
   indicatorDraftModal.hidden = false;
   loadIndicatorDrafts();
@@ -1050,8 +1044,6 @@ refreshIndicatorDraftsButton.addEventListener("click", function() {
 createIndicatorDraftButton.addEventListener("click", createIndicatorDraft);
 
 refreshRecoveryButton.addEventListener("click", loadRecoveryTasks);
-loadMcpSourcesButton.addEventListener("click", loadMcpSources);
-syncMcpMetadataButton.addEventListener("click", syncMcpMetadata);
 
 loginSubmit.addEventListener("click", async function() {
   var pwd = loginPassword.value.trim();
@@ -1090,33 +1082,6 @@ queryInput.addEventListener("keydown", function(e) {
 function levelName(level) {
   var names = { hospital:"医院口径", company:"公司口径", national:"国标口径" };
   return names[level] || level || "未知";
-}
-
-function renderMcpSources(sources) {
-  mcpSourceList.innerHTML = "";
-  if (!sources || !sources.length) {
-    mcpSourceList.innerHTML = '<div class="mcp-status">未发现 DBHub 数据源。请确认 sidecar 已启动并加载 dbhub.local.toml。</div>';
-    return;
-  }
-  sources.forEach(function(source) {
-    var card = document.createElement("div");
-    card.className = "mcp-source-card";
-    var title = document.createElement("h3");
-    title.textContent = source.id + " · " + (source.type || "unknown");
-    var meta = document.createElement("div");
-    meta.className = "review-meta";
-    meta.textContent = (source.host || "") + (source.port ? ":" + source.port : "") + " / " + (source.database || "");
-    var tools = document.createElement("div");
-    tools.className = "mcp-tool-list";
-    (source.tools || []).forEach(function(tool) {
-      var pill = document.createElement("span");
-      pill.className = "mcp-tool-pill";
-      pill.textContent = tool.name + (tool.readonly ? " · 只读" : "");
-      tools.appendChild(pill);
-    });
-    card.append(title, meta, tools);
-    mcpSourceList.appendChild(card);
-  });
 }
 
 function renderSelfCheck(data) {
@@ -1269,54 +1234,6 @@ async function ignoreRecoveryTask(taskId) {
   var data = await resp.json();
   if (!resp.ok) { alert(data.detail || "忽略失败"); return; }
   await loadRecoveryTasks();
-}
-
-async function loadMcpSources() {
-  loadMcpSourcesButton.disabled = true;
-  mcpStatus.textContent = "正在连接 DBHub sidecar...";
-  try {
-    var resp = await fetch("/api/mcp/dbhub/sources");
-    var data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || "DBHub 数据源读取失败");
-    renderMcpSources(data.sources || []);
-    mcpStatus.textContent = "DBHub 连接正常：" + (data.sources || []).length + " 个数据源。";
-  } catch (e) {
-    mcpSourceList.innerHTML = "";
-    mcpStatus.textContent = "DBHub 连接失败：" + e.message;
-  } finally {
-    loadMcpSourcesButton.disabled = false;
-  }
-}
-
-async function syncMcpMetadata() {
-  var dbName = mcpDbSelect.value;
-  var hospitalId = hospitalIdInput.value.trim() || "hospital_001";
-  syncMcpMetadataButton.disabled = true;
-  mcpStatus.textContent = "正在通过 DBHub MCP 同步 " + dbName + " 的元数据...";
-  try {
-    var resp = await fetch("/api/metadata/sync", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ hospital_id: hospitalId, db_name: dbName, source: "dbhub" }),
-    });
-    var data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || "元数据同步失败");
-    mcpStatus.textContent = [
-      "同步成功",
-      "医院：" + data.hospital_id,
-      "数据库：" + data.db_name,
-      "来源：" + data.metadata_source,
-      "表数量：" + data.table_count,
-      "字段数量：" + data.column_count,
-      "批次：" + data.batch_id,
-      "结构变更：" + ((data.changes || []).length) + " 项",
-      "受影响指标：" + ((data.affected_rules || []).length) + " 项",
-    ].join("\n");
-  } catch (e) {
-    mcpStatus.textContent = "同步失败：" + e.message;
-  } finally {
-    syncMcpMetadataButton.disabled = false;
-  }
 }
 
 function optionText(option) {
@@ -2117,7 +2034,7 @@ function renderIndicatorMetadataEditor() {
   button.addEventListener("click", confirmIndicatorMetadata);
   editor.appendChild(button);
   if (button.disabled) {
-    var hint = document.createElement("div"); hint.className = "indicator-message"; hint.textContent = "仍缺少字段：" + currentIndicatorMetadata.missing_fields.join("、") + "。请先在 MCP 中同步业务库元数据。"; editor.appendChild(hint);
+    var hint = document.createElement("div"); hint.className = "indicator-message"; hint.textContent = "仍缺少字段：" + currentIndicatorMetadata.missing_fields.join("、") + "。请先到“数据库与元数据”工作台同步业务库结构。"; editor.appendChild(hint);
   }
 }
 
@@ -2347,6 +2264,7 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 // 欢迎消息由登录后触发，此处不再自动调用
 </script>
 <script src="/static/monitoring.js"></script>
+<script src="/static/metadata.js"></script>
 <script src="/static/workbench.js"></script>
 </body>
 </html>

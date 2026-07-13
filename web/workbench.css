@@ -676,6 +676,16 @@ body::before {
     padding-bottom: 2px;
   }
 
+  .workbench-topbar .topbar-actions,
+  .workbench-nav {
+    scrollbar-width: none;
+  }
+
+  .workbench-topbar .topbar-actions::-webkit-scrollbar,
+  .workbench-nav::-webkit-scrollbar {
+    display: none;
+  }
+
   .workbench-topbar .hospital-inline,
   .workbench-topbar .btn,
   .system-tools-menu {

@@ -33,6 +33,12 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn(".assistant-drawer", css)
         self.assertIn("@media (max-width: 760px)", css)
 
+    def test_mobile_navigation_hides_internal_scrollbars(self) -> None:
+        css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
+
+        self.assertIn("scrollbar-width: none", css)
+        self.assertIn("::-webkit-scrollbar", css)
+
     def test_workbench_script_routes_to_registered_pages(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         js = (ROOT / "web" / "workbench.js").read_text(encoding="utf-8")
@@ -66,6 +72,11 @@ class WorkbenchUiTest(unittest.TestCase):
         )
         self.assertIn('if (definition.requiresAdmin && !adminToken)', js)
         self.assertIn('window.navigateWorkbench("assistant")', html)
+
+    def test_saved_login_hides_login_screen_after_reload(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn("loginScreen.hidden = !!currentUser", html)
 
     def test_ai_assistant_drawer_has_accessible_controls(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
@@ -138,7 +149,8 @@ class WorkbenchUiTest(unittest.TestCase):
         self.assertIn('workbenchShell.classList.remove("assistant-immersive")', js)
         self.assertIn('data-short="稿"', html)
         self.assertIn('data-short="审"', html)
-        self.assertIn('data-short="库"', html)
+        self.assertIn('data-workbench-route="metadata"', html)
+        self.assertIn('<span class="workbench-nav-index">数据</span>', html)
         self.assertIn('title="指标设计稿"', html)
 
     def test_immersive_assistant_uses_rail_and_full_height_canvas(self) -> None:

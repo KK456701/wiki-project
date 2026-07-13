@@ -5,6 +5,7 @@ var workbenchContent = document.getElementById("workbenchContent");
 var workbenchLoading = document.getElementById("workbenchLoading");
 var workbenchAssistantPage = document.getElementById("assistantPage");
 var workbenchMonitoringPage = document.getElementById("monitoringPage");
+var workbenchMetadataPage = document.getElementById("metadataPage");
 var workbenchNavItems = document.querySelectorAll("[data-workbench-route]");
 var assistantToggleButton = document.getElementById("assistantToggleButton");
 var assistantDrawer = document.getElementById("assistantDrawer");
@@ -16,6 +17,7 @@ var assistantDrawerMount = document.getElementById("assistantDrawerMount");
 var WORKBENCH_ROUTES = {
   assistant: {requiresAdmin: false},
   monitoring: {requiresAdmin: true},
+  metadata: {requiresAdmin: false},
 };
 
 function currentWorkbenchRoute() {
@@ -64,6 +66,9 @@ function applyWorkbenchRoute() {
   }
   if (route === "monitoring" && window.activateMonitoringPage) {
     window.activateMonitoringPage();
+  }
+  if (route === "metadata" && window.activateMetadataPage) {
+    window.activateMetadataPage();
   }
 }
 
