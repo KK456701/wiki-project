@@ -431,3 +431,109 @@ CREATE TABLE IF NOT EXISTS med_recovery_task (
   INDEX idx_recovery_type (task_type),
   INDEX idx_recovery_trace (trace_id)
 );
+
+CREATE TABLE IF NOT EXISTS med_term_concept (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  concept_code VARCHAR(96) NOT NULL UNIQUE,
+  canonical_name VARCHAR(255) NOT NULL,
+  concept_type VARCHAR(32) NOT NULL,
+  definition TEXT NOT NULL,
+  standard_code VARCHAR(128),
+  source_level VARCHAR(32) NOT NULL,
+  source_reference TEXT NOT NULL,
+  version INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS med_term_alias (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  concept_code VARCHAR(96) NOT NULL,
+  alias_text VARCHAR(255) NOT NULL,
+  relation_type VARCHAR(32) NOT NULL,
+  retrieval_enabled TINYINT NOT NULL DEFAULT 1,
+  sql_safe TINYINT NOT NULL DEFAULT 0,
+  ambiguity_group VARCHAR(96),
+  source_reference TEXT NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  version INT NOT NULL,
+  created_by VARCHAR(64),
+  approved_by VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  approved_at DATETIME,
+  UNIQUE KEY uk_term_alias_scope (concept_code, alias_text, version),
+  INDEX idx_term_alias_text (alias_text)
+);
+
+CREATE TABLE IF NOT EXISTS med_term_rule_link (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  concept_code VARCHAR(96) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  usage_section VARCHAR(32) NOT NULL,
+  business_field_key VARCHAR(128),
+  source_reference TEXT NOT NULL,
+  version INT NOT NULL,
+  UNIQUE KEY uk_term_rule_link (concept_code, index_code, usage_section, version),
+  INDEX idx_term_rule_code (index_code)
+);
+
+CREATE TABLE IF NOT EXISTS med_hospital_term_mapping (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  concept_code VARCHAR(96) NOT NULL,
+  code_system VARCHAR(64) NOT NULL,
+  local_code VARCHAR(128) NOT NULL DEFAULT '',
+  local_name VARCHAR(255) NOT NULL,
+  local_value VARCHAR(255) NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  effective_from DATETIME,
+  effective_to DATETIME,
+  version INT NOT NULL,
+  created_by VARCHAR(64),
+  approved_by VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  approved_at DATETIME,
+  UNIQUE KEY uk_hospital_term_current
+    (hospital_id, concept_code, code_system, local_code, version),
+  INDEX idx_hospital_term_active (hospital_id, approval_status)
+);
+
+CREATE TABLE IF NOT EXISTS med_hospital_term_mapping_version (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  version_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  concept_code VARCHAR(96) NOT NULL,
+  version INT NOT NULL,
+  snapshot_json JSON NOT NULL,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64),
+  approver_id VARCHAR(64),
+  created_at DATETIME NOT NULL,
+  approved_at DATETIME,
+  UNIQUE KEY uk_hospital_term_version (hospital_id, concept_code, version)
+);
+
+CREATE TABLE IF NOT EXISTS med_term_release (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  release_id VARCHAR(64) NOT NULL UNIQUE,
+  version INT NOT NULL UNIQUE,
+  status VARCHAR(32) NOT NULL,
+  checksum VARCHAR(64) NOT NULL UNIQUE,
+  snapshot_json JSON NOT NULL,
+  change_summary TEXT NOT NULL,
+  published_by VARCHAR(64) NOT NULL,
+  published_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS med_term_audit_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  action VARCHAR(64) NOT NULL,
+  object_type VARCHAR(64) NOT NULL,
+  object_id VARCHAR(128) NOT NULL,
+  hospital_id VARCHAR(64),
+  version VARCHAR(64),
+  actor_id VARCHAR(64) NOT NULL,
+  detail_json JSON NOT NULL,
+  created_at DATETIME NOT NULL
+);

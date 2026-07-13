@@ -1,0 +1,538 @@
+schema_version: term-corpus-v1
+concepts:
+  - concept_code: IND_MQSI2025_001
+    canonical_name: 患者入院48小时内转科的比例
+    concept_type: indicator
+    definition: 入院后48小时内发生转科的患者占同期入院患者的比例。
+    source_reference: MQSI2025_001
+    aliases:
+      - {alias_text: 入院48小时转科率, relation_type: abbreviation, source_reference: MQSI2025_001}
+      - {alias_text: 48小时内转科比例, relation_type: exact, source_reference: MQSI2025_001}
+  - concept_code: IND_MQSI2025_002
+    canonical_name: 患者入院8小时内查房率
+    concept_type: indicator
+    definition: 入院后8小时内完成规定查房的患者比例。
+    source_reference: MQSI2025_002
+    aliases:
+      - {alias_text: 入院8小时查房率, relation_type: abbreviation, source_reference: MQSI2025_002}
+      - {alias_text: 8小时内查房比例, relation_type: exact, source_reference: MQSI2025_002}
+  - concept_code: IND_MQSI2025_003
+    canonical_name: 上级医师查房记录规范率
+    concept_type: indicator
+    definition: 上级医师查房记录符合规范要求的比例。
+    source_reference: MQSI2025_003
+    aliases:
+      - {alias_text: 上级医师查房规范率, relation_type: abbreviation, source_reference: MQSI2025_003}
+      - {alias_text: 上级医生查房记录合规率, relation_type: colloquial, source_reference: MQSI2025_003}
+  - concept_code: IND_MQSI2025_004
+    canonical_name: 住院患者非计划手术率
+    concept_type: indicator
+    definition: 住院患者发生非计划手术的比例。
+    source_reference: MQSI2025_004
+    aliases:
+      - {alias_text: 非计划手术率, relation_type: abbreviation, source_reference: MQSI2025_004}
+      - {alias_text: 非预期手术比例, relation_type: related, source_reference: MQSI2025_004}
+  - concept_code: IND_MQSI2025_005
+    canonical_name: 急会诊及时到位率
+    concept_type: indicator
+    definition: 急会诊请求发出后在规定时限内到位的比例。
+    source_reference: MQSI2025_005
+    aliases:
+      - {alias_text: 急会诊到位率, relation_type: abbreviation, source_reference: MQSI2025_005}
+      - {alias_text: 急会诊响应及时率, relation_type: exact, source_reference: MQSI2025_005}
+      - {alias_text: 急诊会诊到位率, relation_type: related, source_reference: MQSI2025_005}
+  - concept_code: IND_MQSI2025_006
+    canonical_name: 急会诊有效率
+    concept_type: indicator
+    definition: 急会诊达到有效会诊要求的比例。
+    source_reference: MQSI2025_006
+    aliases:
+      - {alias_text: 紧急会诊有效率, relation_type: exact, source_reference: MQSI2025_006}
+      - {alias_text: 急会诊有效比例, relation_type: abbreviation, source_reference: MQSI2025_006}
+  - concept_code: IND_MQSI2025_007
+    canonical_name: 普通会诊及时完成率
+    concept_type: indicator
+    definition: 普通会诊在规定时限内完成的比例。
+    source_reference: MQSI2025_007
+    aliases:
+      - {alias_text: 普通会诊按时完成率, relation_type: exact, source_reference: MQSI2025_007}
+      - {alias_text: 普通会诊及时率, relation_type: abbreviation, source_reference: MQSI2025_007}
+  - concept_code: IND_MQSI2025_008
+    canonical_name: 普通会诊有效率
+    concept_type: indicator
+    definition: 普通会诊达到有效会诊要求的比例。
+    source_reference: MQSI2025_008
+    aliases:
+      - {alias_text: 一般会诊有效率, relation_type: colloquial, source_reference: MQSI2025_008}
+      - {alias_text: 普通会诊有效比例, relation_type: abbreviation, source_reference: MQSI2025_008}
+  - concept_code: IND_MQSI2025_009
+    canonical_name: 手术患者特级护理或一级护理出院率
+    concept_type: indicator
+    definition: 手术患者在特级护理或一级护理状态下出院的比例。
+    source_reference: MQSI2025_009
+    aliases:
+      - {alias_text: 手术患者高等级护理出院率, relation_type: abbreviation, source_reference: MQSI2025_009}
+      - {alias_text: 特级一级护理出院比例, relation_type: colloquial, source_reference: MQSI2025_009}
+  - concept_code: IND_MQSI2025_010
+    canonical_name: 四级手术患者手术当日床旁交接班占比
+    concept_type: indicator
+    definition: 四级手术患者在手术当日完成床旁交接班的比例。
+    source_reference: MQSI2025_010
+    aliases:
+      - {alias_text: 四级手术当日床旁交接率, relation_type: abbreviation, source_reference: MQSI2025_010}
+      - {alias_text: 四级手术床旁交班比例, relation_type: colloquial, source_reference: MQSI2025_010}
+  - concept_code: IND_MQSI2025_011
+    canonical_name: 非计划再次住院或手术患者疑难病例讨论完成率
+    concept_type: indicator
+    definition: 非计划再次住院或手术患者完成疑难病例讨论的比例。
+    source_reference: MQSI2025_011
+    aliases:
+      - {alias_text: 非计划再入院疑难讨论完成率, relation_type: abbreviation, source_reference: MQSI2025_011}
+      - {alias_text: 非计划再手术疑难病例讨论率, relation_type: abbreviation, source_reference: MQSI2025_011}
+  - concept_code: IND_MQSI2025_012
+    canonical_name: 非计划再次住院或手术患者疑难病例讨论记录完整率
+    concept_type: indicator
+    definition: 非计划再次住院或手术患者疑难病例讨论记录完整的比例。
+    source_reference: MQSI2025_012
+    aliases:
+      - {alias_text: 非计划再入院疑难讨论记录完整率, relation_type: abbreviation, source_reference: MQSI2025_012}
+      - {alias_text: 非计划再手术讨论记录合规率, relation_type: colloquial, source_reference: MQSI2025_012}
+  - concept_code: IND_MQSI2025_013
+    canonical_name: 高额异常费用患者疑难病例讨论占比
+    concept_type: indicator
+    definition: 高额异常费用患者开展疑难病例讨论的比例。
+    source_reference: MQSI2025_013
+    aliases:
+      - {alias_text: 高额费用患者疑难讨论率, relation_type: abbreviation, source_reference: MQSI2025_013}
+      - {alias_text: 异常高费用病例讨论比例, relation_type: exact, source_reference: MQSI2025_013}
+  - concept_code: IND_MQSI2025_014
+    canonical_name: 急危重症患者抢救成功率
+    concept_type: indicator
+    definition: 急危重症患者抢救成功的比例。
+    source_reference: MQSI2025_014
+    aliases:
+      - {alias_text: 急危重症抢救成功率, relation_type: abbreviation, source_reference: MQSI2025_014}
+      - {alias_text: 危重患者抢救成功比例, relation_type: colloquial, source_reference: MQSI2025_014}
+  - concept_code: IND_MQSI2025_015
+    canonical_name: 术前讨论完成率
+    concept_type: indicator
+    definition: 按要求完成术前讨论的手术比例。
+    source_reference: MQSI2025_015
+    aliases:
+      - {alias_text: 手术前讨论完成率, relation_type: exact, source_reference: MQSI2025_015}
+      - {alias_text: 术前讨论执行率, relation_type: related, source_reference: MQSI2025_015}
+  - concept_code: IND_MQSI2025_016
+    canonical_name: 术者参加术前讨论率
+    concept_type: indicator
+    definition: 术者参加术前讨论的比例。
+    source_reference: MQSI2025_016
+    aliases:
+      - {alias_text: 主刀参加术前讨论率, relation_type: colloquial, source_reference: MQSI2025_016}
+      - {alias_text: 手术医师术前讨论参与率, relation_type: exact, source_reference: MQSI2025_016}
+  - concept_code: IND_MQSI2025_017
+    canonical_name: 术前讨论计划手术一致率
+    concept_type: indicator
+    definition: 术前讨论确定的计划手术与计划记录一致的比例。
+    source_reference: MQSI2025_017
+    aliases:
+      - {alias_text: 术前讨论与手术计划一致率, relation_type: exact, source_reference: MQSI2025_017}
+      - {alias_text: 讨论手术方案一致率, relation_type: colloquial, source_reference: MQSI2025_017}
+  - concept_code: IND_MQSI2025_018
+    canonical_name: 实际手术术者与计划手术术者一致率
+    concept_type: indicator
+    definition: 实际术者与计划术者一致的手术比例。
+    source_reference: MQSI2025_018
+    aliases:
+      - {alias_text: 实际主刀与计划主刀一致率, relation_type: colloquial, source_reference: MQSI2025_018}
+      - {alias_text: 手术术者计划一致率, relation_type: abbreviation, source_reference: MQSI2025_018}
+  - concept_code: IND_MQSI2025_019
+    canonical_name: 死亡病例讨论5日完成率
+    concept_type: indicator
+    definition: 死亡病例在5日内完成讨论的比例。
+    source_reference: MQSI2025_019
+    aliases:
+      - {alias_text: 死亡病例五日讨论完成率, relation_type: exact, source_reference: MQSI2025_019}
+      - {alias_text: 死亡病例讨论及时率, relation_type: related, source_reference: MQSI2025_019}
+  - concept_code: IND_MQSI2025_020
+    canonical_name: 医务部门组织讨论死亡病例与纠纷死亡病例比值
+    concept_type: indicator
+    definition: 医务部门组织讨论的死亡病例数与发生纠纷的死亡病例数之比。
+    source_reference: MQSI2025_020
+    aliases:
+      - {alias_text: 医务处组织死亡讨论与纠纷死亡比, relation_type: colloquial, source_reference: MQSI2025_020}
+      - {alias_text: 纠纷死亡病例组织讨论比值, relation_type: abbreviation, source_reference: MQSI2025_020}
+  - concept_code: IND_MQSI2025_021
+    canonical_name: 科主任主持死亡病例讨论率
+    concept_type: indicator
+    definition: 由科主任主持死亡病例讨论的比例。
+    source_reference: MQSI2025_021
+    aliases:
+      - {alias_text: 科主任死亡病例讨论主持率, relation_type: exact, source_reference: MQSI2025_021}
+      - {alias_text: 主任主持死亡讨论比例, relation_type: colloquial, source_reference: MQSI2025_021}
+  - concept_code: IND_MQSI2025_022
+    canonical_name: 死亡患者病案上传率
+    concept_type: indicator
+    definition: 死亡患者病案按要求上传的比例。
+    source_reference: MQSI2025_022
+    aliases:
+      - {alias_text: 死亡病案上传率, relation_type: abbreviation, source_reference: MQSI2025_022}
+      - {alias_text: 死亡病例病历上报率, relation_type: colloquial, source_reference: MQSI2025_022}
+  - concept_code: IND_MQSI2025_023
+    canonical_name: 长期医嘱当日终止率
+    concept_type: indicator
+    definition: 应终止的长期医嘱在当日完成终止的比例。
+    source_reference: MQSI2025_023
+    aliases:
+      - {alias_text: 长嘱当日停止率, relation_type: colloquial, source_reference: MQSI2025_023}
+      - {alias_text: 长期医嘱当天终止比例, relation_type: exact, source_reference: MQSI2025_023}
+  - concept_code: IND_MQSI2025_024
+    canonical_name: 手术医师手术时间重合率
+    concept_type: indicator
+    definition: 同一手术医师负责的手术时间发生重合的比例。
+    source_reference: MQSI2025_024
+    aliases:
+      - {alias_text: 手术医生手术时间冲突率, relation_type: colloquial, source_reference: MQSI2025_024}
+      - {alias_text: 术者手术时间重叠率, relation_type: exact, source_reference: MQSI2025_024}
+  - concept_code: IND_MQSI2025_025
+    canonical_name: 麻醉医师手术时间重合率
+    concept_type: indicator
+    definition: 同一麻醉医师负责的手术时间发生重合的比例。
+    source_reference: MQSI2025_025
+    aliases:
+      - {alias_text: 麻醉医生手术时间冲突率, relation_type: colloquial, source_reference: MQSI2025_025}
+      - {alias_text: 麻醉医师手术时间重叠率, relation_type: exact, source_reference: MQSI2025_025}
+  - concept_code: IND_MQSI2025_026
+    canonical_name: 四级手术与三级手术并发症发生率比
+    concept_type: indicator
+    definition: 四级手术并发症发生率与三级手术并发症发生率的比值。
+    source_reference: MQSI2025_026
+    aliases:
+      - {alias_text: 四三级手术并发症率比, relation_type: abbreviation, source_reference: MQSI2025_026}
+      - {alias_text: 四级对三级手术并发症比, relation_type: colloquial, source_reference: MQSI2025_026}
+  - concept_code: IND_MQSI2025_027
+    canonical_name: 四级手术与三级手术患者死亡率比
+    concept_type: indicator
+    definition: 四级手术患者死亡率与三级手术患者死亡率的比值。
+    source_reference: MQSI2025_027
+    aliases:
+      - {alias_text: 四三级手术死亡率比, relation_type: abbreviation, source_reference: MQSI2025_027}
+      - {alias_text: 四级对三级手术死亡比, relation_type: colloquial, source_reference: MQSI2025_027}
+  - concept_code: IND_MQSI2025_028
+    canonical_name: 四级手术术前多学科讨论完成率
+    concept_type: indicator
+    definition: 四级手术术前完成多学科讨论的比例。
+    source_reference: MQSI2025_028
+    aliases:
+      - {alias_text: 四级手术术前MDT完成率, relation_type: abbreviation, source_reference: MQSI2025_028}
+      - {alias_text: 四级手术多学科术前讨论率, relation_type: exact, source_reference: MQSI2025_028}
+  - concept_code: IND_MQSI2025_029
+    canonical_name: 三四级手术实际开展率
+    concept_type: indicator
+    definition: 三、四级手术实际开展情况的比例指标。
+    source_reference: MQSI2025_029
+    aliases:
+      - {alias_text: 三四级手术开展率, relation_type: abbreviation, source_reference: MQSI2025_029}
+      - {alias_text: 高等级手术实际开展比例, relation_type: colloquial, source_reference: MQSI2025_029}
+  - concept_code: IND_MQSI2025_030
+    canonical_name: 新技术新项目留存转化率
+    concept_type: indicator
+    definition: 新技术新项目形成稳定留存或转化的比例。
+    source_reference: MQSI2025_030
+    aliases:
+      - {alias_text: 新技术项目转化率, relation_type: abbreviation, source_reference: MQSI2025_030}
+      - {alias_text: 新项目留存率, relation_type: related, source_reference: MQSI2025_030}
+  - concept_code: IND_MQSI2025_031
+    canonical_name: 危急值报告时间
+    concept_type: indicator
+    definition: 危急值从确认到报告所经历的时间。
+    source_reference: MQSI2025_031
+    aliases:
+      - {alias_text: 危急值上报时间, relation_type: exact, source_reference: MQSI2025_031}
+      - {alias_text: 危急值报告时长, relation_type: exact, source_reference: MQSI2025_031}
+  - concept_code: IND_MQSI2025_032
+    canonical_name: 住院患者危急值当日及时处置率
+    concept_type: indicator
+    definition: 住院患者危急值在当日得到及时处置的比例。
+    source_reference: MQSI2025_032
+    aliases:
+      - {alias_text: 住院危急值当日处置率, relation_type: abbreviation, source_reference: MQSI2025_032}
+      - {alias_text: 危急值当天及时处理率, relation_type: colloquial, source_reference: MQSI2025_032}
+  - concept_code: IND_MQSI2025_033
+    canonical_name: 特殊使用级抗菌药物使用会诊率
+    concept_type: indicator
+    definition: 使用特殊使用级抗菌药物前完成规定会诊的比例。
+    source_reference: MQSI2025_033
+    aliases:
+      - {alias_text: 特殊级抗菌药会诊率, relation_type: abbreviation, source_reference: MQSI2025_033}
+      - {alias_text: 特殊使用抗生素会诊比例, relation_type: colloquial, source_reference: MQSI2025_033}
+  - concept_code: IND_MQSI2025_034
+    canonical_name: 临床用血后评估记录率
+    concept_type: indicator
+    definition: 临床用血后按要求完成评估记录的比例。
+    source_reference: MQSI2025_034
+    aliases:
+      - {alias_text: 输血后评估记录率, relation_type: colloquial, source_reference: MQSI2025_034}
+      - {alias_text: 用血后评价记录比例, relation_type: exact, source_reference: MQSI2025_034}
+  - concept_code: IND_MQSI2025_035
+    canonical_name: 术中自体血回输率
+    concept_type: indicator
+    definition: 术中输血患者实施自体血回输的比例。
+    source_reference: MQSI2025_035
+    aliases:
+      - {alias_text: 术中自体血回输比例, relation_type: exact, source_reference: MQSI2025_035}
+      - {alias_text: 术中自体输血率, relation_type: colloquial, source_reference: MQSI2025_035}
+  - concept_code: DIAG_URI
+    canonical_name: 急性上呼吸道感染
+    concept_type: diagnosis
+    definition: 上呼吸道发生的急性感染性疾病概念；具体编码以本院诊断字典为准。
+    source_level: company
+    source_reference: 医学术语安全示例
+    aliases:
+      - {alias_text: 上感, relation_type: abbreviation, sql_safe: false, source_reference: 医学术语安全示例}
+      - {alias_text: 感冒, relation_type: related, sql_safe: false, source_reference: 医学术语安全示例}
+  - concept_code: CONSULT_URGENT
+    canonical_name: 急会诊
+    concept_type: business_concept
+    definition: 需要在规定紧急时限内响应的会诊。
+    source_reference: MQSI2025_005
+    aliases:
+      - {alias_text: 紧急会诊, relation_type: exact, sql_safe: true, source_reference: MQSI2025_005}
+      - {alias_text: 急诊会诊, relation_type: related, sql_safe: false, source_reference: MQSI2025_005}
+  - concept_code: RESCUE_SUCCESS
+    canonical_name: 抢救成功
+    concept_type: status
+    definition: 按指标口径判定为抢救成功的状态。
+    source_reference: MQSI2025_014
+    aliases:
+      - {alias_text: 救治成功, relation_type: related, sql_safe: false, source_reference: MQSI2025_014}
+      - {alias_text: 治愈, relation_type: forbidden, retrieval_enabled: false, sql_safe: false, source_reference: MQSI2025_014}
+  - concept_code: CRITICAL_VALUE
+    canonical_name: 危急值
+    concept_type: business_concept
+    definition: 可能危及患者生命、需要立即报告和处置的检验检查结果。
+    source_reference: MQSI2025_031;MQSI2025_032
+    aliases:
+      - {alias_text: 危急结果, relation_type: exact, sql_safe: false, source_reference: MQSI2025_031}
+      - {alias_text: 异常值, relation_type: forbidden, retrieval_enabled: false, sql_safe: false, source_reference: MQSI2025_031}
+
+rule_coverage:
+  MQSI2025_001: &coverage001
+    concept_links: [{concept_code: IND_MQSI2025_001, index_code: MQSI2025_001, usage_section: rule_name, source_reference: MQSI2025_001}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_002:
+    concept_links: [{concept_code: IND_MQSI2025_002, index_code: MQSI2025_002, usage_section: rule_name, source_reference: MQSI2025_002}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_003:
+    concept_links: [{concept_code: IND_MQSI2025_003, index_code: MQSI2025_003, usage_section: rule_name, source_reference: MQSI2025_003}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_004:
+    concept_links: [{concept_code: IND_MQSI2025_004, index_code: MQSI2025_004, usage_section: rule_name, source_reference: MQSI2025_004}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_005:
+    concept_links:
+      - {concept_code: IND_MQSI2025_005, index_code: MQSI2025_005, usage_section: rule_name, source_reference: MQSI2025_005}
+      - {concept_code: CONSULT_URGENT, index_code: MQSI2025_005, usage_section: numerator, business_field_key: consult_type, source_reference: MQSI2025_005}
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_006:
+    concept_links:
+      - {concept_code: IND_MQSI2025_006, index_code: MQSI2025_006, usage_section: rule_name, source_reference: MQSI2025_006}
+      - {concept_code: CONSULT_URGENT, index_code: MQSI2025_006, usage_section: denominator, business_field_key: consult_type, source_reference: MQSI2025_006}
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_007:
+    concept_links: [{concept_code: IND_MQSI2025_007, index_code: MQSI2025_007, usage_section: rule_name, source_reference: MQSI2025_007}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_008:
+    concept_links: [{concept_code: IND_MQSI2025_008, index_code: MQSI2025_008, usage_section: rule_name, source_reference: MQSI2025_008}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_009:
+    concept_links: [{concept_code: IND_MQSI2025_009, index_code: MQSI2025_009, usage_section: rule_name, source_reference: MQSI2025_009}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_010:
+    concept_links: [{concept_code: IND_MQSI2025_010, index_code: MQSI2025_010, usage_section: rule_name, source_reference: MQSI2025_010}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_011:
+    concept_links: [{concept_code: IND_MQSI2025_011, index_code: MQSI2025_011, usage_section: rule_name, source_reference: MQSI2025_011}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_012:
+    concept_links: [{concept_code: IND_MQSI2025_012, index_code: MQSI2025_012, usage_section: rule_name, source_reference: MQSI2025_012}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_013:
+    concept_links: [{concept_code: IND_MQSI2025_013, index_code: MQSI2025_013, usage_section: rule_name, source_reference: MQSI2025_013}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_014:
+    concept_links:
+      - {concept_code: IND_MQSI2025_014, index_code: MQSI2025_014, usage_section: rule_name, source_reference: MQSI2025_014}
+      - {concept_code: RESCUE_SUCCESS, index_code: MQSI2025_014, usage_section: numerator, business_field_key: rescue_result, source_reference: MQSI2025_014}
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_015:
+    concept_links: [{concept_code: IND_MQSI2025_015, index_code: MQSI2025_015, usage_section: rule_name, source_reference: MQSI2025_015}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_016:
+    concept_links: [{concept_code: IND_MQSI2025_016, index_code: MQSI2025_016, usage_section: rule_name, source_reference: MQSI2025_016}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_017:
+    concept_links: [{concept_code: IND_MQSI2025_017, index_code: MQSI2025_017, usage_section: rule_name, source_reference: MQSI2025_017}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_018:
+    concept_links: [{concept_code: IND_MQSI2025_018, index_code: MQSI2025_018, usage_section: rule_name, source_reference: MQSI2025_018}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_019:
+    concept_links: [{concept_code: IND_MQSI2025_019, index_code: MQSI2025_019, usage_section: rule_name, source_reference: MQSI2025_019}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_020:
+    concept_links: [{concept_code: IND_MQSI2025_020, index_code: MQSI2025_020, usage_section: rule_name, source_reference: MQSI2025_020}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_021:
+    concept_links: [{concept_code: IND_MQSI2025_021, index_code: MQSI2025_021, usage_section: rule_name, source_reference: MQSI2025_021}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_022:
+    concept_links: [{concept_code: IND_MQSI2025_022, index_code: MQSI2025_022, usage_section: rule_name, source_reference: MQSI2025_022}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_023:
+    concept_links: [{concept_code: IND_MQSI2025_023, index_code: MQSI2025_023, usage_section: rule_name, source_reference: MQSI2025_023}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_024:
+    concept_links: [{concept_code: IND_MQSI2025_024, index_code: MQSI2025_024, usage_section: rule_name, source_reference: MQSI2025_024}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_025:
+    concept_links: [{concept_code: IND_MQSI2025_025, index_code: MQSI2025_025, usage_section: rule_name, source_reference: MQSI2025_025}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_026:
+    concept_links: [{concept_code: IND_MQSI2025_026, index_code: MQSI2025_026, usage_section: rule_name, source_reference: MQSI2025_026}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_027:
+    concept_links: [{concept_code: IND_MQSI2025_027, index_code: MQSI2025_027, usage_section: rule_name, source_reference: MQSI2025_027}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_028:
+    concept_links: [{concept_code: IND_MQSI2025_028, index_code: MQSI2025_028, usage_section: rule_name, source_reference: MQSI2025_028}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_029:
+    concept_links: [{concept_code: IND_MQSI2025_029, index_code: MQSI2025_029, usage_section: rule_name, source_reference: MQSI2025_029}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_030:
+    concept_links: [{concept_code: IND_MQSI2025_030, index_code: MQSI2025_030, usage_section: rule_name, source_reference: MQSI2025_030}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_031:
+    concept_links:
+      - {concept_code: IND_MQSI2025_031, index_code: MQSI2025_031, usage_section: rule_name, source_reference: MQSI2025_031}
+      - {concept_code: CRITICAL_VALUE, index_code: MQSI2025_031, usage_section: definition, business_field_key: critical_value, source_reference: MQSI2025_031}
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_032:
+    concept_links:
+      - {concept_code: IND_MQSI2025_032, index_code: MQSI2025_032, usage_section: rule_name, source_reference: MQSI2025_032}
+      - {concept_code: CRITICAL_VALUE, index_code: MQSI2025_032, usage_section: denominator, business_field_key: critical_value, source_reference: MQSI2025_032}
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_033:
+    concept_links: [{concept_code: IND_MQSI2025_033, index_code: MQSI2025_033, usage_section: rule_name, source_reference: MQSI2025_033}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_034:
+    concept_links: [{concept_code: IND_MQSI2025_034, index_code: MQSI2025_034, usage_section: rule_name, source_reference: MQSI2025_034}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review
+  MQSI2025_035:
+    concept_links: [{concept_code: IND_MQSI2025_035, index_code: MQSI2025_035, usage_section: rule_name, source_reference: MQSI2025_035}]
+    covered_sections: [rule_name, definition, numerator, denominator, filter, exclude]
+    not_applicable_sections: []
+    review_status: approved
+    reviewed_by: terminology_seed_review

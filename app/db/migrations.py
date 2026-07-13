@@ -41,3 +41,9 @@ def ensure_monitoring_schema(engine: Engine) -> dict[str, list[str]]:
     from app.monitoring.schema import ensure_monitoring_schema as ensure
 
     return ensure(engine)
+
+
+def ensure_terminology_schema(engine: Engine) -> dict[str, list[str]]:
+    from app.terminology.schema import ensure_terminology_schema as ensure
+
+    return ensure(engine)

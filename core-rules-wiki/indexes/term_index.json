@@ -1,0 +1,1260 @@
+[
+  {
+    "concept_code": "IND_MQSI2025_001",
+    "canonical_name": "患者入院48小时内转科的比例",
+    "concept_type": "indicator",
+    "definition": "入院后48小时内发生转科的患者占同期入院患者的比例。",
+    "aliases": [
+      {
+        "alias_text": "入院48小时转科率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_001",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "48小时内转科比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_001",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_001"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_001_患者入院48小时内转科的比例.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_002",
+    "canonical_name": "患者入院8小时内查房率",
+    "concept_type": "indicator",
+    "definition": "入院后8小时内完成规定查房的患者比例。",
+    "aliases": [
+      {
+        "alias_text": "入院8小时查房率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_002",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "8小时内查房比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_002",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_002"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_002_患者入院8小时内查房率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_003",
+    "canonical_name": "上级医师查房记录规范率",
+    "concept_type": "indicator",
+    "definition": "上级医师查房记录符合规范要求的比例。",
+    "aliases": [
+      {
+        "alias_text": "上级医师查房规范率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_003",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "上级医生查房记录合规率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_003",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_003"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_003_上级医师查房记录规范率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_004",
+    "canonical_name": "住院患者非计划手术率",
+    "concept_type": "indicator",
+    "definition": "住院患者发生非计划手术的比例。",
+    "aliases": [
+      {
+        "alias_text": "非计划手术率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_004",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "非预期手术比例",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_004",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_004"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_004_住院患者非计划手术率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_005",
+    "canonical_name": "急会诊及时到位率",
+    "concept_type": "indicator",
+    "definition": "急会诊请求发出后在规定时限内到位的比例。",
+    "aliases": [
+      {
+        "alias_text": "急会诊到位率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "急会诊响应及时率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "急诊会诊到位率",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_005"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_005_急会诊及时到位率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_006",
+    "canonical_name": "急会诊有效率",
+    "concept_type": "indicator",
+    "definition": "急会诊达到有效会诊要求的比例。",
+    "aliases": [
+      {
+        "alias_text": "紧急会诊有效率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_006",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "急会诊有效比例",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_006",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_006"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_006_急会诊有效率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_007",
+    "canonical_name": "普通会诊及时完成率",
+    "concept_type": "indicator",
+    "definition": "普通会诊在规定时限内完成的比例。",
+    "aliases": [
+      {
+        "alias_text": "普通会诊按时完成率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_007",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "普通会诊及时率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_007",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_007"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_007_普通会诊及时完成率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_008",
+    "canonical_name": "普通会诊有效率",
+    "concept_type": "indicator",
+    "definition": "普通会诊达到有效会诊要求的比例。",
+    "aliases": [
+      {
+        "alias_text": "一般会诊有效率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_008",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "普通会诊有效比例",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_008",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_008"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_008_普通会诊有效率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_009",
+    "canonical_name": "手术患者特级护理或一级护理出院率",
+    "concept_type": "indicator",
+    "definition": "手术患者在特级护理或一级护理状态下出院的比例。",
+    "aliases": [
+      {
+        "alias_text": "手术患者高等级护理出院率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_009",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "特级一级护理出院比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_009",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_009"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_009_手术患者特级护理或一级护理出院率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_010",
+    "canonical_name": "四级手术患者手术当日床旁交接班占比",
+    "concept_type": "indicator",
+    "definition": "四级手术患者在手术当日完成床旁交接班的比例。",
+    "aliases": [
+      {
+        "alias_text": "四级手术当日床旁交接率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_010",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "四级手术床旁交班比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_010",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_010"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_010_四级手术患者手术当日床旁交接班占比.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_011",
+    "canonical_name": "非计划再次住院或手术患者疑难病例讨论完成率",
+    "concept_type": "indicator",
+    "definition": "非计划再次住院或手术患者完成疑难病例讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "非计划再入院疑难讨论完成率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_011",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "非计划再手术疑难病例讨论率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_011",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_011"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_011_非计划再次住院或手术患者疑难病例讨论完成率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_012",
+    "canonical_name": "非计划再次住院或手术患者疑难病例讨论记录完整率",
+    "concept_type": "indicator",
+    "definition": "非计划再次住院或手术患者疑难病例讨论记录完整的比例。",
+    "aliases": [
+      {
+        "alias_text": "非计划再入院疑难讨论记录完整率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_012",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "非计划再手术讨论记录合规率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_012",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_012"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_012_非计划再次住院或手术患者疑难病例讨论记录完整率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_013",
+    "canonical_name": "高额异常费用患者疑难病例讨论占比",
+    "concept_type": "indicator",
+    "definition": "高额异常费用患者开展疑难病例讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "高额费用患者疑难讨论率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_013",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "异常高费用病例讨论比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_013",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_013"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_013_高额异常费用患者疑难病例讨论占比.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_014",
+    "canonical_name": "急危重症患者抢救成功率",
+    "concept_type": "indicator",
+    "definition": "急危重症患者抢救成功的比例。",
+    "aliases": [
+      {
+        "alias_text": "急危重症抢救成功率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_014",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "危重患者抢救成功比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_014",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_014"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_014_急危重症患者抢救成功率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_015",
+    "canonical_name": "术前讨论完成率",
+    "concept_type": "indicator",
+    "definition": "按要求完成术前讨论的手术比例。",
+    "aliases": [
+      {
+        "alias_text": "手术前讨论完成率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_015",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "术前讨论执行率",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_015",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_015"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_015_术前讨论完成率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_016",
+    "canonical_name": "术者参加术前讨论率",
+    "concept_type": "indicator",
+    "definition": "术者参加术前讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "主刀参加术前讨论率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_016",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "手术医师术前讨论参与率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_016",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_016"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_016_术者参加术前讨论率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_017",
+    "canonical_name": "术前讨论计划手术一致率",
+    "concept_type": "indicator",
+    "definition": "术前讨论确定的计划手术与计划记录一致的比例。",
+    "aliases": [
+      {
+        "alias_text": "术前讨论与手术计划一致率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_017",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "讨论手术方案一致率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_017",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_017"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_017_术前讨论计划手术一致率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_018",
+    "canonical_name": "实际手术术者与计划手术术者一致率",
+    "concept_type": "indicator",
+    "definition": "实际术者与计划术者一致的手术比例。",
+    "aliases": [
+      {
+        "alias_text": "实际主刀与计划主刀一致率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_018",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "手术术者计划一致率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_018",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_018"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_018_实际手术术者与计划手术术者一致率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_019",
+    "canonical_name": "死亡病例讨论5日完成率",
+    "concept_type": "indicator",
+    "definition": "死亡病例在5日内完成讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "死亡病例五日讨论完成率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_019",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "死亡病例讨论及时率",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_019",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_019"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_019_死亡病例讨论5日完成率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_020",
+    "canonical_name": "医务部门组织讨论死亡病例与纠纷死亡病例比值",
+    "concept_type": "indicator",
+    "definition": "医务部门组织讨论的死亡病例数与发生纠纷的死亡病例数之比。",
+    "aliases": [
+      {
+        "alias_text": "医务处组织死亡讨论与纠纷死亡比",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_020",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "纠纷死亡病例组织讨论比值",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_020",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_020"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_020_医务部门组织讨论死亡病例与纠纷死亡病例比值.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_021",
+    "canonical_name": "科主任主持死亡病例讨论率",
+    "concept_type": "indicator",
+    "definition": "由科主任主持死亡病例讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "科主任死亡病例讨论主持率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_021",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "主任主持死亡讨论比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_021",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_021"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_021_科主任主持死亡病例讨论率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_022",
+    "canonical_name": "死亡患者病案上传率",
+    "concept_type": "indicator",
+    "definition": "死亡患者病案按要求上传的比例。",
+    "aliases": [
+      {
+        "alias_text": "死亡病案上传率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_022",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "死亡病例病历上报率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_022",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_022"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_022_死亡患者病案上传率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_023",
+    "canonical_name": "长期医嘱当日终止率",
+    "concept_type": "indicator",
+    "definition": "应终止的长期医嘱在当日完成终止的比例。",
+    "aliases": [
+      {
+        "alias_text": "长嘱当日停止率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_023",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "长期医嘱当天终止比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_023",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_023"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_023_长期医嘱当日终止率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_024",
+    "canonical_name": "手术医师手术时间重合率",
+    "concept_type": "indicator",
+    "definition": "同一手术医师负责的手术时间发生重合的比例。",
+    "aliases": [
+      {
+        "alias_text": "手术医生手术时间冲突率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_024",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "术者手术时间重叠率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_024",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_024"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_024_手术医师手术时间重合率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_025",
+    "canonical_name": "麻醉医师手术时间重合率",
+    "concept_type": "indicator",
+    "definition": "同一麻醉医师负责的手术时间发生重合的比例。",
+    "aliases": [
+      {
+        "alias_text": "麻醉医生手术时间冲突率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_025",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "麻醉医师手术时间重叠率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_025",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_025"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_025_麻醉医师手术时间重合率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_026",
+    "canonical_name": "四级手术与三级手术并发症发生率比",
+    "concept_type": "indicator",
+    "definition": "四级手术并发症发生率与三级手术并发症发生率的比值。",
+    "aliases": [
+      {
+        "alias_text": "四三级手术并发症率比",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_026",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "四级对三级手术并发症比",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_026",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_026"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_026_四级手术与三级手术并发症发生率比.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_027",
+    "canonical_name": "四级手术与三级手术患者死亡率比",
+    "concept_type": "indicator",
+    "definition": "四级手术患者死亡率与三级手术患者死亡率的比值。",
+    "aliases": [
+      {
+        "alias_text": "四三级手术死亡率比",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_027",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "四级对三级手术死亡比",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_027",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_027"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_027_四级手术与三级手术患者死亡率比.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_028",
+    "canonical_name": "四级手术术前多学科讨论完成率",
+    "concept_type": "indicator",
+    "definition": "四级手术术前完成多学科讨论的比例。",
+    "aliases": [
+      {
+        "alias_text": "四级手术术前MDT完成率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_028",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "四级手术多学科术前讨论率",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_028",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_028"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_028_四级手术术前多学科讨论完成率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_029",
+    "canonical_name": "三四级手术实际开展率",
+    "concept_type": "indicator",
+    "definition": "三、四级手术实际开展情况的比例指标。",
+    "aliases": [
+      {
+        "alias_text": "三四级手术开展率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_029",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "高等级手术实际开展比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_029",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_029"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_029_三四级手术实际开展率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_030",
+    "canonical_name": "新技术新项目留存转化率",
+    "concept_type": "indicator",
+    "definition": "新技术新项目形成稳定留存或转化的比例。",
+    "aliases": [
+      {
+        "alias_text": "新技术项目转化率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_030",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "新项目留存率",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_030",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_030"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_030_新技术新项目留存转化率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_031",
+    "canonical_name": "危急值报告时间",
+    "concept_type": "indicator",
+    "definition": "危急值从确认到报告所经历的时间。",
+    "aliases": [
+      {
+        "alias_text": "危急值上报时间",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_031",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "危急值报告时长",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_031",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_031"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_031_危急值报告时间.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_032",
+    "canonical_name": "住院患者危急值当日及时处置率",
+    "concept_type": "indicator",
+    "definition": "住院患者危急值在当日得到及时处置的比例。",
+    "aliases": [
+      {
+        "alias_text": "住院危急值当日处置率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_032",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "危急值当天及时处理率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_032",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_032"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_032_住院患者危急值当日及时处置率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_033",
+    "canonical_name": "特殊使用级抗菌药物使用会诊率",
+    "concept_type": "indicator",
+    "definition": "使用特殊使用级抗菌药物前完成规定会诊的比例。",
+    "aliases": [
+      {
+        "alias_text": "特殊级抗菌药会诊率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_033",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "特殊使用抗生素会诊比例",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_033",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_033"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_033_特殊使用级抗菌药物使用会诊率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_034",
+    "canonical_name": "临床用血后评估记录率",
+    "concept_type": "indicator",
+    "definition": "临床用血后按要求完成评估记录的比例。",
+    "aliases": [
+      {
+        "alias_text": "输血后评估记录率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_034",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "用血后评价记录比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_034",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_034"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_034_临床用血后评估记录率.md"
+  },
+  {
+    "concept_code": "IND_MQSI2025_035",
+    "canonical_name": "术中自体血回输率",
+    "concept_type": "indicator",
+    "definition": "术中输血患者实施自体血回输的比例。",
+    "aliases": [
+      {
+        "alias_text": "术中自体血回输比例",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_035",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "术中自体输血率",
+        "relation_type": "colloquial",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_035",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_035"
+    ],
+    "path": "wiki/terminology/IND_MQSI2025_035_术中自体血回输率.md"
+  },
+  {
+    "concept_code": "DIAG_URI",
+    "canonical_name": "急性上呼吸道感染",
+    "concept_type": "diagnosis",
+    "definition": "上呼吸道发生的急性感染性疾病概念；具体编码以本院诊断字典为准。",
+    "aliases": [
+      {
+        "alias_text": "上感",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "医学术语安全示例",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "感冒",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "医学术语安全示例",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [],
+    "path": "wiki/terminology/DIAG_URI_急性上呼吸道感染.md"
+  },
+  {
+    "concept_code": "CONSULT_URGENT",
+    "canonical_name": "急会诊",
+    "concept_type": "business_concept",
+    "definition": "需要在规定紧急时限内响应的会诊。",
+    "aliases": [
+      {
+        "alias_text": "紧急会诊",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": true,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "急诊会诊",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_005",
+      "MQSI2025_006"
+    ],
+    "path": "wiki/terminology/CONSULT_URGENT_急会诊.md"
+  },
+  {
+    "concept_code": "RESCUE_SUCCESS",
+    "canonical_name": "抢救成功",
+    "concept_type": "status",
+    "definition": "按指标口径判定为抢救成功的状态。",
+    "aliases": [
+      {
+        "alias_text": "救治成功",
+        "relation_type": "related",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_014",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "治愈",
+        "relation_type": "forbidden",
+        "retrieval_enabled": false,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_014",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_014"
+    ],
+    "path": "wiki/terminology/RESCUE_SUCCESS_抢救成功.md"
+  },
+  {
+    "concept_code": "CRITICAL_VALUE",
+    "canonical_name": "危急值",
+    "concept_type": "business_concept",
+    "definition": "可能危及患者生命、需要立即报告和处置的检验检查结果。",
+    "aliases": [
+      {
+        "alias_text": "危急结果",
+        "relation_type": "exact",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_031",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "alias_text": "异常值",
+        "relation_type": "forbidden",
+        "retrieval_enabled": false,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_031",
+        "approval_status": "approved",
+        "version": 1
+      }
+    ],
+    "linked_rule_ids": [
+      "MQSI2025_031",
+      "MQSI2025_032"
+    ],
+    "path": "wiki/terminology/CRITICAL_VALUE_危急值.md"
+  }
+]

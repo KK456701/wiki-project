@@ -34,6 +34,7 @@ from app.monitoring.runtime import (
     set_monitoring_scheduler_error,
 )
 from app.monitoring.schema import ensure_monitoring_schema
+from app.terminology.schema import ensure_terminology_schema
 from app.rules.repository import RuleNotFoundError, create_rule_repository
 from app.rules.importer import import_four_indicator_rules
 from app.observability.workflow_nodes import (
@@ -251,6 +252,7 @@ def start_monitoring_scheduler() -> None:
 
         engine = create_runtime_engine()
         ensure_monitoring_schema(engine)
+        ensure_terminology_schema(engine)
         mark_running_recovery_tasks_interrupted(engine)
         scheduler = MonitoringScheduler(
             MonitoringRepository(engine),

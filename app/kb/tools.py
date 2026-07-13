@@ -186,6 +186,45 @@ class KnowledgeBaseTools:
             "matches": [chunk for _, chunk in scored[:limit]],
         }
 
+    def search_terms(self, query: str, limit: int = 10) -> dict[str, Any]:
+        """只读检索术语解释；Wiki 兜底不返回医院编码或数据库值。"""
+        terms = self._read_json("indexes/term_index.json")
+        normalized_query = _normalize(query)
+        matches: list[tuple[int, dict[str, Any]]] = []
+        for term in terms:
+            candidates = [
+                str(term.get("canonical_name") or ""),
+                *[
+                    str(alias.get("alias_text") or "")
+                    for alias in term.get("aliases", [])
+                    if alias.get("retrieval_enabled", True)
+                ],
+            ]
+            score = 0
+            if any(_normalize(candidate) == normalized_query for candidate in candidates):
+                score = 100
+            elif any(
+                normalized_query in _normalize(candidate)
+                or _normalize(candidate) in normalized_query
+                for candidate in candidates
+                if candidate
+            ):
+                score = 50
+            else:
+                score = max(
+                    [int(_token_overlap(query, candidate) * 20) for candidate in candidates]
+                    or [0]
+                )
+            if score:
+                safe = {
+                    key: value
+                    for key, value in term.items()
+                    if key not in {"local_code", "local_value", "hospital_id"}
+                }
+                matches.append((score, safe))
+        matches.sort(key=lambda item: (-item[0], str(item[1].get("concept_code") or "")))
+        return {"query": query, "matches": [item for _, item in matches[:limit]]}
+
     def get_hospital_override(self, rule_id: str, hospital_id: str | None) -> dict[str, Any] | None:
         if not hospital_id:
             return None
