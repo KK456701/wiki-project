@@ -72,6 +72,7 @@
 |   +-- init_runtime_db.sql
 |   +-- init_demo_hospital_db.sql
 |   +-- seed_demo_hospital_data.py
+|   +-- simulate_metadata_drift.py
 |   +-- import_four_indicator_rules.py
 |   +-- kb_agent_demo.py
 +-- tests/
@@ -279,6 +280,21 @@ monitoring_scheduler_lease_seconds: 600
 5. 需要实施排障时展开“连接详情”，查看医院业务库、系统管理库、DBHub 和 MCP 只读工具状态；系统管理库不会成为医院业务元数据的默认同步目标。
 
 元数据同步只读取 `INFORMATION_SCHEMA.TABLES` 与 `INFORMATION_SCHEMA.COLUMNS`，不读取患者业务数据，不修改医院业务库，也不展示数据库密码。页面重新打开后会从运行库读取最近一次成功快照；同步失败时保留上一次成功结果。
+
+本地演示环境可以使用可选字段 `consult_priority` 验证新增、类型修改和删除三类结构变化。命令默认只预览，增加 `--apply` 才会修改名称以 `_demo_data` 结尾的演示库：
+
+```powershell
+python scripts\simulate_metadata_drift.py add --apply
+# 到前端“数据库与元数据”点击“同步数据库结构”，应看到新增字段
+
+python scripts\simulate_metadata_drift.py modify --apply
+# 再次同步，应看到字段类型变化
+
+python scripts\simulate_metadata_drift.py remove --apply
+# 再次同步，应看到字段删除
+```
+
+`consult_priority` 不参与现有四个指标计算。需要确保环境恢复到初始结构时执行 `python scripts\simulate_metadata_drift.py restore --apply`；命令可重复执行，不会因为字段已存在或已删除而失败。
 
 ### 指标问答
 
