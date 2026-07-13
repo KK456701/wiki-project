@@ -150,7 +150,7 @@ def _rescue_rows(
 ) -> list[dict[str, Any]]:
     del random
     rows: list[dict[str, Any]] = []
-    critical_count = int(count * 0.9)
+    critical_count = 0 if (month.year, month.month) == (2026, 3) else int(count * 0.9)
     success_rate = 0.6 if (month.year, month.month) == (2026, 6) else 0.8
     success_count = int(critical_count * success_rate)
     for index in range(count):
@@ -175,7 +175,7 @@ def _transfusion_rows(
 ) -> list[dict[str, Any]]:
     del random
     rows: list[dict[str, Any]] = []
-    transfusion_count = int(count * 0.8)
+    transfusion_count = 2 if (month.year, month.month) == (2026, 4) else int(count * 0.8)
     autologous_rate = 0.2 if (month.year, month.month) == (2026, 6) else 0.4
     autologous_count = int(transfusion_count * autologous_rate)
     for index in range(count):

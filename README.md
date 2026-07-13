@@ -73,6 +73,7 @@
 |   +-- init_demo_hospital_db.sql
 |   +-- seed_demo_hospital_data.py
 |   +-- simulate_metadata_drift.py
+|   +-- seed_monitoring_baseline.py
 |   +-- import_four_indicator_rules.py
 |   +-- kb_agent_demo.py
 +-- tests/
@@ -377,6 +378,20 @@ diagnose_structure_mcp -> diagnose_rule_check -> diagnose_data_check_mcp
 - 缺少上期或去年同期结果时标记 `baseline_insufficient`，不会误报；分母为零时标记 `no_sample`。
 - 波动预警会自动触发现有结构、口径、数据三层诊断，并关联诊断报告。
 - 执行失败会在恢复中心创建“指标重新运算”任务，重试时保留原失败记录并建立重试关联。
+
+生成真实规模业务数据后，可以预览四指标、19个月的历史运算任务：
+
+```powershell
+python scripts\seed_monitoring_baseline.py
+```
+
+确认 DBHub、FastAPI 和 MySQL 均已启动后执行：
+
+```powershell
+python scripts\seed_monitoring_baseline.py --apply
+```
+
+脚本会创建四条固定编号的月计划，并按月份顺序调用正式监控服务执行 76 次指标运算。运行结果、环比/同比基线、预警、自动诊断报告和 Trace 均由系统正常生成；相同运行键再次执行会复用已有结果，不会重复造数。模拟数据中 2026 年 3 月抢救指标为无样本，2026 年 4 月术中自体血指标为低样本，2026 年 6 月包含明显波动。
 
 前端验证和日常使用：
 
