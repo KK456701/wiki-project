@@ -342,6 +342,19 @@ body::before {
 .trace-json-disclosure { border-top: 1px solid var(--line); padding-top: 10px; }
 .trace-json-disclosure > summary { width: fit-content; cursor: pointer; color: var(--teal-deep); font-size: 13px; font-weight: 800; }
 .trace-json-body { display: grid; gap: 10px; padding-top: 10px; }
+.trace-timeline { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.trace-timeline-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.trace-timeline-head strong { font-size: 15px; }
+.trace-timeline-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.trace-timeline-item { min-width: 0; padding-left: 10px; border-left: 2px solid var(--line-strong); }
+.trace-timeline-item.slowest { border-left-color: var(--red); }
+.trace-timeline-label { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-soft); font-size: 12px; }
+.trace-timeline-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 750; }
+.trace-timeline-value { color: var(--muted); font: 700 11px/1.4 var(--mono); white-space: nowrap; }
+.trace-duration-track { height: 5px; margin-top: 8px; overflow: hidden; background: var(--paper-strong); border-radius: 999px; }
+.trace-duration-bar { height: 100%; min-width: 2px; background: var(--teal); border-radius: inherit; }
+.trace-timeline-item.slowest .trace-duration-bar { background: var(--red); }
+.trace-performance-hint { color: #6a5a20; background: #fff8dc; border: 1px solid #eadb93; border-radius: 8px; padding: 9px 10px; font-size: 13px; }
 .trace-json {
   margin: 0;
   padding: 10px;
@@ -481,6 +494,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   .trace-title-row { align-items: stretch; flex-direction: column; }
   .trace-actions { justify-content: flex-start; }
   .trace-result-grid { grid-template-columns: 1fr; }
+  .trace-timeline-list { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .brand-title { font-size: 21px; }
@@ -1499,6 +1513,69 @@ function renderTraceTimingSummary(nodes, totalDurationMs) {
   return box;
 }
 
+function traceDurationPercent(durationMs, totalDurationMs) {
+  var duration = Math.max(0, Number(durationMs || 0));
+  var total = Math.max(0, Number(totalDurationMs || 0));
+  if (!total) return 0;
+  return Math.min(100, Math.round(duration / total * 1000) / 10);
+}
+
+function renderTraceTimeline(nodes, totalDurationMs) {
+  var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
+  var fallbackTotal = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
+  var total = Number(totalDurationMs || 0) || fallbackTotal;
+  var slowest = timedNodes.reduce(function(current, node) {
+    return !current || Number(node.duration_ms || 0) > Number(current.duration_ms || 0) ? node : current;
+  }, null);
+  var timeline = document.createElement("section");
+  timeline.className = "trace-timeline";
+  var head = document.createElement("div");
+  head.className = "trace-timeline-head";
+  var heading = document.createElement("strong");
+  heading.textContent = "阶段时间轴";
+  var totalLabel = document.createElement("span");
+  totalLabel.className = "review-meta";
+  totalLabel.textContent = "总耗时 " + formatTraceDuration(total);
+  head.append(heading, totalLabel);
+  var list = document.createElement("div");
+  list.className = "trace-timeline-list";
+  timedNodes.forEach(function(node) {
+    var percent = traceDurationPercent(node.duration_ms, total);
+    var item = document.createElement("div");
+    item.className = "trace-timeline-item" + (node === slowest ? " slowest" : "");
+    var label = document.createElement("div");
+    label.className = "trace-timeline-label";
+    var name = document.createElement("span");
+    name.className = "trace-timeline-name";
+    name.textContent = (node.node_title || node.node_name || "未知节点") + (node === slowest ? " · 最慢" : "");
+    name.title = node.node_title || node.node_name || "未知节点";
+    var value = document.createElement("span");
+    value.className = "trace-timeline-value";
+    value.textContent = formatTraceDuration(node.duration_ms) + " · " + percent + "%";
+    var track = document.createElement("div");
+    track.className = "trace-duration-track";
+    var bar = document.createElement("div");
+    bar.className = "trace-duration-bar";
+    bar.style.width = percent + "%";
+    track.appendChild(bar);
+    label.append(name, value);
+    item.append(label, track);
+    list.appendChild(item);
+  });
+  timeline.append(head, list);
+  if (slowest) {
+    var slowestPercent = traceDurationPercent(slowest.duration_ms, total);
+    if (slowestPercent > 50 || Number(slowest.duration_ms || 0) > 3000) {
+      var hint = document.createElement("div");
+      hint.className = "trace-performance-hint";
+      hint.textContent = "性能提示：" + (slowest.node_title || slowest.node_name || "最慢节点")
+        + " 占总耗时 " + slowestPercent + "%（" + formatTraceDuration(slowest.duration_ms) + "），建议优先检查该阶段。";
+      timeline.appendChild(hint);
+    }
+  }
+  return timeline;
+}
+
 async function showTrace(traceId) {
   traceModal.hidden = false;
   traceMeta.textContent = traceId;
@@ -1511,6 +1588,7 @@ async function showTrace(traceId) {
     var nodes = data.nodes || [];
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
     traceNodeList.appendChild(renderTraceTimingSummary(nodes, data.duration_ms));
+    traceNodeList.appendChild(renderTraceTimeline(nodes, data.duration_ms));
     nodes.forEach(function(node, index) {
       var box = document.createElement("div");
       box.className = "review-item trace-node " + (node.status || "");
