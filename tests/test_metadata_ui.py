@@ -64,6 +64,18 @@ class MetadataUiTest(unittest.TestCase):
         ):
             self.assertIn(marker, css)
 
+    def test_readme_explains_metadata_workspace(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        for marker in (
+            "数据库与元数据工作台",
+            "同步数据库结构",
+            "不读取患者业务数据",
+            "连接详情",
+        ):
+            self.assertIn(marker, readme)
+        self.assertNotIn("缺少字段时先在 MCP 页面同步元数据", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
