@@ -1146,6 +1146,22 @@ def dbhub_sources_api() -> dict[str, Any]:
     }
 
 
+@app.get("/api/metadata/overview")
+def metadata_overview(
+    hospital_id: str,
+    db_name: str = "hospital_demo_data",
+) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine
+    from app.metadata.overview import load_metadata_overview
+
+    return load_metadata_overview(
+        create_runtime_engine(),
+        DEFAULT_KB_ROOT,
+        hospital_id,
+        db_name,
+    )
+
+
 @app.post("/api/metadata/sync")
 def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine

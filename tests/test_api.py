@@ -442,6 +442,20 @@ class ApiTest(unittest.TestCase):
 
         self.assertEqual(request.source, "dbhub")
 
+    def test_metadata_overview_defaults_to_hospital_business_database(self) -> None:
+        client = TestClient(app)
+
+        with patch("app.db.engine.create_runtime_engine", return_value=_metadata_runtime_engine()):
+            response = client.get(
+                "/api/metadata/overview?hospital_id=hospital_001"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["hospital_id"], "hospital_001")
+        self.assertEqual(data["db_name"], "hospital_demo_data")
+        self.assertFalse(data["has_snapshot"])
+
     def test_kb_export_and_merge_upload_workflow(self) -> None:
         from app.rules.importer import import_four_indicator_rules
 
