@@ -13,6 +13,8 @@ from typing import Any
 
 import yaml
 
+from app.terminology.importer import load_term_corpus
+
 from app.kb.tools import DEFAULT_KB_ROOT, KnowledgeBaseTools
 
 
@@ -44,6 +46,7 @@ def create_merge_report(kb_root: str | Path, zip_bytes: bytes, uploaded_by: str 
     items.extend(_diff_overrides(root, source_dir, hospital_id))
     items.extend(_diff_mappings(source_dir, hospital_id, items))
     items.extend(_diff_new_indicators(source_dir))
+    items.extend(_diff_terminology(source_dir, items))
     summary = _summarize(items)
     report = {
         "report_id": report_id,
@@ -214,6 +217,70 @@ def _diff_new_indicators(source_dir: Path) -> list[dict[str, Any]]:
     return items
 
 
+def _diff_terminology(
+    source_dir: Path, existing_items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    candidate_dir = source_dir / "terminology" / "candidates"
+    mapping_dir = source_dir / "terminology" / "mappings"
+    if not candidate_dir.exists() and not mapping_dir.exists():
+        return []
+    corpus = load_term_corpus(
+        Path(__file__).resolve().parents[2]
+        / "core-rules-wiki"
+        / "terminology"
+        / "core_indicator_terms.yaml"
+    )
+    alias_concepts: dict[str, set[str]] = {}
+    for concept in corpus.concepts:
+        for value in [concept.canonical_name, *(alias.alias_text for alias in concept.aliases)]:
+            alias_concepts.setdefault(_normalize(value), set()).add(concept.concept_code)
+    items: list[dict[str, Any]] = []
+    paths = sorted(candidate_dir.glob("*.yaml")) if candidate_dir.exists() else []
+    for path in paths:
+        payload = _load_yaml(path)
+        concept_code = str(payload.get("concept_code") or "").strip()
+        alias_text = str(payload.get("alias_text") or "").strip()
+        item_type = "term_candidate"
+        company_concepts = alias_concepts.get(_normalize(alias_text), set())
+        if company_concepts and concept_code not in company_concepts:
+            item_type = "term_conflict"
+        elif payload.get("ambiguity_group") or payload.get("relation_type") == "related":
+            item_type = "term_ambiguity"
+        elif bool(payload.get("sql_safe")):
+            item_type = "term_sql_safety_change"
+        items.append(
+            _item(
+                f"ITEM_{len(existing_items) + len(items) + 1:03d}",
+                item_type,
+                concept_code,
+                alias_text,
+                "alias_text",
+                alias_text,
+                sorted(company_concepts),
+                "pending",
+                payload,
+            )
+        )
+    paths = sorted(mapping_dir.glob("*.yaml")) if mapping_dir.exists() else []
+    for path in paths:
+        payload = _load_yaml(path)
+        concept_code = str(payload.get("concept_code") or "").strip()
+        items.append(
+            _item(
+                f"ITEM_{len(existing_items) + len(items) + 1:03d}",
+                "term_sql_safety_change",
+                concept_code,
+                str(payload.get("local_name") or concept_code),
+                "local_value",
+                payload.get("local_value"),
+                None,
+                "pending",
+                payload,
+            )
+        )
+    return items
+
+
 def _item(item_id: str, item_type: str, rule_id: str, rule_name: str, field: str, hospital_value: Any, company_value: Any, status: str, source_payload: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "item_id": item_id,
@@ -235,6 +302,12 @@ def _summarize(items: list[dict[str, Any]]) -> dict[str, int]:
         "new_indicators": sum(1 for item in items if item.get("type") == "new_indicator"),
         "new_rules": sum(1 for item in items if item.get("type") == "new_rule"),
         "unchanged": sum(1 for item in items if item.get("type") == "unchanged"),
+        "term_candidates": sum(1 for item in items if item.get("type") == "term_candidate"),
+        "term_conflicts": sum(1 for item in items if item.get("type") == "term_conflict"),
+        "term_ambiguities": sum(1 for item in items if item.get("type") == "term_ambiguity"),
+        "term_sql_safety_changes": sum(
+            1 for item in items if item.get("type") == "term_sql_safety_change"
+        ),
         "pending": sum(1 for item in items if item.get("status") == "pending"),
     }
 

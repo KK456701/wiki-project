@@ -132,6 +132,12 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(package), "r") as zf:
             manifest = yaml.safe_load(zf.read("manifest.yaml").decode("utf-8"))
             rule = yaml.safe_load(zf.read("rules/R001.yaml").decode("utf-8"))
+            term_aliases = json.loads(
+                zf.read("terminology/aliases.json").decode("utf-8")
+            )
+            term_release = json.loads(
+                zf.read("terminology/release.json").decode("utf-8")
+            )
             checksums = json.loads(zf.read("checksums.json").decode("utf-8"))
             for name, expected in checksums.items():
                 self.assertEqual(hashlib.sha256(zf.read(name)).hexdigest(), expected)
@@ -143,10 +149,41 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
         self.assertIn("20分钟", after[0])
         self.assertEqual(after[1], 2)
         self.assertEqual(versions, [1, 2])
-        self.assertEqual(manifest["format_version"], "company-release-v1")
+        self.assertEqual(manifest["format_version"], "company-release-v2")
         self.assertEqual(manifest["release_id"], draft["release_id"])
         self.assertEqual(rule["rule_id"], "R001")
         self.assertNotIn("hospital_id", rule)
+        self.assertTrue(term_aliases)
+        self.assertTrue(all("hospital_id" not in item for item in term_aliases))
+        self.assertEqual(term_release["release_id"], draft["release_id"])
+        self.assertFalse(term_release["contains_hospital_candidates"])
+        self.assertIn("terminology/release.json", zf.namelist())
+        self.assertIn("terminology/concepts.json", zf.namelist())
+        self.assertIn("terminology/aliases.json", zf.namelist())
+
+    def test_v3_term_candidate_requires_review_and_uses_separate_queue(self) -> None:
+        engine = _company_engine()
+        repository = CompanyKnowledgeRepository(engine)
+
+        report = repository.create_merge_report(
+            _exchange_package(format_version="kb-exchange-v3", include_terms=True),
+            "admin",
+        )
+        item = next(value for value in report["items"] if value["type"] == "term_candidate")
+        approved = repository.approve_merge_item(
+            report["report_id"], item["item_id"], "adopt_as_company_candidate", "reviewer"
+        )
+
+        with engine.connect() as conn:
+            term_candidate = conn.execute(
+                text("SELECT * FROM company_term_candidate WHERE candidate_id=:candidate_id"),
+                {"candidate_id": approved["candidate_id"]},
+            ).mappings().one()
+            release_count = conn.execute(text("SELECT COUNT(*) FROM company_release")).scalar_one()
+
+        self.assertEqual(term_candidate["concept_code"], "IND_MQSI2025_005")
+        self.assertEqual(term_candidate["status"], "approved")
+        self.assertEqual(release_count, 0)
 
 
 def _company_engine():
@@ -199,6 +236,16 @@ def _company_engine():
           rule_id TEXT NOT NULL, payload_json TEXT NOT NULL,
           status TEXT NOT NULL, created_at TEXT NOT NULL,
           created_by TEXT NOT NULL, release_id TEXT,
+          UNIQUE(package_id, item_id)
+        )
+        """,
+        """
+        CREATE TABLE company_term_candidate (
+          candidate_id TEXT PRIMARY KEY, package_id TEXT NOT NULL,
+          item_id TEXT NOT NULL, source_hospital_id TEXT NOT NULL,
+          concept_code TEXT NOT NULL, candidate_type TEXT NOT NULL,
+          payload_json TEXT NOT NULL, status TEXT NOT NULL,
+          created_at TEXT NOT NULL, created_by TEXT NOT NULL,
           UNIQUE(package_id, item_id)
         )
         """,
@@ -261,12 +308,16 @@ def _insert_company_standard(engine) -> None:
         )
 
 
-def _exchange_package(tamper_override: bool = False) -> bytes:
+def _exchange_package(
+    tamper_override: bool = False,
+    format_version: str = "kb-exchange-v2",
+    include_terms: bool = False,
+) -> bytes:
     manifest = {
         "package_id": "HKB_TEST_001",
         "hospital_id": "hospital_001",
         "exported_at": "2026-07-10T10:00:00",
-        "format_version": "kb-exchange-v2",
+        "format_version": format_version,
         "override_count": 1,
         "mapping_count": 1,
         "contains_patient_data": False,
@@ -305,6 +356,20 @@ def _exchange_package(tamper_override: bool = False) -> bytes:
             mapping, allow_unicode=True, sort_keys=False
         ).encode("utf-8"),
     }
+    if include_terms:
+        candidate = {
+            "hospital_id": "hospital_001",
+            "concept_code": "IND_MQSI2025_005",
+            "alias_text": "院内急会诊响应率",
+            "relation_type": "colloquial",
+            "retrieval_enabled": True,
+            "sql_safe": False,
+            "approval_status": "pending",
+            "version": 1,
+        }
+        files["terminology/candidates/alias_1.yaml"] = yaml.safe_dump(
+            candidate, allow_unicode=True, sort_keys=False
+        ).encode("utf-8")
     checksums = {
         name: hashlib.sha256(content).hexdigest() for name, content in files.items()
     }

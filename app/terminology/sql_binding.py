@@ -22,6 +22,24 @@ def resolve_sql_bindings(
             problem_code="TERM_AMBIGUOUS",
             message="存在多个可能的医学概念，请先确认具体含义。",
         )
+    globally_unsafe = [
+        match
+        for match in normalization.matches
+        if match.relation_type in {"related", "forbidden"}
+        or (
+            not match.sql_safe
+            and (bool(match.business_field_keys) or not bool(match.linked_rule_ids))
+        )
+    ]
+    if globally_unsafe:
+        return TermSQLBindingResult(
+            ok=False,
+            problem_code="TERM_SQL_UNSAFE",
+            message=(
+                f"“{globally_unsafe[0].matched_text}”仅用于检索，"
+                "不能直接作为 SQL 条件。"
+            ),
+        )
     candidates = [
         match
         for match in normalization.matches

@@ -36,7 +36,7 @@ class TerminologyFoundationTest(unittest.TestCase):
 
         self.assertTrue(expected.issubset(set(inspect(engine).get_table_names())))
         self.assertEqual(set(first["created_tables"]), expected)
-        self.assertEqual(second, {"created_tables": []})
+        self.assertEqual(second, {"created_tables": [], "added_columns": []})
 
     def test_related_and_forbidden_aliases_cannot_be_sql_safe(self) -> None:
         from app.terminology.contracts import TermAlias

@@ -74,6 +74,22 @@ CREATE TABLE IF NOT EXISTS company_rule_candidate (
   KEY idx_company_candidate_status (status)
 );
 
+CREATE TABLE IF NOT EXISTS company_term_candidate (
+  candidate_id VARCHAR(64) PRIMARY KEY,
+  package_id VARCHAR(64) NOT NULL,
+  item_id VARCHAR(64) NOT NULL,
+  source_hospital_id VARCHAR(64) NOT NULL,
+  concept_code VARCHAR(96) NOT NULL,
+  candidate_type VARCHAR(32) NOT NULL,
+  payload_json JSON NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at DATETIME NOT NULL,
+  created_by VARCHAR(64) NOT NULL,
+  UNIQUE KEY uk_company_term_candidate_source (package_id, item_id),
+  KEY idx_company_term_candidate_status (status),
+  KEY idx_company_term_candidate_concept (concept_code)
+);
+
 CREATE TABLE IF NOT EXISTS company_release (
   release_id VARCHAR(64) PRIMARY KEY,
   version INT NOT NULL UNIQUE,

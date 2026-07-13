@@ -25,13 +25,70 @@ class TerminologyRepository:
                 ).mappings()
             ]
 
+    def get_concept(self, concept_code: str) -> dict[str, Any] | None:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT * FROM med_term_concept "
+                    "WHERE concept_code=:concept_code"
+                ),
+                {"concept_code": concept_code},
+            ).mappings().first()
+        return dict(row) if row is not None else None
+
+    def concept_aliases(
+        self,
+        concept_code: str,
+        approval_status: str | None = None,
+        hospital_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM med_term_alias WHERE concept_code=:concept_code"
+        params: dict[str, Any] = {"concept_code": concept_code}
+        if hospital_id is None:
+            sql += " AND hospital_id=''"
+        else:
+            sql += " AND hospital_id IN ('', :hospital_id)"
+            params["hospital_id"] = hospital_id
+        if approval_status is not None:
+            sql += " AND approval_status=:approval_status"
+            params["approval_status"] = approval_status
+        sql += " ORDER BY approval_status, alias_text"
+        with self.engine.connect() as conn:
+            return [dict(row) for row in conn.execute(text(sql), params).mappings()]
+
+    def concept_rule_links(self, concept_code: str) -> list[dict[str, Any]]:
+        with self.engine.connect() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    text(
+                        "SELECT * FROM med_term_rule_link "
+                        "WHERE concept_code=:concept_code "
+                        "ORDER BY index_code, usage_section"
+                    ),
+                    {"concept_code": concept_code},
+                ).mappings()
+            ]
+
     def list_aliases(
         self, approval_status: str | None = "approved"
     ) -> list[dict[str, Any]]:
-        sql = "SELECT * FROM med_term_alias"
+        sql = "SELECT * FROM med_term_alias WHERE hospital_id=''"
         params: dict[str, Any] = {}
         if approval_status is not None:
-            sql += " WHERE approval_status=:approval_status"
+            sql += " AND approval_status=:approval_status"
+            params["approval_status"] = approval_status
+        sql += " ORDER BY concept_code, alias_text"
+        with self.engine.connect() as conn:
+            return [dict(row) for row in conn.execute(text(sql), params).mappings()]
+
+    def list_hospital_aliases(
+        self, hospital_id: str, approval_status: str | None = "approved"
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM med_term_alias WHERE hospital_id=:hospital_id"
+        params: dict[str, Any] = {"hospital_id": hospital_id}
+        if approval_status is not None:
+            sql += " AND approval_status=:approval_status"
             params["approval_status"] = approval_status
         sql += " ORDER BY concept_code, alias_text"
         with self.engine.connect() as conn:
@@ -56,11 +113,11 @@ class TerminologyRepository:
                 text(
                     """
                     INSERT INTO med_term_alias
-                      (concept_code, alias_text, relation_type, retrieval_enabled,
+                      (hospital_id, concept_code, alias_text, relation_type, retrieval_enabled,
                        sql_safe, ambiguity_group, source_reference, approval_status,
                        version, created_by, approved_by, created_at, approved_at)
                     VALUES
-                      (:concept_code, :alias_text, :relation_type, :retrieval_enabled,
+                      (:hospital_id, :concept_code, :alias_text, :relation_type, :retrieval_enabled,
                        :sql_safe, :ambiguity_group, :source_reference, 'pending',
                        :version, :created_by, NULL, :created_at, NULL)
                     """
@@ -90,6 +147,7 @@ class TerminologyRepository:
                 text(
                     """SELECT concept_code, ambiguity_group FROM med_term_alias
                        WHERE alias_text=:alias_text AND approval_status='approved'
+                         AND hospital_id=:hospital_id
                          AND concept_code<>:concept_code"""
                 ),
                 item,
@@ -104,7 +162,10 @@ class TerminologyRepository:
                 ),
                 {"id": alias_id, "approved_by": approver_id, "approved_at": now},
             )
-            self._audit(conn, "approve", "term_alias", str(alias_id), approver_id, {})
+            self._audit(
+                conn, "approve", "term_alias", str(alias_id), approver_id, {},
+                hospital_id=item.get("hospital_id") or None,
+            )
         return {**item, "approval_status": "approved", "approved_by": approver_id}
 
     def create_hospital_mapping_candidate(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -216,6 +277,24 @@ class TerminologyRepository:
         with self.engine.connect() as conn:
             return [dict(row) for row in conn.execute(text(sql), params).mappings()]
 
+    def list_hospital_mappings(
+        self,
+        hospital_id: str,
+        concept_code: str | None = None,
+        approval_status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM med_hospital_term_mapping WHERE hospital_id=:hospital_id"
+        params: dict[str, Any] = {"hospital_id": hospital_id}
+        if concept_code:
+            sql += " AND concept_code=:concept_code"
+            params["concept_code"] = concept_code
+        if approval_status:
+            sql += " AND approval_status=:approval_status"
+            params["approval_status"] = approval_status
+        sql += " ORDER BY concept_code, version DESC"
+        with self.engine.connect() as conn:
+            return [dict(row) for row in conn.execute(text(sql), params).mappings()]
+
     def snapshot(self) -> dict[str, Any]:
         return {
             "concepts": [_json_safe(item) for item in self.list_concepts()],
@@ -226,7 +305,7 @@ class TerminologyRepository:
     def replace_projection(self, snapshot: dict[str, Any]) -> None:
         with self.engine.begin() as conn:
             conn.execute(text("DELETE FROM med_term_rule_link"))
-            conn.execute(text("DELETE FROM med_term_alias"))
+            conn.execute(text("DELETE FROM med_term_alias WHERE hospital_id=''"))
             conn.execute(text("DELETE FROM med_term_concept"))
             for table_name, key in (
                 ("med_term_concept", "concepts"),

@@ -449,6 +449,7 @@ CREATE TABLE IF NOT EXISTS med_term_concept (
 
 CREATE TABLE IF NOT EXISTS med_term_alias (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL DEFAULT '',
   concept_code VARCHAR(96) NOT NULL,
   alias_text VARCHAR(255) NOT NULL,
   relation_type VARCHAR(32) NOT NULL,
@@ -462,7 +463,7 @@ CREATE TABLE IF NOT EXISTS med_term_alias (
   approved_by VARCHAR(64),
   created_at DATETIME NOT NULL,
   approved_at DATETIME,
-  UNIQUE KEY uk_term_alias_scope (concept_code, alias_text, version),
+  UNIQUE KEY uk_term_alias_scope (hospital_id, concept_code, alias_text, version),
   INDEX idx_term_alias_text (alias_text)
 );
 

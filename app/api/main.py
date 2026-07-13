@@ -238,10 +238,12 @@ from app.api.indicator_drafts import (
     router as indicator_draft_router,
 )
 from app.api.monitoring import router as monitoring_router
+from app.api.terminology import router as terminology_router
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
 app.include_router(monitoring_router)
+app.include_router(terminology_router)
 
 
 def start_monitoring_scheduler() -> None:

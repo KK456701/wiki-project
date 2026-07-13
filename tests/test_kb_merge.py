@@ -13,6 +13,8 @@ from sqlalchemy.pool import StaticPool
 
 from app.kb.export import export_hospital_kb_zip
 from app.kb.merge import MergeError, approve_merge_item, create_merge_report, read_merge_report
+from app.terminology.repository import TerminologyRepository
+from app.terminology.schema import ensure_terminology_schema
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
 
@@ -112,7 +114,7 @@ class KnowledgeBaseMergeTest(unittest.TestCase):
             for name, expected in checksums.items():
                 self.assertEqual(hashlib.sha256(zf.read(name)).hexdigest(), expected)
 
-        self.assertEqual(manifest["format_version"], "kb-exchange-v2")
+        self.assertEqual(manifest["format_version"], "kb-exchange-v3")
         self.assertEqual(manifest["hospital_id"], "hospital_001")
         self.assertEqual(manifest["override_count"], 1)
         self.assertEqual(override["rule_id"], "R_ACTIVE")
@@ -121,6 +123,65 @@ class KnowledgeBaseMergeTest(unittest.TestCase):
         self.assertNotIn("overrides/R_EXPIRED.yaml", names)
         self.assertNotIn("overrides/R_PENDING.yaml", names)
         self.assertEqual(list(mapping["fields"]), ["request_time"])
+
+    def test_export_includes_only_scoped_terminology_exchange_data(self) -> None:
+        engine = _hospital_engine()
+        ensure_terminology_schema(engine)
+        repository = TerminologyRepository(engine)
+        local_alias = repository.create_alias_candidate(
+            {
+                "hospital_id": "hospital_001",
+                "concept_code": "IND_MQSI2025_005",
+                "alias_text": "院内急会诊响应率",
+                "relation_type": "colloquial",
+                "retrieval_enabled": True,
+                "sql_safe": False,
+                "created_by": "tester",
+            }
+        )
+        repository.create_alias_candidate(
+            {
+                "hospital_id": "hospital_002",
+                "concept_code": "IND_MQSI2025_005",
+                "alias_text": "其他医院叫法",
+                "relation_type": "colloquial",
+                "created_by": "tester",
+            }
+        )
+        mapping = repository.create_hospital_mapping_candidate(
+            {
+                "hospital_id": "hospital_001",
+                "concept_code": "IND_MQSI2025_005",
+                "code_system": "HIS_DICT",
+                "local_code": "C001",
+                "local_name": "急会诊",
+                "local_value": "URGENT",
+                "created_by": "tester",
+            }
+        )
+        repository.approve_hospital_mapping(mapping["id"], "reviewer")
+
+        data = export_hospital_kb_zip(engine, "hospital_001")
+
+        with zipfile.ZipFile(io.BytesIO(data), "r") as zf:
+            names = set(zf.namelist())
+            manifest = yaml.safe_load(zf.read("manifest.yaml").decode("utf-8"))
+            candidate = yaml.safe_load(
+                zf.read(f"terminology/candidates/alias_{local_alias['id']}.yaml").decode("utf-8")
+            )
+            mapping_payload = yaml.safe_load(
+                zf.read(f"terminology/mappings/mapping_{mapping['id']}.yaml").decode("utf-8")
+            )
+            serialized = "\n".join(zf.read(name).decode("utf-8") for name in names)
+
+        self.assertEqual(manifest["format_version"], "kb-exchange-v3")
+        self.assertEqual(manifest["term_candidate_count"], 1)
+        self.assertEqual(manifest["term_mapping_count"], 1)
+        self.assertEqual(candidate["hospital_id"], "hospital_001")
+        self.assertEqual(candidate["approval_status"], "pending")
+        self.assertEqual(mapping_payload["approval_status"], "approved")
+        self.assertNotIn("其他医院叫法", serialized)
+        self.assertNotIn("patient_id", serialized.lower())
 
     def test_create_merge_report_detects_caliber_conflict_without_mutating_company_standard(self) -> None:
         with temp_kb_dir() as tmp:

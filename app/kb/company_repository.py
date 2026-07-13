@@ -11,7 +11,19 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import Engine, text
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Engine,
+    MetaData,
+    String,
+    Table,
+    UniqueConstraint,
+    text,
+)
+
+from app.terminology.importer import load_term_corpus
 
 
 MAX_ZIP_BYTES = 20 * 1024 * 1024
@@ -26,6 +38,7 @@ class CompanyKnowledgeError(RuntimeError):
 class CompanyKnowledgeRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
+        _ensure_company_term_candidate_schema(engine)
 
     def create_merge_report(
         self, zip_bytes: bytes, uploaded_by: str = "admin"
@@ -164,33 +177,42 @@ class CompanyKnowledgeRepository:
                 else "kept_hospital_local"
             )
             if decision == "adopt_as_company_candidate":
-                rule_id = str(item.get("rule_id") or "").strip()
-                if not rule_id:
-                    raise CompanyKnowledgeError("CANDIDATE_RULE_ID_MISSING")
-                candidate_id = f"CAND_{uuid.uuid4().hex[:12]}"
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO company_rule_candidate
-                          (candidate_id, package_id, item_id, source_hospital_id,
-                           rule_id, payload_json, status, created_at, created_by)
-                        VALUES
-                          (:candidate_id, :package_id, :item_id,
-                           :source_hospital_id, :rule_id, :payload_json,
-                           'approved', :created_at, :created_by)
-                        """
-                    ),
-                    {
-                        "candidate_id": candidate_id,
-                        "package_id": package["package_id"],
-                        "item_id": item_id,
-                        "source_hospital_id": package["hospital_id"],
-                        "rule_id": rule_id,
-                        "payload_json": item["source_payload_json"],
-                        "created_at": now,
-                        "created_by": approver_id,
-                    },
-                )
+                item_type = str(item.get("item_type") or "")
+                if item_type.startswith("term_"):
+                    source_payload = _json_load(item["source_payload_json"])
+                    concept_code = str((source_payload or {}).get("concept_code") or "").strip()
+                    if not concept_code:
+                        raise CompanyKnowledgeError("TERM_CANDIDATE_CONCEPT_MISSING")
+                    candidate_id = f"TCAND_{uuid.uuid4().hex[:12]}"
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO company_term_candidate
+                              (candidate_id, package_id, item_id, source_hospital_id,
+                               concept_code, candidate_type, payload_json, status,
+                               created_at, created_by)
+                            VALUES
+                              (:candidate_id, :package_id, :item_id,
+                               :source_hospital_id, :concept_code, :candidate_type,
+                               :payload_json, 'approved', :created_at, :created_by)
+                            """
+                        ),
+                        {
+                            "candidate_id": candidate_id,
+                            "package_id": package["package_id"],
+                            "item_id": item_id,
+                            "source_hospital_id": package["hospital_id"],
+                            "concept_code": concept_code,
+                            "candidate_type": item_type,
+                            "payload_json": item["source_payload_json"],
+                            "created_at": now,
+                            "created_by": approver_id,
+                        },
+                    )
+                else:
+                    candidate_id = self._insert_rule_candidate(
+                        conn, package, item, item_id, approver_id, now
+                    )
             conn.execute(
                 text(
                     """
@@ -219,6 +241,44 @@ class CompanyKnowledgeRepository:
             "approved_at": now,
             "approver_id": approver_id,
         }
+
+    @staticmethod
+    def _insert_rule_candidate(
+        conn: Any,
+        package: dict[str, Any],
+        item: dict[str, Any],
+        item_id: str,
+        approver_id: str,
+        now: str,
+    ) -> str:
+        rule_id = str(item.get("rule_id") or "").strip()
+        if not rule_id:
+            raise CompanyKnowledgeError("CANDIDATE_RULE_ID_MISSING")
+        candidate_id = f"CAND_{uuid.uuid4().hex[:12]}"
+        conn.execute(
+            text(
+                """
+                INSERT INTO company_rule_candidate
+                  (candidate_id, package_id, item_id, source_hospital_id,
+                   rule_id, payload_json, status, created_at, created_by)
+                VALUES
+                  (:candidate_id, :package_id, :item_id,
+                   :source_hospital_id, :rule_id, :payload_json,
+                   'approved', :created_at, :created_by)
+                """
+            ),
+            {
+                "candidate_id": candidate_id,
+                "package_id": package["package_id"],
+                "item_id": item_id,
+                "source_hospital_id": package["hospital_id"],
+                "rule_id": rule_id,
+                "payload_json": item["source_payload_json"],
+                "created_at": now,
+                "created_by": approver_id,
+            },
+        )
+        return candidate_id
 
     def reject_merge_item(
         self,
@@ -551,12 +611,51 @@ class CompanyKnowledgeRepository:
         manifest = {
             "release_id": release["release_id"],
             "version": release["version"],
-            "format_version": "company-release-v1",
+            "format_version": "company-release-v2",
             "published_at": release["published_at"],
             "rule_count": len(release["items"]),
             "contains_patient_data": False,
         }
-        files: dict[str, bytes] = {"manifest.yaml": _yaml_bytes(manifest)}
+        corpus = load_term_corpus(
+            Path(__file__).resolve().parents[2]
+            / "core-rules-wiki"
+            / "terminology"
+            / "core_indicator_terms.yaml"
+        )
+        concepts = [
+            concept.model_dump(mode="json", exclude={"aliases"})
+            for concept in corpus.concepts
+            if concept.status == "active"
+        ]
+        aliases = [
+            {
+                "concept_code": concept.concept_code,
+                **alias.model_dump(mode="json", exclude={"hospital_id"}),
+            }
+            for concept in corpus.concepts
+            for alias in concept.aliases
+            if alias.approval_status == "approved"
+        ]
+        concept_bytes = _json_bytes(concepts)
+        alias_bytes = _json_bytes(aliases)
+        term_release = {
+            "release_id": release["release_id"],
+            "published_at": release["published_at"],
+            "schema_version": corpus.schema_version,
+            "source": "company_reviewed_corpus",
+            "concept_count": len(concepts),
+            "alias_count": len(aliases),
+            "checksum": hashlib.sha256(concept_bytes + alias_bytes).hexdigest(),
+            "contains_hospital_candidates": False,
+        }
+        manifest["term_concept_count"] = len(concepts)
+        manifest["term_alias_count"] = len(aliases)
+        files: dict[str, bytes] = {
+            "manifest.yaml": _yaml_bytes(manifest),
+            "terminology/release.json": _json_bytes(term_release),
+            "terminology/concepts.json": concept_bytes,
+            "terminology/aliases.json": alias_bytes,
+        }
         for item in release["items"]:
             files[f"rules/{item['rule_id']}.yaml"] = _yaml_bytes(item["payload"])
         checksums = {
@@ -598,6 +697,64 @@ class CompanyKnowledgeRepository:
                     "status": "pending",
                     "source_payload": payload,
                 }
+            )
+        term_candidate_names = sorted(
+            name
+            for name in files
+            if name.startswith("terminology/candidates/")
+            and name.endswith((".yaml", ".yml"))
+        )
+        known_aliases = _company_alias_concepts()
+        for name in term_candidate_names:
+            payload = _yaml_dict(files[name], name)
+            concept_code = str(payload.get("concept_code") or "").strip()
+            alias_text = str(payload.get("alias_text") or "").strip()
+            if not concept_code or not alias_text:
+                raise CompanyKnowledgeError("TERM_CANDIDATE_FIELDS_MISSING")
+            item_type = "term_candidate"
+            existing_concepts = known_aliases.get(_normalize(alias_text), set())
+            if existing_concepts and concept_code not in existing_concepts:
+                item_type = "term_conflict"
+            elif payload.get("ambiguity_group") or payload.get("relation_type") == "related":
+                item_type = "term_ambiguity"
+            elif bool(payload.get("sql_safe")):
+                item_type = "term_sql_safety_change"
+            items.append(
+                _item(
+                    len(items) + 1,
+                    item_type,
+                    concept_code,
+                    alias_text,
+                    "alias_text",
+                    alias_text,
+                    sorted(existing_concepts),
+                    "pending",
+                    payload,
+                )
+            )
+        term_mapping_names = sorted(
+            name
+            for name in files
+            if name.startswith("terminology/mappings/")
+            and name.endswith((".yaml", ".yml"))
+        )
+        for name in term_mapping_names:
+            payload = _yaml_dict(files[name], name)
+            concept_code = str(payload.get("concept_code") or "").strip()
+            if not concept_code:
+                raise CompanyKnowledgeError("TERM_MAPPING_CONCEPT_MISSING")
+            items.append(
+                _item(
+                    len(items) + 1,
+                    "term_sql_safety_change",
+                    concept_code,
+                    str(payload.get("local_name") or concept_code),
+                    "local_value",
+                    payload.get("local_value"),
+                    None,
+                    "pending",
+                    payload,
+                )
             )
         return items
 
@@ -690,7 +847,7 @@ def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, 
     if "manifest.yaml" not in files or "checksums.json" not in files:
         raise CompanyKnowledgeError("REQUIRED_FILE_MISSING")
     manifest = _yaml_dict(files["manifest.yaml"], "manifest.yaml")
-    if manifest.get("format_version") != "kb-exchange-v2":
+    if manifest.get("format_version") not in {"kb-exchange-v2", "kb-exchange-v3"}:
         raise CompanyKnowledgeError("UNSUPPORTED_PACKAGE_FORMAT")
     if not str(manifest.get("package_id") or "").strip():
         raise CompanyKnowledgeError("PACKAGE_ID_MISSING")
@@ -711,6 +868,32 @@ def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, 
         if actual != str(checksums[name]):
             raise CompanyKnowledgeError(f"CHECKSUM_MISMATCH: {name}")
     return manifest, files
+
+
+def _ensure_company_term_candidate_schema(engine: Engine) -> None:
+    metadata = MetaData()
+    table = Table(
+        "company_term_candidate",
+        metadata,
+        Column(
+            "candidate_id",
+            String(64),
+            primary_key=True,
+        ),
+        Column("package_id", String(64), nullable=False),
+        Column("item_id", String(64), nullable=False),
+        Column("source_hospital_id", String(64), nullable=False),
+        Column("concept_code", String(96), nullable=False),
+        Column("candidate_type", String(32), nullable=False),
+        Column("payload_json", JSON, nullable=False),
+        Column("status", String(32), nullable=False),
+        Column("created_at", DateTime, nullable=False),
+        Column("created_by", String(64), nullable=False),
+        UniqueConstraint(
+            "package_id", "item_id", name="uk_company_term_candidate_source"
+        ),
+    )
+    metadata.create_all(engine, tables=[table], checkfirst=True)
 
 
 def _standard_payload(candidate: dict[str, Any]) -> dict[str, Any]:
@@ -816,8 +999,28 @@ def _summarize(items: list[dict[str, Any]]) -> dict[str, int]:
         "new_indicators": sum(1 for item in items if item.get("type") == "new_indicator"),
         "new_rules": sum(1 for item in items if item.get("type") == "field_mapping"),
         "unchanged": sum(1 for item in items if item.get("type") == "unchanged"),
+        "term_candidates": sum(1 for item in items if item.get("type") == "term_candidate"),
+        "term_conflicts": sum(1 for item in items if item.get("type") == "term_conflict"),
+        "term_ambiguities": sum(1 for item in items if item.get("type") == "term_ambiguity"),
+        "term_sql_safety_changes": sum(
+            1 for item in items if item.get("type") == "term_sql_safety_change"
+        ),
         "pending": sum(1 for item in items if item.get("status") == "pending"),
     }
+
+
+def _company_alias_concepts() -> dict[str, set[str]]:
+    corpus = load_term_corpus(
+        Path(__file__).resolve().parents[2]
+        / "core-rules-wiki"
+        / "terminology"
+        / "core_indicator_terms.yaml"
+    )
+    result: dict[str, set[str]] = {}
+    for concept in corpus.concepts:
+        for value in [concept.canonical_name, *(alias.alias_text for alias in concept.aliases)]:
+            result.setdefault(_normalize(value), set()).add(concept.concept_code)
+    return result
 
 
 def _yaml_dict(content: bytes, name: str) -> dict[str, Any]:
@@ -832,6 +1035,12 @@ def _yaml_dict(content: bytes, name: str) -> dict[str, Any]:
 
 def _yaml_bytes(payload: dict[str, Any]) -> bytes:
     return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False).encode("utf-8")
+
+
+def _json_bytes(payload: Any) -> bytes:
+    return json.dumps(
+        payload, ensure_ascii=False, indent=2, sort_keys=True
+    ).encode("utf-8")
 
 
 def _extract_minutes(value: str) -> int | None:

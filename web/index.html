@@ -511,6 +511,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 </style>
 <link rel="stylesheet" href="/static/monitoring.css" />
 <link rel="stylesheet" href="/static/metadata.css" />
+<link rel="stylesheet" href="/static/terminology.css" />
 <link rel="stylesheet" href="/static/workbench.css" />
 </head>
 <body>
@@ -604,10 +605,10 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         <header class="metadata-page-header">
           <div>
             <span class="metadata-eyebrow">数据基础</span>
-            <h1 id="metadataPageTitle">数据库与元数据</h1>
-            <p>同步医院业务库的表和字段结构，及时发现可能影响指标运行的变化。</p>
+            <h1 id="metadataPageTitle">数据与术语基础</h1>
+            <p>维护指标运行依赖的数据库结构和医学术语，所有变更均保留审核与版本记录。</p>
           </div>
-          <div class="metadata-primary-actions">
+          <div id="metadataPrimaryActions" class="metadata-primary-actions">
             <label for="metadataDbSelect">医院业务库</label>
             <select id="metadataDbSelect" aria-label="选择医院业务数据库">
               <option value="hospital_demo_data">hospital_demo_data</option>
@@ -615,6 +616,13 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <button id="metadataSyncButton" type="button">同步数据库结构</button>
           </div>
         </header>
+
+        <div class="data-foundation-tabs" role="tablist" aria-label="数据基础视图">
+          <button id="metadataStructureTab" class="data-foundation-tab active" type="button" role="tab" aria-selected="true" aria-controls="metadataStructurePanel">数据库结构</button>
+          <button id="terminologyTab" class="data-foundation-tab" type="button" role="tab" aria-selected="false" aria-controls="terminologyWorkspace">医学术语库</button>
+        </div>
+
+        <div id="metadataStructurePanel" role="tabpanel" aria-labelledby="metadataStructureTab">
 
         <div id="metadataNotice" class="metadata-notice" role="status">正在读取数据库结构状态...</div>
 
@@ -660,6 +668,82 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <div id="metadataSourceList" class="metadata-source-list"></div>
           </div>
         </details>
+        </div>
+
+        <section id="terminologyWorkspace" class="terminology-workspace" role="tabpanel" aria-labelledby="terminologyTab" hidden>
+          <div class="terminology-toolbar">
+            <label>搜索标准词或同义词<input id="terminologySearchInput" type="search" placeholder="例如：急会诊、上感" /></label>
+            <label>关联指标<input id="terminologyRuleFilter" type="search" placeholder="例如 MQSI2025_005" /></label>
+            <button id="terminologyRefreshButton" class="ghost" type="button">刷新</button>
+            <button id="terminologyAdminButton" class="ghost" type="button">管理员维护</button>
+          </div>
+
+          <div id="terminologyNotice" class="terminology-notice" role="status">选择一个标准概念查看详情。</div>
+
+          <div class="terminology-layout">
+            <aside class="terminology-concept-pane" aria-label="标准概念列表">
+              <div class="terminology-pane-heading"><strong>标准概念</strong><span id="terminologyConceptCount">0</span></div>
+              <div id="terminologyConceptList" class="terminology-concept-list"></div>
+            </aside>
+
+            <section class="terminology-detail-pane" aria-live="polite">
+              <div id="terminologyDetailEmpty" class="terminology-empty">从左侧选择一个标准概念，查看同义词、本院映射和来源。</div>
+              <div id="terminologyDetail" hidden>
+                <header class="terminology-detail-header">
+                  <div><span id="terminologyConceptCode" class="term-code"></span><h2 id="terminologyConceptName"></h2><p id="terminologyConceptDefinition"></p></div>
+                  <span id="terminologyConceptType" class="term-type"></span>
+                </header>
+
+                <div class="terminology-detail-tabs" role="tablist" aria-label="术语详情">
+                  <button class="term-detail-tab active" type="button" data-term-panel="aliases" role="tab" aria-selected="true">同义词</button>
+                  <button class="term-detail-tab" type="button" data-term-panel="mappings" role="tab" aria-selected="false">本院映射</button>
+                  <button class="term-detail-tab" type="button" data-term-panel="sources" role="tab" aria-selected="false">来源与指标</button>
+                  <button class="term-detail-tab" type="button" data-term-panel="versions" role="tab" aria-selected="false">版本</button>
+                </div>
+
+                <section id="terminologyAliasesPanel" class="term-detail-panel" data-term-panel-name="aliases">
+                  <div class="term-section-head"><div><h3>同义词与关系</h3><p>相关词可帮助检索，但不能直接作为统计条件。</p></div><button id="terminologyNewAliasButton" class="term-admin-action" type="button">新增候选词</button></div>
+                  <div id="terminologyAliasList" class="term-record-list"></div>
+                  <form id="terminologyAliasForm" class="term-inline-form" hidden>
+                    <label>候选词<input id="terminologyAliasText" required maxlength="200" /></label>
+                    <label>关系<select id="terminologyAliasRelation"><option value="exact">完全同义</option><option value="abbreviation">简称</option><option value="colloquial">口语表达</option><option value="related">相关词</option><option value="forbidden">禁止替换</option></select></label>
+                    <label class="term-check"><input id="terminologyAliasSqlSafe" type="checkbox" /> 可用于 SQL</label>
+                    <div><button type="submit">保存为待审核</button><button id="terminologyAliasCancel" class="ghost" type="button">取消</button></div>
+                  </form>
+                  <div id="terminologyReviewQueue" class="term-review-queue"></div>
+                </section>
+
+                <section id="terminologyMappingsPanel" class="term-detail-panel" data-term-panel-name="mappings" hidden>
+                  <div class="term-section-head"><div><h3>本院编码和值</h3><p id="terminologyMappingHospital">当前医院 hospital_001</p></div><button id="terminologyNewMappingButton" class="term-admin-action" type="button">新增本院映射</button></div>
+                  <div id="terminologyHospitalMappings" class="term-record-list"></div>
+                  <form id="terminologyMappingForm" class="term-inline-form term-mapping-form" hidden>
+                    <label>编码体系<input id="terminologyMappingSystem" required placeholder="例如 hospital_diagnosis" /></label>
+                    <label>本院编码<input id="terminologyMappingCode" placeholder="例如 J06.9-H1" /></label>
+                    <label>本院名称<input id="terminologyMappingName" required /></label>
+                    <label>数据库值<input id="terminologyMappingValue" required /></label>
+                    <div><button type="submit">保存为待审核</button><button id="terminologyMappingCancel" class="ghost" type="button">取消</button></div>
+                  </form>
+                </section>
+
+                <section id="terminologySourcesPanel" class="term-detail-panel" data-term-panel-name="sources" hidden>
+                  <div class="term-section-head"><div><h3>来源与关联指标</h3><p>标准概念由公司维护，医院只增加本地映射。</p></div></div>
+                  <div id="terminologyRuleLinks" class="term-record-list"></div>
+                </section>
+
+                <section id="terminologyVersionsPanel" class="term-detail-panel" data-term-panel-name="versions" hidden>
+                  <div class="term-section-head"><div><h3>术语版本</h3><p>发布后进入运行链路，回退不会删除历史版本。</p></div><button id="terminologyPublishButton" class="term-admin-action" type="button">发布当前术语</button></div>
+                  <div id="terminologyReleaseList" class="term-record-list"></div>
+                </section>
+              </div>
+            </section>
+          </div>
+
+          <section class="terminology-test-bench" aria-labelledby="terminologyTestTitle">
+            <div><h3 id="terminologyTestTitle">识别测试</h3><p>只测试标准化和 SQL 安全判断，不会执行 SQL。</p></div>
+            <form id="terminologyTestForm"><label for="terminologyTestInput">输入业务说法</label><div><input id="terminologyTestInput" required placeholder="例如：统计上感患者" /><button type="submit">测试识别</button></div></form>
+            <div id="terminologyTestResult" class="terminology-test-result">尚未测试。</div>
+          </section>
+        </section>
       </div>
     </section>
     <div id="workbenchLoading" class="workbench-loading">正在打开业务工作台...</div>
@@ -1033,6 +1117,10 @@ function openAdminArea(area) {
   }
   if (area === "monitoring") {
     window.openMonitoringWorkbench();
+    return;
+  }
+  if (area === "terminology") {
+    if (window.activateTerminologyAdminMode) window.activateTerminologyAdminMode();
     return;
   }
   reviewModal.hidden = false;
@@ -2449,8 +2537,10 @@ async function loadMergeReports() {
       btn.type = "button";
       btn.className = "merge-report-item";
       var summary = report.summary || {};
+      var termReviewCount = (summary.term_candidates||0) + (summary.term_conflicts||0)
+        + (summary.term_ambiguities||0) + (summary.term_sql_safety_changes||0);
       btn.innerHTML = "<strong>" + report.report_id + " · " + report.hospital_id + "</strong>" +
-        "<span>" + (report.status || "") + " \u00b7 \u51b2\u7a81 " + (summary.conflicts||0) + " \u00b7 \u65b0\u89c4\u5219 " + (summary.new_rules||0) + " \u00b7 \u65b0\u6307\u6807 " + (summary.new_indicators||0) + "</span>";
+        "<span>" + (report.status || "") + " \u00b7 \u53e3\u5f84\u51b2\u7a81 " + (summary.conflicts||0) + " \u00b7 \u672f\u8bed\u5f85\u5ba1 " + termReviewCount + " \u00b7 \u65b0\u6307\u6807 " + (summary.new_indicators||0) + "</span>";
       btn.addEventListener("click", function() { showMergeReport(report.report_id); });
       mergeReportList.appendChild(btn);
     });
@@ -2474,7 +2564,17 @@ function renderMergeReport(report) {
     var box = document.createElement("div");
     box.className = "merge-item " + (item.status || "pending");
     var head = document.createElement("strong");
-    head.textContent = item.item_id + " · " + item.type + " · " + (item.rule_name || item.indicator_name || item.rule_id || "");
+    var itemTypeNames = {
+      caliber_conflict: "\u53e3\u5f84\u51b2\u7a81",
+      new_indicator: "\u65b0\u6307\u6807",
+      field_mapping: "\u5b57\u6bb5\u6620\u5c04",
+      term_candidate: "\u672f\u8bed\u5019\u9009",
+      term_conflict: "\u672f\u8bed\u51b2\u7a81",
+      term_ambiguity: "\u672f\u8bed\u6b67\u4e49",
+      term_sql_safety_change: "SQL \u5b89\u5168\u6620\u5c04\u53d8\u66f4",
+      unchanged: "\u65e0\u53d8\u5316"
+    };
+    head.textContent = item.item_id + " · " + (itemTypeNames[item.type] || item.type) + " · " + (item.rule_name || item.indicator_name || item.rule_id || "");
     var table = document.createElement("table");
     table.className = "diff-table";
     table.innerHTML = "<tbody><tr><th>\u5b57\u6bb5</th><td></td></tr><tr><th>\u533b\u9662\u503c</th><td></td></tr><tr><th>\u516c\u53f8\u503c</th><td></td></tr><tr><th>\u72b6\u6001</th><td></td></tr></tbody>";
@@ -2550,6 +2650,7 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 </script>
 <script src="/static/monitoring.js"></script>
 <script src="/static/metadata.js"></script>
+<script src="/static/terminology.js"></script>
 <script src="/static/workbench.js"></script>
 </body>
 </html>

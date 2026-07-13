@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     inspect,
+    text,
 )
 
 
@@ -42,6 +43,7 @@ def _metadata() -> MetaData:
         "med_term_alias",
         metadata,
         Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
+        Column("hospital_id", String(64), nullable=False, default=""),
         Column("concept_code", String(96), nullable=False),
         Column("alias_text", String(255), nullable=False),
         Column("relation_type", String(32), nullable=False),
@@ -55,7 +57,10 @@ def _metadata() -> MetaData:
         Column("approved_by", String(64)),
         Column("created_at", DateTime, nullable=False),
         Column("approved_at", DateTime),
-        UniqueConstraint("concept_code", "alias_text", "version", name="uk_term_alias_scope"),
+        UniqueConstraint(
+            "hospital_id", "concept_code", "alias_text", "version",
+            name="uk_term_alias_scope",
+        ),
     )
     Table(
         "med_term_rule_link",
@@ -152,4 +157,33 @@ def ensure_terminology_schema(engine: Engine) -> dict[str, list[str]]:
     existing = set(inspect(engine).get_table_names())
     created = [name for name in metadata.tables if name not in existing]
     metadata.create_all(engine, checkfirst=True)
-    return {"created_tables": created}
+    added_columns: list[str] = []
+    if "med_term_alias" in existing:
+        columns = {item["name"] for item in inspect(engine).get_columns("med_term_alias")}
+        if "hospital_id" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE med_term_alias ADD COLUMN "
+                        "hospital_id VARCHAR(64) NOT NULL DEFAULT ''"
+                    )
+                )
+            added_columns.append("med_term_alias.hospital_id")
+        if engine.dialect.name == "mysql":
+            constraints = {
+                item["name"]: item.get("column_names") or []
+                for item in inspect(engine).get_unique_constraints("med_term_alias")
+            }
+            if constraints.get("uk_term_alias_scope") != [
+                "hospital_id", "concept_code", "alias_text", "version"
+            ]:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE med_term_alias DROP INDEX uk_term_alias_scope"))
+                    conn.execute(
+                        text(
+                            "ALTER TABLE med_term_alias ADD UNIQUE KEY "
+                            "uk_term_alias_scope "
+                            "(hospital_id, concept_code, alias_text, version)"
+                        )
+                    )
+    return {"created_tables": created, "added_columns": added_columns}

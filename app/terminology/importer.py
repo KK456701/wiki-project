@@ -119,7 +119,8 @@ def import_term_corpus(
                 existing_alias = conn.execute(
                     text(
                         """SELECT * FROM med_term_alias
-                           WHERE concept_code=:concept_code AND alias_text=:alias_text
+                           WHERE hospital_id='' AND concept_code=:concept_code
+                             AND alias_text=:alias_text
                            ORDER BY version DESC LIMIT 1"""
                     ),
                     {
@@ -142,11 +143,11 @@ def import_term_corpus(
                         text(
                             """
                             INSERT INTO med_term_alias
-                              (concept_code, alias_text, relation_type, retrieval_enabled,
+                              (hospital_id, concept_code, alias_text, relation_type, retrieval_enabled,
                                sql_safe, ambiguity_group, source_reference, approval_status,
                                version, created_by, approved_by, created_at, approved_at)
                             VALUES
-                              (:concept_code, :alias_text, :relation_type, :retrieval_enabled,
+                              (:hospital_id, :concept_code, :alias_text, :relation_type, :retrieval_enabled,
                                :sql_safe, :ambiguity_group, :source_reference, :approval_status,
                                :version, :created_by, :approved_by, :created_at, :approved_at)
                             """

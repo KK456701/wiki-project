@@ -275,6 +275,10 @@ async function syncMetadataStructure() {
 }
 
 async function activateMetadataPage() {
+  if (!terminologyWorkspace.hidden) {
+    await window.activateTerminologyWorkspace();
+    return;
+  }
   metadataHospitalValue.textContent = currentMetadataHospitalId();
   setMetadataNotice("正在读取数据库结构状态...", "");
   await Promise.allSettled([loadMetadataSources(), loadMetadataOverview()]);

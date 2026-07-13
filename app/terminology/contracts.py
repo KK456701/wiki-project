@@ -19,6 +19,7 @@ ApprovalStatus = Literal["pending", "approved", "rejected"]
 
 
 class TermAlias(BaseModel):
+    hospital_id: str = ""
     concept_code: str = ""
     alias_text: str
     relation_type: RelationType

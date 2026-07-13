@@ -61,6 +61,35 @@ class TerminologyRepositoryTest(unittest.TestCase):
         self.assertEqual(len(repository.active_hospital_mappings("hospital_001")), 1)
         self.assertEqual(repository.active_hospital_mappings("hospital_002"), [])
 
+    def test_hospital_alias_is_scoped_and_does_not_enter_company_release(self) -> None:
+        from app.terminology.repository import TerminologyRepository
+
+        engine = _engine()
+        repository = TerminologyRepository(engine)
+        pending = repository.create_alias_candidate(
+            {
+                "hospital_id": "hospital_001",
+                "concept_code": "DIAG_URI",
+                "alias_text": "本院上感",
+                "relation_type": "colloquial",
+                "retrieval_enabled": True,
+                "sql_safe": False,
+                "source_reference": "hospital-feedback",
+                "created_by": "user_001",
+            }
+        )
+        repository.approve_alias(pending["id"], "admin")
+
+        hospital_001 = repository.list_hospital_aliases("hospital_001")
+        hospital_002 = repository.list_hospital_aliases("hospital_002")
+
+        self.assertEqual(hospital_001[0]["alias_text"], "本院上感")
+        self.assertEqual(hospital_002, [])
+        self.assertNotIn(
+            "本院上感",
+            [item["alias_text"] for item in repository.snapshot()["aliases"]],
+        )
+
     def test_release_restore_switches_active_snapshot(self) -> None:
         from app.terminology.release import TerminologyReleaseService
         from app.terminology.repository import TerminologyRepository
@@ -75,7 +104,7 @@ class TerminologyRepositoryTest(unittest.TestCase):
         repository.create_alias_candidate(
             {
                 "concept_code": "IND_MQSI2025_005",
-                "alias_text": "急会诊响应率",
+                "alias_text": "急会诊快速响应率",
                 "relation_type": "abbreviation",
                 "retrieval_enabled": True,
                 "sql_safe": False,

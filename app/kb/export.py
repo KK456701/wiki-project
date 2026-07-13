@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import yaml
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, inspect, text
 
 
 def export_hospital_kb_zip(runtime_engine: Engine, hospital_id: str) -> bytes:
@@ -18,14 +18,18 @@ def export_hospital_kb_zip(runtime_engine: Engine, hospital_id: str) -> bytes:
     exported_at = datetime.now()
     overrides = _collect_hospital_overrides(runtime_engine, hospital_id, exported_at)
     mappings = _collect_hospital_mappings(runtime_engine, hospital_id)
+    term_mappings = _collect_hospital_term_mappings(runtime_engine, hospital_id)
+    term_candidates = _collect_hospital_term_candidates(runtime_engine, hospital_id)
     package_id = f"HKB_{exported_at.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
     manifest = {
         "package_id": package_id,
         "hospital_id": hospital_id,
         "exported_at": exported_at.isoformat(timespec="seconds"),
-        "format_version": "kb-exchange-v2",
+        "format_version": "kb-exchange-v3",
         "override_count": len(overrides),
         "mapping_count": len(mappings),
+        "term_mapping_count": len(term_mappings),
+        "term_candidate_count": len(term_candidates),
         "contains_patient_data": False,
     }
 
@@ -34,6 +38,10 @@ def export_hospital_kb_zip(runtime_engine: Engine, hospital_id: str) -> bytes:
         files[f"overrides/{rule_id}.yaml"] = _yaml_bytes(payload)
     for rule_id, payload in mappings.items():
         files[f"mappings/{rule_id}.yaml"] = _yaml_bytes(payload)
+    for mapping_id, payload in term_mappings.items():
+        files[f"terminology/mappings/mapping_{mapping_id}.yaml"] = _yaml_bytes(payload)
+    for alias_id, payload in term_candidates.items():
+        files[f"terminology/candidates/alias_{alias_id}.yaml"] = _yaml_bytes(payload)
 
     checksums = {
         name: hashlib.sha256(content).hexdigest()
@@ -148,6 +156,66 @@ def _collect_hospital_mappings(
             "updated_at": _iso_value(row.get("updated_at")),
         }
     return result
+
+
+def _collect_hospital_term_mappings(
+    runtime_engine: Engine, hospital_id: str
+) -> dict[str, dict[str, Any]]:
+    if not inspect(runtime_engine).has_table("med_hospital_term_mapping"):
+        return {}
+    with runtime_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, hospital_id, concept_code, code_system, local_code,
+                       local_name, local_value, approval_status, effective_from,
+                       effective_to, version, created_by, approved_by,
+                       created_at, approved_at
+                FROM med_hospital_term_mapping
+                WHERE hospital_id=:hospital_id AND approval_status='approved'
+                ORDER BY concept_code, id
+                """
+            ),
+            {"hospital_id": hospital_id},
+        ).mappings().all()
+    return {
+        str(row["id"]): {
+            key: _iso_value(value) if key.endswith("_at") or key.startswith("effective_") else value
+            for key, value in dict(row).items()
+        }
+        for row in rows
+    }
+
+
+def _collect_hospital_term_candidates(
+    runtime_engine: Engine, hospital_id: str
+) -> dict[str, dict[str, Any]]:
+    if not inspect(runtime_engine).has_table("med_term_alias"):
+        return {}
+    with runtime_engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, hospital_id, concept_code, alias_text, relation_type,
+                       retrieval_enabled, sql_safe, ambiguity_group,
+                       source_reference, approval_status, version, created_by,
+                       created_at
+                FROM med_term_alias
+                WHERE hospital_id=:hospital_id AND approval_status='pending'
+                ORDER BY concept_code, id
+                """
+            ),
+            {"hospital_id": hospital_id},
+        ).mappings().all()
+    return {
+        str(row["id"]): {
+            **dict(row),
+            "retrieval_enabled": bool(row["retrieval_enabled"]),
+            "sql_safe": bool(row["sql_safe"]),
+            "created_at": _iso_value(row["created_at"]),
+        }
+        for row in rows
+    }
 
 
 def _formula(name: str, numerator: str, denominator: str) -> str:

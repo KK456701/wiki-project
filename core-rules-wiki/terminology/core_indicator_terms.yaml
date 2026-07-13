@@ -16,6 +16,7 @@ concepts:
     aliases:
       - {alias_text: 入院8小时查房率, relation_type: abbreviation, source_reference: MQSI2025_002}
       - {alias_text: 8小时内查房比例, relation_type: exact, source_reference: MQSI2025_002}
+      - {alias_text: 查房率, relation_type: abbreviation, ambiguity_group: ward_round_rate, source_reference: MQSI2025_002}
   - concept_code: IND_MQSI2025_003
     canonical_name: 上级医师查房记录规范率
     concept_type: indicator
@@ -24,6 +25,7 @@ concepts:
     aliases:
       - {alias_text: 上级医师查房规范率, relation_type: abbreviation, source_reference: MQSI2025_003}
       - {alias_text: 上级医生查房记录合规率, relation_type: colloquial, source_reference: MQSI2025_003}
+      - {alias_text: 查房率, relation_type: abbreviation, ambiguity_group: ward_round_rate, source_reference: MQSI2025_003}
   - concept_code: IND_MQSI2025_004
     canonical_name: 住院患者非计划手术率
     concept_type: indicator
@@ -39,6 +41,7 @@ concepts:
     source_reference: MQSI2025_005
     aliases:
       - {alias_text: 急会诊到位率, relation_type: abbreviation, source_reference: MQSI2025_005}
+      - {alias_text: 急会诊响应率, relation_type: abbreviation, source_reference: MQSI2025_005}
       - {alias_text: 急会诊响应及时率, relation_type: exact, source_reference: MQSI2025_005}
       - {alias_text: 急诊会诊到位率, relation_type: related, source_reference: MQSI2025_005}
   - concept_code: IND_MQSI2025_006

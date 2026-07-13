@@ -21,6 +21,7 @@
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
 - **指标监控工作台**：管理员可在前端新建、编辑、启停运行计划，手工运算指标，查看聚合结果和执行链路，并确认、关闭或重新诊断预警。
 - **数据库与元数据工作台**：医院人员可在前端同步业务库结构，查看最近同步、表字段数量、结构变化和受影响指标；连接与只读工具信息集中在折叠详情中。
+- **医学术语工作台**：维护 35 个核心制度指标涉及的标准概念、同义词、本院编码映射、审核状态和术语版本，并明确区分“可检索”和“可进 SQL”。
 - **知识库导出与回收合并**：医院可导出本院知识库压缩包，公司管理员上传后生成合并报告，对候选项逐项处理。
 - **会话记忆**：对话记忆写入 SQLite 与 JSONL，支持多轮追问和反馈上下文。
 - **五类 Agent 统一编排**：元数据解析、指标生成、口径适配、故障根因排查和人机交互 Agent 由 `CoreIndicatorOrchestrator` 统一路由；HTTP、LangGraph 适配器和 SSE 统一调用“理解请求、检索规则、解析生效口径”三个编排阶段，不再绕过编排器直接访问专业 Agent。
@@ -36,7 +37,7 @@
 - LLM：Ollama，本地模型默认 `qwen3:4B-instruct`
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
-- 知识库：Markdown、YAML、JSON 索引
+- 知识库：MySQL 保存已审核术语与版本，Wiki/YAML 保存公司语料来源和只读兜底，Markdown、YAML、JSON 索引服务制度文档检索
 - 前端：原生 HTML/CSS/JavaScript，SSE 流式输出
 - 测试：unittest
 
@@ -297,6 +298,32 @@ python scripts\simulate_metadata_drift.py remove --apply
 
 `consult_priority` 不参与现有四个指标计算。需要确保环境恢复到初始结构时执行 `python scripts\simulate_metadata_drift.py restore --apply`；命令可重复执行，不会因为字段已存在或已删除而失败。
 
+### 医学术语工作台
+
+医院人员从左侧进入“数据与术语基础”，切换到“医学术语库”即可完成日常操作：
+
+1. 搜索标准概念、指标名称或同义词，也可以按指标编码筛选。
+2. 查看每个词的来源、关联指标和安全范围。“可检索”表示可帮助理解问法；“可进 SQL”表示在本院已审批值映射存在时，才可作为参数化统计条件。
+3. 医院管理员新增本院候选词或本院编码映射，审核通过后才进入当前医院的运行链路；其他医院不可见。
+4. 在识别测试中输入“统计上感患者”或指标别名，查看标准化结果、歧义和 SQL 可用结论。
+5. 公司管理员发布术语版本或回退到历史版本。发布和回退均保留审计记录，不删除旧版本。
+
+首次部署或升级已有数据库时执行：
+
+```powershell
+python scripts\migrate_runtime_schema.py
+python scripts\import_core_indicator_terms.py --apply
+```
+
+语料当前覆盖 35 个核心制度指标及共用诊断、科室、人员角色、时间范围和数据值概念。MySQL 是审核后生效和版本回退的主存储；`core-rules-wiki/terminology/core_indicator_terms.yaml` 是公司语料的可审阅导入来源，运行库异常时 Wiki 只提供只读兜底，不接受审批写入。
+
+前端“识别测试”可使用以下问法验收安全边界：
+
+- “急会诊响应率怎么算？”应唯一定位 `MQSI2025_005`，并标准化为“急会诊及时到位率”。
+- “统计上感患者”应识别“急性上呼吸道感染”，但因为没有本院已审批诊断值映射而不能直接进入 SQL。
+- “查房率”应返回多个可能指标并要求确认，不能擅自选择。
+- “抢救成功患者”必须保持“抢救成功”；“治愈”是禁止替换词，不能改写成抢救成功。
+
 ### 指标问答
 
 用户在前端输入：
@@ -515,13 +542,13 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/diagnose/run `
 
 ### 知识库导出与回收合并
 
-医院侧从本院 MySQL 当前生效投影导出 `kb-exchange-v2` 知识包：
+医院侧从本院 MySQL 当前生效投影导出 `kb-exchange-v3` 知识包：
 
 ```http
 GET /api/kb/export?hospital_id=hospital_001
 ```
 
-知识包只包含已审批且处于生效期的医院口径差异、已确认字段映射、版本号和逐文件 SHA-256，不包含患者记录、数据库密码、会话、运行日志或未审批版本。历史版本继续保存在医院 MySQL；恢复历史版本会创建一个新版本，下一次导出只携带新的当前版本。
+知识包包含已审批且处于生效期的医院口径差异、已确认字段映射、已审批本院术语值映射、待公司复核的本院术语候选、版本号和逐文件 SHA-256。它不包含患者记录、数据库密码、会话、运行日志，也不会导出其他医院数据。历史版本继续保存在医院 MySQL；恢复历史版本会创建一个新版本，下一次导出只携带新的当前版本。公司端继续接受旧的 `kb-exchange-v2` 包。
 
 公司管理员上传 ZIP，内容先校验后写入公司 MySQL 暂存区：
 
@@ -531,7 +558,7 @@ Authorization: Bearer <admin_token>
 Content-Type: application/zip
 ```
 
-系统生成合并报告后，管理员可以逐项拒绝、仅保留医院本地或采纳为公司候选。采纳候选不会立即改变公司标准，需要创建并发布公司版本：
+系统生成合并报告后，管理员可以逐项拒绝、仅保留医院本地或采纳为公司候选。术语条目会标记为术语候选、术语冲突、术语歧义或 SQL 安全映射变更，并进入独立的公司术语候选表。采纳候选不会立即改变公司标准，也不会直接进入公司术语发布版本；规则候选仍需创建并发布公司版本：
 
 ```http
 POST /api/kb/company/releases
@@ -555,7 +582,7 @@ Content-Type: application/json
 }
 ```
 
-发布后通过 `GET /api/kb/company/releases/{release_id}/export` 下载 `company-release-v1`。本批不自动在医院侧应用公司发布包，防止绕过医院审批；后续医院导入时应先比较基础标准版本，再由管理员确认冲突。
+发布后通过 `GET /api/kb/company/releases/{release_id}/export` 下载 `company-release-v2`。包内除规则外还包含公司已审核术语快照 `terminology/release.json`、`terminology/concepts.json` 和 `terminology/aliases.json`，不会混入仅被采纳但尚未发布的医院术语候选。本批不自动在医院侧应用公司发布包，防止绕过医院审批；后续医院导入时应先比较基础标准版本，再由管理员确认冲突。
 
 ## API 概览
 
@@ -610,6 +637,16 @@ Content-Type: application/json
 | `/api/mcp/dbhub/sources` | GET | 查看 DBHub 数据源/工具 |
 | `/api/metadata/overview` | GET | 查看当前医院最近一次元数据同步概览和影响范围 |
 | `/api/metadata/sync` | POST | 同步业务库元数据 |
+| `/api/terminology/concepts` | GET | 搜索标准概念、同义词和指标关联 |
+| `/api/terminology/concepts/{concept_code}` | GET | 查看概念详情和当前医院映射 |
+| `/api/terminology/test` | POST | 测试自然语言术语识别和 SQL 可用性 |
+| `/api/terminology/aliases` | POST | 新建公司或医院术语候选 |
+| `/api/terminology/aliases/{alias_id}/approve` | POST | 审批术语候选 |
+| `/api/terminology/hospital-mappings` | POST | 新建本院编码和值映射 |
+| `/api/terminology/hospital-mappings/{mapping_id}/approve` | POST | 审批本院编码和值映射 |
+| `/api/terminology/releases` | GET | 查看术语版本 |
+| `/api/terminology/releases/publish` | POST | 发布当前已审核术语版本 |
+| `/api/terminology/releases/{release_id}/restore` | POST | 回退到历史术语版本 |
 | `/api/sql/generate` | POST | 生成或试运行 SQL |
 | `/api/diagnose/run` | POST | 执行异常诊断 |
 | `/api/kb/export` | GET | 导出医院知识库 zip |

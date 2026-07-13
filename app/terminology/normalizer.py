@@ -51,7 +51,7 @@ class TerminologyNormalizer:
         normalized = original
         for start, end, replacement in sorted(replacements, reverse=True):
             normalized = normalized[:start] + replacement + normalized[end:]
-        unsafe = any(item.relation_type in {"related", "forbidden"} for item in matches)
+        unsafe = any(_blocks_sql(item) for item in matches)
         return TermNormalizationResult(
             original_text=original,
             normalized_text=normalized,
@@ -74,6 +74,20 @@ class TerminologyNormalizer:
         representatives: dict[str, dict[str, Any]] = {}
         for entry in entries:
             representatives.setdefault(str(entry["concept_code"]), entry)
+        for alias in self.repository.list_hospital_aliases(hospital_id):
+            representative = representatives.get(str(alias["concept_code"]))
+            if representative is None:
+                continue
+            entries.append(
+                {
+                    **representative,
+                    "text": str(alias["alias_text"]),
+                    "relation_type": str(alias["relation_type"]),
+                    "retrieval_enabled": bool(alias["retrieval_enabled"]),
+                    "sql_safe": bool(alias["sql_safe"]),
+                    "source": "hospital",
+                }
+            )
         for mapping in self.repository.active_hospital_mappings(hospital_id):
             representative = representatives.get(str(mapping["concept_code"]))
             if representative is None:
@@ -147,6 +161,15 @@ class TerminologyNormalizer:
         if url.drivername.startswith("sqlite"):
             return f"{base}:{id(engine)}"
         return base
+
+
+def _blocks_sql(match: TermMatch) -> bool:
+    if match.relation_type in {"related", "forbidden"}:
+        return True
+    if match.sql_safe:
+        return False
+    # 指标名称只负责定位规则；临床词和业务值进入统计条件前必须明确标记安全。
+    return bool(match.business_field_keys) or not bool(match.linked_rule_ids)
 
 
 def _entry(

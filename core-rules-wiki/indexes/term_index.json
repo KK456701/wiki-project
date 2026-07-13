@@ -6,6 +6,7 @@
     "definition": "入院后48小时内发生转科的患者占同期入院患者的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "入院48小时转科率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -16,6 +17,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "48小时内转科比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -38,6 +40,7 @@
     "definition": "入院后8小时内完成规定查房的患者比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "入院8小时查房率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -48,11 +51,23 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "8小时内查房比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
         "sql_safe": false,
         "ambiguity_group": null,
+        "source_reference": "MQSI2025_002",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "hospital_id": "",
+        "alias_text": "查房率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": "ward_round_rate",
         "source_reference": "MQSI2025_002",
         "approval_status": "approved",
         "version": 1
@@ -70,6 +85,7 @@
     "definition": "上级医师查房记录符合规范要求的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "上级医师查房规范率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -80,11 +96,23 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "上级医生查房记录合规率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
         "sql_safe": false,
         "ambiguity_group": null,
+        "source_reference": "MQSI2025_003",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "hospital_id": "",
+        "alias_text": "查房率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": "ward_round_rate",
         "source_reference": "MQSI2025_003",
         "approval_status": "approved",
         "version": 1
@@ -102,6 +130,7 @@
     "definition": "住院患者发生非计划手术的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "非计划手术率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -112,6 +141,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "非预期手术比例",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -134,6 +164,7 @@
     "definition": "急会诊请求发出后在规定时限内到位的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "急会诊到位率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -144,6 +175,18 @@
         "version": 1
       },
       {
+        "hospital_id": "",
+        "alias_text": "急会诊响应率",
+        "relation_type": "abbreviation",
+        "retrieval_enabled": true,
+        "sql_safe": false,
+        "ambiguity_group": null,
+        "source_reference": "MQSI2025_005",
+        "approval_status": "approved",
+        "version": 1
+      },
+      {
+        "hospital_id": "",
         "alias_text": "急会诊响应及时率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -154,6 +197,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "急诊会诊到位率",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -176,6 +220,7 @@
     "definition": "急会诊达到有效会诊要求的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "紧急会诊有效率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -186,6 +231,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "急会诊有效比例",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -208,6 +254,7 @@
     "definition": "普通会诊在规定时限内完成的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "普通会诊按时完成率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -218,6 +265,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "普通会诊及时率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -240,6 +288,7 @@
     "definition": "普通会诊达到有效会诊要求的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "一般会诊有效率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -250,6 +299,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "普通会诊有效比例",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -272,6 +322,7 @@
     "definition": "手术患者在特级护理或一级护理状态下出院的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "手术患者高等级护理出院率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -282,6 +333,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "特级一级护理出院比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -304,6 +356,7 @@
     "definition": "四级手术患者在手术当日完成床旁交接班的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "四级手术当日床旁交接率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -314,6 +367,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "四级手术床旁交班比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -336,6 +390,7 @@
     "definition": "非计划再次住院或手术患者完成疑难病例讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "非计划再入院疑难讨论完成率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -346,6 +401,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "非计划再手术疑难病例讨论率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -368,6 +424,7 @@
     "definition": "非计划再次住院或手术患者疑难病例讨论记录完整的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "非计划再入院疑难讨论记录完整率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -378,6 +435,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "非计划再手术讨论记录合规率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -400,6 +458,7 @@
     "definition": "高额异常费用患者开展疑难病例讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "高额费用患者疑难讨论率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -410,6 +469,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "异常高费用病例讨论比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -432,6 +492,7 @@
     "definition": "急危重症患者抢救成功的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "急危重症抢救成功率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -442,6 +503,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "危重患者抢救成功比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -464,6 +526,7 @@
     "definition": "按要求完成术前讨论的手术比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "手术前讨论完成率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -474,6 +537,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "术前讨论执行率",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -496,6 +560,7 @@
     "definition": "术者参加术前讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "主刀参加术前讨论率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -506,6 +571,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "手术医师术前讨论参与率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -528,6 +594,7 @@
     "definition": "术前讨论确定的计划手术与计划记录一致的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "术前讨论与手术计划一致率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -538,6 +605,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "讨论手术方案一致率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -560,6 +628,7 @@
     "definition": "实际术者与计划术者一致的手术比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "实际主刀与计划主刀一致率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -570,6 +639,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "手术术者计划一致率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -592,6 +662,7 @@
     "definition": "死亡病例在5日内完成讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "死亡病例五日讨论完成率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -602,6 +673,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "死亡病例讨论及时率",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -624,6 +696,7 @@
     "definition": "医务部门组织讨论的死亡病例数与发生纠纷的死亡病例数之比。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "医务处组织死亡讨论与纠纷死亡比",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -634,6 +707,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "纠纷死亡病例组织讨论比值",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -656,6 +730,7 @@
     "definition": "由科主任主持死亡病例讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "科主任死亡病例讨论主持率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -666,6 +741,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "主任主持死亡讨论比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -688,6 +764,7 @@
     "definition": "死亡患者病案按要求上传的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "死亡病案上传率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -698,6 +775,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "死亡病例病历上报率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -720,6 +798,7 @@
     "definition": "应终止的长期医嘱在当日完成终止的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "长嘱当日停止率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -730,6 +809,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "长期医嘱当天终止比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -752,6 +832,7 @@
     "definition": "同一手术医师负责的手术时间发生重合的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "手术医生手术时间冲突率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -762,6 +843,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "术者手术时间重叠率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -784,6 +866,7 @@
     "definition": "同一麻醉医师负责的手术时间发生重合的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "麻醉医生手术时间冲突率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -794,6 +877,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "麻醉医师手术时间重叠率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -816,6 +900,7 @@
     "definition": "四级手术并发症发生率与三级手术并发症发生率的比值。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "四三级手术并发症率比",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -826,6 +911,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "四级对三级手术并发症比",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -848,6 +934,7 @@
     "definition": "四级手术患者死亡率与三级手术患者死亡率的比值。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "四三级手术死亡率比",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -858,6 +945,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "四级对三级手术死亡比",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -880,6 +968,7 @@
     "definition": "四级手术术前完成多学科讨论的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "四级手术术前MDT完成率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -890,6 +979,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "四级手术多学科术前讨论率",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -912,6 +1002,7 @@
     "definition": "三、四级手术实际开展情况的比例指标。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "三四级手术开展率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -922,6 +1013,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "高等级手术实际开展比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -944,6 +1036,7 @@
     "definition": "新技术新项目形成稳定留存或转化的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "新技术项目转化率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -954,6 +1047,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "新项目留存率",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -976,6 +1070,7 @@
     "definition": "危急值从确认到报告所经历的时间。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "危急值上报时间",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -986,6 +1081,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "危急值报告时长",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -1008,6 +1104,7 @@
     "definition": "住院患者危急值在当日得到及时处置的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "住院危急值当日处置率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -1018,6 +1115,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "危急值当天及时处理率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -1040,6 +1138,7 @@
     "definition": "使用特殊使用级抗菌药物前完成规定会诊的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "特殊级抗菌药会诊率",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -1050,6 +1149,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "特殊使用抗生素会诊比例",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -1072,6 +1172,7 @@
     "definition": "临床用血后按要求完成评估记录的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "输血后评估记录率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -1082,6 +1183,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "用血后评价记录比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -1104,6 +1206,7 @@
     "definition": "术中输血患者实施自体血回输的比例。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "术中自体血回输比例",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -1114,6 +1217,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "术中自体输血率",
         "relation_type": "colloquial",
         "retrieval_enabled": true,
@@ -1136,6 +1240,7 @@
     "definition": "上呼吸道发生的急性感染性疾病概念；具体编码以本院诊断字典为准。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "上感",
         "relation_type": "abbreviation",
         "retrieval_enabled": true,
@@ -1146,6 +1251,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "感冒",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -1166,6 +1272,7 @@
     "definition": "需要在规定紧急时限内响应的会诊。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "紧急会诊",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -1176,6 +1283,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "急诊会诊",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -1199,6 +1307,7 @@
     "definition": "按指标口径判定为抢救成功的状态。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "救治成功",
         "relation_type": "related",
         "retrieval_enabled": true,
@@ -1209,6 +1318,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "治愈",
         "relation_type": "forbidden",
         "retrieval_enabled": false,
@@ -1231,6 +1341,7 @@
     "definition": "可能危及患者生命、需要立即报告和处置的检验检查结果。",
     "aliases": [
       {
+        "hospital_id": "",
         "alias_text": "危急结果",
         "relation_type": "exact",
         "retrieval_enabled": true,
@@ -1241,6 +1352,7 @@
         "version": 1
       },
       {
+        "hospital_id": "",
         "alias_text": "异常值",
         "relation_type": "forbidden",
         "retrieval_enabled": false,
