@@ -71,6 +71,7 @@
 |   +-- rebuild_runtime_indexes.py
 |   +-- init_runtime_db.sql
 |   +-- init_demo_hospital_db.sql
+|   +-- seed_demo_hospital_data.py
 |   +-- import_four_indicator_rules.py
 |   +-- kb_agent_demo.py
 +-- tests/
@@ -130,6 +131,20 @@ business_db_dialect: "mysql"
 mysql -uroot -p123456 < scripts\init_runtime_db.sql
 mysql -uroot -p123456 < scripts\init_demo_hospital_db.sql
 ```
+
+`init_demo_hospital_db.sql` 只包含用于快速冒烟测试的少量记录。需要验证同比、环比、边界值和数据质量诊断时，先预览真实规模模拟数据：
+
+```powershell
+python scripts\seed_demo_hospital_data.py
+```
+
+默认生成 2025 年 1 月至 2026 年 7 月共 19 个月、约 3.6 万条虚构业务记录，包含四个指标的临界值、2026 年 6 月波动和可插入的数据质量异常。确认预览后执行：
+
+```powershell
+python scripts\seed_demo_hospital_data.py --profile realistic --apply
+```
+
+`--apply` 会在一个事务内清空并重建四张演示业务表，只允许连接名称以 `_demo_data` 结尾的数据库。使用 `--profile baseline` 可生成不含质量异常的正常基线；同一随机种子重复执行会得到相同数据，便于复现问题。
 
 如果运行库来自旧版本，建表命令不会自动给已存在表补列。拉取新版本后再执行一次幂等迁移：
 
