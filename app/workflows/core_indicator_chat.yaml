@@ -51,7 +51,7 @@ nodes:
     type: kb_tool
     description: 优先在 MySQL 规则库中查找指标；未迁移或数据库异常时只读回退 Wiki，并解析 rule_id。
     inputs: [retrieval_query, hospital_id]
-    outputs: [rule_id, matched_documents, search_score]
+    outputs: [rule_id, matched_count, context_source]
     required: true
     on_failure: stop
     required_inputs: [retrieval_query]
@@ -67,11 +67,11 @@ nodes:
     type: kb_tool
     description: 以国标为基础，合入本院已审批且处于生效期的差异项，生成本院执行口径，不修改国标原始记录。
     inputs: [rule_id, hospital_id]
-    outputs: [effective_rule, effective_level]
+    outputs: [rule_id, effective_level, rule_source, national_version, hospital_version, overridden_fields, fallback_chain, warnings]
     required: true
     on_failure: stop
     required_inputs: [rule_id]
-    required_outputs: [effective_rule, effective_level]
+    required_outputs: [rule_id, effective_level, rule_source]
     config:
       tool: RuleRepository.get_effective_rule
     failure_hint: 如果这里失败，优先检查 MySQL 国标、本院定制口径及生效时间；数据库异常时再检查 Wiki 兜底规则。
@@ -248,7 +248,7 @@ nodes:
     type: agent
     description: 汇总前面节点结果，写入会话记忆并返回用户可见答案。
     inputs: [intent, rule_id, generation_method, errors]
-    outputs: [answer, trace_id, final_status]
+    outputs: [answer_preview, trace_id, final_status]
     config:
       storage: ConversationMemory + TraceRecorder
     failure_hint: 如果这里失败，优先检查前面失败节点、会话记忆写入和 SSE 返回。

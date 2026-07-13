@@ -50,6 +50,40 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(node["title"], "合成本院生效口径")
         self.assertIn("不修改国标", node["description"])
 
+    def test_core_trace_contract_matches_safe_runtime_payloads(self) -> None:
+        search = get_workflow_node("core_indicator_chat", "rule_search")
+        effective = get_workflow_node(
+            "core_indicator_chat", "effective_rule_resolve"
+        )
+        final = get_workflow_node("core_indicator_chat", "final_response")
+
+        self.assertEqual(
+            search["outputs"], ["rule_id", "matched_count", "context_source"]
+        )
+        self.assertEqual(
+            effective["required_outputs"],
+            ["rule_id", "effective_level", "rule_source"],
+        )
+        self.assertIn("answer_preview", final["outputs"])
+
+        annotated = annotate_trace_node(
+            {
+                "node_name": "effective_rule_resolve",
+                "status": "success",
+                "input_data": {
+                    "rule_id": "MQSI2025_005",
+                    "hospital_id": "hospital_001",
+                },
+                "output_data": {
+                    "rule_id": "MQSI2025_005",
+                    "effective_level": "hospital",
+                    "rule_source": "mysql",
+                },
+            }
+        )
+        self.assertEqual(annotated["contract_status"], "ok")
+        self.assertEqual(annotated["missing_outputs"], [])
+
     def test_diagnose_rule_node_declares_dual_caliber_execution(self) -> None:
         node = get_workflow_node("core_indicator_chat", "diagnose_rule_check")
 

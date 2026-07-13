@@ -917,7 +917,8 @@ class ApiTest(unittest.TestCase):
         html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
 
         self.assertIn("系统自检", html)
-        self.assertIn("阶段耗时总览", html)
+        self.assertIn("执行耗时", html)
+        self.assertIn("已记录阶段耗时", html)
         self.assertIn("最慢节点", html)
         self.assertIn("输入输出检查", html)
         self.assertIn("必要输入", html)

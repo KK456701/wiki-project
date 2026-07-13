@@ -1320,9 +1320,9 @@ function agentOwnerName(value) {
   })[value] || value || "未指定";
 }
 
-function renderTraceTimingSummary(nodes) {
+function renderTraceTimingSummary(nodes, totalDurationMs) {
   var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
-  var totalMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
+  var recordedStageMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
   var slowest = timedNodes.reduce(function(current, node) {
     if (!current || Number(node.duration_ms || 0) > Number(current.duration_ms || 0)) return node;
     return current;
@@ -1333,15 +1333,19 @@ function renderTraceTimingSummary(nodes) {
   head.className = "self-check-head";
   var name = document.createElement("div");
   name.className = "self-check-name";
-  name.textContent = "阶段耗时总览";
+  name.textContent = "执行耗时";
   var status = document.createElement("span");
   status.className = "self-check-status";
-  status.textContent = formatTraceDuration(totalMs);
+  status.textContent = formatTraceDuration(totalDurationMs);
   head.append(name, status);
   var desc = document.createElement("div");
   desc.className = "self-check-desc";
   desc.textContent = "已计时节点：" + timedNodes.length + " / " + nodes.length;
   box.append(head, desc);
+  var recorded = document.createElement("div");
+  recorded.className = "review-meta";
+  recorded.textContent = "已记录阶段耗时：" + formatTraceDuration(recordedStageMs);
+  box.appendChild(recorded);
   if (slowest) {
     var slow = document.createElement("div");
     slow.className = "review-meta";
@@ -1362,7 +1366,7 @@ async function showTrace(traceId) {
     traceNodeList.innerHTML = "";
     var nodes = data.nodes || [];
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
-    traceNodeList.appendChild(renderTraceTimingSummary(nodes));
+    traceNodeList.appendChild(renderTraceTimingSummary(nodes, data.duration_ms));
     nodes.forEach(function(node) {
       var box = document.createElement("div");
       box.className = "review-item trace-node " + (node.status || "");
