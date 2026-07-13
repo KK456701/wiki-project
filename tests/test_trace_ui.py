@@ -33,9 +33,9 @@ class TraceUiTest(unittest.TestCase):
         ):
             self.assertIn(marker, html)
         self.assertIn(
-            'node.status === "success" && node.contract_status === "ok"', html
+            'visualStatus === "success" && node.contract_status === "ok"', html
         )
-        self.assertIn('status.textContent = traceStatusText(node.status)', html)
+        self.assertIn('status.textContent = traceNodeStatus(node)', html)
         self.assertIn("if (!nodeHealthy && node.failure_hint)", html)
 
     def test_trace_timeline_shows_duration_share_and_bottleneck(self) -> None:
@@ -53,6 +53,20 @@ class TraceUiTest(unittest.TestCase):
         ):
             self.assertIn(marker, html)
         self.assertIn("renderTraceTimeline(nodes, data.duration_ms)", html)
+
+    def test_diagnose_nodes_use_business_specific_status_labels(self) -> None:
+        html = WEB_INDEX.read_text(encoding="utf-8")
+
+        self.assertIn("function traceNodeStatus", html)
+        self.assertIn("function traceNodeVisualStatus", html)
+        self.assertIn('node.node_name === "diagnose_structure_mcp"', html)
+        self.assertIn('node.node_name === "diagnose_rule_check"', html)
+        self.assertIn('node.node_name === "diagnose_data_check_mcp"', html)
+        self.assertIn('return "口径有差异"', html)
+        self.assertIn('return "发现数据风险"', html)
+        self.assertIn('return "通过"', html)
+        self.assertIn("traceNodeVisualStatus(node)", html)
+        self.assertIn("status.textContent = traceNodeStatus(node)", html)
 
 
 if __name__ == "__main__":

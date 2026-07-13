@@ -1362,6 +1362,34 @@ function traceStatusText(value) {
   })[value] || "未知";
 }
 
+function traceNodeStatus(node) {
+  var output = traceObject(node.output_data);
+  if (node.status === "failed") return "失败";
+  if (node.status === "fallback") return "已回退";
+  if (node.node_name === "diagnose_structure_mcp") {
+    if (output.ok === false) return "结构校验失败";
+    return "通过";
+  }
+  if (node.node_name === "diagnose_rule_check") {
+    var comparison = traceObject(output.caliber_comparison);
+    var conclusionCode = output.conclusion_code || comparison.conclusion_code;
+    if (conclusionCode === "caliber_result_diff") return "口径有差异";
+    if (node.status === "warning") return "口径需确认";
+    return "通过";
+  }
+  if (node.node_name === "diagnose_data_check_mcp") {
+    if (node.status === "warning") return "发现数据风险";
+    return "通过";
+  }
+  return traceStatusText(node.status);
+}
+
+function traceNodeVisualStatus(node) {
+  var output = traceObject(node.output_data);
+  if (node.node_name === "diagnose_structure_mcp" && output.ok !== false) return "success";
+  return node.status || "";
+}
+
 function traceIntentText(value) {
   return ({
     query: "指标口径查询",
@@ -1388,6 +1416,18 @@ function traceObject(value) {
 
 function traceBusinessSummary(node) {
   var output = traceObject(node.output_data);
+  if (node.node_name === "diagnose_structure_mcp") {
+    return output.ok === false ? "数据库结构或字段映射未通过校验" : "数据库结构与字段映射校验通过";
+  }
+  if (node.node_name === "diagnose_rule_check") {
+    var comparison = traceObject(output.caliber_comparison);
+    var conclusionCode = output.conclusion_code || comparison.conclusion_code;
+    if (conclusionCode === "caliber_result_diff") return "国标口径与本院生效口径结果不同";
+    return node.status === "warning" ? "口径规则存在需要确认的内容" : "口径规则校验通过";
+  }
+  if (node.node_name === "diagnose_data_check_mcp") {
+    return node.status === "warning" ? "检测到样本量、空值或异常数据风险" : "数据质量检查通过";
+  }
   if (node.node_name === "memory_load") {
     return Object.keys(traceObject(output.memory_context)).length ? "已读取上轮指标上下文" : "无历史指标上下文";
   }
@@ -1591,8 +1631,9 @@ async function showTrace(traceId) {
     traceNodeList.appendChild(renderTraceTimeline(nodes, data.duration_ms));
     nodes.forEach(function(node, index) {
       var box = document.createElement("div");
-      box.className = "review-item trace-node " + (node.status || "");
-      var nodeHealthy = node.status === "success" && node.contract_status === "ok";
+      var visualStatus = traceNodeVisualStatus(node);
+      box.className = "review-item trace-node " + visualStatus;
+      var nodeHealthy = visualStatus === "success" && node.contract_status === "ok";
       var titleRow = document.createElement("div");
       titleRow.className = "trace-title-row";
       var titleWrap = document.createElement("div");
@@ -1616,7 +1657,7 @@ async function showTrace(traceId) {
       duration.textContent = formatTraceDuration(node.duration_ms);
       var status = document.createElement("span");
       status.className = "trace-status";
-      status.textContent = traceStatusText(node.status);
+      status.textContent = traceNodeStatus(node);
       if (!nodeHealthy && node.status === "success") {
         var contractWarning = document.createElement("span");
         contractWarning.className = "trace-status";
