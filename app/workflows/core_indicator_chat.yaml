@@ -45,6 +45,23 @@ nodes:
       prompt: app/prompts/intent.txt
     failure_hint: 如果这里失败，优先检查意图识别 prompt、Ollama 状态或规则兜底逻辑。
 
+  - id: term_normalize
+    agent_owner: caliber_adaptation
+    title: 标准化医学术语
+    type: terminology
+    description: 将指标别名、医学简称和本院术语归一为标准概念；相关词仅辅助检索，未审批的本院值不得进入 SQL。
+    inputs: [retrieval_query, hospital_id]
+    outputs: [normalized_query, matched_concepts, ambiguity_count, sql_eligible, release_version]
+    required: true
+    on_failure: continue
+    required_inputs: [retrieval_query]
+    required_outputs: [normalized_query, matched_concepts, sql_eligible]
+    config:
+      source: MySQL 医学术语库
+      fallback: 保留原检索词继续查询
+      sql_policy: 仅使用已审批且 SQL 安全的本院映射
+    failure_hint: 如果这里失败，先检查术语发布版本和 MySQL 术语表；涉及 SQL 时再检查本院术语映射是否已审批。
+
   - id: rule_search
     agent_owner: caliber_adaptation
     title: 检索指标规则
@@ -262,8 +279,10 @@ edges:
     to: final_response
     condition: intent == chat
   - from: intent_detect
-    to: rule_search
+    to: term_normalize
     condition: intent in [query, feedback, generate_sql, trial_run, diagnose]
+  - from: term_normalize
+    to: rule_search
   - from: intent_detect
     to: metadata_sync_mcp
     condition: intent == metadata_sync

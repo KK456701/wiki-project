@@ -112,6 +112,49 @@ class SqlGenerationSafetyTest(unittest.TestCase):
         self.assertIn("mysql_repository_marker", result["sql_text"])
         self.assertEqual(result["params"]["arrive_minutes_threshold"], 20)
 
+    def test_approved_term_binding_overrides_static_mapping_value(self) -> None:
+        class FakeRepository:
+            def get_field_mapping(self, rule_id, hospital_id):
+                return {
+                    "dialect": "mysql",
+                    "main_table": "consult_record",
+                    "fields": {
+                        "hospital_id": "consult_record.hospital_id",
+                        "consult_type": "consult_record.consult_type",
+                    },
+                    "filters": {"consult_type_value": "旧默认值"},
+                }
+
+        agent = SQLGenerationAgent(
+            Path("core-rules-wiki"),
+            object(),
+            object(),
+            rule_repository=FakeRepository(),
+        )
+        template = (
+            "SELECT 1 AS index_value FROM {{ main_table }} "
+            "WHERE {{ fields.hospital_id }}=:hospital_id "
+            "AND {{ fields.consult_type }}=:consult_type_value"
+        )
+        with patch("app.sqlgen.agent.insert_generated_sql"):
+            result = agent.generate(
+                query="统计紧急会诊",
+                hospital_id="hospital_001",
+                rule_id="MQSI2025_005",
+                effective_rule={"standard_sql": template, "effective_params": {}},
+                stat_start_time="2026-07-01",
+                stat_end_time="2026-08-01",
+                precheck={"ok": True},
+                term_bindings=[
+                    {
+                        "parameter_name": "consult_type_value",
+                        "values": ["urgent"],
+                    }
+                ],
+            )
+
+        self.assertEqual(result["params"]["consult_type_value"], "urgent")
+
     def test_trial_run_marks_zero_denominator_as_no_sample(self) -> None:
         class FakeBusinessDB:
             def execute_select(self, sql):

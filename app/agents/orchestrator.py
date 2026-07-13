@@ -16,6 +16,7 @@ from app.agents.contracts import (
     RuleSearchResult,
     SQLGenerationResult,
 )
+from app.terminology.sql_binding import resolve_sql_bindings
 
 INTENT_OWNERS = {
     "chat": "human_interaction",
@@ -41,12 +42,18 @@ class CoreIndicatorOrchestrator:
         indicator_generation: Any,
         diagnosis: Any,
         metadata: Any,
+        terminology_normalizer: Any | None = None,
+        terminology_repository: Any | None = None,
+        term_binding_resolver: Any | None = None,
     ):
         self.interaction = interaction
         self.caliber = caliber
         self.indicator_generation = indicator_generation
         self.diagnosis_agent = diagnosis
         self.metadata = metadata
+        self.terminology_normalizer = terminology_normalizer
+        self.terminology_repository = terminology_repository
+        self.term_binding_resolver = term_binding_resolver or resolve_sql_bindings
 
     @staticmethod
     def owner_for_intent(intent: str) -> str:
@@ -61,6 +68,7 @@ class CoreIndicatorOrchestrator:
         errors: list[str] = []
         understood = self.understand_request(query, memory_context, errors)
         prepared = self.create_request(query, hospital_id, understood, errors)
+        self.normalize_request(prepared)
         self.search_request(prepared, memory_context)
         self.resolve_request(prepared)
         return prepared
@@ -106,6 +114,9 @@ class CoreIndicatorOrchestrator:
         if prepared.intent not in RULE_INTENTS:
             return prepared
 
+        if prepared.term_normalization is None:
+            self.normalize_request(prepared)
+
         if prepared.hospital_id and hasattr(
             self.caliber, "search_for_hospital_contract"
         ):
@@ -134,6 +145,26 @@ class CoreIndicatorOrchestrator:
             prepared.rule_id = str(memory_context["rule_id"])
             prepared.search["resolved_rule_id"] = prepared.rule_id
             prepared.search["context_source"] = "memory_last_rule"
+        return prepared
+
+    def normalize_request(self, prepared: PreparedRequest) -> PreparedRequest:
+        if (
+            prepared.intent not in RULE_INTENTS
+            or self.terminology_normalizer is None
+            or prepared.term_normalization is not None
+            or prepared.term_normalization_error is not None
+        ):
+            return prepared
+        try:
+            result = self.terminology_normalizer.normalize(
+                prepared.retrieval_query or prepared.query,
+                prepared.hospital_id,
+            )
+            prepared.term_normalization = result
+            if result.normalized_text:
+                prepared.retrieval_query = result.normalized_text
+        except Exception as exc:
+            prepared.term_normalization_error = str(exc)
         return prepared
 
     def resolve_request(self, prepared: PreparedRequest) -> PreparedRequest:
@@ -245,6 +276,35 @@ class CoreIndicatorOrchestrator:
                 ),
                 node_timings={"field_mapping_precheck": precheck_duration_ms},
             ).model_dump(by_alias=True, exclude_none=True)
+        term_bindings: list[dict[str, Any]] = []
+        if (
+            prepared.term_normalization is not None
+            and self.terminology_repository is not None
+        ):
+            binding_started = time.perf_counter()
+            binding_result = self.term_binding_resolver(
+                prepared.term_normalization,
+                str(prepared.hospital_id or ""),
+                str(prepared.rule_id),
+                self.terminology_repository,
+            )
+            binding_duration_ms = max(
+                1, int((time.perf_counter() - binding_started) * 1000)
+            )
+            if not binding_result.ok:
+                return SQLGenerationResult(
+                    status=(binding_result.problem_code or "TERM_BINDING_FAILED").lower(),
+                    precheck=precheck_contract,
+                    message=binding_result.message,
+                    node_timings={
+                        "field_mapping_precheck": precheck_duration_ms,
+                        "term_sql_binding": binding_duration_ms,
+                    },
+                ).model_dump(by_alias=True, exclude_none=True)
+            term_bindings = [
+                item.model_dump(exclude_none=True)
+                for item in binding_result.bindings
+            ]
         generate = getattr(
             self.indicator_generation,
             "generate_contract",
@@ -262,6 +322,7 @@ class CoreIndicatorOrchestrator:
             generated_by=generated_by,
             persist_run_result=persist_run_result,
             custom_filters=[item.model_dump() for item in prepared.custom_filters],
+            term_bindings=term_bindings,
         )
         contract = (
             result

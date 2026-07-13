@@ -10,6 +10,8 @@ from app.terminology.contracts import (
     TermMatch,
     TermNormalizationResult,
     TermRuleLink,
+    TermSQLBinding,
+    TermSQLBindingResult,
 )
 
 __all__ = [
@@ -22,4 +24,6 @@ __all__ = [
     "TermMatch",
     "TermNormalizationResult",
     "TermRuleLink",
+    "TermSQLBinding",
+    "TermSQLBindingResult",
 ]

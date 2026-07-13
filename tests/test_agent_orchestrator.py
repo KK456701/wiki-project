@@ -1,5 +1,12 @@
 import unittest
 
+from app.terminology.contracts import (
+    TermMatch,
+    TermNormalizationResult,
+    TermSQLBinding,
+    TermSQLBindingResult,
+)
+
 
 class _FakeInteraction:
     agent_id = "human_interaction"
@@ -106,7 +113,42 @@ class _FakeDomainAgent:
         }
 
 
-def _orchestrator(intent="query", resolve_rule=True):
+class _FakeTerminologyNormalizer:
+    def __init__(self):
+        self.calls = []
+
+    def normalize(self, text, hospital_id=None):
+        self.calls.append((text, hospital_id))
+        return TermNormalizationResult(
+            original_text=text,
+            normalized_text=text.replace("急会诊响应及时率", "急会诊及时到位率"),
+            matches=[
+                TermMatch(
+                    matched_text="急会诊响应及时率",
+                    concept_code="IND_MQSI2025_005",
+                    canonical_name="急会诊及时到位率",
+                    relation_type="colloquial",
+                    retrieval_enabled=True,
+                    sql_safe=True,
+                    linked_rule_ids=["MQSI2025_005"],
+                )
+            ],
+            release_version="TERM_TEST",
+            sql_eligible=True,
+        )
+
+
+class _FakeTerminologyRepository:
+    pass
+
+
+def _orchestrator(
+    intent="query",
+    resolve_rule=True,
+    terminology_normalizer=None,
+    terminology_repository=None,
+    term_binding_resolver=None,
+):
     from app.agents.orchestrator import CoreIndicatorOrchestrator
 
     interaction = _FakeInteraction(intent)
@@ -120,11 +162,100 @@ def _orchestrator(intent="query", resolve_rule=True):
         indicator_generation=indicator,
         diagnosis=diagnosis,
         metadata=metadata,
+        terminology_normalizer=terminology_normalizer,
+        terminology_repository=terminology_repository,
+        term_binding_resolver=term_binding_resolver,
     )
     return orchestrator, interaction, caliber, indicator, diagnosis, metadata
 
 
 class AgentOrchestratorTest(unittest.TestCase):
+    def test_normalizes_medical_terms_before_rule_search(self) -> None:
+        normalizer = _FakeTerminologyNormalizer()
+        orchestrator, _, caliber, *_ = _orchestrator(
+            terminology_normalizer=normalizer
+        )
+
+        prepared = orchestrator.prepare(
+            "急会诊响应及时率怎么算？", "hospital_001"
+        )
+
+        self.assertEqual(
+            prepared.term_normalization.normalized_text,
+            "急会诊及时到位率",
+        )
+        self.assertEqual(prepared.retrieval_query, "急会诊及时到位率")
+        self.assertEqual(normalizer.calls, [("急会诊及时到位率", "hospital_001")])
+        self.assertEqual(caliber.calls[0][1], "急会诊及时到位率")
+
+    def test_passes_only_resolved_hospital_term_values_to_sql_agent(self) -> None:
+        normalizer = _FakeTerminologyNormalizer()
+
+        def resolve_bindings(normalization, hospital_id, rule_id, repository):
+            self.assertEqual(normalization.release_version, "TERM_TEST")
+            self.assertEqual(hospital_id, "hospital_001")
+            self.assertEqual(rule_id, "MQSI2025_005")
+            return TermSQLBindingResult(
+                ok=True,
+                bindings=[
+                    TermSQLBinding(
+                        concept_code="CONSULT_URGENT",
+                        business_field_key="consult_type",
+                        parameter_name="consult_type_value",
+                        values=["urgent"],
+                    )
+                ],
+            )
+
+        orchestrator, _, _, indicator, _, _ = _orchestrator(
+            terminology_normalizer=normalizer,
+            terminology_repository=_FakeTerminologyRepository(),
+            term_binding_resolver=resolve_bindings,
+        )
+        prepared = orchestrator.prepare(
+            "急会诊响应及时率怎么算？", "hospital_001"
+        )
+
+        result = orchestrator.generate_indicator(
+            prepared,
+            stat_start_time="2026-07-01 00:00:00",
+            stat_end_time="2026-08-01 00:00:00",
+        )
+
+        self.assertEqual(result["sql_id"], "SQL_001")
+        self.assertEqual(
+            indicator.calls[0]["term_bindings"][0]["values"], ["urgent"]
+        )
+
+    def test_stops_sql_generation_when_term_mapping_is_missing(self) -> None:
+        normalizer = _FakeTerminologyNormalizer()
+
+        def reject_bindings(*args, **kwargs):
+            return TermSQLBindingResult(
+                ok=False,
+                problem_code="TERM_LOCAL_MAPPING_REQUIRED",
+                message="本院尚未配置对应编码。",
+                missing_concepts=["CONSULT_URGENT"],
+            )
+
+        orchestrator, _, _, indicator, _, _ = _orchestrator(
+            terminology_normalizer=normalizer,
+            terminology_repository=_FakeTerminologyRepository(),
+            term_binding_resolver=reject_bindings,
+        )
+        prepared = orchestrator.prepare(
+            "急会诊响应及时率怎么算？", "hospital_001"
+        )
+
+        result = orchestrator.generate_indicator(
+            prepared,
+            stat_start_time="2026-07-01 00:00:00",
+            stat_end_time="2026-08-01 00:00:00",
+        )
+
+        self.assertEqual(result["status"], "term_local_mapping_required")
+        self.assertEqual(indicator.calls, [])
+
     def test_routes_each_intent_to_one_specialized_agent(self) -> None:
         orchestrator, *_ = _orchestrator()
         expected = {

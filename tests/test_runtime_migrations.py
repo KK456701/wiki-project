@@ -1,6 +1,25 @@
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy import create_engine, inspect, text
+
+
+class DatabaseEnginePoolTest(unittest.TestCase):
+    def test_runtime_engine_reuses_pool_for_same_database_url(self) -> None:
+        from app.db import engine as engine_module
+
+        engine_module._create_cached_engine.cache_clear()
+        with patch.object(
+            engine_module,
+            "get",
+            return_value="sqlite+pysqlite:///runtime-engine-cache-test.db",
+        ):
+            first = engine_module.create_runtime_engine()
+            second = engine_module.create_runtime_engine()
+
+        self.assertIs(first, second)
+        first.dispose()
+        engine_module._create_cached_engine.cache_clear()
 
 
 class RuntimeMigrationTest(unittest.TestCase):

@@ -50,6 +50,18 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(node["title"], "合成本院生效口径")
         self.assertIn("不修改国标", node["description"])
 
+    def test_medical_term_normalization_runs_before_rule_search(self) -> None:
+        manifest = load_workflow_manifest("core_indicator_chat")
+        node = get_workflow_node("core_indicator_chat", "term_normalize")
+
+        self.assertEqual(node["title"], "标准化医学术语")
+        self.assertIn("normalized_query", node["outputs"])
+        self.assertIn("sql_eligible", node["outputs"])
+        self.assertEqual(node["on_failure"], "continue")
+        edges = {(item["from"], item["to"]) for item in manifest["edges"]}
+        self.assertIn(("intent_detect", "term_normalize"), edges)
+        self.assertIn(("term_normalize", "rule_search"), edges)
+
     def test_core_trace_contract_matches_safe_runtime_payloads(self) -> None:
         search = get_workflow_node("core_indicator_chat", "rule_search")
         effective = get_workflow_node(

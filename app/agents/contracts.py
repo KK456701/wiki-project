@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.terminology.contracts import TermNormalizationResult
+
 
 IntentType = Literal[
     "chat",
@@ -223,5 +225,7 @@ class PreparedRequest(AgentContract):
     search: RuleSearchResult | None = None
     effective_rule: EffectiveRule | None = None
     field_mapping: FieldMapping | None = None
+    term_normalization: TermNormalizationResult | None = None
+    term_normalization_error: str | None = None
     custom_filters: list[CustomFilter] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)

@@ -497,8 +497,10 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(by_name["memory_load"]["output_data"]["active_session_id"], "trace-node-session")
             self.assertEqual(by_name["effective_rule_resolve"]["node_title"], "合成本院生效口径")
             self.assertEqual(by_name["effective_rule_resolve"]["output_data"]["effective_level"], "hospital")
+            self.assertEqual(by_name["term_normalize"]["node_title"], "标准化医学术语")
+            self.assertIn("normalized_query", by_name["term_normalize"]["output_data"])
 
-            for node_name in ["memory_load", "intent_detect", "rule_search", "effective_rule_resolve", "final_response"]:
+            for node_name in ["memory_load", "intent_detect", "term_normalize", "rule_search", "effective_rule_resolve", "final_response"]:
                 self.assertGreater(by_name[node_name]["duration_ms"], 0, node_name)
 
     def test_query_accepts_rule_repository_and_traces_mysql_versions(self) -> None:

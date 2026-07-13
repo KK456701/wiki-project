@@ -12,7 +12,11 @@ from app.agents.contracts import IntentResult
 from app.agents.human_interaction import HumanInteractionAgent, detect_intent_by_rule
 from app.agents.indicator_generation import IndicatorGenerationAgent
 from app.agents.metadata_parsing import MetadataParsingAgent
-from app.agents.orchestrator import CoreIndicatorOrchestrator, PreparedRequest
+from app.agents.orchestrator import (
+    RULE_INTENTS,
+    CoreIndicatorOrchestrator,
+    PreparedRequest,
+)
 from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
 from app.config import get
 from app.db.engine import create_runtime_engine
@@ -48,6 +52,8 @@ class AgentState(TypedDict, total=False):
     workflow_engine: str
     errors: list[str]
     _node_timings: dict[str, int]
+    _term_normalization: dict[str, Any]
+    _term_normalization_error: str
 
 
 def _create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
@@ -77,6 +83,8 @@ def _create_agent_orchestrator(
 ) -> CoreIndicatorOrchestrator:
     from app.diagnose.agent import DiagnoseAgent
     from app.sqlgen.agent import SQLGenerationAgent
+    from app.terminology.normalizer import TerminologyNormalizer
+    from app.terminology.repository import TerminologyRepository
 
     runtime_engine = create_runtime_engine()
     business_db = _create_business_db_client("hospital_demo_data")
@@ -92,12 +100,15 @@ def _create_agent_orchestrator(
         business_db=business_db,
         metadata_provider=_create_metadata_provider("hospital_demo_data"),
     )
+    terminology_repository = TerminologyRepository(runtime_engine)
     return CoreIndicatorOrchestrator(
         interaction=HumanInteractionAgent(llm_client),
         caliber=CaliberAdaptationAgent(tools),
         indicator_generation=IndicatorGenerationAgent(indicator_executor),
         diagnosis=RootCauseDiagnosisAgent(diagnosis_executor),
         metadata=MetadataParsingAgent(runtime_engine, kb_root),
+        terminology_normalizer=TerminologyNormalizer(terminology_repository),
+        terminology_repository=terminology_repository,
     )
 
 
@@ -162,6 +173,8 @@ def _prepared_request_from_state(state: AgentState) -> PreparedRequest:
         search=search,
         effective_rule=effective_rule,
         field_mapping=field_mapping,
+        term_normalization=state.get("_term_normalization"),
+        term_normalization_error=state.get("_term_normalization_error"),
         custom_filters=list(state.get("_custom_filters", [])),  # type: ignore[typeddict-item]
         errors=state.setdefault("errors", []),
     )
@@ -191,6 +204,64 @@ def _apply_prepared_to_state(state: AgentState, prepared: PreparedRequest) -> No
         state["effective_rule"] = prepared.effective_rule.model_dump(exclude_none=True)
     if prepared.field_mapping is not None:
         state["field_mapping"] = prepared.field_mapping.model_dump(exclude_none=True)
+    if prepared.term_normalization is not None:
+        state["_term_normalization"] = prepared.term_normalization.model_dump(
+            exclude_none=True
+        )
+    if prepared.term_normalization_error:
+        state["_term_normalization_error"] = prepared.term_normalization_error
+
+
+def _record_term_normalize_node(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    hospital_id: str | None,
+    normalization: dict[str, Any] | None,
+    error: str = "",
+    duration_ms: int = 0,
+) -> None:
+    payload = normalization or {}
+    matches = list(payload.get("matches") or [])
+    concepts = [
+        {
+            "matched_text": item.get("matched_text"),
+            "concept_code": item.get("concept_code"),
+            "canonical_name": item.get("canonical_name"),
+            "relation_type": item.get("relation_type"),
+            "sql_safe": item.get("sql_safe", False),
+        }
+        for item in matches
+        if isinstance(item, dict)
+    ]
+    original = str(payload.get("original_text") or "")
+    normalized = str(payload.get("normalized_text") or original)
+    _record_trace_node(
+        recorder,
+        trace_id,
+        "term_normalize",
+        "terminology",
+        "fallback" if error else "success",
+        input_summary=original,
+        output_summary=(
+            "术语库不可用，保留原检索词"
+            if error
+            else f"命中 {len(concepts)} 个标准概念"
+        ),
+        input_data={"retrieval_query": original, "hospital_id": hospital_id},
+        output_data={
+            "normalized_query": normalized,
+            "matched_concepts": concepts,
+            "ambiguity_count": len(payload.get("ambiguities") or []),
+            "sql_eligible": bool(payload.get("sql_eligible")),
+            "release_version": payload.get("release_version") or "unavailable",
+            "fallback_reason": error or None,
+        },
+        config_data={
+            "source": "MySQL 医学术语库",
+            "sql_policy": "仅使用已审批且 SQL 安全的本院映射",
+        },
+        duration_ms=duration_ms,
+    )
 
 
 def _finish_trace(
@@ -409,6 +480,9 @@ def _run_deterministic(
         state["generation_method"] = "chat"
         state["answer"], _ = active_orchestrator.answer(prepared)
         return state
+    term_start = time.perf_counter()
+    active_orchestrator.normalize_request(prepared)
+    _record_node_duration(state, "term_normalize", term_start)
     active_orchestrator.search_request(prepared, state.get("memory_context"))
     _apply_prepared_to_state(state, prepared)
     if not prepared.rule_id:
@@ -473,13 +547,16 @@ def _run_langgraph(
         return s
 
     def search_node(s: AgentState) -> AgentState:
-        node_start = time.perf_counter()
         prepared = active_orchestrator.create_request(
             s["query"],
             s.get("hospital_id"),
             _intent_result_from_state(s),
             s.setdefault("errors", []),
         )
+        term_start = time.perf_counter()
+        active_orchestrator.normalize_request(prepared)
+        _record_node_duration(s, "term_normalize", term_start)
+        node_start = time.perf_counter()
         active_orchestrator.search_request(prepared, s.get("memory_context"))
         _apply_prepared_to_state(s, prepared)
         _record_node_duration(s, "rule_search", node_start)
@@ -739,6 +816,17 @@ def run_chat(
         },
         duration_ms=_node_duration(result, "intent_detect"),
     )
+    if result.get("intent") in RULE_INTENTS:
+        _record_term_normalize_node(
+            trace_recorder,
+            trace_id,
+            hospital_id,
+            result.get("_term_normalization")
+            if isinstance(result.get("_term_normalization"), dict)
+            else None,
+            str(result.get("_term_normalization_error") or ""),
+            duration_ms=_node_duration(result, "term_normalize"),
+        )
     if result.get("search") or result.get("rule_id"):
         search_payload = result.get("search") if isinstance(result.get("search"), dict) else {}
         _record_trace_node(
@@ -1027,9 +1115,26 @@ def run_chat_stream(
         })
         return
 
+    term_start = time.perf_counter()
+    active_orchestrator.normalize_request(prepared)
+    term_duration_ms = _elapsed_ms(term_start)
+    term_payload = (
+        prepared.term_normalization.model_dump(exclude_none=True)
+        if prepared.term_normalization is not None
+        else None
+    )
+    _record_term_normalize_node(
+        trace_recorder,
+        trace_id,
+        hospital_id,
+        term_payload,
+        prepared.term_normalization_error or "",
+        duration_ms=term_duration_ms,
+    )
+
     try:
         yield ("progress", {"message": "正在检索 MySQL 指标规则库"})
-        search_query = intent_data.retrieval_query or query
+        search_query = prepared.retrieval_query or query
         search_start = time.perf_counter()
         active_orchestrator.search_request(prepared, memory_context)
         search = prepared.search.model_dump(exclude_none=True) if prepared.search else {}

@@ -66,6 +66,7 @@ class SQLGenerationAgent:
                  trial_run: bool = False,
                  generated_by: str = "agent",
                  custom_filters: list[dict[str, str]] | None = None,
+                 term_bindings: list[dict[str, Any]] | None = None,
                  persist_run_result: bool = True) -> dict[str, Any]:
         node_timings: dict[str, int] = {}
         if not precheck.get("ok"):
@@ -122,6 +123,11 @@ class SQLGenerationAgent:
 
         if mapping.get("filters", {}).get("consult_type_value"):
             params["consult_type_value"] = mapping["filters"]["consult_type_value"]
+        for binding in term_bindings or []:
+            parameter_name = str(binding.get("parameter_name") or "")
+            values = list(binding.get("values") or [])
+            if parameter_name and values:
+                params[parameter_name] = values[0] if len(values) == 1 else values
         for index, value in enumerate(custom_rules.get("exclude_depts") or []):
             params[f"exclude_dept_{index}"] = str(value)
 

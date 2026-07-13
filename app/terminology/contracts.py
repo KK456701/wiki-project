@@ -132,3 +132,19 @@ class TermNormalizationResult(BaseModel):
     release_version: str = ""
     duration_ms: int = 0
     sql_eligible: bool = False
+
+
+class TermSQLBinding(BaseModel):
+    concept_code: str
+    business_field_key: str
+    parameter_name: str
+    values: list[str]
+    source: Literal["hospital"] = "hospital"
+
+
+class TermSQLBindingResult(BaseModel):
+    ok: bool
+    bindings: list[TermSQLBinding] = Field(default_factory=list)
+    problem_code: str = ""
+    message: str = ""
+    missing_concepts: list[str] = Field(default_factory=list)

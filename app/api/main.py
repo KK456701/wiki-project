@@ -84,6 +84,8 @@ def _create_agent_orchestrator(
     from app.db.engine import create_runtime_engine
     from app.diagnose.agent import DiagnoseAgent
     from app.sqlgen.agent import SQLGenerationAgent
+    from app.terminology.normalizer import TerminologyNormalizer
+    from app.terminology.repository import TerminologyRepository
 
     engine = runtime_engine or create_runtime_engine()
     rules = rule_repository or create_rule_repository(engine, DEFAULT_KB_ROOT)
@@ -91,6 +93,7 @@ def _create_agent_orchestrator(
     metadata = metadata_provider or create_dbhub_metadata_provider(
         "hospital_demo_data"
     )
+    terminology_repository = TerminologyRepository(engine)
     return CoreIndicatorOrchestrator(
         interaction=HumanInteractionAgent(),
         caliber=CaliberAdaptationAgent(rules),
@@ -111,6 +114,8 @@ def _create_agent_orchestrator(
             )
         ),
         metadata=MetadataParsingAgent(engine, DEFAULT_KB_ROOT),
+        terminology_normalizer=TerminologyNormalizer(terminology_repository),
+        terminology_repository=terminology_repository,
     )
 
 
@@ -252,7 +257,6 @@ def start_monitoring_scheduler() -> None:
 
         engine = create_runtime_engine()
         ensure_monitoring_schema(engine)
-        ensure_terminology_schema(engine)
         mark_running_recovery_tasks_interrupted(engine)
         scheduler = MonitoringScheduler(
             MonitoringRepository(engine),
@@ -268,12 +272,26 @@ def start_monitoring_scheduler() -> None:
         set_monitoring_scheduler_error(str(exc))
 
 
+def initialize_terminology_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine
+        from app.terminology.normalizer import TerminologyNormalizer
+        from app.terminology.repository import TerminologyRepository
+
+        engine = create_runtime_engine()
+        ensure_terminology_schema(engine)
+        TerminologyNormalizer(TerminologyRepository(engine)).warm()
+    except Exception:
+        logger.exception("terminology runtime initialization failed")
+
+
 def stop_monitoring_scheduler() -> None:
     scheduler = get_monitoring_scheduler()
     if scheduler is not None:
         scheduler.shutdown()
 
 
+app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)
 
