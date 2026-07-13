@@ -28,7 +28,7 @@
 }
 
 .terminology-workspace[hidden],
-.term-detail-panel[hidden] { display: none; }
+.terminology-workspace [hidden] { display: none !important; }
 
 .terminology-toolbar {
   display: grid;

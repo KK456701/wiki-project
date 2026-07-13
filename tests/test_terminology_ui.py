@@ -46,6 +46,7 @@ class TerminologyUiTest(unittest.TestCase):
         css = (ROOT / "web" / "terminology.css").read_text(encoding="utf-8")
 
         self.assertIn("grid-template-columns: minmax(260px, 340px) minmax(0, 1fr)", css)
+        self.assertIn(".terminology-workspace [hidden]", css)
         self.assertIn(".term-safety", css)
         self.assertIn(":focus-visible", css)
         self.assertIn("@media (max-width: 760px)", css)
