@@ -307,15 +307,19 @@ body::before {
 .row { display: grid; grid-template-columns: 128px 1fr 150px; gap: 12px; align-items: stretch; }
 .row-title { font-weight: 800; color: var(--ink); }
 .row-content { color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
-.trace-node { display: grid; gap: 10px; border-left: 4px solid var(--teal); }
+.trace-node { display: grid; gap: 12px; border-left: 4px solid var(--teal); }
 .trace-node.failed { border-left-color: var(--red); background: #fff8f6; }
 .trace-node.fallback, .trace-node.warning { border-left-color: var(--amber); background: #fffaf0; }
 .trace-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.trace-title-wrap { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start; min-width: 0; }
+.trace-step-index { color: var(--muted); font: 800 12px/1.5 var(--mono); padding-top: 3px; }
 .trace-title { font-size: 18px; font-weight: 850; color: var(--ink); }
+.trace-node-summary { margin-top: 3px; color: var(--ink-soft); font-size: 14px; overflow-wrap: anywhere; }
 .trace-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .trace-toggle { padding: 6px 10px; }
 .trace-detail { display: grid; gap: 10px; }
 .trace-detail[hidden] { display: none; }
+.trace-duration { color: var(--muted); font: 750 12px/1.2 var(--mono); white-space: nowrap; }
 .trace-status {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -329,6 +333,15 @@ body::before {
 .trace-desc { color: var(--ink-soft); font-size: 14px; }
 .trace-section { display: grid; gap: 5px; }
 .trace-section-title { color: var(--muted); font-size: 12px; font-weight: 800; }
+.trace-detail-block { display: grid; gap: 9px; padding-top: 12px; border-top: 1px solid var(--line); }
+.trace-detail-heading { color: var(--ink); font-size: 14px; font-weight: 850; }
+.trace-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+.trace-result-item { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; color: var(--ink-soft); font-size: 13px; }
+.trace-result-label { color: var(--muted); font-weight: 750; }
+.trace-result-value { overflow-wrap: anywhere; white-space: pre-wrap; }
+.trace-json-disclosure { border-top: 1px solid var(--line); padding-top: 10px; }
+.trace-json-disclosure > summary { width: fit-content; cursor: pointer; color: var(--teal-deep); font-size: 13px; font-weight: 800; }
+.trace-json-body { display: grid; gap: 10px; padding-top: 10px; }
 .trace-json {
   margin: 0;
   padding: 10px;
@@ -463,6 +476,11 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   .indicator-stages { grid-template-columns: repeat(3, 1fr); }
   .indicator-stage:nth-child(3) { border-right: 0; }
   .indicator-rule-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .trace-title-row { align-items: stretch; flex-direction: column; }
+  .trace-actions { justify-content: flex-start; }
+  .trace-result-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .brand-title { font-size: 21px; }
@@ -1320,6 +1338,132 @@ function agentOwnerName(value) {
   })[value] || value || "未指定";
 }
 
+function traceStatusText(value) {
+  return ({
+    success: "成功",
+    failed: "失败",
+    fallback: "已回退",
+    warning: "需关注",
+    running: "进行中",
+  })[value] || "未知";
+}
+
+function traceIntentText(value) {
+  return ({
+    query: "指标口径查询",
+    feedback: "口径反馈",
+    generate_sql: "SQL 生成",
+    trial_run: "SQL 试运行",
+    diagnose: "异常诊断",
+    metadata_sync: "元数据同步",
+    chat: "普通对话",
+  })[value] || value || "未识别";
+}
+
+function traceLevelText(value) {
+  return ({ hospital: "本院口径", national: "国标口径", company: "公司口径" })[value] || value || "未确定";
+}
+
+function traceSourceText(value) {
+  return ({ mysql: "MySQL", wiki_fallback: "Wiki 只读兜底", wiki: "Wiki" })[value] || value || "未记录";
+}
+
+function traceObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function traceBusinessSummary(node) {
+  var output = traceObject(node.output_data);
+  if (node.node_name === "memory_load") {
+    return Object.keys(traceObject(output.memory_context)).length ? "已读取上轮指标上下文" : "无历史指标上下文";
+  }
+  if (node.node_name === "intent_detect") {
+    return traceIntentText(output.intent) + (output.indicator_name ? " · " + output.indicator_name : "");
+  }
+  if (node.node_name === "rule_search") {
+    return output.rule_id ? "命中 " + output.rule_id + " · " + Number(output.matched_count || 1) + " 个候选" : "未命中指标规则";
+  }
+  if (node.node_name === "effective_rule_resolve") {
+    var version = output.hospital_version ? "v" + output.hospital_version : (output.national_version ? "国标 " + output.national_version : "");
+    return [traceLevelText(output.effective_level), traceSourceText(output.rule_source), version].filter(Boolean).join(" · ");
+  }
+  if (node.node_name === "final_response") {
+    return output.final_status === "success" || node.status === "success" ? "回答已生成" : "回答生成未完成";
+  }
+  return node.output_summary || node.node_description || "已完成";
+}
+
+function traceBusinessFields(node) {
+  var input = traceObject(node.input_data);
+  var output = traceObject(node.output_data);
+  if (node.node_name === "memory_load") return [
+    { label: "上下文", value: Object.keys(traceObject(output.memory_context)).length ? "已读取" : "无历史上下文" },
+    { label: "会话", value: output.active_session_id || input.session_id },
+  ];
+  if (node.node_name === "intent_detect") return [
+    { label: "识别意图", value: traceIntentText(output.intent) },
+    { label: "目标指标", value: output.indicator_name || input.session_memory && input.session_memory.rule_name },
+    { label: "检索内容", value: output.retrieval_query },
+  ];
+  if (node.node_name === "rule_search") return [
+    { label: "指标编码", value: output.rule_id },
+    { label: "候选数量", value: output.matched_count },
+    { label: "规则来源", value: traceSourceText(output.context_source) },
+  ];
+  if (node.node_name === "effective_rule_resolve") return [
+    { label: "生效口径", value: traceLevelText(output.effective_level) },
+    { label: "规则来源", value: traceSourceText(output.rule_source) },
+    { label: "国标版本", value: output.national_version },
+    { label: "本院版本", value: output.hospital_version },
+    { label: "差异字段", value: Array.isArray(output.overridden_fields) ? output.overridden_fields.join("、") : output.overridden_fields },
+  ];
+  if (node.node_name === "final_response") return [
+    { label: "最终状态", value: output.final_status === "success" || node.status === "success" ? "已完成" : "未完成" },
+    { label: "回答摘要", value: output.answer_preview || node.output_summary },
+  ];
+  return [{ label: "处理结果", value: node.output_summary || traceBusinessSummary(node) }];
+}
+
+function appendTraceBusinessResult(parent, node) {
+  var block = document.createElement("div");
+  block.className = "trace-detail-block";
+  var heading = document.createElement("div");
+  heading.className = "trace-detail-heading";
+  heading.textContent = "处理结果";
+  var grid = document.createElement("div");
+  grid.className = "trace-result-grid";
+  traceBusinessFields(node).filter(function(field) {
+    return field.value !== undefined && field.value !== null && field.value !== "";
+  }).forEach(function(field) {
+    var item = document.createElement("div");
+    item.className = "trace-result-item";
+    var label = document.createElement("span");
+    label.className = "trace-result-label";
+    label.textContent = field.label;
+    var value = document.createElement("span");
+    value.className = "trace-result-value";
+    value.textContent = formatTraceValue(field.value, "无");
+    item.append(label, value);
+    grid.appendChild(item);
+  });
+  block.append(heading, grid);
+  parent.appendChild(block);
+}
+
+function appendTraceJsonDisclosure(parent, node) {
+  var disclosure = document.createElement("details");
+  disclosure.className = "trace-json-disclosure";
+  var summary = document.createElement("summary");
+  summary.textContent = "原始输入输出";
+  var body = document.createElement("div");
+  body.className = "trace-json-body";
+  appendTraceSection(body, "本次输入", node.input_data, node.input_summary || "无");
+  appendTraceSection(body, "本次输出", node.output_data, node.output_summary || "无");
+  appendTraceSection(body, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
+  disclosure.append(summary, body);
+  parent.appendChild(disclosure);
+}
+
 function renderTraceTimingSummary(nodes, totalDurationMs) {
   var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
   var recordedStageMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
@@ -1367,87 +1511,105 @@ async function showTrace(traceId) {
     var nodes = data.nodes || [];
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
     traceNodeList.appendChild(renderTraceTimingSummary(nodes, data.duration_ms));
-    nodes.forEach(function(node) {
+    nodes.forEach(function(node, index) {
       var box = document.createElement("div");
       box.className = "review-item trace-node " + (node.status || "");
+      var nodeHealthy = node.status === "success" && node.contract_status === "ok";
       var titleRow = document.createElement("div");
       titleRow.className = "trace-title-row";
       var titleWrap = document.createElement("div");
+      titleWrap.className = "trace-title-wrap";
+      var stepIndex = document.createElement("div");
+      stepIndex.className = "trace-step-index";
+      stepIndex.textContent = String(index + 1).padStart(2, "0");
+      var titleContent = document.createElement("div");
       var title = document.createElement("div");
       title.className = "trace-title";
       title.textContent = node.node_title || node.node_name || "未知节点";
-      var nodeId = document.createElement("div");
-      nodeId.className = "review-meta";
-      nodeId.textContent = node.node_name || "unknown";
-      titleWrap.append(title, nodeId);
+      var summary = document.createElement("div");
+      summary.className = "trace-node-summary";
+      summary.textContent = traceBusinessSummary(node);
+      titleContent.append(title, summary);
+      titleWrap.append(stepIndex, titleContent);
       var actions = document.createElement("div");
       actions.className = "trace-actions";
+      var duration = document.createElement("span");
+      duration.className = "trace-duration";
+      duration.textContent = formatTraceDuration(node.duration_ms);
       var status = document.createElement("span");
       status.className = "trace-status";
-      status.textContent = node.status || "unknown";
+      status.textContent = traceStatusText(node.status);
+      if (!nodeHealthy && node.status === "success") {
+        var contractWarning = document.createElement("span");
+        contractWarning.className = "trace-status";
+        contractWarning.textContent = "字段检查异常";
+        actions.appendChild(contractWarning);
+      }
       var toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "ghost trace-toggle";
-      toggle.textContent = "详情";
-      actions.append(status, toggle);
+      toggle.textContent = nodeHealthy ? "详情" : "收起";
+      actions.append(duration, status, toggle);
       titleRow.append(titleWrap, actions);
-      var meta = document.createElement("div");
-      meta.className = "review-meta";
-      var durationText = formatTraceDuration(node.duration_ms);
       var ioCheckText = node.contract_status === "ok" ? "正常" : "需要查看";
-      meta.textContent = "类型：" + (node.manifest_type || node.node_type || "") + "  耗时：" + durationText + (node.tool_name ? "  工具：" + node.tool_name : "") + (node.db_source ? "  数据源：" + node.db_source : "");
-      if (node.contract_status && node.contract_status !== "ok") {
-        meta.textContent += "  输入输出：" + ioCheckText;
-      }
-      var desc = document.createElement("div");
-      desc.className = "trace-desc";
-      desc.textContent = node.node_description || "";
-      box.append(titleRow, meta);
-      if (desc.textContent) box.appendChild(desc);
+      box.appendChild(titleRow);
       var detail = document.createElement("div");
       detail.className = "trace-detail";
-      detail.hidden = true;
-      appendTraceSection(detail, "本次输入", node.input_data, node.input_summary || "无");
-      appendTraceSection(detail, "本次输出", node.output_data, node.output_summary || "无");
-      appendTraceSection(detail, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
+      detail.hidden = nodeHealthy;
+      appendTraceBusinessResult(detail, node);
+      appendTraceJsonDisclosure(detail, node);
+      var developerBlock = document.createElement("div");
+      developerBlock.className = "trace-detail-block";
+      var developerHeading = document.createElement("div");
+      developerHeading.className = "trace-detail-heading";
+      developerHeading.textContent = "开发与排障";
+      developerBlock.appendChild(developerHeading);
+      var identity = document.createElement("div");
+      identity.className = "trace-field-list";
+      identity.textContent = "节点：" + (node.node_name || "unknown")
+        + "  |  类型：" + (node.manifest_type || node.node_type || "未记录")
+        + (node.tool_name ? "  |  工具：" + node.tool_name : "")
+        + (node.db_source ? "  |  数据源：" + node.db_source : "");
+      developerBlock.appendChild(identity);
       var owner = document.createElement("div");
       owner.className = "trace-field-list";
       owner.textContent = "负责 Agent：" + agentOwnerName(node.agent_owner);
-      detail.appendChild(owner);
+      developerBlock.appendChild(owner);
       var fields = document.createElement("div");
       fields.className = "trace-field-list";
       fields.textContent = "期望输入：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望输出：" + ((node.expected_outputs || []).join(", ") || "无");
-      detail.appendChild(fields);
+      developerBlock.appendChild(fields);
       var contract = document.createElement("div");
       contract.className = "trace-field-list";
       contract.textContent = "输入输出检查：" + ioCheckText
         + "  |  必要输入：" + ((node.required_inputs || []).join(", ") || "无")
         + "  |  必要输出：" + ((node.required_outputs || []).join(", ") || "无");
-      detail.appendChild(contract);
+      developerBlock.appendChild(contract);
       if ((node.missing_inputs || []).length || (node.missing_outputs || []).length) {
         var missing = document.createElement("div");
         missing.className = "trace-hint";
         missing.textContent = "缺少内容：输入 " + ((node.missing_inputs || []).join(", ") || "无")
           + "；输出 " + ((node.missing_outputs || []).join(", ") || "无");
-        detail.appendChild(missing);
+        developerBlock.appendChild(missing);
       }
       var failurePolicy = document.createElement("div");
       failurePolicy.className = "trace-field-list";
       failurePolicy.textContent = "出错处理：" + (node.on_failure || "continue")
         + "  |  问题码：" + (node.error_code || node.failure_code || "无");
-      detail.appendChild(failurePolicy);
-      if (node.failure_hint) {
+      developerBlock.appendChild(failurePolicy);
+      if (!nodeHealthy && node.failure_hint) {
         var hint = document.createElement("div");
         hint.className = "trace-hint";
         hint.textContent = "定位建议：" + node.failure_hint;
-        detail.appendChild(hint);
+        developerBlock.appendChild(hint);
       }
       if (node.error_message) {
         var err = document.createElement("div");
         err.style.color = "#a64536";
         err.textContent = "错误：" + node.error_message;
-        detail.appendChild(err);
+        developerBlock.appendChild(err);
       }
+      detail.appendChild(developerBlock);
       toggle.addEventListener("click", function() {
         detail.hidden = !detail.hidden;
         toggle.textContent = detail.hidden ? "详情" : "收起";
