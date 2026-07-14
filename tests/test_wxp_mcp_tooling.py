@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import subprocess
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -105,6 +106,7 @@ def test_powershell_scripts_use_utf8_bom_for_windows_powershell() -> None:
         "wxp-tooling.ps1",
         "install-wxp-mcp.ps1",
         "test-wxp-mcp.ps1",
+        "start-wxp-mcp.ps1",
     ):
         assert (TOOL_ROOT / name).read_bytes().startswith(b"\xef\xbb\xbf"), name
 
@@ -177,7 +179,39 @@ def test_node_smoke_client_platform_summary_does_not_expose_session() -> None:
 
 
 def test_powershell_smoke_wrapper_requires_installed_entrypoint() -> None:
-    result = run_powershell(TOOL_ROOT / "test-wxp-mcp.ps1")
+    with tempfile.TemporaryDirectory() as raw:
+        isolated = Path(raw)
+        for name in (
+            "test-wxp-mcp.ps1",
+            "wxp-tooling.ps1",
+            "mcp-smoke-test.mjs",
+        ):
+            shutil.copy2(TOOL_ROOT / name, isolated / name)
+        result = run_powershell(isolated / "test-wxp-mcp.ps1")
     output = result.stdout + result.stderr
     assert result.returncode != 0
     assert "尚未构建 wxp-mcp" in output
+
+
+def test_wxp_readme_explains_company_only_boundary_and_commands() -> None:
+    text = (TOOL_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "公司侧实施工具" in text
+    assert "不进入医院生产运行链路" in text
+    assert ".\\install-wxp-mcp.ps1" in text
+    assert ".\\test-wxp-mcp.ps1 -Mode basic" in text
+    assert ".\\test-wxp-mcp.ps1 -Mode platform" in text
+    assert "WXP_TENANTSESSION" in text
+    assert "不得提交" in text
+
+
+def test_start_script_uses_local_environment_without_embedded_secret() -> None:
+    text = (TOOL_ROOT / "start-wxp-mcp.ps1").read_text(encoding="utf-8-sig")
+    assert "Import-WxpLocalEnvironment" in text
+    assert "WXP_TENANTSESSION=" not in text
+    assert "dist\\index.js" in text
+
+
+def test_project_readme_links_company_model_tool() -> None:
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "公司表模型工具（仅公司侧实施）" in text
+    assert "tools/wxp-mcp/README.md" in text

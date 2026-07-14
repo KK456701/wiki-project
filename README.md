@@ -230,6 +230,10 @@ dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
 
 如果本地 MySQL 账号不同，请同步修改 `tools/dbhub/dbhub.local.toml` 中的连接串。
 
+### 公司表模型工具（仅公司侧实施）
+
+`tools/wxp-mcp` 用于查询公司 WxP 标准表模型、字段、索引和数据血缘，帮助实施人员确认指标设计稿中的字段映射。它不进入医院生产环境，安装与验证见 [`tools/wxp-mcp/README.md`](tools/wxp-mcp/README.md)。
+
 ### 6. 启动服务
 
 ```powershell
