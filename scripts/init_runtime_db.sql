@@ -207,6 +207,62 @@ CREATE TABLE IF NOT EXISTS med_table_relation (
   )
 );
 
+CREATE TABLE IF NOT EXISTS med_metadata_export_scope (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  table_name VARCHAR(128) NOT NULL,
+  column_name VARCHAR(128) NOT NULL,
+  selected_by VARCHAR(64) NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_metadata_export_scope (
+    hospital_id, db_name, table_name, column_name
+  )
+);
+
+CREATE TABLE IF NOT EXISTS med_company_package_import (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  import_id VARCHAR(64) NOT NULL UNIQUE,
+  package_id VARCHAR(64) NOT NULL UNIQUE,
+  release_id VARCHAR(64),
+  format_version VARCHAR(32) NOT NULL,
+  package_checksum CHAR(64) NOT NULL,
+  signer_key_id VARCHAR(96),
+  signature_status VARCHAR(32) NOT NULL,
+  compatibility_status VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  manifest_json JSON NOT NULL,
+  compatibility_json JSON NOT NULL,
+  imported_by VARCHAR(64) NOT NULL,
+  imported_at DATETIME NOT NULL,
+  KEY idx_company_package_import_status (status, imported_at)
+);
+
+CREATE TABLE IF NOT EXISTS med_company_package_item (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  import_id VARCHAR(64) NOT NULL,
+  item_path VARCHAR(512) NOT NULL,
+  item_type VARCHAR(32) NOT NULL,
+  rule_id VARCHAR(64),
+  payload_json JSON NOT NULL,
+  UNIQUE KEY uk_company_package_item (import_id, item_path),
+  KEY idx_company_package_item_rule (rule_id)
+);
+
+CREATE TABLE IF NOT EXISTS med_package_audit (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  direction VARCHAR(32) NOT NULL,
+  package_id VARCHAR(64) NOT NULL,
+  hospital_id VARCHAR(64),
+  event_type VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  actor_id VARCHAR(64) NOT NULL,
+  detail_json JSON NOT NULL,
+  created_at DATETIME NOT NULL,
+  message TEXT,
+  KEY idx_package_audit_package (package_id, created_at)
+);
+
 CREATE TABLE IF NOT EXISTS med_indicator_draft (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   draft_id VARCHAR(64) NOT NULL UNIQUE,

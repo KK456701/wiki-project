@@ -65,3 +65,9 @@ def ensure_indicator_detail_schema(engine: Engine) -> dict[str, list[str]]:
     from app.indicator_details.schema import ensure_indicator_detail_schema as ensure
 
     return ensure(engine)
+
+
+def ensure_kb_exchange_schema(engine: Engine) -> dict[str, list[str]]:
+    from app.kb.exchange_schema import ensure_kb_exchange_schema as ensure
+
+    return ensure(engine)

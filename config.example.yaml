@@ -36,6 +36,14 @@ indicator_detail_max_rows: 20000
 # 只能设置为 20、50 或 100；无效值会回退为 50。
 indicator_detail_default_page_size: 50
 
+# 离线知识包签名。正式部署时，公司与医院分别只保管自己的私钥。
+hospital_package_signing_key_path: "runtime/package-keys/hospital-private.pem"
+hospital_package_signing_key_id: "hospital_001"
+trusted_hospital_keys_dir: "runtime/package-keys/trusted-hospitals"
+company_package_signing_key_path: "runtime/package-keys/company-private.pem"
+company_package_signing_key_id: "company_main"
+trusted_company_keys_dir: "runtime/package-keys/trusted-companies"
+
 # 指标运算调度器。关闭后仍可通过管理接口手动重算。
 monitoring_scheduler_enabled: true
 monitoring_scheduler_timezone: "Asia/Shanghai"
