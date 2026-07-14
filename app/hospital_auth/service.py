@@ -49,9 +49,11 @@ class HospitalAuthService:
         repository: HospitalAuthRepository,
         *,
         now_provider: Callable[[], datetime] = _utcnow,
+        session_ttl: timedelta = SESSION_TTL,
     ) -> None:
         self.repository = repository
         self.now_provider = now_provider
+        self.session_ttl = session_ttl
 
     def create_or_reset_local_user(
         self,
@@ -107,7 +109,7 @@ class HospitalAuthService:
 
     def _issue_session(self, user: dict) -> LoginResult:
         now = self.now_provider()
-        expires_at = now + SESSION_TTL
+        expires_at = now + self.session_ttl
         token = secrets.token_urlsafe(32)
         session_id = f"SESSION_{uuid.uuid4().hex[:16]}"
         self.repository.create_session(

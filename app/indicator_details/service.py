@@ -54,12 +54,14 @@ class IndicatorDetailService:
         *,
         export_root: Path = Path("runtime/exports"),
         now_provider: Callable[[], datetime] = _utcnow,
+        export_ttl: timedelta = EXPORT_TTL,
     ) -> None:
         self.repository = repository
         self.snapshot_store = snapshot_store
         self.audit_repository = audit_repository
         self.export_root = Path(export_root)
         self.now_provider = now_provider
+        self.export_ttl = export_ttl
 
     def _audit(
         self,
@@ -291,7 +293,7 @@ class IndicatorDetailService:
             row_count=snapshot.denominator_count,
             created_by=principal.user_id,
             created_at=now,
-            expires_at=now + EXPORT_TTL,
+            expires_at=now + self.export_ttl,
         )
         final_path = self._resolve_relative_path(relative_path)
         temp_path = final_path.with_name(final_path.name + ".tmp")

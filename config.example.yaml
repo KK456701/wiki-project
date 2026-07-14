@@ -28,6 +28,14 @@ metadata_max_age_hours: 24
 allow_sql_trial_run: true
 sql_run_timeout_seconds: 10
 
+# 医院账号与指标明细访问控制。
+hospital_auth_session_hours: 8
+indicator_detail_export_root: "runtime/exports"
+indicator_detail_expire_hours: 24
+indicator_detail_max_rows: 20000
+# 只能设置为 20、50 或 100；无效值会回退为 50。
+indicator_detail_default_page_size: 50
+
 # 指标运算调度器。关闭后仍可通过管理接口手动重算。
 monitoring_scheduler_enabled: true
 monitoring_scheduler_timezone: "Asia/Shanghai"

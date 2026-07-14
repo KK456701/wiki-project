@@ -90,7 +90,14 @@ def _runtime_engine():
     return engine
 
 
-def _store(tmp_path: Path, rows: list[dict], *, numerator: int = 2, denominator: int = 3):
+def _store(
+    tmp_path: Path,
+    rows: list[dict],
+    *,
+    numerator: int = 2,
+    denominator: int = 3,
+    **store_options,
+):
     repository_module, schema_module, snapshot_module = _modules()
     engine = _runtime_engine()
     schema_module.ensure_indicator_detail_schema(engine)
@@ -126,6 +133,7 @@ def _store(tmp_path: Path, rows: list[dict], *, numerator: int = 2, denominator:
         business_db,
         export_root=tmp_path / "runtime" / "exports",
         now_provider=clock,
+        **store_options,
     )
     return store, repository, business_db, clock
 
@@ -225,6 +233,27 @@ def test_more_than_twenty_thousand_rows_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="明细超过20,000条"):
         store.create("RUN_DETAIL_001", "hospital_001", "user_001")
+
+
+def test_snapshot_limit_and_expiry_can_be_configured(tmp_path: Path) -> None:
+    store, _, _, clock = _store(
+        tmp_path,
+        _rows(),
+        max_detail_rows=2,
+        snapshot_ttl=timedelta(hours=2),
+    )
+
+    with pytest.raises(ValueError, match="明细超过2条"):
+        store.create("RUN_DETAIL_001", "hospital_001", "user_001")
+
+    store, _, _, clock = _store(
+        tmp_path / "allowed",
+        _rows(),
+        max_detail_rows=3,
+        snapshot_ttl=timedelta(hours=2),
+    )
+    summary = store.create("RUN_DETAIL_001", "hospital_001", "user_001")
+    assert summary.expires_at == clock.value + timedelta(hours=2)
 
 
 def test_expired_or_tampered_snapshot_cannot_be_previewed(tmp_path: Path) -> None:

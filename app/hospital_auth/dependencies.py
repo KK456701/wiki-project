@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Annotated, Callable
 
 from fastapi import Depends, Header, HTTPException
+
+from app.config import get_int
 
 from .models import HospitalPrincipal
 from .repository import HospitalAuthRepository
@@ -12,7 +15,11 @@ from .service import HospitalAuthError, HospitalAuthService
 def get_hospital_auth_service() -> HospitalAuthService:
     from app.db.engine import create_runtime_engine
 
-    return HospitalAuthService(HospitalAuthRepository(create_runtime_engine()))
+    session_hours = max(1, get_int("hospital_auth_session_hours", 8))
+    return HospitalAuthService(
+        HospitalAuthRepository(create_runtime_engine()),
+        session_ttl=timedelta(hours=session_hours),
+    )
 
 
 def _token_from_header(authorization: str | None) -> str:

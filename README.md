@@ -549,6 +549,42 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/monitoring/plans `
 
 系统会先生成 SQL 并做安全校验。只有用户确认试运行后，才会访问业务库执行只读查询。
 
+### 指标明细预览与短期导出验收
+
+首次安装或拉取本功能后，依次执行：
+
+```powershell
+python -B scripts\migrate_runtime_schema.py
+python -B scripts\import_four_indicator_rules.py
+python scripts\seed_demo_hospital_user.py
+```
+
+最后一条命令只用于本地演示，会创建或重置 `user_001`，所属医院为 `hospital_001`，并授予 `indicator_detail_view` 和 `indicator_detail_export`。初始密码为 `123456`，首次登录必须改成至少 8 位且同时包含字母和数字的新密码。生产环境不得执行该演示账号脚本，应通过医院管理员初始化正式账号。
+
+医生或实施人员在前端按以下步骤验收：
+
+1. 使用演示账号登录并完成首次改密。
+2. 输入“急会诊及时到位率怎么算”，再输入“生成 SQL”和“试运行”。
+3. 在“统计范围（分母）”“达到要求（分子）”“未达到要求”三行分别点击“查看详情”。
+4. 核对三个标签的数量与本次计算结果一致；页面预览脱敏，Excel 保留授权完整值。
+5. 点击“生成并下载 Excel”，阅读患者明细使用提示并确认。文件应包含“统计范围”“达到要求”“未达到要求”三个工作表，表头应写明本院口径版本和统计区间。
+
+明细采用短期快照，不是长期患者业务库。首次查看时，系统按本次试运行固化的本院口径、字段映射和统计区间重新读取明细，并先核对分子、分母数量；如果业务数据已经变化，会要求重新试运行，不会展示数量不一致的旧结果。默认最多生成 20,000 条分母明细，超限时应缩小统计区间。
+
+短期快照和 Excel 默认保存在 `runtime/exports/{hospital_id}/{run_id}/`，由 Git 忽略，并在 24 小时后由启动清理、按需清理和每小时调度清理删除。`indicator_detail_view` 只允许查看脱敏预览，`indicator_detail_export` 才允许生成和下载完整 Excel；跨医院访问统一按资源不存在处理。查看、导出、下载、拒绝和过期清理只把人员、医院、指标、数量与结果写入 `med_data_access_audit`，不会写入患者字段值。
+
+部署参数位于 `config.yaml`：
+
+```yaml
+hospital_auth_session_hours: 8
+indicator_detail_export_root: "runtime/exports"
+indicator_detail_expire_hours: 24
+indicator_detail_max_rows: 20000
+indicator_detail_default_page_size: 50
+```
+
+常见定位：没有详情按钮时需重新生成并试运行 SQL；提示缺少口径快照时需重新试运行；提示业务数据变化时需重新试运行后再查看；提示权限不足时检查账号权限；文件过期后需重新生成。相关状态记录在 `med_indicator_detail_snapshot`、`med_indicator_export` 和 `med_data_access_audit`，排障时无需打开患者明细文件。
+
 ### 异常诊断
 
 用户可输入：
@@ -688,7 +724,15 @@ Content-Type: application/json
 | `/api/terminology/releases` | GET | 查看术语版本 |
 | `/api/terminology/releases/publish` | POST | 发布当前已审核术语版本 |
 | `/api/terminology/releases/{release_id}/restore` | POST | 回退到历史术语版本 |
+| `/api/auth/hospital/login` | POST | 医院账号登录并返回默认 8 小时会话令牌 |
+| `/api/auth/hospital/change-password` | POST | 首次登录或日常修改医院账号密码 |
+| `/api/auth/hospital/logout` | POST | 注销当前医院账号会话 |
 | `/api/sql/generate` | POST | 生成或试运行 SQL |
+| `/api/sql-runs/{run_id}/details` | POST | 生成或复用本次试运行的短期明细快照 |
+| `/api/sql-runs/{run_id}/details/{group}` | GET | 分页查看统计范围、达到要求或未达到要求的脱敏明细 |
+| `/api/sql-runs/{run_id}/exports` | POST | 二次确认后生成三工作表 Excel |
+| `/api/indicator-exports` | GET | 查看当前医院仍有效的明细导出记录 |
+| `/api/indicator-exports/{export_id}/download` | GET | 下载经过权限、医院范围、期限和哈希校验的 Excel |
 | `/api/diagnose/run` | POST | 执行异常诊断 |
 | `/api/kb/export` | GET | 导出医院知识库 zip |
 | `/api/kb/merge/upload` | POST | 上传医院知识库 zip |

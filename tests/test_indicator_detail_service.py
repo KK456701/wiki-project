@@ -60,7 +60,7 @@ def _principal(hospital_id: str = "hospital_001", *, export: bool = True):
     )
 
 
-def _service(tmp_path: Path):
+def _service(tmp_path: Path, *, export_ttl: timedelta = timedelta(hours=24)):
     engine = create_engine(f"sqlite:///{tmp_path / 'runtime.db'}")
     with engine.begin() as conn:
         conn.execute(
@@ -106,6 +106,7 @@ def _service(tmp_path: Path):
         audit,
         export_root=tmp_path / "exports",
         now_provider=clock,
+        export_ttl=export_ttl,
     )
     return service, repository, audit, clock
 
@@ -153,3 +154,11 @@ def test_service_creates_downloads_and_expires_excel(tmp_path: Path) -> None:
         "DETAIL_EXPORT_DOWNLOAD",
         "DETAIL_FILE_EXPIRED",
     }
+
+
+def test_export_expiry_can_be_configured(tmp_path: Path) -> None:
+    service, _, _, clock = _service(tmp_path, export_ttl=timedelta(hours=2))
+
+    export = service.create_export(_principal(), "RUN_001", True)
+
+    assert export.expires_at == clock.now + timedelta(hours=2)

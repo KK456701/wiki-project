@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -7,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from app.config import get
+from app.config import get, get_int
 from app.hospital_auth.dependencies import require_hospital_permission
 from app.hospital_auth.models import (
     DETAIL_EXPORT_PERMISSION,
@@ -25,6 +26,10 @@ from app.indicator_details.service import IndicatorDetailError, IndicatorDetailS
 router = APIRouter(tags=["indicator-details"])
 require_detail_view = require_hospital_permission(DETAIL_VIEW_PERMISSION)
 require_detail_export = require_hospital_permission(DETAIL_EXPORT_PERMISSION)
+_configured_page_size = get_int("indicator_detail_default_page_size", 50)
+DEFAULT_DETAIL_PAGE_SIZE = (
+    _configured_page_size if _configured_page_size in {20, 50, 100} else 50
+)
 
 
 class ExportCreateRequest(BaseModel):
@@ -41,16 +46,21 @@ def get_indicator_detail_service() -> IndicatorDetailService:
     engine = create_runtime_engine()
     repository = IndicatorDetailRepository(engine)
     export_root = Path(get("indicator_detail_export_root", "runtime/exports"))
+    expire_hours = max(1, get_int("indicator_detail_expire_hours", 24))
+    max_rows = max(1, get_int("indicator_detail_max_rows", 20_000))
     snapshot_store = DetailSnapshotStore(
         repository,
         create_business_db_client("hospital_demo_data"),
         export_root=export_root,
+        max_detail_rows=max_rows,
+        snapshot_ttl=timedelta(hours=expire_hours),
     )
     return IndicatorDetailService(
         repository,
         snapshot_store,
         HospitalAuthRepository(engine),
         export_root=export_root,
+        export_ttl=timedelta(hours=expire_hours),
     )
 
 
@@ -94,7 +104,7 @@ def get_detail_page(
     run_id: str,
     group: Literal["denominator", "numerator", "unmatched"],
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1),
+    page_size: int = Query(DEFAULT_DETAIL_PAGE_SIZE, ge=1),
     principal: HospitalPrincipal = Depends(require_detail_view),
     service: IndicatorDetailService = Depends(get_indicator_detail_service),
 ) -> DetailPage:

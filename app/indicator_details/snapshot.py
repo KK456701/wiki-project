@@ -70,11 +70,15 @@ class DetailSnapshotStore:
         *,
         export_root: Path = Path("runtime/exports"),
         now_provider: Callable[[], datetime] = _utcnow,
+        max_detail_rows: int = MAX_DETAIL_ROWS,
+        snapshot_ttl: timedelta = SNAPSHOT_TTL,
     ) -> None:
         self.repository = repository
         self.business_db = business_db
         self.export_root = Path(export_root)
         self.now_provider = now_provider
+        self.max_detail_rows = max_detail_rows
+        self.snapshot_ttl = snapshot_ttl
 
     @staticmethod
     def _safe_segment(value: str) -> str:
@@ -158,7 +162,7 @@ class DetailSnapshotStore:
             relative_path=relative_path,
             created_by=actor_id,
             created_at=now,
-            expires_at=now + SNAPSHOT_TTL,
+            expires_at=now + self.snapshot_ttl,
         )
         final_path = self.resolve_snapshot_path(snapshot)
         temp_path = final_path.with_suffix(final_path.suffix + ".tmp")
@@ -166,8 +170,10 @@ class DetailSnapshotStore:
             query = build_detail_query(context)
             executable_sql = _bind_sql_params(query.sql, query.params)
             rows = self.business_db.execute_select(executable_sql).rows
-            if len(rows) > MAX_DETAIL_ROWS:
-                raise ValueError("明细超过20,000条，请缩小统计区间后重新试运行")
+            if len(rows) > self.max_detail_rows:
+                raise ValueError(
+                    f"明细超过{self.max_detail_rows:,}条，请缩小统计区间后重新试运行"
+                )
             denominator = len(rows)
             numerator = sum(
                 1 for row in rows if int(row.get("__meets_numerator") or 0) == 1

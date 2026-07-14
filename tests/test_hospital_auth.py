@@ -107,6 +107,33 @@ def test_session_expires_after_eight_hours() -> None:
         service.authenticate(login.token, "indicator_detail_view")
 
 
+def test_session_expiry_can_be_configured() -> None:
+    service_module, repository_module, schema_module = _auth_modules()
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    schema_module.ensure_hospital_auth_schema(engine)
+    clock = MutableClock()
+    service = service_module.HospitalAuthService(
+        repository_module.HospitalAuthRepository(engine),
+        now_provider=clock,
+        session_ttl=timedelta(hours=2),
+    )
+    service.create_or_reset_local_user(
+        account_id="user_001",
+        hospital_id="hospital_001",
+        password="123456",
+        permissions={"indicator_detail_view"},
+        must_change_password=False,
+    )
+
+    login = service.login("user_001", "123456")
+
+    assert login.expires_at == clock.value + timedelta(hours=2)
+
+
 def test_principal_is_scoped_to_hospital_and_permission() -> None:
     service, _, _, _ = _make_service(
         must_change_password=False,

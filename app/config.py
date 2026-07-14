@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.yaml"
+_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.yaml"
 _cache: dict[str, Any] | None = None
 
 
