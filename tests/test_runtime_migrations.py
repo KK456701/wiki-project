@@ -23,6 +23,24 @@ class DatabaseEnginePoolTest(unittest.TestCase):
 
 
 class RuntimeMigrationTest(unittest.TestCase):
+    def test_hospital_auth_migration_is_idempotent(self) -> None:
+        import importlib.util
+
+        self.assertIsNotNone(
+            importlib.util.find_spec("app.hospital_auth.schema"),
+            "医院账号认证迁移尚未实现",
+        )
+        from app.hospital_auth.schema import AUTH_TABLES, ensure_hospital_auth_schema
+
+        engine = create_engine("sqlite://")
+
+        first = ensure_hospital_auth_schema(engine)
+        second = ensure_hospital_auth_schema(engine)
+
+        self.assertEqual(first["created_tables"], list(AUTH_TABLES))
+        self.assertEqual(second, {"created_tables": []})
+        self.assertTrue(set(AUTH_TABLES).issubset(inspect(engine).get_table_names()))
+
     def test_rule_lineage_migration_is_idempotent(self) -> None:
         from app.rules.schema import ensure_rule_lineage_schema
 

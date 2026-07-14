@@ -240,11 +240,13 @@ from app.api.indicator_drafts import (
 )
 from app.api.monitoring import router as monitoring_router
 from app.api.terminology import router as terminology_router
+from app.api.hospital_auth import router as hospital_auth_router
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
 app.include_router(monitoring_router)
 app.include_router(terminology_router)
+app.include_router(hospital_auth_router)
 
 
 def start_monitoring_scheduler() -> None:
@@ -297,6 +299,16 @@ def initialize_rule_lineage_runtime() -> None:
         logger.exception("rule lineage schema initialization failed")
 
 
+def initialize_hospital_auth_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine
+        from app.hospital_auth.schema import ensure_hospital_auth_schema
+
+        ensure_hospital_auth_schema(create_runtime_engine())
+    except Exception:
+        logger.exception("hospital auth schema initialization failed")
+
+
 def stop_monitoring_scheduler() -> None:
     scheduler = get_monitoring_scheduler()
     if scheduler is not None:
@@ -305,6 +317,7 @@ def stop_monitoring_scheduler() -> None:
 
 app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", initialize_rule_lineage_runtime)
+app.add_event_handler("startup", initialize_hospital_auth_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)
 

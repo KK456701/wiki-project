@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from app.db.engine import create_runtime_engine
 from app.db.migrations import (
     ensure_diagnose_report_schema,
+    ensure_hospital_auth_schema,
     ensure_monitoring_schema,
     ensure_rule_lineage_schema,
     ensure_terminology_schema,
@@ -23,6 +24,7 @@ def main() -> int:
     monitoring = ensure_monitoring_schema(engine)
     terminology = ensure_terminology_schema(engine)
     rule_lineage = ensure_rule_lineage_schema(engine)
+    hospital_auth = ensure_hospital_auth_schema(engine)
     print(
         json.dumps(
             {
@@ -32,6 +34,7 @@ def main() -> int:
                 "monitoring": monitoring,
                 "terminology": terminology,
                 "rule_lineage": rule_lineage,
+                "hospital_auth": hospital_auth,
             },
             ensure_ascii=False,
             indent=2,

@@ -1,6 +1,60 @@
 CREATE DATABASE IF NOT EXISTS wiki_agent_runtime DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE wiki_agent_runtime;
 
+CREATE TABLE IF NOT EXISTS med_hospital_user (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id VARCHAR(64) NOT NULL UNIQUE,
+  account_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  password_hash VARCHAR(128) NOT NULL,
+  password_salt VARCHAR(64) NOT NULL,
+  password_iterations INT NOT NULL,
+  must_change_password TINYINT NOT NULL DEFAULT 1,
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  failed_attempts INT NOT NULL DEFAULT 0,
+  locked_until DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  KEY idx_hospital_user_scope (hospital_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS med_hospital_user_permission (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id VARCHAR(64) NOT NULL,
+  permission_code VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  UNIQUE KEY uq_hospital_user_permission (user_id, permission_code)
+);
+
+CREATE TABLE IF NOT EXISTS med_hospital_session (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  session_id VARCHAR(64) NOT NULL UNIQUE,
+  user_id VARCHAR(64) NOT NULL,
+  token_hash VARCHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME,
+  created_at DATETIME NOT NULL,
+  last_seen_at DATETIME NOT NULL,
+  KEY idx_hospital_session_user (user_id, expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS med_data_access_audit (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  audit_id VARCHAR(64) NOT NULL UNIQUE,
+  user_id VARCHAR(64),
+  hospital_id VARCHAR(64),
+  rule_id VARCHAR(64),
+  run_id VARCHAR(64),
+  export_id VARCHAR(64),
+  action VARCHAR(64) NOT NULL,
+  result VARCHAR(32) NOT NULL,
+  row_count INT,
+  request_id VARCHAR(64),
+  reason TEXT,
+  created_at DATETIME NOT NULL,
+  KEY idx_data_access_audit_scope (hospital_id, created_at)
+);
+
 CREATE TABLE IF NOT EXISTS med_index_standard (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   index_code VARCHAR(64) NOT NULL,
