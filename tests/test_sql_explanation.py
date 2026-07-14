@@ -82,6 +82,75 @@ GENERATION_RESULT = {
     },
 }
 
+URGENT_LINEAGE = {
+    "denominator_name": "同期急会诊总次数",
+    "numerator_name": "及时到位急会诊次数",
+    "db_name": "hospital_demo_data",
+    "main_table": "consult_record",
+    "denominator_rows": [
+        {
+            "label": "限定医院",
+            "business_fields": ["hospital_id"],
+            "physical_fields": ["consult_record.hospital_id"],
+            "condition_text": "医院等于hospital_001",
+            "source": "当前医院",
+            "effect": "限定分子和分母共同统计范围",
+        },
+        {
+            "label": "限定统计区间",
+            "business_fields": ["request_time"],
+            "physical_fields": ["consult_record.request_time"],
+            "condition_text": "急会诊申请时间为本次统计区间",
+            "source": "本次统计区间",
+            "effect": "限定分子和分母共同统计范围",
+        },
+        {
+            "label": "分母筛选条件",
+            "business_fields": ["consult_type"],
+            "physical_fields": ["consult_record.consult_type"],
+            "condition_text": "会诊类型等于急会诊",
+            "source": "标准口径",
+            "effect": "满足时进入分母",
+        },
+    ],
+    "numerator_rows": [
+        {
+            "label": "继承分母",
+            "business_fields": [],
+            "physical_fields": [],
+            "condition_text": "先满足全部分母条件",
+            "source": "指标定义",
+            "effect": "分子一定是分母的子集",
+        },
+        {
+            "label": "判断申请至到位耗时",
+            "business_fields": ["request_time", "arrive_time"],
+            "physical_fields": [
+                "consult_record.request_time",
+                "consult_record.arrive_time",
+            ],
+            "condition_text": "申请至到位耗时为0至20分钟",
+            "derivation_text": "急会诊到位时间减急会诊申请时间，换算为分钟",
+            "source": "本院版本 v1",
+            "effect": "在分母基础上满足时进入分子",
+        },
+    ],
+    "caliber_rows": [
+        {
+            "parameter": "arrive_minutes_threshold",
+            "current_value": "20分钟",
+            "standard_value": "10分钟",
+            "condition_name": "判断申请至到位耗时",
+            "physical_fields": [
+                "consult_record.request_time",
+                "consult_record.arrive_time",
+            ],
+            "effect_scope": "只改变分子，不改变分母",
+            "version": "本院版本 v1",
+        }
+    ],
+}
+
 
 def _trial_result(numerator=8, denominator=10, result_value=80.0):
     return {
@@ -102,25 +171,21 @@ def _trial_result(numerator=8, denominator=10, result_value=80.0):
 
 
 class SqlExplanationTest(unittest.TestCase):
-    def _generation(self, effective_rule=None):
+    def _generation(self, effective_rule=None, lineage=URGENT_LINEAGE):
         return format_generation_explanation(
             result=GENERATION_RESULT,
             effective_rule=effective_rule or HOSPITAL_RULE,
-            spec=SPEC,
-            field_contract=FIELD_CONTRACT,
-            mapping=MAPPING,
+            lineage=lineage,
             hospital_id="hospital_001",
             stat_start="2026-07-01 00:00:00",
             stat_end="2026-08-01 00:00:00",
         )
 
-    def _trial(self, result, effective_rule=None):
+    def _trial(self, result, effective_rule=None, lineage=URGENT_LINEAGE):
         return format_trial_explanation(
             result=result,
             effective_rule=effective_rule or HOSPITAL_RULE,
-            spec=SPEC,
-            field_contract=FIELD_CONTRACT,
-            mapping=MAPPING,
+            lineage=lineage,
             hospital_id="hospital_001",
             stat_start="2026-07-01 00:00:00",
             stat_end="2026-08-01 00:00:00",
@@ -133,16 +198,24 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("20分钟", answer)
         self.assertIn("标准值：10分钟", answer)
         self.assertIn("hospital_demo_data.consult_record", answer)
-        self.assertIn("急会诊申请时间", answer)
-        self.assertIn("| 计算项 | 业务解释 | 本院实际条件 |", answer)
-        self.assertIn("| 业务字段 | 业务含义 | 医院字段 |", answer)
-        self.assertLess(answer.index("| 计算项 |"), answer.index("```sql"))
+        self.assertIn("## 分母如何取数", answer)
+        self.assertIn("consult_record.hospital_id", answer)
+        self.assertIn("consult_record.consult_type", answer)
+        self.assertIn("consult_record.request_time", answer)
+        self.assertIn("## 分子如何从分母中筛选", answer)
+        self.assertIn("分子一定是分母的子集", answer)
+        self.assertIn("consult_record.arrive_time", answer)
+        self.assertIn("急会诊到位时间减急会诊申请时间", answer)
+        self.assertIn("## 本院口径作用在哪里", answer)
+        self.assertIn("只改变分子，不改变分母", answer)
+        self.assertLess(answer.index("## 分母如何取数"), answer.index("```sql"))
 
     def test_trial_explains_eighty_percent_from_aggregates(self):
         answer = self._trial(_trial_result())
 
         self.assertIn("8 / 10 x 100% = 80%", answer)
-        self.assertIn("## 为什么这样计算", answer)
+        self.assertIn("## 分母如何取数", answer)
+        self.assertIn("## 分子如何从分母中筛选", answer)
         self.assertIn("申请至到位耗时为0至20分钟", answer)
         self.assertIn("未进入分子", answer)
         self.assertIn("| 分子 | 8 |", answer)
@@ -178,6 +251,12 @@ class SqlExplanationTest(unittest.TestCase):
 
         self.assertIn("标准口径", answer)
         self.assertNotIn("本院定制", answer)
+
+    def test_legacy_result_does_not_guess_field_relationships(self):
+        answer = self._generation(lineage={})
+
+        self.assertIn("字段关系尚未结构化", answer)
+        self.assertNotIn("consult_record.arrive_time", answer)
 
 
 if __name__ == "__main__":

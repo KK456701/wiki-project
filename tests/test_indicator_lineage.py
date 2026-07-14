@@ -130,6 +130,10 @@ class IndicatorLineageTest(unittest.TestCase):
             ["consult_record.request_time", "consult_record.arrive_time"],
         )
         self.assertEqual(timely["condition_text"], "申请至到位耗时为0至20分钟")
+        self.assertEqual(
+            timely["derivation_text"],
+            "急会诊到位时间减急会诊申请时间，换算为分钟",
+        )
         self.assertEqual(timely["source"], "本院版本 v1")
         self.assertEqual(lineage["caliber_rows"][0]["standard_value"], "10分钟")
         self.assertEqual(lineage["caliber_rows"][0]["current_value"], "20分钟")

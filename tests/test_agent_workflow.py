@@ -87,6 +87,58 @@ class FakeSQLGenerationAgent:
             "validation": {"ok": True, "message": "SQL 安全校验通过"},
             "dialect": "mysql",
             "params": {"arrive_minutes_threshold": 20},
+            "lineage": {
+                "denominator_name": "同期急会诊总次数",
+                "numerator_name": "及时到位急会诊次数",
+                "db_name": "hospital_demo_data",
+                "main_table": "consult_record",
+                "denominator_rows": [
+                    {
+                        "label": "分母筛选条件",
+                        "business_fields": ["consult_type"],
+                        "physical_fields": ["consult_record.consult_type"],
+                        "condition_text": "会诊类型等于急会诊",
+                        "source": "标准口径",
+                        "effect": "满足时进入分母",
+                    }
+                ],
+                "numerator_rows": [
+                    {
+                        "label": "继承分母",
+                        "business_fields": [],
+                        "physical_fields": [],
+                        "condition_text": "先满足全部分母条件",
+                        "source": "指标定义",
+                        "effect": "分子一定是分母的子集",
+                    },
+                    {
+                        "label": "判断申请至到位耗时",
+                        "business_fields": ["request_time", "arrive_time"],
+                        "physical_fields": [
+                            "consult_record.request_time",
+                            "consult_record.arrive_time",
+                        ],
+                        "condition_text": "申请至到位耗时为0至20分钟",
+                        "derivation_text": "急会诊到位时间减急会诊申请时间，换算为分钟",
+                        "source": "本院版本 v1",
+                        "effect": "在分母基础上满足时进入分子",
+                    },
+                ],
+                "caliber_rows": [
+                    {
+                        "parameter": "arrive_minutes_threshold",
+                        "current_value": "20分钟",
+                        "standard_value": "10分钟",
+                        "condition_name": "判断申请至到位耗时",
+                        "physical_fields": [
+                            "consult_record.request_time",
+                            "consult_record.arrive_time",
+                        ],
+                        "effect_scope": "只改变分子，不改变分母",
+                        "version": "本院版本 v1",
+                    }
+                ],
+            },
         }
         if kwargs.get("trial_run"):
             result["trial_run"] = {
@@ -589,9 +641,10 @@ class AgentWorkflowTest(unittest.TestCase):
             done = next(data for event, data in reversed(events) if event == "done")
             answer = done["answer"]
             self.assertIn("当前采用口径", answer)
-            self.assertIn("| 计算项 | 业务解释 | 本院实际条件 |", answer)
-            self.assertIn("| 业务字段 | 业务含义 | 医院字段 |", answer)
-            self.assertLess(answer.index("| 计算项 |"), answer.index("```sql"))
+            self.assertIn("## 分母如何取数", answer)
+            self.assertIn("## 分子如何从分母中筛选", answer)
+            self.assertIn("## 本院口径作用在哪里", answer)
+            self.assertLess(answer.index("## 分母如何取数"), answer.index("```sql"))
 
     def test_sql_command_reuses_previous_session_rule_context(self) -> None:
         FakeSQLGenerationAgent.calls = []

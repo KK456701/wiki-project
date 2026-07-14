@@ -7,8 +7,6 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
-import yaml
-
 from app.agents.caliber_adaptation import CaliberAdaptationAgent
 from app.agents.contracts import IntentResult
 from app.agents.human_interaction import HumanInteractionAgent, detect_intent_by_rule
@@ -448,70 +446,6 @@ def _record_sql_trace_nodes(
             config_data={"tool": "execute_sql_hospital_demo_data", "readonly": True},
             error_message=str(trial.get("error_message") or ""),
         )
-
-
-def _sql_explanation_materials(
-    kb_root: Path,
-    rule_id: str | None,
-    hospital_id: str | None,
-    result: dict[str, Any],
-    effective_rule: dict[str, Any],
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    spec: dict[str, Any] = {}
-    field_contract: dict[str, Any] = {}
-    mapping: dict[str, Any] = {}
-    if rule_id:
-        matches = list((kb_root / "sql-specs").glob(f"{rule_id}_*"))
-        if len(matches) == 1:
-            spec = _read_yaml_dict(matches[0] / "rule_sql_spec.yaml")
-            field_contract = _read_yaml_dict(matches[0] / "field_contract.yaml")
-        if hospital_id:
-            mapping = _read_yaml_dict(
-                kb_root / "hospital-mappings" / hospital_id / f"{rule_id}.yaml"
-            )
-
-    precheck = result.get("precheck") if isinstance(result.get("precheck"), dict) else {}
-    fields = precheck.get("field_mapping") if isinstance(precheck.get("field_mapping"), dict) else {}
-    if not mapping:
-        mapping = {
-            "db_name": precheck.get("db_name") or "hospital_demo_data",
-            "main_table": precheck.get("main_table") or "",
-            "dialect": result.get("dialect") or "mysql",
-            "fields": fields,
-        }
-    if not field_contract:
-        field_contract = {
-            "business_fields": {
-                key: {"desc": key}
-                for key in fields
-            }
-        }
-    if not spec:
-        spec = {
-            "rule_id": rule_id or effective_rule.get("rule_id") or "",
-            "rule_name": effective_rule.get("rule_name") or "",
-            "default_params": effective_rule.get("national_params") or {},
-            "numerator": {
-                "name": effective_rule.get("numerator_rule") or "符合分子条件的数量",
-                "logic": [],
-            },
-            "denominator": {
-                "name": effective_rule.get("denominator_rule") or "符合分母条件的数量",
-                "logic": [],
-            },
-            "required_business_fields": list(fields),
-        }
-    return spec, field_contract, mapping
-
-
-def _read_yaml_dict(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError):
-        return {}
-    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def detect_intent(query: str) -> str:
@@ -1372,19 +1306,10 @@ def run_chat_stream(
             if result.get("status") == "field_precheck_failed":
                 answer = f"❌ 暂不能生成 SQL\n\n{result.get('message', '')}"
             else:
-                spec, field_contract, mapping = _sql_explanation_materials(
-                    kb_root,
-                    rule_id,
-                    state.get("hospital_id"),
-                    result,
-                    effective,
-                )
                 answer = format_generation_explanation(
                     result=result,
                     effective_rule=effective,
-                    spec=spec,
-                    field_contract=field_contract,
-                    mapping=mapping,
+                    lineage=result.get("lineage") or {},
                     hospital_id=str(state.get("hospital_id") or ""),
                     stat_start=start,
                     stat_end=end,
@@ -1454,19 +1379,10 @@ def run_chat_stream(
                 trial_run=True,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
-            spec, field_contract, mapping = _sql_explanation_materials(
-                kb_root,
-                rule_id,
-                state.get("hospital_id"),
-                result,
-                effective,
-            )
             answer = format_trial_explanation(
                 result=result,
                 effective_rule=effective,
-                spec=spec,
-                field_contract=field_contract,
-                mapping=mapping,
+                lineage=result.get("lineage") or {},
                 hospital_id=str(state.get("hospital_id") or ""),
                 stat_start=start,
                 stat_end=end,

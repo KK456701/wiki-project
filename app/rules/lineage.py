@@ -144,9 +144,28 @@ def _condition_row(
         "business_fields": business_fields,
         "physical_fields": _physical_fields(business_fields, mapping),
         "condition_text": _condition_text(condition, definition, params),
+        "derivation_text": _derivation_text(condition.field, definition),
         "source": source,
         "effect": _condition_effect(stage),
     }
+
+
+def _derivation_text(
+    field_name: str, definition: CalculationDefinition
+) -> str:
+    derived = definition.derived_fields.get(field_name)
+    if derived is None:
+        return ""
+    if (
+        derived.operation == "timestamp_diff_minutes"
+        and len(derived.source_fields) == 2
+    ):
+        start_field, end_field = derived.source_fields
+        return (
+            f"{_field_label(end_field)}减{_field_label(start_field)}，"
+            "换算为分钟"
+        )
+    return ""
 
 
 def _aggregate_row(

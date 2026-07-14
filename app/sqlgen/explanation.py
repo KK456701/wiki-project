@@ -18,26 +18,11 @@ PARAMETER_LABELS = {
     "autologous_flag_value": "自体血回输标志",
 }
 
-RULE_FIELD_LABELS = {
-    "numerator_rule": "分子规则",
-    "denominator_rule": "分母规则",
-    "filter_rule": "筛选条件",
-    "exclude_rule": "排除规则",
-}
-
-LOGIC_LABELS = {
-    "arrive_minutes": "申请至到位耗时",
-    "transfer_minutes": "入院至转科耗时",
-}
-
-
 def format_generation_explanation(
     *,
     result: dict[str, Any],
     effective_rule: dict[str, Any],
-    spec: dict[str, Any],
-    field_contract: dict[str, Any],
-    mapping: dict[str, Any],
+    lineage: dict[str, Any],
     hospital_id: str,
     stat_start: str,
     stat_end: str,
@@ -48,14 +33,16 @@ def format_generation_explanation(
         _markdown_table(
             ["项目", "结果"],
             [
-                ["指标", effective_rule.get("rule_name") or spec.get("rule_name") or "未命名指标"],
+                ["指标", effective_rule.get("rule_name") or "未命名指标"],
                 ["SQL ID", result.get("sql_id") or "未记录"],
                 ["安全校验", validation.get("message") or validation.get("error") or "未返回"],
             ],
         ),
-        _caliber_lines(effective_rule, spec, result.get("params") or {}, hospital_id),
-        _definition_table(spec, field_contract, result.get("params") or {}),
-        _field_table(spec, field_contract, mapping),
+        _caliber_lines(effective_rule, lineage, hospital_id),
+        _branch_section("分母如何取数", lineage, "denominator", result),
+        _branch_section("分子如何从分母中筛选", lineage, "numerator", result),
+        _caliber_target_section(effective_rule, lineage),
+        _formula_section(lineage),
         _parameter_table(result.get("params") or {}, hospital_id, stat_start, stat_end),
         f"```sql\n{result.get('sql_text') or ''}\n```",
         "如需验证本期结果，请输入「试运行」。",
@@ -67,9 +54,7 @@ def format_trial_explanation(
     *,
     result: dict[str, Any],
     effective_rule: dict[str, Any],
-    spec: dict[str, Any],
-    field_contract: dict[str, Any],
-    mapping: dict[str, Any],
+    lineage: dict[str, Any],
     hospital_id: str,
     stat_start: str,
     stat_end: str,
@@ -77,11 +62,12 @@ def format_trial_explanation(
     trial = result.get("trial_run") or {}
     sections = [
         "## 试运行完成",
-        _caliber_lines(effective_rule, spec, result.get("params") or {}, hospital_id),
-        _definition_table(spec, field_contract, result.get("params") or {}),
-        _trial_conclusion(trial, spec),
-        _trial_table(trial, spec),
-        _field_table(spec, field_contract, mapping),
+        _caliber_lines(effective_rule, lineage, hospital_id),
+        _branch_section("分母如何取数", lineage, "denominator", result),
+        _branch_section("分子如何从分母中筛选", lineage, "numerator", result),
+        _caliber_target_section(effective_rule, lineage),
+        _trial_conclusion(trial, lineage),
+        _trial_table(trial, lineage),
         _run_metadata_table(trial, hospital_id, stat_start, stat_end),
         f"```sql\n{result.get('sql_text') or ''}\n```",
     ]
@@ -105,8 +91,7 @@ def _table_cell(value: Any) -> str:
 
 def _caliber_lines(
     effective_rule: dict[str, Any],
-    spec: dict[str, Any],
-    params: dict[str, Any],
+    lineage: dict[str, Any],
     hospital_id: str,
 ) -> str:
     level = str(effective_rule.get("effective_level") or "national")
@@ -121,104 +106,101 @@ def _caliber_lines(
         ["口径来源", source],
         ["口径版本", "；".join(versions)],
     ]
-    custom_lines = _custom_caliber_lines(effective_rule, spec, params) if is_hospital else []
+    custom_lines = []
+    if is_hospital:
+        for item in lineage.get("caliber_rows") or []:
+            custom_lines.append(
+                f"{_parameter_label(str(item.get('parameter') or ''))}："
+                f"{item.get('current_value') or '-'}"
+                f"（标准值：{item.get('standard_value') or '-'}；"
+                f"{item.get('effect_scope') or '影响范围待确认'}）"
+            )
     if custom_lines:
         rows.append(["本院定制", "；".join(custom_lines)])
     return "## 当前采用口径\n\n" + _markdown_table(["项目", "内容"], rows)
 
 
-def _custom_caliber_lines(
-    effective_rule: dict[str, Any], spec: dict[str, Any], params: dict[str, Any]
-) -> list[str]:
-    default_params = effective_rule.get("national_params") or spec.get("default_params") or {}
-    overridden = effective_rule.get("overridden_fields") or []
-    lines: list[str] = []
-    for key in overridden:
-        if key in params:
-            current = _display_parameter(key, params[key])
-            standard = _display_parameter(key, default_params.get(key))
-            lines.append(f"{_parameter_label(key)}：{current}（标准值：{standard}）")
-        elif key in RULE_FIELD_LABELS and effective_rule.get(key):
-            lines.append(f"{RULE_FIELD_LABELS[key]}：{effective_rule[key]}")
-    return lines
-
-
-def _definition_table(
-    spec: dict[str, Any], field_contract: dict[str, Any], params: dict[str, Any]
+def _branch_section(
+    title: str,
+    lineage: dict[str, Any],
+    branch: str,
+    result: dict[str, Any],
 ) -> str:
-    numerator = spec.get("numerator") or {}
-    denominator = spec.get("denominator") or {}
-    rows = [
-        [
-            "分母",
-            denominator.get("name") or "符合统计范围的总数",
-            _logic_text(denominator.get("logic") or [], field_contract, params),
-        ],
-        [
-            "分子",
-            numerator.get("name") or "符合指标条件的数量",
-            _logic_text(numerator.get("logic") or [], field_contract, params),
-        ],
-        ["公式", "指标的计算方式", "分子 / 分母 x 100%"],
-    ]
-    return "## 为什么这样计算\n\n" + _markdown_table(
-        ["计算项", "业务解释", "本院实际条件"], rows
-    )
-
-
-def _logic_text(
-    logic_items: Iterable[Any], field_contract: dict[str, Any], params: dict[str, Any]
-) -> str:
-    rendered = [
-        _humanize_logic(str(item), field_contract, params)
-        for item in logic_items
-        if str(item).strip()
-    ]
-    return "；".join(rendered) if rendered else "按当前生效口径执行"
-
-
-def _humanize_logic(
-    logic: str, field_contract: dict[str, Any], params: dict[str, Any]
-) -> str:
-    text = logic
-    business_fields = field_contract.get("business_fields") or {}
-    replacements: dict[str, str] = dict(LOGIC_LABELS)
-    replacements.update(
-        {
-            key: str((item or {}).get("desc") or key)
-            for key, item in business_fields.items()
-        }
-    )
-    replacements.update(
-        {key: _display_parameter(key, value) for key, value in params.items()}
-    )
-    for key in sorted(replacements, key=len, reverse=True):
-        text = text.replace(key, replacements[key])
-    if text.startswith("0 <= ") and " <= " in text[5:]:
-        middle, upper = text[5:].split(" <= ", 1)
-        return f"{middle}为0至{upper}"
-    return text.replace(" = ", "为")
-
-
-def _field_table(
-    spec: dict[str, Any], field_contract: dict[str, Any], mapping: dict[str, Any]
-) -> str:
-    business_fields = field_contract.get("business_fields") or {}
-    mapped_fields = mapping.get("fields") or {}
-    required = spec.get("required_business_fields") or list(mapped_fields)
-    rows = []
-    for key in required:
-        contract = business_fields.get(key) or {}
-        rows.append([key, contract.get("desc") or key, mapped_fields.get(key) or "未映射"])
-    database = mapping.get("db_name") or "未配置数据库"
-    table = mapping.get("main_table") or "未配置主表"
-    dialect = str(mapping.get("dialect") or "mysql").upper()
-    source = f"`{database}.{table}`（{dialect}）"
+    rows = lineage.get(f"{branch}_rows") or []
+    if not rows:
+        return (
+            f"## {title}\n\n"
+            "字段关系尚未结构化，系统不会根据字段名称猜测分子、分母关系。"
+        )
+    rendered_rows = []
+    for row in rows:
+        decision = str(row.get("condition_text") or "-")
+        if row.get("derivation_text"):
+            decision += f"；计算方式：{row['derivation_text']}"
+        rendered_rows.append(
+            [
+                row.get("label") or "-",
+                _list_text(row.get("business_fields")),
+                _list_text(row.get("physical_fields")),
+                decision,
+                row.get("source") or "-",
+                row.get("effect") or "-",
+            ]
+        )
+    context = ""
+    if branch == "denominator":
+        database = lineage.get("db_name") or "未配置数据库"
+        table = lineage.get("main_table") or "未配置主表"
+        dialect = str(result.get("dialect") or "mysql").upper()
+        context = f"数据来源：`{database}.{table}`（{dialect}）\n\n"
+    effect_header = "对分母的作用" if branch == "denominator" else "对分子的作用"
     return (
-        "## 从哪里取数\n\n"
-        f"数据来源：{source}\n\n"
-        + _markdown_table(["业务字段", "业务含义", "医院字段"], rows)
+        f"## {title}\n\n"
+        + context
+        + _markdown_table(
+            ["步骤", "业务字段", "医院表字段", "判断或计算方式", "条件来源", effect_header],
+            rendered_rows,
+        )
     )
+
+
+def _caliber_target_section(
+    effective_rule: dict[str, Any], lineage: dict[str, Any]
+) -> str:
+    title = "## 本院口径作用在哪里"
+    if str(effective_rule.get("effective_level") or "national") != "hospital":
+        return title + "\n\n当前采用标准口径，无额外医院参数。"
+    rows = lineage.get("caliber_rows") or []
+    if not rows:
+        return title + "\n\n字段关系尚未结构化，暂不能可靠说明医院参数作用位置。"
+    return title + "\n\n" + _markdown_table(
+        ["口径项", "本院值", "标准值", "作用条件", "对应医院字段", "影响范围"],
+        [
+            [
+                _parameter_label(str(item.get("parameter") or "")),
+                item.get("current_value") or "-",
+                item.get("standard_value") or "-",
+                item.get("condition_name") or "-",
+                _list_text(item.get("physical_fields")),
+                item.get("effect_scope") or "-",
+            ]
+            for item in rows
+        ],
+    )
+
+
+def _formula_section(lineage: dict[str, Any]) -> str:
+    numerator = lineage.get("numerator_name") or "分子"
+    denominator = lineage.get("denominator_name") or "分母"
+    return (
+        "## 最终如何计算\n\n"
+        f"`{numerator} / {denominator} x 100%`。"
+    )
+
+
+def _list_text(values: Any) -> str:
+    items = [str(item) for item in values or [] if str(item)]
+    return "；".join(items) if items else "-"
 
 
 def _parameter_table(
@@ -236,7 +218,7 @@ def _parameter_table(
     return "## 本次计算参数\n\n" + _markdown_table(["参数", "本次使用值"], rows)
 
 
-def _trial_conclusion(trial: dict[str, Any], spec: dict[str, Any]) -> str:
+def _trial_conclusion(trial: dict[str, Any], lineage: dict[str, Any]) -> str:
     if str(trial.get("status") or "") == "failed":
         return f"试运行失败：{trial.get('error_message') or '数据库未返回结果'}"
     numerator = _optional_int(trial.get("numerator_count"))
@@ -248,19 +230,20 @@ def _trial_conclusion(trial: dict[str, Any], spec: dict[str, Any]) -> str:
     if numerator > denominator:
         return "分子大于分母，结果异常，请检查本院口径或 SQL。"
     result_value = _display_value(trial.get("result_value"))
-    subject = _subject_name(str((spec.get("denominator") or {}).get("name") or "业务记录"))
-    unit = _count_unit(str((spec.get("denominator") or {}).get("name") or ""))
+    denominator_name = str(lineage.get("denominator_name") or "业务记录")
+    subject = _subject_name(denominator_name)
+    unit = _count_unit(denominator_name)
     return (
         f"本期共有{denominator}{unit}{subject}进入分母，其中{numerator}{unit}进入分子，"
         f"因此 {numerator} / {denominator} x 100% = {result_value}%。"
     )
 
 
-def _trial_table(trial: dict[str, Any], spec: dict[str, Any]) -> str:
+def _trial_table(trial: dict[str, Any], lineage: dict[str, Any]) -> str:
     numerator = _optional_int(trial.get("numerator_count"))
     denominator = _optional_int(trial.get("denominator_count"))
-    numerator_name = str((spec.get("numerator") or {}).get("name") or "符合分子条件的数量")
-    denominator_name = str((spec.get("denominator") or {}).get("name") or "符合分母条件的数量")
+    numerator_name = str(lineage.get("numerator_name") or "符合分子条件的数量")
+    denominator_name = str(lineage.get("denominator_name") or "符合分母条件的数量")
     rows: list[list[Any]] = [
         ["分母", denominator if denominator is not None else "未返回", denominator_name],
         ["分子", numerator if numerator is not None else "未返回", numerator_name],
