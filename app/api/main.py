@@ -35,6 +35,7 @@ from app.monitoring.runtime import (
 )
 from app.monitoring.schema import ensure_monitoring_schema
 from app.terminology.schema import ensure_terminology_schema
+from app.rules.schema import ensure_rule_lineage_schema
 from app.rules.repository import RuleNotFoundError, create_rule_repository
 from app.rules.importer import import_four_indicator_rules
 from app.observability.workflow_nodes import (
@@ -287,6 +288,15 @@ def initialize_terminology_runtime() -> None:
         logger.exception("terminology runtime initialization failed")
 
 
+def initialize_rule_lineage_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine
+
+        ensure_rule_lineage_schema(create_runtime_engine())
+    except Exception:
+        logger.exception("rule lineage schema initialization failed")
+
+
 def stop_monitoring_scheduler() -> None:
     scheduler = get_monitoring_scheduler()
     if scheduler is not None:
@@ -294,6 +304,7 @@ def stop_monitoring_scheduler() -> None:
 
 
 app.add_event_handler("startup", initialize_terminology_runtime)
+app.add_event_handler("startup", initialize_rule_lineage_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)
 

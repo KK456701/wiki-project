@@ -23,6 +23,75 @@ class DatabaseEnginePoolTest(unittest.TestCase):
 
 
 class RuntimeMigrationTest(unittest.TestCase):
+    def test_rule_lineage_migration_is_idempotent(self) -> None:
+        from app.rules.schema import ensure_rule_lineage_schema
+
+        engine = create_engine("sqlite://")
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE med_index_standard (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      index_code TEXT NOT NULL UNIQUE
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE med_index_hospital_custom (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      hospital_id TEXT NOT NULL,
+                      index_code TEXT NOT NULL
+                    )
+                    """
+                )
+            )
+
+        first = ensure_rule_lineage_schema(engine)
+        second = ensure_rule_lineage_schema(engine)
+        standard_columns = {
+            item["name"]
+            for item in inspect(engine).get_columns("med_index_standard")
+        }
+        custom_columns = {
+            item["name"]
+            for item in inspect(engine).get_columns("med_index_hospital_custom")
+        }
+        relation_columns = {
+            item["name"]
+            for item in inspect(engine).get_columns("med_table_relation")
+        }
+
+        self.assertEqual(
+            first,
+            {
+                "added_columns": [
+                    "med_index_standard.calculation_definition",
+                    "med_index_hospital_custom.custom_calculation_patch",
+                ],
+                "created_tables": ["med_table_relation"],
+            },
+        )
+        self.assertEqual(second, {"added_columns": [], "created_tables": []})
+        self.assertIn("calculation_definition", standard_columns)
+        self.assertIn("custom_calculation_patch", custom_columns)
+        self.assertTrue(
+            {
+                "hospital_id",
+                "db_name",
+                "left_table",
+                "left_column",
+                "right_table",
+                "right_column",
+                "join_type",
+                "relation_source",
+                "status",
+            }.issubset(relation_columns)
+        )
+
     def test_adds_diagnose_report_columns_idempotently(self) -> None:
         from app.db.migrations import ensure_diagnose_report_schema
 

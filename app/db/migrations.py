@@ -47,3 +47,9 @@ def ensure_terminology_schema(engine: Engine) -> dict[str, list[str]]:
     from app.terminology.schema import ensure_terminology_schema as ensure
 
     return ensure(engine)
+
+
+def ensure_rule_lineage_schema(engine: Engine) -> dict[str, list[str]]:
+    from app.rules.schema import ensure_rule_lineage_schema as ensure
+
+    return ensure(engine)

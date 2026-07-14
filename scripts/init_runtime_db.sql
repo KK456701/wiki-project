@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS med_index_standard (
   filter_rule TEXT,
   exclude_rule TEXT,
   rely_table_field JSON NOT NULL,
+  calculation_definition JSON,
   standard_sql LONGTEXT NOT NULL,
   rule_params JSON NOT NULL,
   source_path VARCHAR(512),
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS med_index_hospital_custom (
   custom_filter TEXT,
   exclude_rule TEXT,
   custom_params JSON NOT NULL,
+  custom_calculation_patch JSON,
   custom_sql LONGTEXT,
   version INT NOT NULL,
   status TINYINT NOT NULL DEFAULT 1,
@@ -131,6 +133,24 @@ CREATE TABLE IF NOT EXISTS med_field_mapping (
   updated_by VARCHAR(64),
   updated_at DATETIME NOT NULL,
   UNIQUE KEY uk_mapping (hospital_id, rule_id, business_field)
+);
+
+CREATE TABLE IF NOT EXISTS med_table_relation (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  left_table VARCHAR(128) NOT NULL,
+  left_column VARCHAR(128) NOT NULL,
+  right_table VARCHAR(128) NOT NULL,
+  right_column VARCHAR(128) NOT NULL,
+  join_type VARCHAR(16) NOT NULL,
+  relation_source VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'confirmed',
+  updated_by VARCHAR(64),
+  updated_at DATETIME NOT NULL,
+  UNIQUE KEY uk_table_relation (
+    hospital_id, db_name, left_table, left_column, right_table, right_column
+  )
 );
 
 CREATE TABLE IF NOT EXISTS med_indicator_draft (

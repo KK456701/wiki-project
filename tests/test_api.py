@@ -802,6 +802,14 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(item["status"], "ok")
         self.assertEqual(item["enabled_plan_count"], 1)
 
+    def test_rule_lineage_schema_initialization_uses_runtime_engine(self) -> None:
+        engine = _trace_runtime_engine()
+        with patch("app.db.engine.create_runtime_engine", return_value=engine), \
+             patch.object(api_main, "ensure_rule_lineage_schema") as ensure:
+            api_main.initialize_rule_lineage_runtime()
+
+        ensure.assert_called_once_with(engine)
+
     def test_monitoring_scheduler_start_failure_degrades_without_raising(self) -> None:
         engine = _trace_runtime_engine()
         with patch.object(api_main, "get", return_value="true"), \

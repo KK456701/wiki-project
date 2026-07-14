@@ -12,6 +12,7 @@ from app.db.engine import create_runtime_engine
 from app.db.migrations import (
     ensure_diagnose_report_schema,
     ensure_monitoring_schema,
+    ensure_rule_lineage_schema,
     ensure_terminology_schema,
 )
 
@@ -21,6 +22,7 @@ def main() -> int:
     added = ensure_diagnose_report_schema(engine)
     monitoring = ensure_monitoring_schema(engine)
     terminology = ensure_terminology_schema(engine)
+    rule_lineage = ensure_rule_lineage_schema(engine)
     print(
         json.dumps(
             {
@@ -29,6 +31,7 @@ def main() -> int:
                 "added_columns": added,
                 "monitoring": monitoring,
                 "terminology": terminology,
+                "rule_lineage": rule_lineage,
             },
             ensure_ascii=False,
             indent=2,
