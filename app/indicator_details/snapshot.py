@@ -14,6 +14,7 @@ from typing import Any, Callable, Literal
 from app.db_access.business_db import BusinessDBClient
 from app.sqlgen.runner import _bind_sql_params
 
+from .lineage import build_detail_lineage
 from .models import (
     DetailColumn,
     DetailPage,
@@ -98,6 +99,13 @@ class DetailSnapshotStore:
     def _summary(
         self, snapshot: dict[str, Any], context: RunContext, *, reused: bool = False
     ) -> DetailSnapshotSummary:
+        columns = [
+            DetailColumn.model_validate(item)
+            for item in (snapshot.get("column_schema_json") or [])
+        ]
+        source_database, source_tables, field_lineage = build_detail_lineage(
+            context, columns
+        )
         return DetailSnapshotSummary(
             snapshot_id=str(snapshot["snapshot_id"]),
             run_id=str(snapshot["run_id"]),
@@ -112,13 +120,13 @@ class DetailSnapshotStore:
             denominator_count=int(snapshot.get("denominator_count") or 0),
             numerator_count=int(snapshot.get("numerator_count") or 0),
             unmatched_count=int(snapshot.get("unmatched_count") or 0),
-            columns=[
-                DetailColumn.model_validate(item)
-                for item in (snapshot.get("column_schema_json") or [])
-            ],
+            columns=columns,
             created_at=snapshot["created_at"],
             expires_at=snapshot["expires_at"],
             reused=reused,
+            source_database=source_database,
+            source_tables=source_tables,
+            field_lineage=field_lineage,
         )
 
     def _validate_ready_snapshot(self, snapshot: dict[str, Any]) -> Path:

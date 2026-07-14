@@ -184,6 +184,11 @@ def test_snapshot_counts_match_run_and_preview_is_masked(tmp_path: Path) -> None
     assert summary.denominator_count == 3
     assert summary.numerator_count == 2
     assert summary.unmatched_count == 1
+    assert summary.source_database == "hospital_demo_data"
+    assert summary.source_tables == ["consult_record"]
+    assert next(
+        item for item in summary.field_lineage if item.field == "arrive_minutes"
+    ).explanation == "由申请时间、到位时间计算"
     assert numerator_page.total == 2
     assert numerator_page.items[0]["患者标识"] == "PA*******01"
     assert "PATIENT0001" not in repr(numerator_page.items)

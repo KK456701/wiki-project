@@ -41,6 +41,16 @@ class DetailQuery(BaseModel):
     columns: list[DetailColumn]
 
 
+class DetailFieldLineage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    label: str
+    kind: Literal["column", "derived"]
+    sources: list[str] = Field(default_factory=list)
+    explanation: str
+
+
 class DetailSnapshotSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -61,6 +71,9 @@ class DetailSnapshotSummary(BaseModel):
     created_at: datetime
     expires_at: datetime
     reused: bool = False
+    source_database: str = ""
+    source_tables: list[str] = Field(default_factory=list)
+    field_lineage: list[DetailFieldLineage] = Field(default_factory=list)
 
 
 class DetailPage(BaseModel):
