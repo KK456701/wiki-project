@@ -56,6 +56,12 @@ class ResultDefinition(_StrictModel):
     denominator: Literal["denominator"]
 
 
+class DetailFieldDefinition(_StrictModel):
+    field: str
+    label: str
+    sensitivity: Literal["none", "patient_id", "name", "phone", "id_card"] = "none"
+
+
 class CalculationDefinition(_StrictModel):
     schema_version: Literal[1]
     scope: ScopeDefinition
@@ -63,6 +69,7 @@ class CalculationDefinition(_StrictModel):
     denominator: CalculationBranchDefinition
     numerator: CalculationBranchDefinition
     result: ResultDefinition
+    detail_fields: list[DetailFieldDefinition] = Field(default_factory=list)
 
 
 def parse_calculation_definition(payload: Any) -> CalculationDefinition:
@@ -166,6 +173,16 @@ def validate_calculation_definition(
                     f"派生字段 {derived_name} 引用了未定义字段 {source_field}"
                 )
 
+    seen_detail_fields: set[str] = set()
+    for detail_field in definition.detail_fields:
+        if detail_field.field in seen_detail_fields:
+            errors.append(f"明细字段重复 {detail_field.field}")
+        seen_detail_fields.add(detail_field.field)
+        if detail_field.field not in all_names:
+            errors.append(
+                f"明细字段 {detail_field.field} 未在业务字段或派生字段中定义"
+            )
+
     cycle_keys: set[tuple[str, ...]] = set()
 
     def find_cycle(field_name: str, path: tuple[str, ...]) -> None:
@@ -205,6 +222,7 @@ def merge_calculation_patch(
         "denominator",
         "numerator",
         "result",
+        "detail_fields",
     }
     unknown = set(patch) - allowed_top_level
     if unknown:

@@ -75,6 +75,7 @@ WHERE {{ fields.hospital_id }} = :hospital_id
         "main_table": "consult_record",
         "fields": {
             "hospital_id": ("hospital_id", "string"),
+            "patient_id": ("patient_id", "string"),
             "consult_type": ("consult_type", "string"),
             "request_time": ("request_time", "datetime"),
             "arrive_time": ("arrive_time", "datetime"),

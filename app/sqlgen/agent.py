@@ -16,6 +16,7 @@ from app.sqlgen.spec_loader import (
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
 from app.sqlgen.runner import run_sql_trial
+from app.indicator_details.models import RunContext
 from app.rules.calculation import parse_calculation_definition
 from app.rules.lineage import build_indicator_lineage
 
@@ -168,8 +169,39 @@ class SQLGenerationAgent:
             result["lineage"] = {}
 
         if trial_run and validation["ok"]:
+            run_context = RunContext(
+                rule_name=str(effective_rule.get("rule_name") or rule_id),
+                effective_level=str(effective_rule.get("effective_level") or "national"),
+                national_version=(
+                    str(effective_rule.get("national_version"))
+                    if effective_rule.get("national_version") is not None
+                    else None
+                ),
+                hospital_version=(
+                    int(effective_rule.get("hospital_version"))
+                    if effective_rule.get("hospital_version") is not None
+                    else None
+                ),
+                calculation_definition=result["calculation_definition"],
+                field_mapping=mapping,
+                params={
+                    "hospital_id": hospital_id,
+                    "start_time": stat_start_time,
+                    "end_time": stat_end_time,
+                    **params,
+                },
+                stat_start=stat_start_time,
+                stat_end=stat_end_time,
+                db_source=str(
+                    getattr(self.business_db, "source_id", None)
+                    or mapping.get("db_name")
+                    or ""
+                ),
+                main_table=str(mapping.get("main_table") or ""),
+            ).model_dump(mode="json")
             trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
-                                   hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by)
+                                   hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by,
+                                   run_context=run_context)
             result["trial_run"] = trial
             if persist_run_result and trial.get("result_value") is not None:
                 insert_run_result(self.runtime_engine, hospital_id, rule_id,

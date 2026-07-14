@@ -4,6 +4,10 @@ business_fields:
     type: string
     required: true
     desc: 医院 ID
+  patient_id:
+    type: string
+    required: false
+    desc: 患者标识（用于授权明细核对）
   consult_type:
     type: string
     required: true

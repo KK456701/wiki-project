@@ -327,6 +327,9 @@ CREATE TABLE IF NOT EXISTS med_sql_run_log (
   error_message TEXT,
   duration_ms INT,
   run_by VARCHAR(64),
+  numerator_count BIGINT,
+  denominator_count BIGINT,
+  run_context_json JSON,
   run_time DATETIME NOT NULL
 );
 

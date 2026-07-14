@@ -49,6 +49,7 @@ def run_sql_trial(
     stat_end: str,
     params: dict[str, Any] | None = None,
     run_by: str = "agent",
+    run_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not ALLOW_TRIAL_RUN:
         return {"status": "skipped", "message": "试运行已关闭"}
@@ -94,7 +95,7 @@ def run_sql_trial(
 
     duration_ms = int((time.time() - start) * 1000)
 
-    insert_sql_run_log(
+    log_args = (
         runtime_engine,
         run_id,
         sql_id,
@@ -108,6 +109,15 @@ def run_sql_trial(
         duration_ms,
         run_by,
     )
+    if numerator_count is None and denominator_count is None and run_context is None:
+        insert_sql_run_log(*log_args)
+    else:
+        insert_sql_run_log(
+            *log_args,
+            numerator_count=numerator_count,
+            denominator_count=denominator_count,
+            run_context=run_context,
+        )
 
     return {
         "run_id": run_id,

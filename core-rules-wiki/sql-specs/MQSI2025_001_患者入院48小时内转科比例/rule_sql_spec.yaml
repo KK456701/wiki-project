@@ -80,3 +80,10 @@ calculation:
     operation: ratio_percent
     numerator: numerator
     denominator: denominator
+  detail_fields:
+    - {field: admission_id, label: 入院流水号, sensitivity: patient_id}
+    - {field: admit_time, label: 入院时间, sensitivity: none}
+    - {field: transfer_time, label: 转科时间, sensitivity: none}
+    - {field: from_dept_id, label: 转出科室, sensitivity: none}
+    - {field: to_dept_id, label: 转入科室, sensitivity: none}
+    - {field: transfer_minutes, label: 转科耗时（分钟）, sensitivity: none}

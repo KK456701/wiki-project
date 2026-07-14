@@ -293,6 +293,57 @@ class SqlGenerationSafetyTest(unittest.TestCase):
         self.assertEqual(result["stat_start"], "2026-07-01 00:00:00")
         self.assertEqual(result["stat_end"], "2026-08-01 00:00:00")
 
+    def test_trial_run_persists_counts_and_non_patient_run_context(self) -> None:
+        class FakeBusinessDB:
+            def execute_select(self, sql):
+                return QueryResult(
+                    rows=[{
+                        "index_value": "84.72",
+                        "numerator_count": 488,
+                        "denominator_count": 576,
+                    }],
+                    row_count=1,
+                    source="hospital_demo_data",
+                    tool_name="execute_sql_hospital_demo_data",
+                    duration_ms=2,
+                )
+
+        context = {
+            "schema_version": 1,
+            "rule_name": "急会诊及时到位率",
+            "effective_level": "hospital",
+            "national_version": "2025",
+            "hospital_version": 1,
+            "calculation_definition": {"schema_version": 1},
+            "field_mapping": {"main_table": "consult_record", "fields": {}},
+            "params": {"arrive_minutes_threshold": 20},
+            "stat_start": "2026-07-01 00:00:00",
+            "stat_end": "2026-08-01 00:00:00",
+            "db_source": "hospital_demo_data",
+            "main_table": "consult_record",
+        }
+
+        with patch("app.sqlgen.runner.insert_sql_run_log") as insert_log:
+            run_sql_trial(
+                object(),
+                FakeBusinessDB(),
+                "SQL_8472",
+                "SELECT 84.72 AS index_value",
+                "hospital_001",
+                "MQSI2025_005",
+                "2026-07-01 00:00:00",
+                "2026-08-01 00:00:00",
+                {},
+                "tester",
+                run_context=context,
+            )
+
+        kwargs = insert_log.call_args.kwargs
+        self.assertEqual(kwargs["numerator_count"], 488)
+        self.assertEqual(kwargs["denominator_count"], 576)
+        self.assertEqual(kwargs["run_context"]["params"]["arrive_minutes_threshold"], 20)
+        self.assertNotIn("rows", kwargs["run_context"])
+
     def test_validator_rejects_main_table_only_in_comment(self) -> None:
         sql = "SELECT * FROM other_table WHERE x=:start_time AND y=:end_time -- consult_record"
 

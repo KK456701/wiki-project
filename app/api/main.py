@@ -309,6 +309,16 @@ def initialize_hospital_auth_runtime() -> None:
         logger.exception("hospital auth schema initialization failed")
 
 
+def initialize_indicator_detail_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine
+        from app.indicator_details.schema import ensure_indicator_detail_schema
+
+        ensure_indicator_detail_schema(create_runtime_engine())
+    except Exception:
+        logger.exception("indicator detail schema initialization failed")
+
+
 def stop_monitoring_scheduler() -> None:
     scheduler = get_monitoring_scheduler()
     if scheduler is not None:
@@ -318,6 +328,7 @@ def stop_monitoring_scheduler() -> None:
 app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", initialize_rule_lineage_runtime)
 app.add_event_handler("startup", initialize_hospital_auth_runtime)
+app.add_event_handler("startup", initialize_indicator_detail_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)
 

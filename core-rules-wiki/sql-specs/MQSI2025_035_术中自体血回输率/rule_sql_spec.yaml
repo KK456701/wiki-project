@@ -68,3 +68,10 @@ calculation:
     operation: ratio_percent
     numerator: numerator
     denominator: denominator
+  detail_fields:
+    - {field: patient_id, label: 患者标识, sensitivity: patient_id}
+    - {field: surgery_id, label: 手术号, sensitivity: patient_id}
+    - {field: dept_id, label: 科室, sensitivity: none}
+    - {field: surgery_time, label: 手术时间, sensitivity: none}
+    - {field: intraoperative_transfusion_flag, label: 术中输血, sensitivity: none}
+    - {field: autologous_reinfusion_flag, label: 自体血回输, sensitivity: none}

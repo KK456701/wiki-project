@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, inspect, text
 
 
 def _now() -> str:
@@ -113,11 +113,30 @@ def insert_generated_sql(engine: Engine, sql_id: str, hospital_id: str, rule_id:
 def insert_sql_run_log(engine: Engine, run_id: str, sql_id: str, hospital_id: str,
                        rule_id: str, stat_start: str, stat_end: str, run_status: str,
                        result_value: float | None, error_message: str, duration_ms: int,
-                       run_by: str) -> None:
+                       run_by: str, *, numerator_count: int | None = None,
+                       denominator_count: int | None = None,
+                       run_context: dict[str, Any] | None = None) -> None:
+    columns = {
+        str(column["name"])
+        for column in inspect(engine).get_columns("med_sql_run_log")
+    }
     with engine.connect() as conn:
-        conn.execute(
-            text("INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, NOW())"),
-            {"rid": run_id, "sid": sql_id, "h": hospital_id, "r": rule_id, "ss": stat_start, "se": stat_end, "rs": run_status, "rv": result_value, "e": error_message or "", "d": duration_ms, "b": run_by})
+        params = {"rid": run_id, "sid": sql_id, "h": hospital_id, "r": rule_id, "ss": stat_start, "se": stat_end, "rs": run_status, "rv": result_value, "e": error_message or "", "d": duration_ms, "b": run_by}
+        if {"numerator_count", "denominator_count", "run_context_json"} <= columns:
+            conn.execute(
+                text("INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time, numerator_count, denominator_count, run_context_json) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, NOW(), :numerator_count, :denominator_count, :run_context_json)"),
+                {
+                    **params,
+                    "numerator_count": numerator_count,
+                    "denominator_count": denominator_count,
+                    "run_context_json": json.dumps(run_context, ensure_ascii=False) if run_context else None,
+                },
+            )
+        else:
+            conn.execute(
+                text("INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, NOW())"),
+                params,
+            )
         conn.commit()
 
 

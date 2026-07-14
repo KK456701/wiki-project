@@ -84,6 +84,46 @@ PARAMS = {
 
 
 class CalculationDefinitionTest(unittest.TestCase):
+    def test_detail_fields_accept_business_and_derived_fields_without_changing_sql_dependencies(self) -> None:
+        payload = copy.deepcopy(URGENT_CONSULT_DEFINITION)
+        payload["detail_fields"] = [
+            {"field": "patient_id", "label": "患者标识", "sensitivity": "patient_id"},
+            {"field": "dept_id", "label": "科室", "sensitivity": "none"},
+            {"field": "arrive_minutes", "label": "到位耗时", "sensitivity": "none"},
+        ]
+        fields = {
+            **BUSINESS_FIELDS,
+            "patient_id": {"type": "string"},
+            "dept_id": {"type": "string"},
+        }
+
+        definition = parse_calculation_definition(payload)
+
+        self.assertEqual(
+            [item.field for item in definition.detail_fields],
+            ["patient_id", "dept_id", "arrive_minutes"],
+        )
+        self.assertEqual(definition.detail_fields[0].sensitivity, "patient_id")
+        self.assertEqual(validate_calculation_definition(definition, fields, PARAMS), [])
+        self.assertEqual(
+            collect_business_dependencies(definition),
+            {"hospital_id", "consult_type", "request_time", "arrive_time"},
+        )
+
+    def test_detail_fields_reject_unknown_and_duplicate_fields(self) -> None:
+        payload = copy.deepcopy(URGENT_CONSULT_DEFINITION)
+        payload["detail_fields"] = [
+            {"field": "unknown_field", "label": "未知字段"},
+            {"field": "unknown_field", "label": "重复字段"},
+        ]
+
+        errors = validate_calculation_definition(
+            parse_calculation_definition(payload), BUSINESS_FIELDS, PARAMS
+        )
+
+        self.assertIn("明细字段 unknown_field 未在业务字段或派生字段中定义", errors)
+        self.assertIn("明细字段重复 unknown_field", errors)
+
     def test_collects_derived_source_fields(self) -> None:
         definition = parse_calculation_definition(URGENT_CONSULT_DEFINITION)
 

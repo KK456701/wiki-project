@@ -59,3 +59,9 @@ def ensure_hospital_auth_schema(engine: Engine) -> dict[str, list[str]]:
     from app.hospital_auth.schema import ensure_hospital_auth_schema as ensure
 
     return ensure(engine)
+
+
+def ensure_indicator_detail_schema(engine: Engine) -> dict[str, list[str]]:
+    from app.indicator_details.schema import ensure_indicator_detail_schema as ensure
+
+    return ensure(engine)

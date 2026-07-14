@@ -67,3 +67,10 @@ calculation:
     operation: ratio_percent
     numerator: numerator
     denominator: denominator
+  detail_fields:
+    - {field: patient_id, label: 患者标识, sensitivity: patient_id}
+    - {field: dept_id, label: 科室, sensitivity: none}
+    - {field: consult_type, label: 会诊类型, sensitivity: none}
+    - {field: request_time, label: 申请时间, sensitivity: none}
+    - {field: arrive_time, label: 到位时间, sensitivity: none}
+    - {field: arrive_minutes, label: 到位耗时（分钟）, sensitivity: none}

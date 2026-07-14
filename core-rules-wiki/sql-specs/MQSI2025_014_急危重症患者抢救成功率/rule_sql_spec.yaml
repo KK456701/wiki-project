@@ -64,3 +64,10 @@ calculation:
     operation: ratio_percent
     numerator: numerator
     denominator: denominator
+  detail_fields:
+    - {field: patient_id, label: 患者标识, sensitivity: patient_id}
+    - {field: rescue_id, label: 抢救事件号, sensitivity: patient_id}
+    - {field: dept_id, label: 科室, sensitivity: none}
+    - {field: rescue_time, label: 抢救时间, sensitivity: none}
+    - {field: severity_level, label: 严重程度, sensitivity: none}
+    - {field: rescue_result, label: 抢救结果, sensitivity: none}

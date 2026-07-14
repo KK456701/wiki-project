@@ -5,6 +5,7 @@ db_name: hospital_demo_data
 main_table: consult_record
 fields:
   hospital_id: consult_record.hospital_id
+  patient_id: consult_record.patient_id
   consult_type: consult_record.consult_type
   request_time: consult_record.request_time
   arrive_time: consult_record.arrive_time

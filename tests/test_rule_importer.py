@@ -121,6 +121,28 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
             collect_business_dependencies(urgent),
             {"hospital_id", "consult_type", "request_time", "arrive_time"},
         )
+        self.assertEqual(
+            [item.field for item in urgent.detail_fields],
+            [
+                "patient_id",
+                "dept_id",
+                "consult_type",
+                "request_time",
+                "arrive_time",
+                "arrive_minutes",
+            ],
+        )
+        self.assertEqual(urgent.detail_fields[0].label, "患者标识")
+
+        with engine.connect() as conn:
+            patient_mapping = conn.execute(
+                text(
+                    "SELECT table_name, column_name FROM med_field_mapping "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND rule_id='MQSI2025_005' AND business_field='patient_id'"
+                )
+            ).mappings().one()
+        self.assertEqual(dict(patient_mapping), {"table_name": "consult_record", "column_name": "patient_id"})
 
 
 if __name__ == "__main__":
