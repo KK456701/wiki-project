@@ -56,6 +56,25 @@ class IndicatorImplementationConsoleUiTest(unittest.TestCase):
         ):
             self.assertIn(endpoint, html)
 
+    def test_console_explains_data_requirements_in_business_language(self) -> None:
+        html = WEB_INDEX.read_text(encoding="utf-8")
+
+        for marker in (
+            "function indicatorBusinessFieldLabel",
+            "function renderIndicatorRequirementSummary",
+            "分母怎么得到",
+            "分子怎么得到",
+            "系统统一名称",
+            "医院数据库位置",
+            "本院取数位置",
+            "映射确认后显示实际数据库、表和字段",
+        ):
+            self.assertIn(marker, html)
+
+        self.assertIn("医院范围", html)
+        self.assertIn("申请时间", html)
+        self.assertIn("到位时间", html)
+
 
 if __name__ == "__main__":
     unittest.main()

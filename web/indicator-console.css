@@ -230,6 +230,75 @@
   font-size: 12px;
 }
 
+.indicator-requirement-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 20px 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.indicator-source-line {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  color: var(--ink-soft);
+  background: #edf4f2;
+  border-bottom: 1px solid var(--line);
+}
+
+.indicator-source-line strong { color: var(--ink); }
+
+.indicator-mapping-summary {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.indicator-mapping-summary > strong { color: var(--ink); }
+.indicator-mapping-summary > div { display: grid; gap: 8px; }
+.indicator-mapping-summary > div > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; }
+.indicator-mapping-summary span { color: var(--ink-soft); overflow-wrap: anywhere; }
+
+.indicator-calculation-step {
+  min-width: 0;
+  padding: 15px;
+  border-right: 1px solid var(--line);
+}
+
+.indicator-calculation-step:last-child { border-right: 0; }
+.indicator-calculation-step strong { color: var(--teal-deep); }
+.indicator-calculation-step p { margin: 8px 0 0; color: var(--ink-soft); line-height: 1.7; }
+
+.indicator-requirements ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.indicator-requirements li,
+.indicator-mapping-label {
+  display: grid;
+  gap: 4px;
+}
+
+.indicator-requirements li {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.indicator-requirements small,
+.indicator-mapping-label small { color: var(--muted); font-size: 12px; }
+
 .indicator-action-zone {
   margin-top: 18px;
   padding: 18px;
@@ -254,4 +323,10 @@
   .indicator-mode { flex: 1; padding: 0 10px; }
   .indicator-console-main { padding: 16px 12px 24px; }
   .indicator-rule-grid { grid-template-columns: 1fr; }
+  .indicator-requirement-summary { grid-template-columns: 1fr; }
+  .indicator-calculation-step { border-right: 0; border-bottom: 1px solid var(--line); }
+  .indicator-calculation-step:last-child { border-bottom: 0; }
+  .indicator-source-line { align-items: flex-start; flex-direction: column; }
+  .indicator-mapping-summary,
+  .indicator-mapping-summary > div > div { grid-template-columns: 1fr; }
 }

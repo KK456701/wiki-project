@@ -2514,6 +2514,86 @@ async function createIndicatorDraft() {
   }
 }
 
+function indicatorBusinessFieldLabel(field) {
+  var labels = {
+    id: "业务记录",
+    hospital_id: "医院范围",
+    patient_id: "患者标识",
+    consult_id: "会诊记录",
+    consult_type: "会诊类型",
+    request_time: "申请时间",
+    arrive_time: "到位时间",
+    department_id: "科室",
+    admission_time: "入院时间",
+    transfer_time: "转科时间",
+    surgery_time: "手术时间",
+    rescue_result: "抢救结果"
+  };
+  return labels[field] || String(field || "数据项").replaceAll("_", " ");
+}
+
+function indicatorConditionText(condition) {
+  var fieldName = indicatorBusinessFieldLabel(condition.field);
+  var value = condition.value;
+  if (condition.operator === "eq") return fieldName + "等于“" + value + "”";
+  if (condition.operator === "ne") return fieldName + "不等于“" + value + "”";
+  if (condition.operator === "in") return fieldName + "属于“" + [].concat(value || []).join("、") + "”";
+  if (condition.operator === "minutes_between_lte") {
+    return "用“" + fieldName + "”减去“" + indicatorBusinessFieldLabel(condition.compare_field) +
+      "”，时间差在 0 至 " + value + " 分钟内";
+  }
+  var operatorNames = {gt: "大于", gte: "大于等于", lt: "小于", lte: "小于等于", not_in: "不属于"};
+  return fieldName + (operatorNames[condition.operator] || "满足") + "“" + value + "”";
+}
+
+function indicatorMappedSources(draft) {
+  var sources = [];
+  Object.keys(draft.field_mapping || {}).forEach(function(field) {
+    var item = draft.field_mapping[field] || {};
+    var source = [item.db_name, item.table_name].filter(Boolean).join(".");
+    if (source && !sources.includes(source)) sources.push(source);
+  });
+  return sources;
+}
+
+function renderIndicatorMappingSummary(draft) {
+  var rows = Object.keys(draft.field_mapping || {}).map(function(field) {
+    var item = draft.field_mapping[field] || {};
+    var database = item.db_name || "数据库待确认";
+    var table = item.table_name || "表待确认";
+    var column = item.column_name || "字段待确认";
+    return '<div><strong>' + escapeHtml(indicatorBusinessFieldLabel(field)) + '</strong>' +
+      '<span>来自 ' + escapeHtml(database) + ' 数据库的 ' + escapeHtml(table) +
+      ' 表，使用 ' + escapeHtml(column) + ' 字段</span></div>';
+  }).join("");
+  if (!rows) return "";
+  return '<div class="indicator-mapping-summary"><strong>本院取数位置</strong><div>' + rows + '</div></div>';
+}
+
+function renderIndicatorRequirementSummary(draft) {
+  var plan = draft.sql_plan || {};
+  var denominator = (plan.denominator_conditions || []).map(indicatorConditionText);
+  var numerator = (plan.numerator_conditions || []).map(indicatorConditionText);
+  var sources = indicatorMappedSources(draft);
+  var sourceText = sources.length
+    ? sources.join("、")
+    : "预计使用业务表 “" + (plan.main_table || "待确认") + "”；映射确认后显示实际数据库、表和字段";
+  var denominatorText = "先按当前医院和统计区间取出记录" +
+    (denominator.length ? "，再筛选“" + denominator.join("；") + "”" : "") +
+    "。每条符合条件的业务记录计 1 次，合计就是分母。";
+  var numeratorText = "从上述分母记录中继续判断" +
+    (numerator.length ? "“" + numerator.join("；") + "”" : "指标要求") +
+    "。符合要求的记录每条计 1 次，合计就是分子。";
+  return '<section class="indicator-requirement-summary" aria-label="指标取数说明">' +
+    '<div class="indicator-source-line"><strong>数据来源</strong><span>' + escapeHtml(sourceText) + '</span></div>' +
+    renderIndicatorMappingSummary(draft) +
+    '<div class="indicator-calculation-step"><strong>分母怎么得到</strong><p>' + escapeHtml(denominatorText) + '</p></div>' +
+    '<div class="indicator-calculation-step"><strong>分子怎么得到</strong><p>' + escapeHtml(numeratorText) + '</p></div>' +
+    '<div class="indicator-calculation-step"><strong>最后怎么算</strong><p>' +
+      escapeHtml(draft.metric_type === "ratio" ? "分子 ÷ 分母 × 100%，得到指标比例。" : "直接使用符合条件的记录总数。") +
+    '</p></div></section>';
+}
+
 function renderIndicatorDraftDetail() {
   var draft = currentIndicatorDraft;
   if (!draft) return;
@@ -2532,6 +2612,7 @@ function renderIndicatorDraftDetail() {
       '<div><strong>统计周期</strong>' + escapeHtml(draft.stat_cycle) + '</div>' +
       '<div><strong>指标类型</strong>' + escapeHtml(draft.metric_type === "ratio" ? "比例" : "计数") + '</div>' +
     '</div>' +
+    renderIndicatorRequirementSummary(draft) +
     '<details class="indicator-tech"><summary>查看字段、SQL 与结构化计划</summary><div class="indicator-tech-body">' +
       '<strong>需要字段</strong><pre>' + escapeHtml(JSON.stringify(draft.metadata_requirements || [], null, 2)) + '</pre>' +
       '<strong>结构化计划</strong><pre>' + escapeHtml(JSON.stringify(draft.sql_plan || {}, null, 2)) + '</pre>' +
@@ -2548,7 +2629,8 @@ function renderIndicatorDraftAction() {
   if (!draft || !zone) return;
   if (draft.status === "requirements_pending") {
     var requiredFields = (draft.metadata_requirements || []).map(function(field) {
-      return '<li><code>' + escapeHtml(field) + '</code></li>';
+      return '<li><strong>' + escapeHtml(indicatorBusinessFieldLabel(field)) + '</strong>' +
+        '<small>系统统一名称：<code>' + escapeHtml(field) + '</code></small></li>';
     }).join("");
     zone.innerHTML = '<h4>请先确认这项指标需要哪些数据</h4>' +
       '<div class="indicator-message">系统将按下列业务要求寻找本院数据库中的表和字段。此时只确认“需要什么数据”，不会生成或执行 SQL。</div>' +
@@ -2609,16 +2691,25 @@ function renderIndicatorMetadataEditor() {
   Object.keys(suggestions).forEach(function(field) {
     var row = document.createElement("div");
     row.className = "indicator-mapping-row";
-    var label = document.createElement("strong");
-    label.textContent = field;
+    var label = document.createElement("div");
+    label.className = "indicator-mapping-label";
+    var businessName = document.createElement("strong");
+    businessName.textContent = indicatorBusinessFieldLabel(field);
+    var systemName = document.createElement("small");
+    systemName.textContent = "系统统一名称：" + field;
+    label.append(businessName, systemName);
     var select = document.createElement("select");
+    select.setAttribute("aria-label", indicatorBusinessFieldLabel(field) + "的医院数据库位置");
     select.dataset.field = field;
     var candidates = suggestions[field] || [];
     if (!candidates.length) {
       var empty = document.createElement("option"); empty.value = ""; empty.textContent = "未找到，请先同步元数据"; select.appendChild(empty);
     } else {
       candidates.forEach(function(candidate, index) {
-        var option = document.createElement("option"); option.value = String(index); option.textContent = candidate.table_name + "." + candidate.column_name + " · " + candidate.data_type; select.appendChild(option);
+        var option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = "医院数据库位置：" + candidate.db_name + "." + candidate.table_name + "." + candidate.column_name + " · " + candidate.data_type;
+        select.appendChild(option);
       });
     }
     row.append(label, select); list.appendChild(row);
