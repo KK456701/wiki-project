@@ -92,7 +92,12 @@ class FakeSQLGenerationAgent:
             result["trial_run"] = {
                 "run_id": "RUN_TRACE_TEST",
                 "status": "success",
-                "result_value": 50.0,
+                "result_value": 80.0,
+                "numerator_count": 8,
+                "denominator_count": 10,
+                "source": "hospital_demo_data",
+                "stat_start": "2026-07-01 00:00:00",
+                "stat_end": "2026-08-01 00:00:00",
                 "duration_ms": 7,
                 "error_message": None,
             }
@@ -581,6 +586,12 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertEqual(by_name["field_mapping_precheck"]["output_data"]["ok"], True)
             self.assertEqual(by_name["sql_generate"]["output_data"]["sql_id"], "SQL_TRACE_TEST")
             self.assertEqual(by_name["sql_validate"]["output_data"]["ok"], True)
+            done = next(data for event, data in reversed(events) if event == "done")
+            answer = done["answer"]
+            self.assertIn("当前采用口径", answer)
+            self.assertIn("| 计算项 | 业务解释 | 本院实际条件 |", answer)
+            self.assertIn("| 业务字段 | 业务含义 | 医院字段 |", answer)
+            self.assertLess(answer.index("| 计算项 |"), answer.index("```sql"))
 
     def test_sql_command_reuses_previous_session_rule_context(self) -> None:
         FakeSQLGenerationAgent.calls = []
@@ -668,6 +679,13 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertIn("sql_trial_mcp", by_name)
             self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["run_id"], "RUN_TRACE_TEST")
             self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["status"], "success")
+            self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["numerator_count"], 8)
+            self.assertEqual(by_name["sql_trial_mcp"]["output_data"]["denominator_count"], 10)
+            self.assertNotIn("rows", by_name["sql_trial_mcp"]["output_data"])
+            self.assertNotIn("bound_sql", by_name["sql_trial_mcp"]["output_data"])
+            done = next(data for event, data in reversed(events) if event == "done")
+            self.assertIn("8 / 10 x 100% = 80%", done["answer"])
+            self.assertNotIn("patient_id", done["answer"])
 
     def test_feedback_stream_trace_records_preview_and_final_nodes(self) -> None:
         with temp_kb_dir() as tmp:

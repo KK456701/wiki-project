@@ -7,6 +7,8 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
 
+import yaml
+
 from app.agents.caliber_adaptation import CaliberAdaptationAgent
 from app.agents.contracts import IntentResult
 from app.agents.human_interaction import HumanInteractionAgent, detect_intent_by_rule
@@ -28,6 +30,10 @@ from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
 from app.observability.trace import TraceRecorder
 from app.observability.workflow_nodes import record_diagnose_trace_nodes
+from app.sqlgen.explanation import (
+    format_generation_explanation,
+    format_trial_explanation,
+)
 
 
 class LLMClient(Protocol):
@@ -431,12 +437,81 @@ def _record_sql_trace_nodes(
                 "run_id": trial.get("run_id"),
                 "status": status,
                 "result_value": trial.get("result_value"),
+                "numerator_count": trial.get("numerator_count"),
+                "denominator_count": trial.get("denominator_count"),
+                "source": trial.get("source"),
+                "stat_start": trial.get("stat_start"),
+                "stat_end": trial.get("stat_end"),
                 "duration_ms": trial.get("duration_ms"),
                 "error_message": trial.get("error_message"),
             },
             config_data={"tool": "execute_sql_hospital_demo_data", "readonly": True},
             error_message=str(trial.get("error_message") or ""),
         )
+
+
+def _sql_explanation_materials(
+    kb_root: Path,
+    rule_id: str | None,
+    hospital_id: str | None,
+    result: dict[str, Any],
+    effective_rule: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    spec: dict[str, Any] = {}
+    field_contract: dict[str, Any] = {}
+    mapping: dict[str, Any] = {}
+    if rule_id:
+        matches = list((kb_root / "sql-specs").glob(f"{rule_id}_*"))
+        if len(matches) == 1:
+            spec = _read_yaml_dict(matches[0] / "rule_sql_spec.yaml")
+            field_contract = _read_yaml_dict(matches[0] / "field_contract.yaml")
+        if hospital_id:
+            mapping = _read_yaml_dict(
+                kb_root / "hospital-mappings" / hospital_id / f"{rule_id}.yaml"
+            )
+
+    precheck = result.get("precheck") if isinstance(result.get("precheck"), dict) else {}
+    fields = precheck.get("field_mapping") if isinstance(precheck.get("field_mapping"), dict) else {}
+    if not mapping:
+        mapping = {
+            "db_name": precheck.get("db_name") or "hospital_demo_data",
+            "main_table": precheck.get("main_table") or "",
+            "dialect": result.get("dialect") or "mysql",
+            "fields": fields,
+        }
+    if not field_contract:
+        field_contract = {
+            "business_fields": {
+                key: {"desc": key}
+                for key in fields
+            }
+        }
+    if not spec:
+        spec = {
+            "rule_id": rule_id or effective_rule.get("rule_id") or "",
+            "rule_name": effective_rule.get("rule_name") or "",
+            "default_params": effective_rule.get("national_params") or {},
+            "numerator": {
+                "name": effective_rule.get("numerator_rule") or "符合分子条件的数量",
+                "logic": [],
+            },
+            "denominator": {
+                "name": effective_rule.get("denominator_rule") or "符合分母条件的数量",
+                "logic": [],
+            },
+            "required_business_fields": list(fields),
+        }
+    return spec, field_contract, mapping
+
+
+def _read_yaml_dict(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def detect_intent(query: str) -> str:
@@ -1297,83 +1372,23 @@ def run_chat_stream(
             if result.get("status") == "field_precheck_failed":
                 answer = f"❌ 暂不能生成 SQL\n\n{result.get('message', '')}"
             else:
-                # 解释材料只影响展示，不应把已生成的 SQL 误记为失败。
-                spec: dict[str, Any] = {}
-                mapping: dict[str, Any] = {}
-                try:
-                    import yaml
-                    from app.metadata.precheck import find_spec_dir, load_yaml as _load_yaml
-
-                    spec_dir = find_spec_dir(kb_root, str(rule_id)) if (kb_root / "sql-specs").exists() else None
-                    spec_path = spec_dir / "rule_sql_spec.yaml" if spec_dir else None
-                    if spec_path and spec_path.exists():
-                        spec = _load_yaml(spec_path) or {}
-                    mapping_path = kb_root / "hospital-mappings" / str(state.get("hospital_id") or "") / f"{rule_id}.yaml"
-                    if mapping_path.exists():
-                        with open(mapping_path, encoding="utf-8") as f:
-                            mapping = yaml.safe_load(f) or {}
-                except Exception:
-                    spec = {}
-                    mapping = {}
-
-                field_lines = ["📋 字段映射："]
-                for bf_name in (spec.get("required_business_fields") or []):
-                    col = (mapping.get("fields") or {}).get(bf_name, "未映射")
-                    field_lines.append(f"  · {bf_name} → {col}")
-                field_lines.append(f"  主表：{mapping.get('main_table', '')}")
-                field_lines.append(f"  数据库：{mapping.get('db_name', '')}")
-                field_lines.append(f"  数据库类型：{mapping.get('dialect', 'mysql').upper()}")
-
-                # 规格说明 + 当前口径参数
-                num = spec.get("numerator", {})
-                den = spec.get("denominator", {})
-                params = result.get("params", {})
-
-                spec_lines = ["📐 计算逻辑："]
-                spec_lines.append(f"  分子（{num.get('name', '')}）：{', '.join(num.get('logic', []))}")
-                spec_lines.append(f"  分母（{den.get('name', '')}）：{', '.join(den.get('logic', []))}")
-
-                # 参数
-                param_lines = ["⚙️ 参数："]
-                for k, v in params.items():
-                    param_lines.append(f"  · {k} = {v}")
-
-                # 自定义口径规则（含 YAML custom_rules + 阈值差异）
-                custom_rules = mapping.get("custom_rules") or {}
-                rule_lines: list[str] = []
-                has_custom = bool(custom_rules.get("exclude_depts") or custom_rules.get("count_multiple_transfers"))
-                if effective.get("effective_level") == "hospital":
-                    has_custom = True  # 医院层级本身就有自定义
-                if has_custom:
-                    rule_lines = ["🔧 本院自定义口径："]
-                    # 阈值差异
-                    for k, v in params.items():
-                        if k not in ("hospital_id", "consult_type_value", "start_time", "end_time"):
-                            rule_lines.append(f"  · {k} = {v}（医院自定义，非公司默认）")
-                    if custom_rules.get("exclude_depts"):
-                        rule_lines.append(f"  · 排除科室：{', '.join(custom_rules['exclude_depts'])}")
-                    if custom_rules.get("count_multiple_transfers"):
-                        rule_lines.append("  · 多次转科：分别计数（不去重）")
-
-                answer = (
-                    f"✅ SQL 已生成\n"
-                    f"SQL ID：{result.get('sql_id', '')}\n"
-                    f"安全校验：{result['validation'].get('message', result['validation'].get('error',''))}\n\n"
-                    + "\n".join(field_lines) + "\n\n"
-                    + "\n".join(spec_lines) + "\n\n"
-                    + "\n".join(param_lines) + "\n\n"
-                    + ("\n".join(rule_lines) + "\n\n" if custom_rules else "")
-                    + f"```sql\n{result.get('sql_text', '')}\n```"
+                spec, field_contract, mapping = _sql_explanation_materials(
+                    kb_root,
+                    rule_id,
+                    state.get("hospital_id"),
+                    result,
+                    effective,
                 )
-                trial = result.get("trial_run", {})
-                if trial:
-                    answer += f"\n🧪 试运行：{trial.get('status', '')}，{trial.get('duration_ms', 0)}ms"
-                    if trial.get("result_value") is not None:
-                        answer += f"，结果：{trial['result_value']}%"
-                    if trial.get("error_message"):
-                        answer += f"\n错误：{trial['error_message']}"
-                else:
-                    answer += "\n\n💡 如需试运行此 SQL，请输入「**试运行**」。将使用当前月份的统计数据在只读库中执行并返回结果。"
+                answer = format_generation_explanation(
+                    result=result,
+                    effective_rule=effective,
+                    spec=spec,
+                    field_contract=field_contract,
+                    mapping=mapping,
+                    hospital_id=str(state.get("hospital_id") or ""),
+                    stat_start=start,
+                    stat_end=end,
+                )
             yield ("token", {"text": answer})
         except Exception as exc:
             answer = f"SQL 生成失败：{exc}"
@@ -1439,18 +1454,23 @@ def run_chat_stream(
                 trial_run=True,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
-            trial = result.get("trial_run", {})
-            answer = (
-                f"```sql\n{result.get('sql_text', '')}\n```\n\n"
-                f"🧪 试运行完成\n"
-                f"运行 ID：{trial.get('run_id', '')}\n"
-                f"状态：{trial.get('status', '')}\n"
-                f"耗时：{trial.get('duration_ms', 0)}ms"
+            spec, field_contract, mapping = _sql_explanation_materials(
+                kb_root,
+                rule_id,
+                state.get("hospital_id"),
+                result,
+                effective,
             )
-            if trial.get("result_value") is not None:
-                answer += f"\n结果：**{trial['result_value']}%**"
-            if trial.get("error_message"):
-                answer += f"\n错误：{trial['error_message']}"
+            answer = format_trial_explanation(
+                result=result,
+                effective_rule=effective,
+                spec=spec,
+                field_contract=field_contract,
+                mapping=mapping,
+                hospital_id=str(state.get("hospital_id") or ""),
+                stat_start=start,
+                stat_end=end,
+            )
             yield ("token", {"text": answer})
         except Exception as exc:
             answer = f"试运行失败：{exc}"
