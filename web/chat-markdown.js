@@ -67,6 +67,23 @@
     var index = 0;
     while (index < lines.length) {
       var line = lines[index];
+      var details = line.match(/^:::details(?:\s+(.+))?\s*$/);
+      if (details) {
+        var label = details[1] || "查看技术详情";
+        var detailLines = [];
+        index += 1;
+        while (index < lines.length && lines[index].trim() !== ":::") {
+          detailLines.push(lines[index]);
+          index += 1;
+        }
+        if (index < lines.length) index += 1;
+        output.push(
+          '<details class="message-details"><summary>' + renderInline(label) +
+          '</summary><div class="message-details-body">' +
+          renderAssistantMarkdown(detailLines.join("\n")) + "</div></details>"
+        );
+        continue;
+      }
       var fence = line.match(/^```([A-Za-z0-9_-]*)\s*$/);
       if (fence) {
         var language = fence[1].toLowerCase();

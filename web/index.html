@@ -204,6 +204,11 @@ body::before {
 .message-table td { color: var(--ink-soft); background: #fff; }
 .message-code { margin: 12px 0; padding: 14px; overflow-x: auto; border-radius: 6px; color: #f5f7f6; background: #17231f; white-space: pre; font: 13px/1.6 var(--mono); }
 .message-code code { padding: 0; color: inherit; background: transparent; font: inherit; }
+.message-details { margin: 16px 0 4px; border: 1px solid var(--line); border-radius: 6px; background: #f8fbfa; }
+.message-details > summary { cursor: pointer; padding: 12px 14px; color: var(--teal-deep); font-weight: 800; }
+.message-details > summary::marker { color: var(--teal); }
+.message-details-body { padding: 0 14px 14px; }
+.message-details-body > :first-child { margin-top: 2px; }
 .message-meta {
   margin-bottom: 8px;
   font: 650 12px/1.2 var(--mono);

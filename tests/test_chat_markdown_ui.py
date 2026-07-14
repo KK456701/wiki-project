@@ -46,6 +46,43 @@ process.stdout.write(html);
         self.assertNotIn("<script>", result.stdout)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", result.stdout)
 
+    def test_renderer_collapses_technical_details_without_allowing_html(self) -> None:
+        markdown = (
+            "医生可见说明\n\n"
+            ":::details 查看技术详情（供信息科和实施人员）\n"
+            "| 本院数据库位置 |\n"
+            "|---|\n"
+            "| consult_record.request_time |\n\n"
+            "```sql\nSELECT 1\n```\n\n"
+            "<script>alert(1)</script>\n"
+            ":::"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+const html = renderer.renderAssistantMarkdown({json.dumps(markdown, ensure_ascii=False)});
+process.stdout.write(html);
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('<details class="message-details">', result.stdout)
+        self.assertIn(
+            "<summary>查看技术详情（供信息科和实施人员）</summary>",
+            result.stdout,
+        )
+        self.assertNotIn('<details class="message-details" open', result.stdout)
+        self.assertIn('<table class="message-table">', result.stdout)
+        self.assertIn('<pre class="message-code"><code class="language-sql">', result.stdout)
+        self.assertNotIn("<script>", result.stdout)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
