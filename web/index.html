@@ -535,6 +535,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/terminology.css" />
 <link rel="stylesheet" href="/static/package-exchange.css" />
 <link rel="stylesheet" href="/static/workbench.css" />
+<link rel="stylesheet" href="/static/indicator-console.css" />
 <link rel="stylesheet" href="/static/indicator-details.css" />
 </head>
 <body>
@@ -585,6 +586,10 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <span>AI 指标助手</span>
     </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">业务工作台</div>
+    <button id="indicatorDraftButton" class="workbench-nav-item" type="button" data-workbench-route="indicator-console" title="指标实施控制台">
+      <span class="workbench-nav-index">实施</span>
+      <span>指标实施控制台</span>
+    </button>
     <button class="workbench-nav-item" type="button" data-workbench-route="monitoring" title="指标运算监控">
       <span class="workbench-nav-index">监控</span>
       <span>指标运算监控</span>
@@ -594,7 +599,6 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
       <span>数据库与元数据</span>
     </button>
     <div class="workbench-nav-heading workbench-nav-heading-secondary">现有工具</div>
-    <button id="indicatorDraftButton" class="workbench-tool-item" type="button" data-short="稿" title="指标设计稿">指标设计稿</button>
     <button id="reviewButton" class="workbench-tool-item" type="button" data-short="审" title="审批与版本">审批与版本</button>
   </aside>
 
@@ -622,6 +626,43 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
           </footer>
         </div>
+      </div>
+    </section>
+    <section id="indicatorConsolePage" class="workbench-page indicator-console-page" data-route="indicator-console" aria-labelledby="indicatorConsoleTitle" hidden>
+      <header class="indicator-console-header">
+        <div>
+          <span class="indicator-console-eyebrow">指标落地工作台</span>
+          <h1 id="indicatorConsoleTitle">指标实施控制台</h1>
+          <p>先确认指标怎么算、需要哪些数据，再映射本院表字段；只有试运行通过并经审批，才会成为本院生效口径。</p>
+        </div>
+        <button id="refreshIndicatorDraftsButton" class="ghost" type="button">刷新任务</button>
+      </header>
+      <section class="indicator-console-create" aria-label="创建指标实施任务">
+        <div class="indicator-mode-switch" role="group" aria-label="实施任务类型">
+          <button id="indicatorModeAdaptation" class="indicator-mode active" type="button" aria-pressed="true">已有指标医院适配</button>
+          <button id="indicatorModeNew" class="indicator-mode" type="button" aria-pressed="false">本院新增指标</button>
+        </div>
+        <div class="indicator-create-row">
+          <textarea id="indicatorDraftPrompt" rows="3" placeholder="请输入指标名称或编码，并说明本院和标准口径有什么不同。例如：急会诊及时到位率，本院到位时限采用 20 分钟。"></textarea>
+          <button id="createIndicatorDraftButton" type="button">生成实施任务</button>
+        </div>
+        <p id="indicatorModeHint" class="indicator-mode-hint">适用于已有公司或国家标准指标，需要结合本院数据结构和本院口径落地。</p>
+      </section>
+      <div class="indicator-console-workspace">
+        <aside class="indicator-console-sidebar">
+          <div class="indicator-sidebar-head"><strong>本院实施任务</strong><span>按最近更新排序</span></div>
+          <div id="indicatorDraftList" class="indicator-draft-list"></div>
+        </aside>
+        <section class="indicator-console-main">
+          <div id="indicatorDraftStages" class="indicator-stages" aria-label="指标实施进度">
+            <div class="indicator-stage">定义指标</div>
+            <div class="indicator-stage">确认取数要求</div>
+            <div class="indicator-stage">映射医院数据</div>
+            <div class="indicator-stage">生成和验证</div>
+            <div class="indicator-stage">审批和发布</div>
+          </div>
+          <div id="indicatorDraftDetail" class="indicator-empty">请选择一个实施任务，或先在上方描述需要落地的指标。</div>
+        </section>
       </div>
     </section>
     <section id="metadataPage" class="workbench-page metadata-page" data-route="metadata" aria-labelledby="metadataPageTitle" hidden>
@@ -872,30 +913,6 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </section>
 </div>
 
-<!-- 指标设计稿工作台 -->
-<div id="indicatorDraftModal" class="modal" hidden>
-  <section class="dialog indicator-dialog" role="dialog" aria-modal="true" aria-labelledby="indicatorDraftTitle">
-    <header>
-      <div><h2 id="indicatorDraftTitle">指标设计稿</h2><div style="color:#5b677a;font-size:14px;">从业务描述开始，完成字段确认、SQL、试运行和审批发布。</div></div>
-      <button class="ghost" data-close="indicatorDraftModal">关闭</button>
-    </header>
-    <div class="indicator-create">
-      <textarea id="indicatorDraftPrompt" placeholder="例如：新建本院急会诊及时到位率指标，统计急会诊请求后 10 分钟内到位的患者比例。已有国标指标的调整请同时说明指标编码。"></textarea>
-      <button id="createIndicatorDraftButton" type="button">生成设计稿</button>
-    </div>
-    <div class="indicator-workbench">
-      <aside class="indicator-sidebar">
-        <div class="indicator-sidebar-head"><strong>本院设计稿</strong><button id="refreshIndicatorDraftsButton" class="ghost" type="button">刷新</button></div>
-        <div id="indicatorDraftList" class="indicator-draft-list"></div>
-      </aside>
-      <section class="indicator-main">
-        <div id="indicatorDraftStages" class="indicator-stages" aria-label="指标设计进度"></div>
-        <div id="indicatorDraftDetail" class="indicator-empty">选择已有设计稿，或先描述一个需要创建的指标。</div>
-      </section>
-    </div>
-  </section>
-</div>
-
 <!-- 口径差异确认弹窗 -->
 <div id="feedbackModal" class="modal" hidden>
   <section class="dialog" role="dialog" aria-modal="true">
@@ -1120,7 +1137,9 @@ var recoveryMeta = document.getElementById("recoveryMeta");
 var recoveryList = document.getElementById("recoveryList");
 var refreshRecoveryButton = document.getElementById("refreshRecoveryButton");
 var indicatorDraftButton = document.getElementById("indicatorDraftButton");
-var indicatorDraftModal = document.getElementById("indicatorDraftModal");
+var indicatorModeAdaptation = document.getElementById("indicatorModeAdaptation");
+var indicatorModeNew = document.getElementById("indicatorModeNew");
+var indicatorModeHint = document.getElementById("indicatorModeHint");
 var indicatorDraftPrompt = document.getElementById("indicatorDraftPrompt");
 var createIndicatorDraftButton = document.getElementById("createIndicatorDraftButton");
 var refreshIndicatorDraftsButton = document.getElementById("refreshIndicatorDraftsButton");
@@ -1321,16 +1340,13 @@ recoveryButton.addEventListener("click", function() {
   requireAdminThenOpen("recovery");
 });
 
-indicatorDraftButton.addEventListener("click", function() {
-  indicatorDraftModal.hidden = false;
-  loadIndicatorDrafts();
-});
-
 refreshIndicatorDraftsButton.addEventListener("click", function() {
   loadIndicatorDrafts(currentIndicatorDraft && currentIndicatorDraft.draft_id);
 });
 
 createIndicatorDraftButton.addEventListener("click", createIndicatorDraft);
+indicatorModeAdaptation.addEventListener("click", function() { setIndicatorDraftMode("adaptation"); });
+indicatorModeNew.addEventListener("click", function() { setIndicatorDraftMode("new"); });
 
 refreshRecoveryButton.addEventListener("click", loadRecoveryTasks);
 
@@ -2350,24 +2366,48 @@ historyLookupButton.addEventListener("click", function() {
   showOverrideHistory(ruleId, hospitalId, ruleId);
 });
 
-// ===== 指标设计稿 =====
+// ===== 指标实施控制台 =====
+var indicatorDraftMode = "adaptation";
 var indicatorDraftStatusNames = {
-  metadata_pending: "待确认字段",
-  metadata_ready: "字段已确认",
-  sql_ready: "SQL 已生成",
+  requirements_pending: "待确认取数要求",
+  metadata_pending: "待映射医院数据",
+  metadata_ready: "医院字段已确认",
+  sql_ready: "待试运行",
   trial_passed: "试运行通过",
   pending_approval: "待审批",
-  published: "已发布",
+  published: "已生效",
   rejected: "已拒绝"
 };
 var indicatorDraftStageOrder = [
-  ["metadata_pending", "待确认字段"],
-  ["metadata_ready", "字段已确认"],
-  ["sql_ready", "SQL 已生成"],
-  ["trial_passed", "试运行通过"],
-  ["pending_approval", "待审批"],
-  ["published", "已发布"]
+  ["defined", "定义指标"],
+  ["requirements_pending", "确认取数要求"],
+  ["metadata_pending", "映射医院数据"],
+  ["verification", "生成和验证"],
+  ["publication", "审批和发布"]
 ];
+
+function indicatorDraftStageIndex(status) {
+  if (status === "requirements_pending") return 1;
+  if (status === "metadata_pending") return 2;
+  if (["metadata_ready", "sql_ready", "trial_passed"].includes(status)) return 3;
+  if (["pending_approval", "published", "rejected"].includes(status)) return 4;
+  return 0;
+}
+
+function setIndicatorDraftMode(mode) {
+  indicatorDraftMode = mode === "new" ? "new" : "adaptation";
+  var adapting = indicatorDraftMode === "adaptation";
+  indicatorModeAdaptation.classList.toggle("active", adapting);
+  indicatorModeNew.classList.toggle("active", !adapting);
+  indicatorModeAdaptation.setAttribute("aria-pressed", String(adapting));
+  indicatorModeNew.setAttribute("aria-pressed", String(!adapting));
+  indicatorDraftPrompt.placeholder = adapting
+    ? "请输入指标名称或编码，并说明本院和标准口径有什么不同。例如：急会诊及时到位率，本院到位时限采用 20 分钟。"
+    : "请说明新指标名称、统计对象、分子、分母、统计周期和排除条件。例如：夜间急会诊 15 分钟到位率。";
+  indicatorModeHint.textContent = adapting
+    ? "适用于已有公司或国家标准指标，需要结合本院数据结构和本院口径落地。"
+    : "适用于本院自行新增的指标；审批发布后只在当前医院范围内生效。";
+}
 
 function escapeHtml(value) {
   return String(value == null ? "" : value)
@@ -2387,13 +2427,12 @@ async function indicatorApi(url, options) {
 }
 
 function indicatorDraftKind(draft) {
-  return draft && draft.base_index_code ? "本院口径差异" : "本院新增指标";
+  return draft && draft.base_index_code ? "已有指标医院适配" : "本院新增指标";
 }
 
 function renderIndicatorStages(draft) {
   indicatorDraftStages.innerHTML = "";
-  var activeIndex = draft ? indicatorDraftStageOrder.findIndex(function(item) { return item[0] === draft.status; }) : -1;
-  if (draft && draft.status === "rejected") activeIndex = 4;
+  var activeIndex = draft ? indicatorDraftStageIndex(draft.status) : -1;
   indicatorDraftStageOrder.forEach(function(item, index) {
     var stage = document.createElement("div");
     stage.className = "indicator-stage" + (index < activeIndex ? " done" : "") + (index === activeIndex ? " active" : "");
@@ -2403,18 +2442,18 @@ function renderIndicatorStages(draft) {
 }
 
 async function loadIndicatorDrafts(selectDraftId) {
-  indicatorDraftList.textContent = "加载设计稿...";
+  indicatorDraftList.textContent = "加载实施任务...";
   try {
     var hospitalId = (hospitalIdInput.value || "hospital_001").trim();
     var drafts = await indicatorApi("/api/indicator-drafts?hospital_id=" + encodeURIComponent(hospitalId));
     indicatorDraftList.innerHTML = "";
     if (!drafts.length) {
-      indicatorDraftList.textContent = "当前医院还没有指标设计稿。";
+      indicatorDraftList.textContent = "当前医院还没有指标实施任务。";
       currentIndicatorDraft = null;
       currentIndicatorMetadata = null;
       renderIndicatorStages(null);
       indicatorDraftDetail.className = "indicator-empty";
-      indicatorDraftDetail.textContent = "在上方描述需要创建或调整的指标。";
+      indicatorDraftDetail.textContent = "在上方选择任务类型，并描述需要落地的指标。";
       return;
     }
     drafts.forEach(function(draft) {
@@ -2432,7 +2471,7 @@ async function loadIndicatorDrafts(selectDraftId) {
     var target = selectDraftId || drafts[0].draft_id;
     await selectIndicatorDraft(target, true);
   } catch (error) {
-    indicatorDraftList.textContent = "设计稿加载失败：" + error.message;
+    indicatorDraftList.textContent = "实施任务加载失败：" + error.message;
   }
 }
 
@@ -2453,8 +2492,11 @@ async function selectIndicatorDraft(draftId, keepList) {
 async function createIndicatorDraft() {
   var query = indicatorDraftPrompt.value.trim();
   if (!query) { indicatorDraftPrompt.focus(); return; }
+  query = (indicatorDraftMode === "adaptation"
+    ? "为已有标准指标创建本院适配任务。"
+    : "创建本院新增指标。") + query;
   createIndicatorDraftButton.disabled = true;
-  createIndicatorDraftButton.textContent = "生成中...";
+  createIndicatorDraftButton.textContent = "正在生成...";
   try {
     var draft = await indicatorApi("/api/indicator-drafts/generate", {
       method: "POST",
@@ -2468,7 +2510,7 @@ async function createIndicatorDraft() {
     indicatorDraftDetail.innerHTML = '<div class="indicator-message">' + escapeHtml(error.message) + '</div>';
   } finally {
     createIndicatorDraftButton.disabled = false;
-    createIndicatorDraftButton.textContent = "生成设计稿";
+    createIndicatorDraftButton.textContent = "生成实施任务";
   }
 }
 
@@ -2504,7 +2546,16 @@ function renderIndicatorDraftAction() {
   var draft = currentIndicatorDraft;
   var zone = document.getElementById("indicatorDraftActionZone");
   if (!draft || !zone) return;
-  if (draft.status === "metadata_pending") {
+  if (draft.status === "requirements_pending") {
+    var requiredFields = (draft.metadata_requirements || []).map(function(field) {
+      return '<li><code>' + escapeHtml(field) + '</code></li>';
+    }).join("");
+    zone.innerHTML = '<h4>请先确认这项指标需要哪些数据</h4>' +
+      '<div class="indicator-message">系统将按下列业务要求寻找本院数据库中的表和字段。此时只确认“需要什么数据”，不会生成或执行 SQL。</div>' +
+      '<div class="indicator-requirements"><strong>需要的数据项</strong><ul>' + requiredFields + '</ul></div>' +
+      '<button id="confirmIndicatorRequirementsButton" type="button">确认取数要求，开始映射</button>';
+    document.getElementById("confirmIndicatorRequirementsButton").addEventListener("click", confirmIndicatorRequirements);
+  } else if (draft.status === "metadata_pending") {
     zone.innerHTML = '<h4>下一步：确认业务字段对应的数据库列</h4><div id="indicatorMetadataEditor"><button id="loadIndicatorMetadataButton" type="button">检查字段</button></div>';
     document.getElementById("loadIndicatorMetadataButton").addEventListener("click", loadIndicatorMetadata);
     if (currentIndicatorMetadata) renderIndicatorMetadataEditor();
@@ -2530,6 +2581,13 @@ function renderIndicatorDraftAction() {
   } else {
     zone.innerHTML = '<h4>设计稿已拒绝</h4><div class="indicator-message">修改口径后会创建新版本，并重新进行字段确认和试运行。</div>';
   }
+}
+
+async function confirmIndicatorRequirements() {
+  await runIndicatorDraftAction("/requirements-confirm", {
+    expected_version: currentIndicatorDraft.current_version,
+    actor_id: indicatorActorId()
+  });
 }
 
 async function loadIndicatorMetadata() {
@@ -2642,6 +2700,14 @@ async function approveCurrentIndicatorDraft() {
     if (zone) zone.insertAdjacentHTML("afterbegin", '<div class="indicator-message">' + escapeHtml(error.message) + '</div>');
   }
 }
+
+window.activateIndicatorConsole = function() {
+  loadIndicatorDrafts(currentIndicatorDraft && currentIndicatorDraft.draft_id);
+};
+
+window.openIndicatorDraft = function(draftId) {
+  loadIndicatorDrafts(draftId);
+};
 
 // ===== 新会话 =====
 

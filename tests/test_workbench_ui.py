@@ -147,11 +147,11 @@ class WorkbenchUiTest(unittest.TestCase):
         )
         self.assertIn('workbenchShell.classList.add("assistant-immersive")', js)
         self.assertIn('workbenchShell.classList.remove("assistant-immersive")', js)
-        self.assertIn('data-short="稿"', html)
         self.assertIn('data-short="审"', html)
         self.assertIn('data-workbench-route="metadata"', html)
         self.assertIn('<span class="workbench-nav-index">数据</span>', html)
-        self.assertIn('title="指标设计稿"', html)
+        self.assertIn('data-workbench-route="indicator-console"', html)
+        self.assertIn('title="指标实施控制台"', html)
 
     def test_immersive_assistant_uses_rail_and_full_height_canvas(self) -> None:
         css = (ROOT / "web" / "workbench.css").read_text(encoding="utf-8")
