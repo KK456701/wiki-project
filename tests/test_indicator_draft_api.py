@@ -81,6 +81,7 @@ class IndicatorDraftApiTest(unittest.TestCase):
             metadata=FakeMetadata(),
             workflow=FakeWorkflow(),
             publisher=FakePublisher(),
+            release_adaptation=SimpleNamespace(),
         )
 
     def test_indicator_draft_generate_route_is_registered(self) -> None:
@@ -219,6 +220,47 @@ class IndicatorDraftApiTest(unittest.TestCase):
         self.assertEqual(
             [call[0] for call in services.publisher.calls],
             ["approve", "reject", "versions", "restore"],
+        )
+
+    def test_company_release_rule_requires_admin_and_creates_adaptation(self) -> None:
+        class FakeReleaseAdaptation:
+            def __init__(self) -> None:
+                self.calls = []
+
+            def create(self, import_id, rule_id, hospital_id, actor_id):
+                self.calls.append((import_id, rule_id, hospital_id, actor_id))
+                return {
+                    "draft_id": "DRAFT_FROM_RELEASE",
+                    "status": "metadata_pending",
+                    "duplicate": False,
+                }
+
+        services = self._services()
+        services.release_adaptation = FakeReleaseAdaptation()
+        client = TestClient(app)
+        payload = {
+            "import_id": "IMP_001",
+            "rule_id": "MQSI2025_005",
+            "hospital_id": "hospital_001",
+            "actor_id": "admin",
+        }
+
+        unauthorized = client.post("/api/indicator-drafts/from-release", json=payload)
+        login = client.post("/api/admin/login", json={"password": "admin123"})
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+        with patch.object(
+            draft_api, "_create_indicator_draft_services", return_value=services
+        ):
+            created = client.post(
+                "/api/indicator-drafts/from-release", json=payload, headers=headers
+            )
+
+        self.assertEqual(unauthorized.status_code, 401)
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(created.json()["draft_id"], "DRAFT_FROM_RELEASE")
+        self.assertEqual(
+            services.release_adaptation.calls,
+            [("IMP_001", "MQSI2025_005", "hospital_001", "admin")],
         )
 
 

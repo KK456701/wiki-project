@@ -43,6 +43,29 @@ class IndicatorGenerationAgent:
         result = self.draft_repository.create(spec, actor_id)
         return result if isinstance(result, dict) else result.model_dump(exclude_none=True)
 
+    def create_adaptation_draft(
+        self,
+        *,
+        query: str,
+        hospital_id: str,
+        actor_id: str,
+        base_index_code: str,
+        source_id: str,
+        preferred_name: str,
+    ) -> dict[str, Any]:
+        if self.draft_parser is None or self.draft_repository is None:
+            raise RuntimeError("指标实施控制台能力尚未配置")
+        spec = self.draft_parser.parse(query, hospital_id).model_copy(
+            update={
+                "base_index_code": base_index_code,
+                "index_name": preferred_name,
+                "index_type": "本院口径适配",
+                "generated_by": source_id,
+            }
+        )
+        result = self.draft_repository.create(spec, actor_id)
+        return result if isinstance(result, dict) else result.model_dump(exclude_none=True)
+
     def render_draft_sql(
         self, plan: dict[str, Any], mappings: dict[str, dict[str, Any]]
     ) -> dict[str, Any]:

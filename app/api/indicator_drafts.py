@@ -17,6 +17,13 @@ class GenerateDraftRequest(BaseModel):
     actor_id: str = "operator"
 
 
+class ReleaseAdaptationRequest(BaseModel):
+    import_id: str
+    rule_id: str
+    hospital_id: str = "hospital_001"
+    actor_id: str = "admin"
+
+
 class UpdateDraftRequest(BaseModel):
     expected_version: int
     changes: dict[str, Any]
@@ -139,6 +146,32 @@ def generate_indicator_draft(body: GenerateDraftRequest):
     return _call(
         lambda: _create_indicator_draft_services().indicator_generation.create_draft(
             body.query,
+            body.hospital_id,
+            body.actor_id,
+        )
+    )
+
+
+@router.post("/from-release")
+def generate_indicator_draft_from_release(
+    body: ReleaseAdaptationRequest,
+    _: str = Depends(_require_admin),
+):
+    services = _create_indicator_draft_services()
+    adaptation = getattr(services, "release_adaptation", None)
+    if adaptation is None:
+        from app.api.main import _hospital_release_repository
+        from app.indicators.release_adaptation import ReleaseAdaptationService
+
+        adaptation = ReleaseAdaptationService(
+            release_repository=_hospital_release_repository(),
+            draft_repository=services.repository,
+            generation_agent=services.indicator_generation,
+        )
+    return _call(
+        lambda: adaptation.create(
+            body.import_id,
+            body.rule_id,
             body.hospital_id,
             body.actor_id,
         )
