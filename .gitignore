@@ -21,3 +21,9 @@ Thumbs.db
 
 # Local runtime configuration with database passwords/admin token.
 config.yaml
+
+# 公司侧 wxp-mcp 本地源码、凭据和查询输出，不得提交到公开仓库。
+tools/wxp-mcp/vendor/
+tools/wxp-mcp/wxp.local.env
+tools/wxp-mcp/*.local.log
+tools/wxp-mcp/output/
