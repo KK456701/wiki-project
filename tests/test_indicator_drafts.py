@@ -34,7 +34,7 @@ class IndicatorDraftRepositoryTest(unittest.TestCase):
         )
         versions = self.repository.list_versions(created.draft_id)
 
-        self.assertEqual(created.status, "metadata_pending")
+        self.assertEqual(created.status, "requirements_pending")
         self.assertEqual(created.current_version, 1)
         self.assertEqual(saved.current_version, 2)
         self.assertEqual(saved.index_desc, "修改后的指标定义")
@@ -86,7 +86,7 @@ class IndicatorDraftRepositoryTest(unittest.TestCase):
             actor_id="user_001",
         )
 
-        self.assertEqual(edited.status, "metadata_pending")
+        self.assertEqual(edited.status, "requirements_pending")
         self.assertIsNone(edited.current_sql)
         self.assertIsNone(edited.sql_id)
         self.assertEqual(edited.trial_result, {})

@@ -43,36 +43,63 @@ class DraftMetadataResolverTest(unittest.TestCase):
 
     def test_confirmed_mapping_creates_metadata_ready_version(self) -> None:
         draft = self.repository.create(_spec(), "user")
+        draft = self.repository.transition(
+            draft.draft_id,
+            draft.current_version,
+            "metadata_pending",
+            {},
+            "user",
+            "requirements_confirmed",
+        )
         resolver = DraftMetadataResolver(self.engine, self.repository)
 
         confirmed = resolver.confirm(
             draft.draft_id,
-            expected_version=1,
+            expected_version=draft.current_version,
             mappings=_confirmed_mappings(),
             actor_id="user",
         )
 
         self.assertEqual(confirmed.status, "metadata_ready")
-        self.assertEqual(confirmed.current_version, 2)
+        self.assertEqual(confirmed.current_version, 3)
         self.assertEqual(
             confirmed.field_mapping["consult_id"]["column_name"], "consult_id"
         )
 
+    def test_mapping_cannot_be_confirmed_before_requirements(self) -> None:
+        draft = self.repository.create(_spec(), "user")
+
+        with self.assertRaisesRegex(MetadataResolutionError, "取数要求"):
+            DraftMetadataResolver(self.engine, self.repository).confirm(
+                draft.draft_id,
+                draft.current_version,
+                _confirmed_mappings(),
+                "user",
+            )
+
     def test_confirm_rejects_missing_or_cross_table_mapping(self) -> None:
         draft = self.repository.create(_spec(), "user")
+        draft = self.repository.transition(
+            draft.draft_id,
+            draft.current_version,
+            "metadata_pending",
+            {},
+            "user",
+            "requirements_confirmed",
+        )
         mappings = _confirmed_mappings()
         mappings.pop("arrive_time")
 
         with self.assertRaisesRegex(MetadataResolutionError, "映射不完整"):
             DraftMetadataResolver(self.engine, self.repository).confirm(
-                draft.draft_id, 1, mappings, "user"
+                draft.draft_id, draft.current_version, mappings, "user"
             )
 
         mappings = _confirmed_mappings()
         mappings["arrive_time"]["table_name"] = "other_table"
         with self.assertRaisesRegex(MetadataResolutionError, "单一主表"):
             DraftMetadataResolver(self.engine, self.repository).confirm(
-                draft.draft_id, 1, mappings, "user"
+                draft.draft_id, draft.current_version, mappings, "user"
             )
 
 

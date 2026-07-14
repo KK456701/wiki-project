@@ -31,6 +31,22 @@ class IndicatorDraftWorkflowService:
         self.sql_insert_fn = sql_insert_fn or self._insert_sql
         self.trial_fn = trial_fn or self._trial
 
+    def confirm_requirements(
+        self, draft_id: str, expected_version: int, actor_id: str
+    ):
+        draft = self.draft_repository.get(draft_id)
+        self._require_version(draft, expected_version)
+        if draft.status != "requirements_pending":
+            raise DraftWorkflowError("只有待确认取数要求的实施任务才能进入医院字段映射")
+        return self.draft_repository.transition(
+            draft_id,
+            expected_version,
+            "metadata_pending",
+            {},
+            actor_id,
+            "requirements_confirmed",
+        )
+
     def generate_sql(
         self, draft_id: str, expected_version: int, actor_id: str
     ):

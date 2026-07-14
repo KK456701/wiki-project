@@ -67,6 +67,8 @@ class DraftMetadataResolver:
         actor_id: str,
     ) -> IndicatorDraft:
         draft = self.draft_repository.get(draft_id)
+        if draft.status != "metadata_pending":
+            raise MetadataResolutionError("请先确认指标取数要求，再映射医院表和字段")
         missing = [
             field for field in draft.metadata_requirements if field not in mappings
         ]

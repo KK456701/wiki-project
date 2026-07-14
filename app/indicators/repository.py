@@ -49,6 +49,7 @@ _EDITABLE_FIELDS = {
 }
 _STATUSES = {
     "drafting",
+    "requirements_pending",
     "metadata_pending",
     "metadata_ready",
     "sql_ready",
@@ -76,7 +77,7 @@ class IndicatorDraftRepository:
             "sql_plan": _dump(sql_plan or {}),
             "sql_params": _dump({}),
             "trial_result": _dump({}),
-            "status": "metadata_pending",
+            "status": "requirements_pending",
             "current_version": 1,
             "created_by": actor_id,
             "updated_by": actor_id,
@@ -147,7 +148,7 @@ class IndicatorDraftRepository:
         return self._update(
             draft_id,
             expected_version,
-            "metadata_pending",
+            "requirements_pending",
             invalidated,
             actor_id,
             "edited",

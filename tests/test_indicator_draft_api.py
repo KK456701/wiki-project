@@ -43,6 +43,10 @@ class IndicatorDraftApiTest(unittest.TestCase):
             def __init__(self) -> None:
                 self.calls = []
 
+            def confirm_requirements(self, draft_id, expected_version, actor_id):
+                self.calls.append(("requirements", draft_id, expected_version, actor_id))
+                return {"draft_id": draft_id, "status": "metadata_pending", "current_version": 2}
+
             def generate_sql(self, draft_id, expected_version, actor_id):
                 self.calls.append(("sql", draft_id, expected_version, actor_id))
                 return {"draft_id": draft_id, "status": "sql_ready", "current_version": 3}
@@ -177,6 +181,22 @@ class IndicatorDraftApiTest(unittest.TestCase):
 
         self.assertEqual([generated.status_code, trial.status_code, submitted.status_code], [200, 200, 200])
         self.assertEqual([call[0] for call in services.workflow.calls], ["sql", "trial", "submit"])
+
+    def test_requirements_confirm_route_starts_metadata_mapping(self) -> None:
+        services = self._services()
+        client = TestClient(app)
+        with patch.object(draft_api, "_create_indicator_draft_services", return_value=services):
+            response = client.post(
+                "/api/indicator-drafts/DRAFT_001/requirements-confirm",
+                json={"expected_version": 1, "actor_id": "user_001"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "metadata_pending")
+        self.assertEqual(
+            services.workflow.calls,
+            [("requirements", "DRAFT_001", 1, "user_001")],
+        )
 
     def test_publish_and_restore_routes_require_admin(self) -> None:
         services = self._services()

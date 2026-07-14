@@ -29,10 +29,23 @@ class IndicatorDraftWorkflowTest(unittest.TestCase):
             trial_fn=_successful_trial,
         )
 
+    def test_confirm_requirements_starts_hospital_field_mapping(self) -> None:
+        draft = self.repository.create(_spec(), "user")
+
+        confirmed = self.service.confirm_requirements(
+            draft.draft_id, draft.current_version, "user"
+        )
+
+        self.assertEqual(confirmed.status, "metadata_pending")
+        self.assertEqual(confirmed.current_version, 2)
+
     def test_generate_trial_and_submit_are_tied_to_current_version(self) -> None:
         draft = self.repository.create(_spec(), "user")
+        draft = self.service.confirm_requirements(
+            draft.draft_id, draft.current_version, "user"
+        )
         mapped = self.resolver.confirm(
-            draft.draft_id, 1, _confirmed_mappings(), "user"
+            draft.draft_id, draft.current_version, _confirmed_mappings(), "user"
         )
 
         sql_ready = self.service.generate_sql(
@@ -134,8 +147,11 @@ class HospitalIndicatorPublisherTest(unittest.TestCase):
 
     def _pending_draft(self, spec=None):
         draft = self.repository.create(spec or _spec(), "user")
+        draft = self.service.confirm_requirements(
+            draft.draft_id, draft.current_version, "user"
+        )
         mapped = self.resolver.confirm(
-            draft.draft_id, 1, _confirmed_mappings(), "user"
+            draft.draft_id, draft.current_version, _confirmed_mappings(), "user"
         )
         sql_ready = self.service.generate_sql(
             draft.draft_id, mapped.current_version, "user"

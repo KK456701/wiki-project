@@ -206,6 +206,19 @@ def update_indicator_draft(draft_id: str, body: UpdateDraftRequest):
     )
 
 
+@router.post("/{draft_id}/requirements-confirm")
+def confirm_indicator_draft_requirements(
+    draft_id: str, body: DraftActionRequest
+):
+    return _call(
+        lambda: _create_indicator_draft_services().workflow.confirm_requirements(
+            draft_id,
+            body.expected_version,
+            body.actor_id,
+        )
+    )
+
+
 @router.get("/{draft_id}/metadata-suggestions")
 def suggest_indicator_draft_metadata(draft_id: str):
     return _call(
