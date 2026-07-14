@@ -185,6 +185,42 @@ class SqlGenerationSafetyTest(unittest.TestCase):
         self.assertEqual(result["result_value"], 0.0)
         self.assertTrue(result["no_sample"])
 
+    def test_trial_run_returns_counts_source_and_period(self) -> None:
+        class FakeBusinessDB:
+            def execute_select(self, sql):
+                return QueryResult(
+                    rows=[{
+                        "index_value": "80.00",
+                        "numerator_count": 8,
+                        "denominator_count": 10,
+                        "sample_count": 10,
+                    }],
+                    row_count=1,
+                    source="hospital_demo_data",
+                    tool_name="execute_sql_hospital_demo_data",
+                    duration_ms=2,
+                )
+
+        with patch("app.sqlgen.runner.insert_sql_run_log"):
+            result = run_sql_trial(
+                object(),
+                FakeBusinessDB(),
+                "SQL_80",
+                "SELECT 80 AS index_value",
+                "hospital_001",
+                "MQSI2025_005",
+                "2026-07-01 00:00:00",
+                "2026-08-01 00:00:00",
+                {},
+                "tester",
+            )
+
+        self.assertEqual(result["numerator_count"], 8)
+        self.assertEqual(result["denominator_count"], 10)
+        self.assertEqual(result["source"], "hospital_demo_data")
+        self.assertEqual(result["stat_start"], "2026-07-01 00:00:00")
+        self.assertEqual(result["stat_end"], "2026-08-01 00:00:00")
+
     def test_validator_rejects_main_table_only_in_comment(self) -> None:
         sql = "SELECT * FROM other_table WHERE x=:start_time AND y=:end_time -- consult_record"
 
