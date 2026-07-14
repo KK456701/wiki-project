@@ -188,6 +188,22 @@ body::before {
   border: 1px solid rgba(8,124,117,0.16);
   box-shadow: 0 12px 28px rgba(8,124,117,0.10);
 }
+.message-body h3,
+.message-body h4,
+.message-body h5 { margin: 18px 0 8px; letter-spacing: 0; line-height: 1.35; }
+.message-body h3:first-child,
+.message-body h4:first-child,
+.message-body h5:first-child { margin-top: 0; }
+.message-body p { margin: 8px 0; }
+.message-body code { padding: 2px 5px; border-radius: 4px; background: #e8efed; font-family: var(--mono); font-size: .92em; }
+.message-table-wrap { width: 100%; margin: 12px 0; overflow-x: auto; }
+.message-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 14px; line-height: 1.55; white-space: normal; }
+.message-table th,
+.message-table td { padding: 9px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.message-table th { color: var(--ink); background: #edf4f2; font-weight: 800; }
+.message-table td { color: var(--ink-soft); background: #fff; }
+.message-code { margin: 12px 0; padding: 14px; overflow-x: auto; border-radius: 6px; color: #f5f7f6; background: #17231f; white-space: pre; font: 13px/1.6 var(--mono); }
+.message-code code { padding: 0; color: inherit; background: transparent; font: inherit; }
 .message-meta {
   margin-bottom: 8px;
   font: 650 12px/1.2 var(--mono);
@@ -986,6 +1002,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   </section>
 </div>
 
+<script src="/static/chat-markdown.js"></script>
 <script>
 // ===== 状态 =====
 var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
@@ -1374,12 +1391,7 @@ function parseSseEvent(raw) {
 }
 
 function _renderAssHtml(text) {
-  return (text || "").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-    .replace(/`([^`]+)`/g, "<code style='background:#e8e8e8;padding:1px 5px;border-radius:3px;'>$1</code>")
-    .replace(/✅/g, "<span style='color:#2e7d32'>✅</span>")
-    .replace(/❌/g, "<span style='color:#c62828'>❌</span>")
-    .replace(/(📋|📐|⚙️|🧪|💡)/g, '<span style="font-size:16px;">$1</span>');
+  return renderAssistantMarkdown(text || "");
 }
 
 function createMessage(role, text) {
