@@ -9,6 +9,11 @@ SELECT
       2
     )
   END AS index_value,
+  COUNT(DISTINCT CASE
+    WHEN {{ fields.autologous_reinfusion_flag }} = :autologous_flag_value
+    THEN {{ fields.patient_id }}
+  END) AS numerator_count,
+  COUNT(DISTINCT {{ fields.patient_id }}) AS denominator_count,
   COUNT(DISTINCT {{ fields.patient_id }}) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id

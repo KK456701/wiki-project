@@ -9,6 +9,11 @@ SELECT
       2
     )
   END AS index_value,
+  SUM(CASE
+    WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) BETWEEN 0 AND :arrive_minutes_threshold
+    THEN 1 ELSE 0
+  END) AS numerator_count,
+  COUNT(*) AS denominator_count,
   COUNT(*) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id

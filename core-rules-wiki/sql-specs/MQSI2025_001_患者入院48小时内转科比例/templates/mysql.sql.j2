@@ -12,6 +12,14 @@ SELECT
       2
     )
   END AS index_value,
+  COUNT(DISTINCT CASE
+    WHEN {{ fields.transfer_time }} IS NOT NULL
+     AND TIMESTAMPDIFF(MINUTE, {{ fields.admit_time }}, {{ fields.transfer_time }}) BETWEEN 0 AND :transfer_minutes_threshold
+     AND COALESCE({{ fields.from_dept_id }}, '') <> :excluded_dept_id
+     AND COALESCE({{ fields.to_dept_id }}, '') <> :excluded_dept_id
+    THEN {{ fields.admission_id }}
+  END) AS numerator_count,
+  COUNT(DISTINCT {{ fields.admission_id }}) AS denominator_count,
   COUNT(DISTINCT {{ fields.admission_id }}) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id

@@ -41,9 +41,16 @@ _SEEDS: dict[str, dict[str, Any]] = {
          WHEN {{ fields.transfer_time }} IS NOT NULL
           AND TIMESTAMPDIFF(MINUTE, {{ fields.admit_time }}, {{ fields.transfer_time }}) BETWEEN 0 AND :transfer_minutes_threshold
           AND COALESCE({{ fields.from_dept_id }}, '') <> :excluded_dept_id
-          AND COALESCE({{ fields.to_dept_id }}, '') <> :excluded_dept_id
+         AND COALESCE({{ fields.to_dept_id }}, '') <> :excluded_dept_id
          THEN {{ fields.admission_id }} END) / COUNT(DISTINCT {{ fields.admission_id }}) * 100, 2)
   END AS index_value,
+  COUNT(DISTINCT CASE
+    WHEN {{ fields.transfer_time }} IS NOT NULL
+     AND TIMESTAMPDIFF(MINUTE, {{ fields.admit_time }}, {{ fields.transfer_time }}) BETWEEN 0 AND :transfer_minutes_threshold
+     AND COALESCE({{ fields.from_dept_id }}, '') <> :excluded_dept_id
+     AND COALESCE({{ fields.to_dept_id }}, '') <> :excluded_dept_id
+    THEN {{ fields.admission_id }} END) AS numerator_count,
+  COUNT(DISTINCT {{ fields.admission_id }}) AS denominator_count,
   COUNT(DISTINCT {{ fields.admission_id }}) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id
@@ -72,6 +79,10 @@ WHERE {{ fields.hospital_id }} = :hospital_id
          WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) BETWEEN 0 AND :arrive_minutes_threshold
          THEN 1 ELSE 0 END) / COUNT(*) * 100, 2)
   END AS index_value,
+  SUM(CASE
+    WHEN TIMESTAMPDIFF(MINUTE, {{ fields.request_time }}, {{ fields.arrive_time }}) BETWEEN 0 AND :arrive_minutes_threshold
+    THEN 1 ELSE 0 END) AS numerator_count,
+  COUNT(*) AS denominator_count,
   COUNT(*) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id
@@ -104,6 +115,8 @@ WHERE {{ fields.hospital_id }} = :hospital_id
   CASE WHEN COUNT(*) = 0 THEN 0
        ELSE ROUND(SUM(CASE WHEN {{ fields.rescue_result }} = :success_value THEN 1 ELSE 0 END) / COUNT(*) * 100, 2)
   END AS index_value,
+  SUM(CASE WHEN {{ fields.rescue_result }} = :success_value THEN 1 ELSE 0 END) AS numerator_count,
+  COUNT(*) AS denominator_count,
   COUNT(*) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id
@@ -135,6 +148,10 @@ WHERE {{ fields.hospital_id }} = :hospital_id
          WHEN {{ fields.autologous_reinfusion_flag }} = :autologous_flag_value
          THEN {{ fields.patient_id }} END) / COUNT(DISTINCT {{ fields.patient_id }}) * 100, 2)
   END AS index_value,
+  COUNT(DISTINCT CASE
+    WHEN {{ fields.autologous_reinfusion_flag }} = :autologous_flag_value
+    THEN {{ fields.patient_id }} END) AS numerator_count,
+  COUNT(DISTINCT {{ fields.patient_id }}) AS denominator_count,
   COUNT(DISTINCT {{ fields.patient_id }}) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id

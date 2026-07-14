@@ -6,6 +6,8 @@ SELECT
       2
     )
   END AS index_value,
+  SUM(CASE WHEN {{ fields.rescue_result }} = :success_value THEN 1 ELSE 0 END) AS numerator_count,
+  COUNT(*) AS denominator_count,
   COUNT(*) AS sample_count
 FROM {{ main_table }}
 WHERE {{ fields.hospital_id }} = :hospital_id

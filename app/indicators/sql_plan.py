@@ -73,6 +73,8 @@ def render_indicator_sql(
             f"  CASE WHEN {denominator_count} = 0 THEN 0\n"
             f"       ELSE ROUND({numerator_count} / {denominator_count} * 100, 2)\n"
             "  END AS index_value,\n"
+            f"  {numerator_count} AS numerator_count,\n"
+            f"  {denominator_count} AS denominator_count,\n"
             f"  {denominator_count} AS sample_count\n"
             f"FROM `{table}`\n"
             f"WHERE {where}"
@@ -82,6 +84,8 @@ def render_indicator_sql(
         sql_text = (
             "SELECT\n"
             f"  {count_expression} AS index_value,\n"
+            f"  {count_expression} AS numerator_count,\n"
+            f"  {count_expression} AS denominator_count,\n"
             f"  {count_expression} AS sample_count\n"
             f"FROM `{table}`\n"
             f"WHERE {where}"

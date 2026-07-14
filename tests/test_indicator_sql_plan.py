@@ -77,6 +77,13 @@ class DraftMetadataResolverTest(unittest.TestCase):
 
 
 class IndicatorSQLPlanRendererTest(unittest.TestCase):
+    def test_ratio_sql_returns_explainable_aggregate_columns(self) -> None:
+        rendered = render_indicator_sql(_plan(), _confirmed_mappings())
+
+        self.assertIn("AS numerator_count", rendered["sql_text"])
+        self.assertIn("AS denominator_count", rendered["sql_text"])
+        self.assertIn("AS sample_count", rendered["sql_text"])
+
     def test_ratio_sql_is_parameterized_and_has_mandatory_scope(self) -> None:
         rendered = render_indicator_sql(_plan(), _confirmed_mappings())
 

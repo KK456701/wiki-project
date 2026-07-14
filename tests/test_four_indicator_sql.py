@@ -107,7 +107,12 @@ class FourIndicatorSQLTest(unittest.TestCase):
                 self.assertIn(":hospital_id", sql)
                 self.assertIn(":start_time", sql)
                 self.assertIn(":end_time", sql)
-                self.assertIn("sample_count", sql)
+                for alias in (
+                    "numerator_count",
+                    "denominator_count",
+                    "sample_count",
+                ):
+                    self.assertIn(alias, sql)
                 self.assertEqual(spec["rule_id"], code)
 
     def test_confirmed_caliber_contracts_are_encoded(self) -> None:
@@ -130,6 +135,12 @@ class FourIndicatorSQLTest(unittest.TestCase):
             "MQSI2025_014": 75.0,
             "MQSI2025_035": 50.0,
         }
+        expected_counts = {
+            "MQSI2025_001": (1, 4),
+            "MQSI2025_005": (2, 3),
+            "MQSI2025_014": (3, 4),
+            "MQSI2025_035": (2, 4),
+        }
         common = {
             "hospital_id": "hospital_001",
             "start_time": "2026-07-01 00:00:00",
@@ -142,6 +153,11 @@ class FourIndicatorSQLTest(unittest.TestCase):
                 with engine.connect() as conn:
                     row = conn.execute(text(sqlite_sql), {**common, **PARAMS[code]}).mappings().one()
                 self.assertEqual(float(row["index_value"]), expected_value)
+                self.assertEqual(
+                    (int(row["numerator_count"]), int(row["denominator_count"])),
+                    expected_counts[code],
+                )
+                self.assertEqual(int(row["sample_count"]), int(row["denominator_count"]))
 
 
 if __name__ == "__main__":
