@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,3 +23,52 @@ class RunContext(BaseModel):
     stat_end: str
     db_source: str
     main_table: str
+
+
+class DetailColumn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field: str
+    label: str
+    sensitivity: Literal["none", "patient_id", "name", "phone", "id_card"] = "none"
+
+
+class DetailQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sql: str
+    params: dict[str, Any]
+    columns: list[DetailColumn]
+
+
+class DetailSnapshotSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: str
+    run_id: str
+    hospital_id: str
+    rule_id: str
+    rule_name: str
+    effective_level: str
+    national_version: str | None = None
+    hospital_version: int | None = None
+    stat_start: str
+    stat_end: str
+    denominator_count: int
+    numerator_count: int
+    unmatched_count: int
+    columns: list[DetailColumn]
+    created_at: datetime
+    expires_at: datetime
+
+
+class DetailPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: str
+    run_id: str
+    group: Literal["denominator", "numerator", "unmatched"]
+    page: int
+    page_size: int
+    total: int
+    items: list[dict[str, Any]]

@@ -333,6 +333,26 @@ CREATE TABLE IF NOT EXISTS med_sql_run_log (
   run_time DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS med_indicator_detail_snapshot (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  snapshot_id VARCHAR(64) NOT NULL UNIQUE,
+  run_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  rule_id VARCHAR(64) NOT NULL,
+  relative_path VARCHAR(512) NOT NULL,
+  file_sha256 VARCHAR(64),
+  denominator_count INT,
+  numerator_count INT,
+  unmatched_count INT,
+  column_schema_json JSON,
+  status VARCHAR(32) NOT NULL,
+  created_by VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  error_message TEXT,
+  KEY idx_detail_snapshot_scope (hospital_id, expires_at)
+);
+
 CREATE TABLE IF NOT EXISTS med_index_diagnose_report (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   report_id VARCHAR(64) NOT NULL UNIQUE,
