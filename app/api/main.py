@@ -234,6 +234,17 @@ def _hospital_package_signer():
     )
 
 
+def _hospital_release_repository():
+    from app.db.engine import create_runtime_engine
+    from app.kb.hospital_import import HospitalReleaseRepository
+
+    return HospitalReleaseRepository(
+        create_runtime_engine(),
+        _configured_path("trusted_company_keys_dir"),
+        system_version=app.version,
+    )
+
+
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -988,6 +999,44 @@ def kb_merge_upload(
         return _create_company_repository().create_merge_report(payload, uploaded_by="admin")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/kb/hospital/releases/imports")
+def kb_hospital_release_import(
+    payload: bytes = Body(..., media_type="application/zip"),
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return _hospital_release_repository().import_package(payload, "admin")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": str(exc),
+                "message": "公司发布包导入失败，未修改当前生效指标。",
+            },
+        ) from exc
+
+
+@app.get("/api/kb/hospital/releases/imports")
+def kb_hospital_release_imports(
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    return {"items": _hospital_release_repository().list_imports()}
+
+
+@app.get("/api/kb/hospital/releases/imports/{import_id}")
+def kb_hospital_release_import_detail(
+    import_id: str,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    try:
+        return _hospital_release_repository().read_import(import_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get("/api/kb/merge/reports")
