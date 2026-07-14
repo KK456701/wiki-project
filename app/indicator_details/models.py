@@ -60,6 +60,7 @@ class DetailSnapshotSummary(BaseModel):
     columns: list[DetailColumn]
     created_at: datetime
     expires_at: datetime
+    reused: bool = False
 
 
 class DetailPage(BaseModel):
@@ -72,3 +73,26 @@ class DetailPage(BaseModel):
     page_size: int
     total: int
     items: list[dict[str, Any]]
+
+
+class ExportSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    export_id: str
+    run_id: str
+    hospital_id: str
+    rule_id: str
+    file_name: str
+    row_count: int
+    status: str
+    created_at: datetime
+    expires_at: datetime
+    download_count: int = 0
+
+
+class CleanupResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expired_snapshots: int = 0
+    expired_exports: int = 0
+    failed_paths: int = 0

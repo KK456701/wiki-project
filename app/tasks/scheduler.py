@@ -13,6 +13,7 @@ class MonitoringScheduler:
         timezone_name: str = "Asia/Shanghai",
         backend: Any | None = None,
         trigger_factory: Callable[[dict[str, Any]], Any] | None = None,
+        cleanup_callback: Callable[[], Any] | None = None,
     ) -> None:
         if backend is None:
             from apscheduler.schedulers.background import BackgroundScheduler
@@ -23,6 +24,7 @@ class MonitoringScheduler:
         self.timezone_name = timezone_name
         self.backend = backend
         self.trigger_factory = trigger_factory or self._build_trigger
+        self.cleanup_callback = cleanup_callback
         self._started = False
         self._last_scan_at: datetime | None = None
 
@@ -80,6 +82,16 @@ class MonitoringScheduler:
         if self._started:
             return
         self.reload_plans()
+        if self.cleanup_callback is not None:
+            self.backend.add_job(
+                self.cleanup_callback,
+                "interval",
+                hours=1,
+                id="cleanup:indicator-exports",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+            )
         self.backend.start()
         self._started = True
 

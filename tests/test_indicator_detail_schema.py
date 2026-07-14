@@ -40,4 +40,9 @@ def test_sql_run_detail_columns_are_added_idempotently() -> None:
         "run_context_json",
     ]
     assert second["added_run_columns"] == []
+    assert set(first["created_tables"]) == {
+        "med_indicator_detail_snapshot",
+        "med_indicator_export",
+    }
+    assert second["created_tables"] == []
     assert {"numerator_count", "denominator_count", "run_context_json"} <= columns

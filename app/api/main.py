@@ -241,12 +241,17 @@ from app.api.indicator_drafts import (
 from app.api.monitoring import router as monitoring_router
 from app.api.terminology import router as terminology_router
 from app.api.hospital_auth import router as hospital_auth_router
+from app.api.indicator_details import (
+    get_indicator_detail_service,
+    router as indicator_details_router,
+)
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
 app.include_router(monitoring_router)
 app.include_router(terminology_router)
 app.include_router(hospital_auth_router)
+app.include_router(indicator_details_router)
 
 
 def start_monitoring_scheduler() -> None:
@@ -269,6 +274,7 @@ def start_monitoring_scheduler() -> None:
             timezone_name=get(
                 "monitoring_scheduler_timezone", "Asia/Shanghai"
             ),
+            cleanup_callback=lambda: get_indicator_detail_service().cleanup_expired(),
         )
         scheduler.start()
         set_monitoring_scheduler(scheduler)
@@ -315,6 +321,7 @@ def initialize_indicator_detail_runtime() -> None:
         from app.indicator_details.schema import ensure_indicator_detail_schema
 
         ensure_indicator_detail_schema(create_runtime_engine())
+        get_indicator_detail_service().cleanup_expired()
     except Exception:
         logger.exception("indicator detail schema initialization failed")
 

@@ -353,6 +353,27 @@ CREATE TABLE IF NOT EXISTS med_indicator_detail_snapshot (
   KEY idx_detail_snapshot_scope (hospital_id, expires_at)
 );
 
+CREATE TABLE IF NOT EXISTS med_indicator_export (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  export_id VARCHAR(64) NOT NULL UNIQUE,
+  snapshot_id VARCHAR(64) NOT NULL,
+  run_id VARCHAR(64) NOT NULL,
+  hospital_id VARCHAR(64) NOT NULL,
+  rule_id VARCHAR(64) NOT NULL,
+  relative_path VARCHAR(512) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_sha256 VARCHAR(64) NULL,
+  status VARCHAR(32) NOT NULL,
+  row_count INT NOT NULL,
+  created_by VARCHAR(64) NOT NULL,
+  created_at DATETIME NOT NULL,
+  expires_at DATETIME NOT NULL,
+  download_count INT NOT NULL DEFAULT 0,
+  last_downloaded_at DATETIME NULL,
+  error_message TEXT NULL,
+  INDEX idx_indicator_export_scope (hospital_id, expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS med_index_diagnose_report (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   report_id VARCHAR(64) NOT NULL UNIQUE,

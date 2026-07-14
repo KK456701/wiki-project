@@ -92,7 +92,7 @@ class DetailSnapshotStore:
         return candidate
 
     def _summary(
-        self, snapshot: dict[str, Any], context: RunContext
+        self, snapshot: dict[str, Any], context: RunContext, *, reused: bool = False
     ) -> DetailSnapshotSummary:
         return DetailSnapshotSummary(
             snapshot_id=str(snapshot["snapshot_id"]),
@@ -114,6 +114,7 @@ class DetailSnapshotStore:
             ],
             created_at=snapshot["created_at"],
             expires_at=snapshot["expires_at"],
+            reused=reused,
         )
 
     def _validate_ready_snapshot(self, snapshot: dict[str, Any]) -> Path:
@@ -142,7 +143,7 @@ class DetailSnapshotStore:
         existing = self.repository.get_snapshot_by_run(run_id)
         if existing and existing.get("status") == "ready":
             self._validate_ready_snapshot(existing)
-            return self._summary(existing, context)
+            return self._summary(existing, context, reused=True)
 
         now = self.now_provider()
         snapshot_id = f"SNAP_{uuid.uuid4().hex[:16]}"
@@ -233,6 +234,21 @@ class DetailSnapshotStore:
                 if line.strip():
                     rows.append(json.loads(line))
         return rows
+
+    def read_all_rows(
+        self, run_id: str, hospital_id: str
+    ) -> tuple[DetailSnapshotSummary, list[dict[str, Any]]]:
+        snapshot = self.repository.get_snapshot_by_run(run_id)
+        run = self.repository.get_run(run_id)
+        if (
+            snapshot is None
+            or run is None
+            or str(snapshot.get("hospital_id")) != hospital_id
+            or str(run.get("hospital_id")) != hospital_id
+        ):
+            raise LookupError("明细快照不存在")
+        context = RunContext.model_validate(run.get("run_context_json"))
+        return self._summary(snapshot, context, reused=True), self._read_rows(snapshot)
 
     def read_page(
         self,

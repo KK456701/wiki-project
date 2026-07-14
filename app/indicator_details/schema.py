@@ -45,6 +45,33 @@ Index(
     detail_snapshot_table.c.expires_at,
 )
 
+indicator_export_table = Table(
+    "med_indicator_export",
+    metadata,
+    Column("id", _id_type, primary_key=True, autoincrement=True),
+    Column("export_id", String(64), nullable=False, unique=True),
+    Column("snapshot_id", String(64), nullable=False),
+    Column("run_id", String(64), nullable=False),
+    Column("hospital_id", String(64), nullable=False),
+    Column("rule_id", String(64), nullable=False),
+    Column("relative_path", String(512), nullable=False),
+    Column("file_name", String(255), nullable=False),
+    Column("file_sha256", String(64)),
+    Column("status", String(32), nullable=False),
+    Column("row_count", Integer, nullable=False),
+    Column("created_by", String(64), nullable=False),
+    Column("created_at", DateTime, nullable=False),
+    Column("expires_at", DateTime, nullable=False),
+    Column("download_count", Integer, nullable=False, default=0),
+    Column("last_downloaded_at", DateTime),
+    Column("error_message", Text),
+)
+Index(
+    "idx_indicator_export_scope",
+    indicator_export_table.c.hospital_id,
+    indicator_export_table.c.expires_at,
+)
+
 
 SQL_RUN_COLUMNS = {
     "numerator_count": "BIGINT NULL",
@@ -58,8 +85,8 @@ def ensure_indicator_detail_schema(engine: Engine) -> dict[str, list[str]]:
     before = set(inspector.get_table_names())
     metadata.create_all(engine, checkfirst=True)
     created_tables = [
-        "med_indicator_detail_snapshot"
-        for table_name in ["med_indicator_detail_snapshot"]
+        table_name
+        for table_name in ("med_indicator_detail_snapshot", "med_indicator_export")
         if table_name not in before
     ]
     inspector = inspect(engine)

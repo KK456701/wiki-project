@@ -168,6 +168,27 @@ class MonitoringSchedulerTest(unittest.TestCase):
             datetime(2026, 8, 3, 2, 15, 0),
         )
 
+    def test_start_registers_hourly_indicator_export_cleanup(self):
+        cleanup_calls = []
+        backend = _FakeBackend()
+        scheduler = __import__(
+            "app.tasks.scheduler", fromlist=["MonitoringScheduler"]
+        ).MonitoringScheduler(
+            _FakeRepository(),
+            service_factory=lambda: _FakeService(),
+            backend=backend,
+            trigger_factory=lambda plan: {"frequency": plan["frequency"]},
+            cleanup_callback=lambda: cleanup_calls.append("cleaned"),
+        )
+
+        scheduler.start()
+        cleanup_job = backend.jobs["cleanup:indicator-exports"]
+        cleanup_job["func"]()
+
+        self.assertEqual(cleanup_job["trigger"], "interval")
+        self.assertEqual(cleanup_job["hours"], 1)
+        self.assertEqual(cleanup_calls, ["cleaned"])
+
 
 if __name__ == "__main__":
     unittest.main()
