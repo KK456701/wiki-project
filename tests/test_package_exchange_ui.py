@@ -41,8 +41,12 @@ class PackageExchangeUiTest(unittest.TestCase):
             '"/api/kb/export/preview?hospital_id="',
             '"/api/kb/export?hospital_id="',
             '"/api/kb/hospital/releases/imports"',
+            '"/api/indicator-drafts/from-release"',
             "ready_for_adaptation",
             "legacy_unsigned",
+            "function createIndicatorDraftFromRelease",
+            "进入本院适配",
+            'window.navigateWorkbench("indicator-console")',
             "requireAdminThenOpen(\"packageExchange\")",
         ):
             self.assertIn(marker, js)
@@ -56,6 +60,7 @@ class PackageExchangeUiTest(unittest.TestCase):
             ".metadata-scope-table",
             ".package-import-history",
             ".package-status",
+            ".package-release-item",
             "@media (max-width: 900px)",
         ):
             self.assertIn(marker, css)

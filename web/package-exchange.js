@@ -395,7 +395,73 @@ function renderCompanyReleaseImportDetail(detail) {
     tr.append(th, td); body.appendChild(tr);
   });
   table.appendChild(body);
-  companyReleaseImportDetail.append(title, statuses, table);
+  var itemSection = document.createElement("section");
+  itemSection.className = "package-release-items";
+  var itemTitle = document.createElement("h5");
+  itemTitle.textContent = "包内指标与知识项";
+  itemSection.appendChild(itemTitle);
+  (detail.items || []).forEach(function(item) {
+    var row = document.createElement("div");
+    row.className = "package-release-item";
+    var content = document.createElement("div");
+    var name = document.createElement("strong");
+    var payload = item.payload || {};
+    name.textContent = payload.index_name || payload.rule_name || item.rule_id || item.item_path;
+    var meta = document.createElement("small");
+    meta.textContent = item.item_type === "rule"
+      ? "指标规则 · " + (item.rule_id || "未提供编码")
+      : "知识项 · " + item.item_path;
+    content.append(name, meta);
+    row.appendChild(content);
+    if (item.item_type === "rule" && item.rule_id) {
+      var action = document.createElement("button");
+      action.type = "button";
+      action.textContent = "进入本院适配";
+      action.disabled = detail.status !== "ready_for_adaptation" ||
+        detail.signature_status !== "verified" || detail.compatibility_status !== "compatible";
+      if (action.disabled) action.title = "只有签名有效且版本兼容的指标规则才能进入本院适配";
+      action.addEventListener("click", function() {
+        createIndicatorDraftFromRelease(detail, item, action);
+      });
+      row.appendChild(action);
+    }
+    itemSection.appendChild(row);
+  });
+  if (!(detail.items || []).length) {
+    var empty = document.createElement("div");
+    empty.className = "package-empty";
+    empty.textContent = "发布包中没有可展示的指标或知识项。";
+    itemSection.appendChild(empty);
+  }
+  companyReleaseImportDetail.append(title, statuses, table, itemSection);
+}
+
+async function createIndicatorDraftFromRelease(detail, item, button) {
+  if (!requirePackageAdmin()) return;
+  button.disabled = true;
+  button.textContent = "正在创建...";
+  try {
+    var draft = await packageJsonApi("/api/indicator-drafts/from-release", {
+      method: "POST",
+      headers: packageAdminHeaders("application/json"),
+      body: JSON.stringify({
+        import_id: detail.import_id,
+        rule_id: item.rule_id,
+        hospital_id: packageHospitalId(),
+        actor_id: packageActorId(),
+      }),
+    });
+    setPackageExchangeNotice(
+      draft.duplicate ? "该指标已有本院适配任务，正在打开。" : "本院适配任务已创建，正在打开指标实施控制台。",
+      "success"
+    );
+    if (window.openIndicatorDraft) window.openIndicatorDraft(draft.draft_id);
+    if (window.navigateWorkbench) window.navigateWorkbench("indicator-console");
+  } catch (error) {
+    setPackageExchangeNotice("创建本院适配任务失败：" + error.message, "failed");
+    button.disabled = false;
+    button.textContent = "进入本院适配";
+  }
 }
 
 async function activatePackageExchangeWorkspace() {
