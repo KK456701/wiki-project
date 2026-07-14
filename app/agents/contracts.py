@@ -152,8 +152,13 @@ class FieldMapping(AgentContract):
 class MetadataPrecheckResult(AgentContract):
     ok: bool
     error: str | None = None
+    required_business_fields: list[str] = Field(default_factory=list)
     missing_mappings: list[str] = Field(default_factory=list)
+    unconfirmed_mappings: list[str] = Field(default_factory=list)
     missing_columns: list[str] = Field(default_factory=list)
+    type_mismatches: list[str] = Field(default_factory=list)
+    missing_relations: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
     dialect: str = "mysql"
     db_name: str = ""
     main_table: str = ""
@@ -190,6 +195,9 @@ class SQLGenerationResult(AgentContract):
     trial_run: TrialRunResult | None = None
     dialect: str = "mysql"
     params: dict[str, Any] = Field(default_factory=dict)
+    calculation_definition: dict[str, Any] = Field(default_factory=dict)
+    field_mapping: dict[str, Any] = Field(default_factory=dict)
+    lineage: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     node_timings: dict[str, int] = Field(default_factory=dict, alias="_node_timings")
 

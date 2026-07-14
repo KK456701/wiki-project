@@ -255,6 +255,16 @@ class CoreIndicatorOrchestrator:
         )(
             str(prepared.hospital_id or ""),
             str(prepared.rule_id),
+            calculation_definition=(
+                prepared.effective_rule.calculation_definition
+                if prepared.effective_rule is not None
+                else None
+            ),
+            field_mapping=(
+                prepared.field_mapping.model_dump(by_alias=True)
+                if prepared.field_mapping is not None
+                else None
+            ),
         )
         precheck_contract = (
             precheck
@@ -265,15 +275,10 @@ class CoreIndicatorOrchestrator:
             1, int((time.perf_counter() - precheck_started) * 1000)
         )
         if not precheck_contract.ok:
-            missing_mappings = precheck_contract.missing_mappings
-            missing_columns = precheck_contract.missing_columns
             return SQLGenerationResult(
                 status="field_precheck_failed",
                 precheck=precheck_contract,
-                message=(
-                    f"字段预校验未通过。缺失映射: {missing_mappings}。"
-                    f"缺失字段: {missing_columns}"
-                ),
+                message=(precheck_contract.error or "字段预校验未通过。"),
                 node_timings={"field_mapping_precheck": precheck_duration_ms},
             ).model_dump(by_alias=True, exclude_none=True)
         term_bindings: list[dict[str, Any]] = []
@@ -323,6 +328,11 @@ class CoreIndicatorOrchestrator:
             persist_run_result=persist_run_result,
             custom_filters=[item.model_dump() for item in prepared.custom_filters],
             term_bindings=term_bindings,
+            field_mapping=(
+                prepared.field_mapping.model_dump(by_alias=True)
+                if prepared.field_mapping is not None
+                else None
+            ),
         )
         contract = (
             result

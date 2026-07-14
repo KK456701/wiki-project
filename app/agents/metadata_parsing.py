@@ -43,19 +43,36 @@ class MetadataParsingAgent:
             self.sync(provider, hospital_id, db_name)
         )
 
-    def precheck(self, hospital_id: str, rule_id: str) -> dict[str, Any]:
+    def precheck(
+        self,
+        hospital_id: str,
+        rule_id: str,
+        calculation_definition: dict[str, Any] | None = None,
+        field_mapping: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return self._precheck(
             self.kb_root,
             self.runtime_engine,
             hospital_id,
             rule_id,
+            calculation_definition=calculation_definition,
+            field_mapping=field_mapping,
         )
 
     def precheck_contract(
-        self, hospital_id: str, rule_id: str
+        self,
+        hospital_id: str,
+        rule_id: str,
+        calculation_definition: dict[str, Any] | None = None,
+        field_mapping: dict[str, Any] | None = None,
     ) -> MetadataPrecheckResult:
         return MetadataPrecheckResult.model_validate(
-            self.precheck(hospital_id, rule_id)
+            self.precheck(
+                hospital_id,
+                rule_id,
+                calculation_definition=calculation_definition,
+                field_mapping=field_mapping,
+            )
         )
 
     def suggest_draft_fields(self, draft_id: str) -> dict[str, Any]:

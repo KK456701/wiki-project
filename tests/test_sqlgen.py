@@ -13,6 +13,78 @@ from app.sqlgen.validator import validate_select_sql
 
 
 class SqlGenerationSafetyTest(unittest.TestCase):
+    def test_generation_reuses_supplied_mapping_and_returns_lineage(self) -> None:
+        class FailingRepository:
+            def get_field_mapping(self, rule_id, hospital_id):
+                raise AssertionError("SQL 生成阶段不应再次查询字段映射")
+
+        spec_path = next(
+            Path("core-rules-wiki/sql-specs").glob(
+                "MQSI2025_005*/rule_sql_spec.yaml"
+            )
+        )
+        spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+        template = (
+            "SELECT 1 AS index_value, 1 AS sample_count FROM {{ main_table }} "
+            "WHERE {{ fields.hospital_id }}=:hospital_id "
+            "AND {{ fields.consult_type }}=:consult_type_value "
+            "AND {{ fields.request_time }}>=:start_time "
+            "AND {{ fields.request_time }}<:end_time"
+        )
+        mapping = {
+            "dialect": "mysql",
+            "db_name": "hospital_demo_data",
+            "main_table": "consult_record",
+            "status": "confirmed",
+            "fields": {
+                "hospital_id": "consult_record.hospital_id",
+                "consult_type": "consult_record.consult_type",
+                "request_time": "consult_record.request_time",
+                "arrive_time": "consult_record.arrive_time",
+            },
+        }
+        agent = SQLGenerationAgent(
+            Path("core-rules-wiki"),
+            object(),
+            object(),
+            rule_repository=FailingRepository(),
+        )
+
+        with patch("app.sqlgen.agent.insert_generated_sql"):
+            result = agent.generate(
+                query="生成SQL",
+                hospital_id="hospital_001",
+                rule_id="MQSI2025_005",
+                effective_rule={
+                    "standard_sql": template,
+                    "effective_params": {
+                        "arrive_minutes_threshold": 20,
+                        "consult_type_value": "急会诊",
+                    },
+                    "calculation_definition": spec["calculation"],
+                    "national_params": {"arrive_minutes_threshold": 10},
+                    "hospital_version": 1,
+                    "overridden_fields": ["arrive_minutes_threshold"],
+                },
+                stat_start_time="2026-07-01 00:00:00",
+                stat_end_time="2026-08-01 00:00:00",
+                precheck={"ok": True},
+                field_mapping=mapping,
+            )
+
+        self.assertEqual(result["field_mapping"], mapping)
+        self.assertEqual(
+            result["calculation_definition"], spec["calculation"]
+        )
+        self.assertEqual(
+            result["lineage"]["required_business_fields"],
+            ["arrive_time", "consult_type", "hospital_id", "request_time"],
+        )
+        self.assertEqual(
+            result["lineage"]["caliber_rows"][0]["effect_scope"],
+            "只改变分子，不改变分母",
+        )
+
     def test_monitoring_can_skip_legacy_result_persistence(self) -> None:
         class FakeRepository:
             def get_field_mapping(self, rule_id, hospital_id):

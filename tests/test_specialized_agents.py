@@ -134,8 +134,19 @@ class SpecializedAgentTest(unittest.TestCase):
             calls.append(("sync", kwargs))
             return {"batch_id": "B001"}
 
-        def precheck_fn(kb_root, runtime_engine, hospital_id, rule_id):
-            calls.append(("precheck", {"kb_root": kb_root, "hospital_id": hospital_id, "rule_id": rule_id}))
+        def precheck_fn(
+            kb_root,
+            runtime_engine,
+            hospital_id,
+            rule_id,
+            **kwargs,
+        ):
+            calls.append(("precheck", {
+                "kb_root": kb_root,
+                "hospital_id": hospital_id,
+                "rule_id": rule_id,
+                **kwargs,
+            }))
             return {"ok": True}
 
         agent = MetadataParsingAgent(

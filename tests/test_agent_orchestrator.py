@@ -102,8 +102,13 @@ class _FakeDomainAgent:
         self.calls.append({"provider": provider, "hospital_id": hospital_id, "db_name": db_name})
         return {"batch_id": "B001"}
 
-    def precheck(self, hospital_id, rule_id):
-        self.calls.append({"operation": "precheck", "hospital_id": hospital_id, "rule_id": rule_id})
+    def precheck(self, hospital_id, rule_id, **kwargs):
+        self.calls.append({
+            "operation": "precheck",
+            "hospital_id": hospital_id,
+            "rule_id": rule_id,
+            **kwargs,
+        })
         return {
             "ok": True,
             "main_table": "consult_record",
@@ -379,6 +384,15 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertTrue(indicator.calls[0]["precheck"]["ok"])
         self.assertEqual(indicator.calls[0]["rule_id"], "MQSI2025_005")
         self.assertTrue(indicator.calls[0]["trial_run"])
+        self.assertEqual(
+            indicator.calls[0]["field_mapping"]["main_table"],
+            "consult_record",
+        )
+        self.assertIn("calculation_definition", metadata.calls[0])
+        self.assertEqual(
+            metadata.calls[0]["field_mapping"]["main_table"],
+            "consult_record",
+        )
         self.assertEqual(diagnosed["diagnose_status"], "success")
         self.assertEqual(diagnosis.calls[0]["effective_rule"]["effective_level"], "hospital")
         self.assertTrue(diagnosis.calls[0]["caliber_context"]["applicable"])
@@ -407,7 +421,7 @@ class AgentOrchestratorTest(unittest.TestCase):
         orchestrator, _, _, indicator, _, metadata = _orchestrator()
         prepared = orchestrator.prepare("生成SQL", "hospital_001")
 
-        def failed_precheck(hospital_id, rule_id):
+        def failed_precheck(hospital_id, rule_id, **kwargs):
             return {
                 "ok": False,
                 "missing_mappings": ["request_time"],

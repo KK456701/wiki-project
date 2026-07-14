@@ -16,6 +16,8 @@ from app.sqlgen.spec_loader import (
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
 from app.sqlgen.runner import run_sql_trial
+from app.rules.calculation import parse_calculation_definition
+from app.rules.lineage import build_indicator_lineage
 
 if TYPE_CHECKING:
     from app.rules.repository import RuleRepository
@@ -67,24 +69,30 @@ class SQLGenerationAgent:
                  generated_by: str = "agent",
                  custom_filters: list[dict[str, str]] | None = None,
                  term_bindings: list[dict[str, Any]] | None = None,
-                 persist_run_result: bool = True) -> dict[str, Any]:
+                 persist_run_result: bool = True,
+                 field_mapping: dict[str, Any] | None = None) -> dict[str, Any]:
         node_timings: dict[str, int] = {}
         if not precheck.get("ok"):
             return {
                 "status": "field_precheck_failed",
                 "precheck": precheck,
                 "_node_timings": node_timings,
-                "message": f"字段预校验未通过。缺失映射: {precheck.get('missing_mappings', [])}。缺失字段: {precheck.get('missing_columns', [])}",
+                "message": str(precheck.get("error") or "字段预校验未通过。"),
             }
 
         generate_start = time.perf_counter()
-        if self.rule_repository is not None:
+        if field_mapping is not None:
+            mapping = dict(field_mapping)
+        elif self.rule_repository is not None:
             mapping = self.rule_repository.get_field_mapping(rule_id, hospital_id)
+        else:
+            mapping = load_hospital_mapping(self.kb_root, hospital_id, rule_id)
+
+        if self.rule_repository is not None or effective_rule.get("standard_sql"):
             spec = None
             template_str = str(effective_rule.get("standard_sql") or "")
             params = dict(effective_rule.get("effective_params") or {})
         else:
-            mapping = load_hospital_mapping(self.kb_root, hospital_id, rule_id)
             spec = load_rule_sql_spec(self.kb_root, rule_id)
             template_str = load_template(
                 self.kb_root, rule_id, mapping.get("dialect", "mysql")
@@ -139,8 +147,25 @@ class SQLGenerationAgent:
             "sql_id": sql_id, "sql_text": sql_text, "sql_status": sql_status,
             "validation": validation, "dialect": dialect, "params": params,
             "precheck": precheck,
+            "calculation_definition": dict(
+                effective_rule.get("calculation_definition") or {}
+            ),
+            "field_mapping": mapping,
             "_node_timings": node_timings,
         }
+        calculation_payload = effective_rule.get("calculation_definition")
+        if calculation_payload:
+            definition = parse_calculation_definition(calculation_payload)
+            result["lineage"] = build_indicator_lineage(
+                definition,
+                mapping,
+                params,
+                {**effective_rule, "hospital_id": hospital_id},
+                stat_start_time,
+                stat_end_time,
+            )
+        else:
+            result["lineage"] = {}
 
         if trial_run and validation["ok"]:
             trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
