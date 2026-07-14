@@ -1,6 +1,11 @@
 import copy
 import unittest
+from pathlib import Path
 
+import yaml
+
+from app.rules.calculation import parse_calculation_definition
+from app.rules.lineage import build_indicator_lineage
 from app.sqlgen.explanation import (
     format_generation_explanation,
     format_trial_explanation,
@@ -314,6 +319,7 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("1. **筛选统计范围**", visible)
         self.assertIn("2. **计算时间差**", visible)
         self.assertIn("TIMESTAMPDIFF", visible)
+        self.assertNotIn("<br>", visible)
         self.assertNotIn("```sql", visible)
         self.assertIn(":::details 查看技术详情（供信息科和实施人员）", answer)
 
@@ -410,6 +416,132 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("2. **统计分母**", visible)
         self.assertIn("3. **统计分子**", visible)
         self.assertNotIn("满足条件记为 1", visible)
+
+    def test_four_supported_indicators_explain_their_real_tables_and_fields(self):
+        cases = [
+            (
+                "MQSI2025_001",
+                "inpatient_transfer_record",
+                ["入院流水号", "入院时间", "转科时间"],
+                "转科时间减入院时间",
+            ),
+            (
+                "MQSI2025_005",
+                "consult_record",
+                ["会诊类型", "急会诊申请时间", "急会诊到位时间"],
+                "到位时间减申请时间",
+            ),
+            (
+                "MQSI2025_014",
+                "critical_rescue_record",
+                ["患者严重程度", "抢救结果", "抢救时间"],
+                None,
+            ),
+            (
+                "MQSI2025_035",
+                "intraoperative_transfusion_record",
+                ["术中输血标志", "自体血回输标志", "手术时间"],
+                None,
+            ),
+        ]
+
+        for rule_id, table, field_labels, derived_operation in cases:
+            with self.subTest(rule_id=rule_id):
+                spec_path = next(
+                    Path("core-rules-wiki/sql-specs").glob(
+                        f"{rule_id}*/rule_sql_spec.yaml"
+                    )
+                )
+                mapping_path = Path(
+                    f"core-rules-wiki/hospital-mappings/hospital_001/{rule_id}.yaml"
+                )
+                spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+                mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
+                params = {
+                    **(spec.get("default_params") or {}),
+                    "hospital_id": "hospital_001",
+                    "start_time": "2026-07-01 00:00:00",
+                    "end_time": "2026-08-01 00:00:00",
+                }
+                effective_rule = {
+                    "rule_id": rule_id,
+                    "rule_name": spec["rule_name"],
+                    "effective_level": "national",
+                    "effective_params": params,
+                    "national_params": spec.get("default_params") or {},
+                    "national_version": "2025",
+                    "overridden_fields": [],
+                }
+                lineage = build_indicator_lineage(
+                    parse_calculation_definition(spec["calculation"]),
+                    mapping,
+                    params,
+                    effective_rule,
+                    params["start_time"],
+                    params["end_time"],
+                )
+                answer = format_generation_explanation(
+                    result={
+                        **GENERATION_RESULT,
+                        "dialect": mapping["dialect"],
+                        "params": params,
+                    },
+                    effective_rule=effective_rule,
+                    lineage=lineage,
+                    hospital_id="hospital_001",
+                    stat_start=params["start_time"],
+                    stat_end=params["end_time"],
+                )
+                visible = _visible_part(answer)
+
+                self.assertIn(f"数据库：`{mapping['db_name']}`", visible)
+                self.assertIn(f"`{table}`", visible)
+                for field_label in field_labels:
+                    self.assertIn(field_label, visible)
+                self.assertIn("指标值 = 分子 / 分母 x 100%", visible)
+                if derived_operation:
+                    self.assertIn(derived_operation, visible)
+                    self.assertIn("**计算时间差**", visible)
+                else:
+                    self.assertNotIn("**计算时间差**", visible)
+
+    def test_visible_explanation_lists_multiple_tables_without_guessing_join(self):
+        lineage = copy.deepcopy(URGENT_LINEAGE)
+        lineage["physical_tables"] = ["consult_arrival", "consult_record"]
+        arrival_item = next(
+            item
+            for item in lineage["field_items"]
+            if item["business_field"] == "arrive_time"
+        )
+        arrival_item["physical_field"] = "consult_arrival.arrive_time"
+        timely = next(
+            row
+            for row in lineage["numerator_rows"]
+            if row.get("derivation_text")
+        )
+        timely["field_items"][1]["physical_field"] = (
+            "consult_arrival.arrive_time"
+        )
+
+        visible = _visible_part(self._generation(lineage=lineage))
+
+        self.assertIn("`consult_record`", visible)
+        self.assertIn("`consult_arrival`", visible)
+        self.assertNotIn("JOIN", visible)
+
+    def test_missing_physical_mapping_is_marked_instead_of_guessed(self):
+        lineage = copy.deepcopy(URGENT_LINEAGE)
+        timely = next(
+            row
+            for row in lineage["numerator_rows"]
+            if row.get("derivation_text")
+        )
+        timely["field_items"][1]["physical_field"] = "未映射(arrive_time)"
+
+        visible = _visible_part(self._generation(lineage=lineage))
+
+        self.assertIn("急会诊到位时间：尚未映射", visible)
+        self.assertNotIn("TIMESTAMPDIFF", visible)
 
     def test_trial_count_rows_include_safe_detail_actions(self):
         answer = self._trial(_trial_result())

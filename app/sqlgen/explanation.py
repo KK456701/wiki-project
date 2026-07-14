@@ -500,7 +500,7 @@ def _format_field_items(items: Iterable[dict[str, Any]]) -> str:
         physical = str(item.get("physical_field") or "")
         location = "尚未映射" if physical.startswith("未映射(") or not physical else f"`{physical}`"
         rendered.append(f"{label}：{location}")
-    return "\n".join(rendered) if rendered else "无新增字段"
+    return "；".join(rendered) if rendered else "无新增字段"
 
 
 def _unique_text(values: Iterable[str]) -> list[str]:
