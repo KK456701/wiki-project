@@ -1,3 +1,4 @@
+import copy
 import unittest
 
 from app.sqlgen.explanation import (
@@ -87,11 +88,41 @@ URGENT_LINEAGE = {
     "numerator_name": "及时到位急会诊次数",
     "db_name": "hospital_demo_data",
     "main_table": "consult_record",
+    "physical_tables": ["consult_record"],
+    "field_items": [
+        {
+            "business_field": "hospital_id",
+            "label": "医院",
+            "physical_field": "consult_record.hospital_id",
+        },
+        {
+            "business_field": "request_time",
+            "label": "急会诊申请时间",
+            "physical_field": "consult_record.request_time",
+        },
+        {
+            "business_field": "consult_type",
+            "label": "会诊类型",
+            "physical_field": "consult_record.consult_type",
+        },
+        {
+            "business_field": "arrive_time",
+            "label": "急会诊到位时间",
+            "physical_field": "consult_record.arrive_time",
+        },
+    ],
     "denominator_rows": [
         {
             "label": "限定医院",
             "business_fields": ["hospital_id"],
             "physical_fields": ["consult_record.hospital_id"],
+            "field_items": [
+                {
+                    "business_field": "hospital_id",
+                    "label": "医院",
+                    "physical_field": "consult_record.hospital_id",
+                }
+            ],
             "condition_text": "医院等于hospital_001",
             "source": "当前医院",
             "effect": "限定分子和分母共同统计范围",
@@ -100,6 +131,13 @@ URGENT_LINEAGE = {
             "label": "限定统计区间",
             "business_fields": ["request_time"],
             "physical_fields": ["consult_record.request_time"],
+            "field_items": [
+                {
+                    "business_field": "request_time",
+                    "label": "急会诊申请时间",
+                    "physical_field": "consult_record.request_time",
+                }
+            ],
             "condition_text": "急会诊申请时间为本次统计区间",
             "source": "本次统计区间",
             "effect": "限定分子和分母共同统计范围",
@@ -108,16 +146,35 @@ URGENT_LINEAGE = {
             "label": "分母筛选条件",
             "business_fields": ["consult_type"],
             "physical_fields": ["consult_record.consult_type"],
+            "field_items": [
+                {
+                    "business_field": "consult_type",
+                    "label": "会诊类型",
+                    "physical_field": "consult_record.consult_type",
+                }
+            ],
             "condition_text": "会诊类型等于急会诊",
             "source": "标准口径",
             "effect": "满足时进入分母",
         },
+        {
+            "condition_id": "denominator_aggregate",
+            "label": "计数方式",
+            "business_fields": [],
+            "physical_fields": [],
+            "field_items": [],
+            "condition_text": "每条符合条件的业务记录计1次",
+            "source": "标准定义",
+            "effect": "得到同期急会诊总次数",
+        },
     ],
     "numerator_rows": [
         {
+            "condition_id": "inherits_denominator",
             "label": "继承分母",
             "business_fields": [],
             "physical_fields": [],
+            "field_items": [],
             "condition_text": "先满足全部分母条件",
             "source": "指标定义",
             "effect": "分子一定是分母的子集",
@@ -129,10 +186,32 @@ URGENT_LINEAGE = {
                 "consult_record.request_time",
                 "consult_record.arrive_time",
             ],
+            "field_items": [
+                {
+                    "business_field": "request_time",
+                    "label": "急会诊申请时间",
+                    "physical_field": "consult_record.request_time",
+                },
+                {
+                    "business_field": "arrive_time",
+                    "label": "急会诊到位时间",
+                    "physical_field": "consult_record.arrive_time",
+                },
+            ],
             "condition_text": "申请至到位耗时为0至20分钟",
             "derivation_text": "急会诊到位时间减急会诊申请时间，换算为分钟",
             "source": "本院版本 v1",
             "effect": "在分母基础上满足时进入分子",
+        },
+        {
+            "condition_id": "numerator_aggregate",
+            "label": "计数方式",
+            "business_fields": [],
+            "physical_fields": [],
+            "field_items": [],
+            "condition_text": "每条符合条件的业务记录计1次",
+            "source": "标准定义",
+            "effect": "得到及时到位急会诊次数",
         },
     ],
     "caliber_rows": [
@@ -218,13 +297,23 @@ class SqlExplanationTest(unittest.TestCase):
         answer = self._generation()
         visible = _visible_part(answer)
 
-        self.assertIn("本次统计哪些急会诊", visible)
-        self.assertIn("哪些急会诊算作及时到位", visible)
         self.assertIn("本院规定的20分钟", visible)
         self.assertIn("只影响分子，不改变分母", visible)
         self.assertIn("| 本院口径 |", visible)
         self.assertNotIn("| 本院规则 |", visible)
-        self.assertNotIn("consult_record.", visible)
+        self.assertIn("## 数据从哪里来", visible)
+        self.assertIn("hospital_demo_data", visible)
+        self.assertIn("consult_record", visible)
+        self.assertIn("## 分子与分母怎么计算", visible)
+        self.assertIn("急会诊申请时间：`consult_record.request_time`", visible)
+        self.assertIn("急会诊到位时间：`consult_record.arrive_time`", visible)
+        self.assertIn("到位时间减申请时间", visible)
+        self.assertIn("分子 = SUM(满足分子条件：是=1，否=0)", visible)
+        self.assertIn("指标值 = 分子 / 分母 x 100%", visible)
+        self.assertIn("## 系统实际执行的步骤", visible)
+        self.assertIn("1. **筛选统计范围**", visible)
+        self.assertIn("2. **计算时间差**", visible)
+        self.assertIn("TIMESTAMPDIFF", visible)
         self.assertNotIn("```sql", visible)
         self.assertIn(":::details 查看技术详情（供信息科和实施人员）", answer)
 
@@ -249,8 +338,78 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("8 / 10 x 100% = 80%", visible)
         self.assertIn("统计范围（分母）", visible)
         self.assertIn("达到要求（分子）", visible)
-        self.assertNotIn("consult_record.", visible)
+        self.assertIn("consult_record.request_time", visible)
         self.assertNotIn("```sql", visible)
+
+    def test_distinct_count_uses_unique_subject_without_boolean_sum(self):
+        lineage = copy.deepcopy(URGENT_LINEAGE)
+        admission_item = {
+            "business_field": "admission_id",
+            "label": "入院流水号",
+            "physical_field": "inpatient_transfer_record.admission_id",
+        }
+        transfer_item = {
+            "business_field": "transfer_time",
+            "label": "转科时间",
+            "physical_field": "inpatient_transfer_record.transfer_time",
+        }
+        lineage.update(
+            {
+                "denominator_name": "同期入院患者总人次数",
+                "numerator_name": "发生转科的入院人次数",
+                "main_table": "inpatient_transfer_record",
+                "physical_tables": ["inpatient_transfer_record"],
+                "field_items": [admission_item, transfer_item],
+                "caliber_rows": [],
+            }
+        )
+        lineage["denominator_rows"] = [
+            {
+                "condition_id": "denominator_aggregate",
+                "field_items": [admission_item],
+                "business_fields": ["admission_id"],
+                "physical_fields": [admission_item["physical_field"]],
+                "condition_text": "按入院流水号去重计数",
+            }
+        ]
+        lineage["numerator_rows"] = [
+            {
+                "condition_id": "inherits_denominator",
+                "field_items": [],
+                "business_fields": [],
+                "physical_fields": [],
+                "condition_text": "先满足全部分母条件",
+            },
+            {
+                "condition_id": "has_transfer",
+                "field_items": [transfer_item],
+                "business_fields": ["transfer_time"],
+                "physical_fields": [transfer_item["physical_field"]],
+                "condition_text": "转科时间不为空",
+            },
+            {
+                "condition_id": "numerator_aggregate",
+                "field_items": [admission_item],
+                "business_fields": ["admission_id"],
+                "physical_fields": [admission_item["physical_field"]],
+                "condition_text": "按入院流水号去重计数",
+            },
+        ]
+
+        visible = _visible_part(self._generation(lineage=lineage))
+
+        self.assertIn(
+            "分母 = COUNT(DISTINCT inpatient_transfer_record.admission_id)",
+            visible,
+        )
+        self.assertIn(
+            "分子 = COUNT(DISTINCT inpatient_transfer_record.admission_id)",
+            visible,
+        )
+        self.assertNotIn("**计算时间差**", visible)
+        self.assertIn("2. **统计分母**", visible)
+        self.assertIn("3. **统计分子**", visible)
+        self.assertNotIn("满足条件记为 1", visible)
 
     def test_trial_count_rows_include_safe_detail_actions(self):
         answer = self._trial(_trial_result())

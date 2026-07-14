@@ -38,9 +38,7 @@ def format_generation_explanation(
         _doctor_caliber_section(
             effective_rule, lineage, hospital_id, stat_start, stat_end
         ),
-        _doctor_denominator_section(lineage),
-        _doctor_numerator_section(lineage),
-        _formula_section(lineage),
+        _business_calculation_section(lineage, result),
         "如需验证本期结果，请输入「试运行」。",
         _details_section(
             [
@@ -91,8 +89,7 @@ def format_trial_explanation(
         _doctor_caliber_section(
             effective_rule, lineage, hospital_id, stat_start, stat_end
         ),
-        _doctor_denominator_section(lineage),
-        _doctor_numerator_section(lineage),
+        _business_calculation_section(lineage, result),
         _details_section(
             [
                 "## 试运行技术信息",
@@ -161,66 +158,69 @@ def _doctor_caliber_section(
     return "## 当前采用什么规则\n\n" + _markdown_table(["项目", "通俗说明"], rows)
 
 
-def _doctor_denominator_section(lineage: dict[str, Any]) -> str:
-    denominator_name = str(lineage.get("denominator_name") or "统计范围")
-    subject = _subject_name(denominator_name)
-    title = f"## 本次统计哪些{subject}（分母）"
-    rows = lineage.get("denominator_rows") or []
-    if not rows:
-        return title + "\n\n" + _missing_lineage_message()
-
-    conditions = [
-        _doctor_condition_text(row)
-        for row in rows
-        if not str(row.get("condition_id") or "").endswith("_aggregate")
-    ]
-    aggregate = next(
-        (
-            str(row.get("condition_text") or "")
-            for row in rows
-            if str(row.get("condition_id") or "").endswith("_aggregate")
-        ),
-        "每条符合条件的记录计1次",
+def _business_calculation_section(
+    lineage: dict[str, Any], result: dict[str, Any]
+) -> str:
+    if not lineage.get("denominator_rows") or not lineage.get("numerator_rows"):
+        return "## 分子与分母怎么计算\n\n" + _missing_lineage_message()
+    return "\n\n".join(
+        [
+            _data_source_section(lineage, result),
+            _plain_calculation_summary(lineage),
+            _calculation_breakdown_table(lineage),
+            _execution_steps_section(lineage, result),
+        ]
     )
-    condition_text = "；".join(item for item in conditions if item)
+
+
+def _data_source_section(
+    lineage: dict[str, Any], result: dict[str, Any]
+) -> str:
+    database = str(lineage.get("db_name") or "尚未配置")
+    dialect = str(result.get("dialect") or "mysql").upper()
+    tables = list(lineage.get("physical_tables") or [])
+    main_table = str(lineage.get("main_table") or "")
+    if not tables and main_table:
+        tables.append(main_table)
+
+    field_items = _lineage_field_items(lineage)
+    rows: list[list[str]] = []
+    for table in tables:
+        labels = _unique_text(
+            str(item.get("label") or item.get("business_field") or "")
+            for item in field_items
+            if str(item.get("physical_field") or "").startswith(f"{table}.")
+        )
+        purpose = "、".join(labels) if labels else "字段用途尚未映射"
+        rows.append([f"`{table}`", f"提供{purpose}"])
+    if not rows:
+        rows.append(["尚未配置", "数据表映射尚未配置完整"])
+
     return (
-        f"{title}\n\n"
-        f"分母指“{denominator_name}”。进入统计范围需要同时满足：{condition_text}。"
-        f"满足这些条件后，{aggregate}，得到分母。"
+        "## 数据从哪里来\n\n"
+        f"数据库：`{database}`（{dialect}）\n\n"
+        + _markdown_table(["医院数据表", "本指标使用的数据"], rows)
     )
 
 
-def _doctor_numerator_section(lineage: dict[str, Any]) -> str:
-    denominator_name = str(lineage.get("denominator_name") or "统计记录")
-    numerator_name = str(lineage.get("numerator_name") or "达到要求的记录")
-    subject = _subject_name(denominator_name)
-    outcome = _numerator_outcome(lineage)
-    title = (
-        f"## 哪些{subject}算作{outcome}（分子）"
-        if outcome != "达到指标要求"
-        else f"## 哪些记录计入“{numerator_name}”（分子）"
+def _plain_calculation_summary(lineage: dict[str, Any]) -> str:
+    denominator_conditions = _condition_texts(
+        lineage.get("denominator_rows") or [], exclude_inheritance=True
     )
-    rows = lineage.get("numerator_rows") or []
-    if not rows:
-        return title + "\n\n" + _missing_lineage_message()
-
-    conditions = []
-    for row in rows:
-        condition_id = str(row.get("condition_id") or "")
-        if condition_id == "inherits_denominator" or condition_id.endswith("_aggregate"):
-            continue
+    numerator_rows = _condition_rows(lineage.get("numerator_rows") or [])
+    numerator_conditions = []
+    for row in numerator_rows:
         text = str(row.get("condition_text") or "")
-        if row.get("derivation_text"):
-            text += f"（{row['derivation_text']}）"
+        derivation = str(row.get("derivation_text") or "")
+        if derivation:
+            text = f"{derivation}，再判断{text}"
         if text:
-            conditions.append(text)
+            numerator_conditions.append(text)
 
-    result = (
-        f"分子只从已经进入分母的{subject}中继续筛选，不会增加新的统计对象。"
-    )
-    if conditions:
-        result += f"还需要满足：{'；'.join(conditions)}。"
-    numerator_caliber = next(
+    source = _source_location_text(lineage)
+    denominator_text = "；".join(denominator_conditions)
+    numerator_text = "；".join(numerator_conditions) or "满足分子追加条件"
+    caliber = next(
         (
             item
             for item in lineage.get("caliber_rows") or []
@@ -228,21 +228,287 @@ def _doctor_numerator_section(lineage: dict[str, Any]) -> str:
         ),
         None,
     )
-    if numerator_caliber:
-        result += (
-            f"本次按照本院规定的{numerator_caliber.get('current_value') or '-'}判断；"
-            "这个规则只影响分子，不改变分母。"
+    caliber_text = ""
+    if caliber:
+        caliber_text = f"，本次按本院规定的{caliber.get('current_value') or '-'}判断"
+    return (
+        "## 一句话说明\n\n"
+        f"先从{source}筛出“{denominator_text}”的记录，逐条计数得到分母；"
+        f"再从这些记录中按“{numerator_text}”继续筛选{caliber_text}，"
+        "符合条件的记录累计得到分子；最后用分子除以分母并乘以 100%。"
+    )
+
+
+def _calculation_breakdown_table(lineage: dict[str, Any]) -> str:
+    denominator_rows = lineage.get("denominator_rows") or []
+    numerator_rows = lineage.get("numerator_rows") or []
+    denominator_fields = _format_field_items(
+        _unique_field_items(denominator_rows)
+    )
+    numerator_fields = _format_field_items(_unique_field_items(numerator_rows))
+    denominator_conditions = "；".join(
+        _condition_texts(denominator_rows, exclude_inheritance=True)
+    )
+    numerator_conditions = _numerator_rule_text(numerator_rows)
+    denominator_aggregate = _aggregate_row_text(denominator_rows)
+    numerator_aggregate = _aggregate_row_text(numerator_rows)
+    denominator_formula = _aggregate_formula("分母", denominator_rows)
+    numerator_formula = _aggregate_formula("分子", numerator_rows)
+
+    return "## 分子与分母怎么计算\n\n" + _markdown_table(
+        ["统计项", "涉及的医院数据", "系统怎样计算", "运算关系"],
+        [
+            [
+                "分母（统计范围）",
+                denominator_fields,
+                f"同时满足：{denominator_conditions}。然后{denominator_aggregate}。",
+                denominator_formula,
+            ],
+            [
+                "分子（达到要求）",
+                f"继承分母全部字段；另外使用：{numerator_fields}",
+                f"先进入分母，再判断：{numerator_conditions}。然后{numerator_aggregate}。",
+                numerator_formula,
+            ],
+            [
+                "指标结果",
+                "分子、分母",
+                "分母不为 0 时，用分子除以分母，再乘以 100，结果保留两位小数。",
+                "指标值 = 分子 / 分母 x 100%",
+            ],
+            [
+                "样本数",
+                "与分母相同",
+                "用于说明本次统计实际覆盖了多少条业务记录。",
+                "样本数 = 分母",
+            ],
+        ],
+    )
+
+
+def _execution_steps_section(
+    lineage: dict[str, Any], result: dict[str, Any]
+) -> str:
+    denominator_rows = lineage.get("denominator_rows") or []
+    numerator_rows = lineage.get("numerator_rows") or []
+    source = _source_location_text(lineage)
+    denominator_conditions = "；".join(
+        _condition_texts(denominator_rows, exclude_inheritance=True)
+    )
+    steps = [
+        f"**筛选统计范围**：从{source}取出同时满足“{denominator_conditions}”的记录。"
+    ]
+
+    derived_rows = [
+        row for row in _condition_rows(numerator_rows) if row.get("derivation_text")
+    ]
+    if derived_rows:
+        details = "；".join(
+            _derived_operation_text(row, result) for row in derived_rows
         )
-    return f"{title}\n\n{result}"
+        steps.append(f"**计算时间差**：{details}。")
+
+    steps.append(
+        f"**统计分母**：{_aggregate_row_text(denominator_rows)}，得到“"
+        f"{lineage.get('denominator_name') or '分母'}”。"
+    )
+    numerator_name = lineage.get("numerator_name") or "分子"
+    if _is_distinct_aggregate(numerator_rows):
+        numerator_count = (
+            f"满足条件后，{_aggregate_row_text(numerator_rows)}，"
+            f"得到“{numerator_name}”"
+        )
+    else:
+        numerator_count = (
+            "满足条件记为 1，不满足记为 0，"
+            f"最后累计得到“{numerator_name}”"
+        )
+    steps.append(
+        "**统计分子**：只在分母记录中继续判断“"
+        f"{_numerator_rule_text(numerator_rows)}”；{numerator_count}。"
+    )
+    steps.append(
+        "**计算指标**：分子 / 分母 x 100%，四舍五入保留两位小数；"
+        "如果分母为 0，则显示本期无可计算数据。"
+    )
+    rendered = "\n".join(
+        f"{index}. {step}" for index, step in enumerate(steps, start=1)
+    )
+    return f"## 系统实际执行的步骤\n\n{rendered}"
 
 
-def _doctor_condition_text(row: dict[str, Any]) -> str:
-    condition_id = str(row.get("condition_id") or "")
-    if condition_id == "hospital_scope":
-        return "只统计当前医院的记录"
-    if condition_id == "period_scope":
-        return "只统计本次所选时间范围内发生的记录"
-    return str(row.get("condition_text") or "")
+def _condition_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if str(row.get("condition_id") or "") != "inherits_denominator"
+        and not str(row.get("condition_id") or "").endswith("_aggregate")
+    ]
+
+
+def _condition_texts(
+    rows: Iterable[dict[str, Any]], *, exclude_inheritance: bool
+) -> list[str]:
+    result = []
+    for row in rows:
+        condition_id = str(row.get("condition_id") or "")
+        if condition_id.endswith("_aggregate"):
+            continue
+        if exclude_inheritance and condition_id == "inherits_denominator":
+            continue
+        text = str(row.get("condition_text") or "")
+        if text:
+            result.append(text)
+    return result
+
+
+def _numerator_rule_text(rows: Iterable[dict[str, Any]]) -> str:
+    rules = []
+    for row in _condition_rows(rows):
+        condition = str(row.get("condition_text") or "")
+        derivation = str(row.get("derivation_text") or "")
+        if derivation:
+            operation = _readable_subtraction(row)
+            condition = f"先用{operation}，再判断{condition}"
+        if condition:
+            rules.append(condition)
+    return "；".join(rules) or "满足分子追加条件"
+
+
+def _aggregate_row_text(rows: Iterable[dict[str, Any]]) -> str:
+    return next(
+        (
+            str(row.get("condition_text") or "")
+            for row in rows
+            if str(row.get("condition_id") or "").endswith("_aggregate")
+        ),
+        "每条符合条件的业务记录计1次",
+    )
+
+
+def _aggregate_formula(stage: str, rows: Iterable[dict[str, Any]]) -> str:
+    aggregate = next(
+        (
+            row
+            for row in rows
+            if str(row.get("condition_id") or "").endswith("_aggregate")
+        ),
+        None,
+    )
+    text = str((aggregate or {}).get("condition_text") or "")
+    items = list((aggregate or {}).get("field_items") or [])
+    if "去重计数" in text and items:
+        field = str(items[0].get("physical_field") or items[0].get("label") or "-")
+        return f"{stage} = COUNT(DISTINCT {field})"
+    if stage == "分子":
+        return "分子 = SUM(满足分子条件：是=1，否=0)"
+    return "分母 = 符合全部范围条件的记录数"
+
+
+def _is_distinct_aggregate(rows: Iterable[dict[str, Any]]) -> bool:
+    return "去重计数" in _aggregate_row_text(rows)
+
+
+def _derived_operation_text(
+    row: dict[str, Any], result: dict[str, Any]
+) -> str:
+    operation = _readable_subtraction(row)
+    items = list(row.get("field_items") or [])
+    dialect = str(result.get("dialect") or "mysql").upper()
+    if len(items) == 2 and dialect == "MYSQL":
+        start = str(items[0].get("physical_field") or "尚未映射")
+        end = str(items[1].get("physical_field") or "尚未映射")
+        if not start.startswith("未映射(") and not end.startswith("未映射("):
+            return (
+                f"对每条记录执行{operation}并换算为分钟；MySQL 使用 "
+                f"`TIMESTAMPDIFF(MINUTE, {start}, {end})`"
+            )
+    return f"对每条记录执行{operation}并换算为分钟"
+
+
+def _readable_subtraction(row: dict[str, Any]) -> str:
+    items = list(row.get("field_items") or [])
+    if len(items) != 2:
+        return str(row.get("derivation_text") or "计算派生值")
+    start = str(items[0].get("label") or items[0].get("business_field") or "开始值")
+    end = str(items[1].get("label") or items[1].get("business_field") or "结束值")
+    prefix_length = 0
+    for start_char, end_char in zip(start, end):
+        if start_char != end_char:
+            break
+        prefix_length += 1
+    if prefix_length >= 2 and start[prefix_length:] and end[prefix_length:]:
+        start = start[prefix_length:]
+        end = end[prefix_length:]
+    return f"{end}减{start}"
+
+
+def _source_location_text(lineage: dict[str, Any]) -> str:
+    database = str(lineage.get("db_name") or "尚未配置的数据库")
+    tables = list(lineage.get("physical_tables") or [])
+    if not tables and lineage.get("main_table"):
+        tables.append(str(lineage["main_table"]))
+    table_text = "、".join(f"`{table}` 表" for table in tables) or "尚未配置的数据表"
+    return f"`{database}` 数据库的 {table_text}中"
+
+
+def _lineage_field_items(lineage: dict[str, Any]) -> list[dict[str, Any]]:
+    items = list(lineage.get("field_items") or [])
+    if items:
+        return items
+    return _unique_field_items(
+        [
+            *(lineage.get("denominator_rows") or []),
+            *(lineage.get("numerator_rows") or []),
+        ]
+    )
+
+
+def _unique_field_items(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        items = list(row.get("field_items") or [])
+        if not items:
+            items = [
+                {
+                    "business_field": business,
+                    "label": business,
+                    "physical_field": physical,
+                }
+                for business, physical in zip(
+                    row.get("business_fields") or [],
+                    row.get("physical_fields") or [],
+                )
+            ]
+        for item in items:
+            key = (
+                str(item.get("business_field") or ""),
+                str(item.get("physical_field") or ""),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+    return result
+
+
+def _format_field_items(items: Iterable[dict[str, Any]]) -> str:
+    rendered = []
+    for item in items:
+        label = str(item.get("label") or item.get("business_field") or "未命名字段")
+        physical = str(item.get("physical_field") or "")
+        location = "尚未映射" if physical.startswith("未映射(") or not physical else f"`{physical}`"
+        rendered.append(f"{label}：{location}")
+    return "\n".join(rendered) if rendered else "无新增字段"
+
+
+def _unique_text(values: Iterable[str]) -> list[str]:
+    result = []
+    for value in values:
+        if value and value not in result:
+            result.append(value)
+    return result
 
 
 def _missing_lineage_message() -> str:
@@ -363,15 +629,6 @@ def _caliber_target_section(
             ]
             for item in rows
         ],
-    )
-
-
-def _formula_section(lineage: dict[str, Any]) -> str:
-    numerator = lineage.get("numerator_name") or "分子"
-    denominator = lineage.get("denominator_name") or "分母"
-    return (
-        "## 最终如何计算\n\n"
-        f"`{numerator} / {denominator} x 100%`。"
     )
 
 
