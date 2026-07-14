@@ -372,6 +372,7 @@ def _insert_initial_custom(
         "custom_filter": None,
         "exclude_rule": None,
         "custom_params": custom_params,
+        "custom_calculation_patch": None,
         "custom_sql": None,
         "status": 1,
         "effective_from": None,

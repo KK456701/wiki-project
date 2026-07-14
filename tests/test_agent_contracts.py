@@ -4,6 +4,26 @@ from pydantic import ValidationError
 
 
 class AgentContractTest(unittest.TestCase):
+    def test_rule_contracts_declare_calculation_and_mapping_details(self) -> None:
+        from app.agents.contracts import EffectiveRule, FieldMapping
+
+        self.assertIn("calculation_definition", EffectiveRule.model_fields)
+        self.assertIn(
+            "national_calculation_definition", EffectiveRule.model_fields
+        )
+        self.assertIn("mapping_items", FieldMapping.model_fields)
+        self.assertIn("status", FieldMapping.model_fields)
+        mapping = FieldMapping.model_validate(
+            {
+                "rule_id": "MQSI2025_005",
+                "items": [{"business_field": "request_time"}],
+            }
+        )
+        self.assertEqual(
+            mapping.mapping_items[0]["business_field"], "request_time"
+        )
+        self.assertIn("items", mapping.model_dump(by_alias=True))
+
     def test_intent_contract_rejects_unknown_intent(self) -> None:
         from app.agents.contracts import IntentResult
 

@@ -216,6 +216,103 @@ def _seed_custom(
 
 
 class MySQLRuleRepositoryTest(unittest.TestCase):
+    def test_effective_rule_returns_mysql_calculation_definition(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+
+        result = MySQLRuleRepository(engine).get_effective_rule(
+            "MQSI2025_005", "hospital_001"
+        )
+
+        self.assertEqual(
+            result["calculation_definition"]["numerator"]["inherits"],
+            "denominator",
+        )
+        self.assertEqual(
+            result["national_calculation_definition"]["schema_version"], 1
+        )
+        self.assertEqual(
+            result["calculation_definition"]["denominator"],
+            result["national_calculation_definition"]["denominator"],
+        )
+
+    def test_hospital_calculation_patch_does_not_mutate_standard(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        patch = {"numerator": {"name": "本院及时到位急会诊次数"}}
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE med_index_hospital_custom "
+                    "SET custom_calculation_patch=:patch "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_005'"
+                ),
+                {"patch": json.dumps(patch, ensure_ascii=False)},
+            )
+
+        result = MySQLRuleRepository(engine).get_effective_rule(
+            "MQSI2025_005", "hospital_001"
+        )
+
+        self.assertEqual(
+            result["calculation_definition"]["numerator"]["name"],
+            "本院及时到位急会诊次数",
+        )
+        self.assertEqual(
+            result["national_calculation_definition"]["numerator"]["name"],
+            "及时到位急会诊次数",
+        )
+        self.assertIn("calculation_definition", result["overridden_fields"])
+
+    def test_change_snapshot_keeps_custom_calculation_patch(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        patch = {"numerator": {"name": "本院及时到位急会诊次数"}}
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE med_index_hospital_custom "
+                    "SET custom_calculation_patch=:patch "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_005'"
+                ),
+                {"patch": json.dumps(patch, ensure_ascii=False)},
+            )
+        repository = MySQLRuleRepository(engine)
+
+        change = repository.submit_change_request(
+            {
+                "hospital_id": "hospital_001",
+                "rule_id": "MQSI2025_005",
+                "requested_definition": "本院急会诊20分钟内到位。",
+                "requested_formula": "急会诊20分钟及时到位率",
+                "submitter_id": "user_001",
+            }
+        )
+        with engine.connect() as conn:
+            snapshot_json = conn.execute(
+                text(
+                    "SELECT snapshot_json "
+                    "FROM med_index_hospital_custom_version "
+                    "WHERE change_id=:change_id"
+                ),
+                {"change_id": change["change_id"]},
+            ).scalar_one()
+
+        self.assertEqual(
+            json.loads(snapshot_json)["custom_calculation_patch"], patch
+        )
+
     def test_caliber_comparison_keeps_national_and_hospital_sql_separate(self) -> None:
         from app.rules.repository import MySQLRuleRepository
 

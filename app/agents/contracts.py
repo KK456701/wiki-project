@@ -116,6 +116,8 @@ class EffectiveRule(AgentContract):
     formula: str = ""
     standard_sql: str = ""
     effective_params: dict[str, Any] = Field(default_factory=dict)
+    calculation_definition: dict[str, Any] = Field(default_factory=dict)
+    national_calculation_definition: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -141,6 +143,10 @@ class FieldMapping(AgentContract):
     dialect: str = "mysql"
     fields: dict[str, str] = Field(default_factory=dict)
     filters: dict[str, Any] = Field(default_factory=dict)
+    status: str = "missing"
+    mapping_items: list[dict[str, Any]] = Field(
+        default_factory=list, alias="items"
+    )
 
 
 class MetadataPrecheckResult(AgentContract):

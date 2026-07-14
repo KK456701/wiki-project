@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 from sqlalchemy import Engine, text
 
+from app.rules.calculation import merge_calculation_patch
+
 
 class RuleNotFoundError(LookupError):
     """Raised when a structured indicator rule is not available."""
@@ -291,6 +293,15 @@ class MySQLRuleRepository:
         custom = self._find_custom(hospital_id, index_code) if hospital_id else None
         national_params = _json_dict(standard.get("rule_params"))
         effective_params = dict(national_params)
+        national_calculation_definition = _json_dict(
+            standard.get("calculation_definition")
+        )
+        calculation_patch = _json_dict(
+            (custom or {}).get("custom_calculation_patch")
+        )
+        calculation_definition = merge_calculation_patch(
+            national_calculation_definition, calculation_patch
+        )
         overridden_fields: list[str] = []
         if custom:
             custom_params = _json_dict(custom.get("custom_params"))
@@ -298,6 +309,8 @@ class MySQLRuleRepository:
                 if national_params.get(key) != value:
                     overridden_fields.append(key)
                 effective_params[key] = value
+        if calculation_patch:
+            overridden_fields.append("calculation_definition")
 
         numerator = str(standard.get("numerator_rule") or "")
         denominator = str(standard.get("denominator_rule") or "")
@@ -358,6 +371,8 @@ class MySQLRuleRepository:
             "exclude_rule": exclude_rule,
             "implementation_status": sql_template,
             "standard_sql": sql_template,
+            "calculation_definition": calculation_definition,
+            "national_calculation_definition": national_calculation_definition,
             "field_contract": _json_dict(standard.get("rely_table_field")),
             "field_status": "configured",
             "sql_status": "available" if sql_template else "unavailable",
@@ -447,6 +462,10 @@ class MySQLRuleRepository:
             "exclude_rule": str(item.get("exclude_rule") or ""),
             "implementation_status": sql_template,
             "standard_sql": sql_template,
+            "calculation_definition": _json_dict(
+                item.get("calculation_definition")
+            ),
+            "national_calculation_definition": {},
             "field_contract": _json_value(item.get("field_contract"), []),
             "field_status": "configured",
             "sql_status": "available" if sql_template else "unavailable",
@@ -481,6 +500,7 @@ class MySQLRuleRepository:
             for row in rows
         }
         first = rows[0] if rows else {}
+        statuses = {str(row.get("status") or "") for row in rows}
         return {
             "rule_id": index_code,
             "hospital_id": hospital_id,
@@ -488,7 +508,13 @@ class MySQLRuleRepository:
             "db_name": str(first.get("db_name") or ""),
             "main_table": str(first.get("table_name") or ""),
             "fields": fields,
-            "status": "confirmed" if rows else "missing",
+            "status": (
+                "confirmed"
+                if rows and statuses == {"confirmed"}
+                else "pending"
+                if rows
+                else "missing"
+            ),
             "items": [dict(row) for row in rows],
         }
 
@@ -520,6 +546,11 @@ class MySQLRuleRepository:
                 {"hospital_id": hospital_id, "index_code": index_code},
             ).mappings().first()
             snapshot = self._snapshot_from_current(dict(current) if current else {})
+            requested_patch = payload.get("custom_calculation_patch")
+            if requested_patch is not None:
+                if not isinstance(requested_patch, dict):
+                    raise ValueError("医院计算补丁必须是对象")
+                snapshot["custom_calculation_patch"] = requested_patch
             snapshot["requested_definition"] = requested_definition
             snapshot["requested_formula"] = requested_formula
             if index_code == "MQSI2025_005":
@@ -725,6 +756,9 @@ class MySQLRuleRepository:
                     "definition": snapshot.get("requested_definition") or "",
                     "formula": snapshot.get("requested_formula") or "",
                     "custom_params": _json_dict(snapshot.get("custom_params")),
+                    "custom_calculation_patch": _json_dict(
+                        snapshot.get("custom_calculation_patch")
+                    ),
                     "approver_id": item.get("approver_id") or "",
                     "approved_at": item.get("approved_at"),
                     "created_at": item.get("created_at"),
@@ -809,6 +843,9 @@ class MySQLRuleRepository:
             "custom_filter": current.get("custom_filter"),
             "exclude_rule": current.get("exclude_rule"),
             "custom_params": _json_dict(current.get("custom_params")),
+            "custom_calculation_patch": _json_dict(
+                current.get("custom_calculation_patch")
+            ),
             "custom_sql": current.get("custom_sql"),
             "status": int(current.get("status") or 1),
             "effective_from": current.get("effective_from"),
@@ -848,6 +885,14 @@ class MySQLRuleRepository:
             "custom_params": json.dumps(
                 _json_dict(snapshot.get("custom_params")), ensure_ascii=False
             ),
+            "custom_calculation_patch": (
+                json.dumps(
+                    _json_dict(snapshot.get("custom_calculation_patch")),
+                    ensure_ascii=False,
+                )
+                if snapshot.get("custom_calculation_patch")
+                else None
+            ),
             "custom_sql": snapshot.get("custom_sql"),
             "version": int(version),
             "status": int(snapshot.get("status") or 1),
@@ -869,12 +914,14 @@ class MySQLRuleRepository:
                     """
                     INSERT INTO med_index_hospital_custom
                       (hospital_id, index_code, custom_numerator, custom_denominator,
-                       custom_filter, exclude_rule, custom_params, custom_sql,
+                       custom_filter, exclude_rule, custom_params,
+                       custom_calculation_patch, custom_sql,
                        version, status, approval_status, effective_from, effective_to,
                        oper_user, create_time, update_time)
                     VALUES
                       (:hospital_id, :index_code, :custom_numerator, :custom_denominator,
-                       :custom_filter, :exclude_rule, :custom_params, :custom_sql,
+                       :custom_filter, :exclude_rule, :custom_params,
+                       :custom_calculation_patch, :custom_sql,
                        :version, :status, 'approved', :effective_from, :effective_to,
                        :oper_user, :now, :now)
                     """
@@ -889,7 +936,9 @@ class MySQLRuleRepository:
                 SET custom_numerator=:custom_numerator,
                     custom_denominator=:custom_denominator,
                     custom_filter=:custom_filter, exclude_rule=:exclude_rule,
-                    custom_params=:custom_params, custom_sql=:custom_sql,
+                    custom_params=:custom_params,
+                    custom_calculation_patch=:custom_calculation_patch,
+                    custom_sql=:custom_sql,
                     version=:version, status=:status, approval_status='approved',
                     effective_from=:effective_from, effective_to=:effective_to,
                     oper_user=:oper_user, update_time=:now
