@@ -129,6 +129,21 @@ class IndicatorLineageTest(unittest.TestCase):
             timely["physical_fields"],
             ["consult_record.request_time", "consult_record.arrive_time"],
         )
+        self.assertEqual(
+            timely["field_items"],
+            [
+                {
+                    "business_field": "request_time",
+                    "label": "急会诊申请时间",
+                    "physical_field": "consult_record.request_time",
+                },
+                {
+                    "business_field": "arrive_time",
+                    "label": "急会诊到位时间",
+                    "physical_field": "consult_record.arrive_time",
+                },
+            ],
+        )
         self.assertEqual(timely["condition_text"], "申请至到位耗时为0至20分钟")
         self.assertEqual(
             timely["derivation_text"],
@@ -142,6 +157,37 @@ class IndicatorLineageTest(unittest.TestCase):
             "只改变分子，不改变分母",
         )
         self.assertEqual(lineage["physical_tables"], ["consult_record"])
+        self.assertIn(
+            {
+                "business_field": "hospital_id",
+                "label": "医院",
+                "physical_field": "consult_record.hospital_id",
+            },
+            lineage["field_items"],
+        )
+
+    def test_field_items_mark_missing_mapping_without_guessing(self) -> None:
+        mapping = {
+            **HOSPITAL_MAPPING,
+            "fields": {"hospital_id": "consult_record.hospital_id"},
+        }
+
+        lineage = build_indicator_lineage(
+            parse_calculation_definition(URGENT_CONSULT_DEFINITION),
+            mapping,
+            PARAMS,
+            HOSPITAL_RULE,
+            PARAMS["start_time"],
+            PARAMS["end_time"],
+        )
+
+        request_time = next(
+            item
+            for item in lineage["field_items"]
+            if item["business_field"] == "request_time"
+        )
+        self.assertEqual(request_time["label"], "急会诊申请时间")
+        self.assertEqual(request_time["physical_field"], "未映射(request_time)")
 
     def test_distinct_aggregate_names_the_counting_field(self) -> None:
         payload = {

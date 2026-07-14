@@ -82,6 +82,7 @@ def build_indicator_lineage(
             "label": "继承分母",
             "business_fields": [],
             "physical_fields": [],
+            "field_items": [],
             "condition_text": "先满足全部分母条件",
             "source": "指标定义",
             "effect": "分子一定是分母的子集",
@@ -108,6 +109,15 @@ def build_indicator_lineage(
             if "." in physical_field and not physical_field.startswith("未映射(")
         }
     )
+    field_items: list[dict[str, str]] = []
+    seen_fields: set[tuple[str, str]] = set()
+    for row in [*denominator_rows, *numerator_rows]:
+        for item in row["field_items"]:
+            key = (item["business_field"], item["physical_field"])
+            if key in seen_fields:
+                continue
+            seen_fields.add(key)
+            field_items.append(item)
     return {
         "schema_version": definition.schema_version,
         "denominator_name": definition.denominator.name,
@@ -121,6 +131,7 @@ def build_indicator_lineage(
             collect_business_dependencies(definition)
         ),
         "physical_tables": physical_tables,
+        "field_items": field_items,
         "db_name": str(mapping.get("db_name") or ""),
         "main_table": str(mapping.get("main_table") or ""),
     }
@@ -135,6 +146,7 @@ def _condition_row(
     effective_rule: dict[str, Any],
 ) -> dict[str, Any]:
     business_fields = _source_business_fields(condition.field, definition)
+    field_items = _field_items(business_fields, mapping)
     parameter_names = _condition_parameter_names(condition, params)
     source = _condition_source(parameter_names, stage, effective_rule)
     return {
@@ -142,7 +154,8 @@ def _condition_row(
         "condition_id": condition.id,
         "label": _condition_label(condition, stage, definition),
         "business_fields": business_fields,
-        "physical_fields": _physical_fields(business_fields, mapping),
+        "physical_fields": [item["physical_field"] for item in field_items],
+        "field_items": field_items,
         "condition_text": _condition_text(condition, definition, params),
         "derivation_text": _derivation_text(condition.field, definition),
         "source": source,
@@ -175,6 +188,7 @@ def _aggregate_row(
 ) -> dict[str, Any]:
     aggregate = branch.aggregate
     business_fields = [aggregate.field] if aggregate.field else []
+    field_items = _field_items(business_fields, mapping)
     if aggregate.method == "count_distinct" and aggregate.field:
         condition_text = f"按{_field_label(aggregate.field)}去重计数"
     else:
@@ -184,7 +198,8 @@ def _aggregate_row(
         "condition_id": f"{stage}_aggregate",
         "label": "计数方式",
         "business_fields": business_fields,
-        "physical_fields": _physical_fields(business_fields, mapping),
+        "physical_fields": [item["physical_field"] for item in field_items],
+        "field_items": field_items,
         "condition_text": condition_text,
         "source": "标准定义",
         "effect": f"得到{branch.name}",
@@ -212,6 +227,22 @@ def _physical_fields(
     return [
         str(mapped_fields.get(field_name) or f"未映射({field_name})")
         for field_name in business_fields
+    ]
+
+
+def _field_items(
+    business_fields: list[str], mapping: dict[str, Any]
+) -> list[dict[str, str]]:
+    physical_fields = _physical_fields(business_fields, mapping)
+    return [
+        {
+            "business_field": business_field,
+            "label": _field_label(business_field),
+            "physical_field": physical_field,
+        }
+        for business_field, physical_field in zip(
+            business_fields, physical_fields, strict=True
+        )
     ]
 
 
