@@ -222,6 +222,8 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("哪些急会诊算作及时到位", visible)
         self.assertIn("本院规定的20分钟", visible)
         self.assertIn("只影响分子，不改变分母", visible)
+        self.assertIn("| 本院口径 |", visible)
+        self.assertNotIn("| 本院规则 |", visible)
         self.assertNotIn("consult_record.", visible)
         self.assertNotIn("```sql", visible)
         self.assertIn(":::details 查看技术详情（供信息科和实施人员）", answer)

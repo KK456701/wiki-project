@@ -156,7 +156,7 @@ def _doctor_caliber_section(
                 f"{item.get('standard_value') or '-'}），{effect}"
             )
     if adjustments:
-        rows.append(["本院规则", "；".join(adjustments)])
+        rows.append(["本院口径", "；".join(adjustments)])
     return "## 当前采用什么规则\n\n" + _markdown_table(["项目", "通俗说明"], rows)
 
 
