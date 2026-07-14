@@ -38,7 +38,7 @@ class IndicatorImplementationConsoleUiTest(unittest.TestCase):
             "审批和发布",
         ):
             self.assertIn(step, html)
-        self.assertIn('/static/indicator-console.css', html)
+        self.assertIn('/static/indicator-console.css?v=20260714-implementation-console', html)
         self.assertIn("repeat(5, minmax(100px, 1fr))", css)
 
     def test_console_calls_every_closed_loop_endpoint(self) -> None:

@@ -20,8 +20,8 @@ class PackageExchangeUiTest(unittest.TestCase):
             'id="companyReleaseImportButton"',
             'id="companyReleaseImportList"',
             'id="companyReleaseImportDetail"',
-            "/static/package-exchange.css",
-            "/static/package-exchange.js",
+            "/static/package-exchange.css?v=20260714-implementation-console",
+            "/static/package-exchange.js?v=20260714-implementation-console",
             "不包含患者明细",
         ):
             self.assertIn(marker, html)

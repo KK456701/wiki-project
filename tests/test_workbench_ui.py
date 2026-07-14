@@ -6,6 +6,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class WorkbenchUiTest(unittest.TestCase):
+    def test_workbench_script_uses_release_cache_buster(self) -> None:
+        html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn(
+            '/static/workbench.js?v=20260714-implementation-console', html
+        )
+
     def test_page_exposes_real_workbench_shell(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
