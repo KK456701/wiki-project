@@ -28,6 +28,10 @@
           '<header class="indicator-detail-header"><div><div class="indicator-detail-kicker">本次计算依据</div>' +
             '<h2 id="indicatorDetailTitle">指标明细核对</h2><div id="indicatorDetailMeta" class="indicator-detail-meta"></div></div>' +
             '<button id="indicatorDetailClose" class="indicator-detail-close" type="button" aria-label="关闭">×</button></header>' +
+          '<section id="indicatorDetailSource" class="indicator-detail-source" aria-label="数据来源">' +
+            '<div id="indicatorDetailSourceSummary" class="indicator-detail-source-summary"></div>' +
+            '<details id="indicatorDetailLineage" class="indicator-detail-lineage"><summary>查看字段来源</summary>' +
+              '<dl id="indicatorDetailLineageList"></dl></details></section>' +
           '<div id="indicatorDetailTabs" class="indicator-detail-tabs" role="tablist"></div>' +
           '<div class="indicator-detail-content"><div id="indicatorDetailNotice" class="indicator-detail-notice" role="status">正在读取本次计算明细</div>' +
             '<div id="indicatorDetailTableWrap" class="detail-table-scroll"><table class="indicator-detail-table">' +
@@ -55,6 +59,9 @@
   var overlay = document.getElementById("indicatorDetailOverlay");
   var title = document.getElementById("indicatorDetailTitle");
   var meta = document.getElementById("indicatorDetailMeta");
+  var sourceSummary = document.getElementById("indicatorDetailSourceSummary");
+  var lineageDetails = document.getElementById("indicatorDetailLineage");
+  var lineageList = document.getElementById("indicatorDetailLineageList");
   var tabs = document.getElementById("indicatorDetailTabs");
   var notice = document.getElementById("indicatorDetailNotice");
   var tableWrap = document.getElementById("indicatorDetailTableWrap");
@@ -152,6 +159,34 @@
     return String(value || "").replace("T", " ").slice(0, 19);
   }
 
+  function sourceItem(label, value) {
+    var item = document.createElement("span");
+    var strong = document.createElement("strong");
+    strong.textContent = label + "：";
+    var text = document.createElement("span");
+    text.textContent = value;
+    item.append(strong, text);
+    return item;
+  }
+
+  function renderSource(summary) {
+    sourceSummary.replaceChildren(
+      sourceItem("来源数据库", summary.source_database || "未记录"),
+      sourceItem("取数表", (summary.source_tables || []).join("、") || "未记录")
+    );
+    lineageList.replaceChildren();
+    var fieldLineage = summary.field_lineage || [];
+    fieldLineage.forEach(function (lineage) {
+      var term = document.createElement("dt");
+      term.textContent = lineage.label;
+      var detail = document.createElement("dd");
+      detail.textContent = lineage.explanation;
+      lineageList.append(term, detail);
+    });
+    lineageDetails.hidden = fieldLineage.length === 0;
+    lineageDetails.open = false;
+  }
+
   function renderSummary() {
     var summary = state.summary;
     title.textContent = summary.rule_name || "指标明细核对";
@@ -165,6 +200,7 @@
       span.textContent = text;
       meta.appendChild(span);
     });
+    renderSource(summary);
     var definitions = [
       ["denominator", "统计范围", summary.denominator_count, "本次纳入计算的全部记录"],
       ["numerator", "达到要求", summary.numerator_count, "符合本院口径的记录"],

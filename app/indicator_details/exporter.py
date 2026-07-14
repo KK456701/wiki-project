@@ -40,6 +40,17 @@ def _version_text(summary: DetailSnapshotSummary) -> str:
     return f"标准口径 v{summary.national_version or '-'}"
 
 
+def _field_lineage_text(summary: DetailSnapshotSummary) -> str:
+    lines: list[str] = []
+    for item in summary.field_lineage:
+        if item.kind == "column" and item.sources:
+            source = item.sources[0]
+            lines.append(f"{item.label} → {source}")
+        else:
+            lines.append(f"{item.label} → {item.explanation}")
+    return "\n".join(lines) or "未记录"
+
+
 def _write_sheet(
     workbook: Workbook,
     *,
@@ -56,6 +67,9 @@ def _write_sheet(
         ("指标名称", summary.rule_name),
         ("适用医院", summary.hospital_id),
         ("口径来源与版本", _version_text(summary)),
+        ("来源数据库", summary.source_database or "未记录"),
+        ("取数表", "、".join(summary.source_tables) or "未记录"),
+        ("字段来源", _field_lineage_text(summary)),
         ("统计区间", f"{summary.stat_start} 至 {summary.stat_end}（不含结束时刻）"),
         ("明细快照时间", summary.created_at.isoformat(sep=" ", timespec="seconds")),
         ("导出人", actor_id),
@@ -66,24 +80,39 @@ def _write_sheet(
         sheet.cell(index, 1, label)
         sheet.cell(index, 2, safe_excel_value(value))
         sheet.cell(index, 1).font = Font(bold=True)
+        if label == "字段来源":
+            sheet.cell(index, 2).alignment = Alignment(
+                vertical="top", wrap_text=True
+            )
+            sheet.row_dimensions[index].height = max(
+                30, 15 * max(1, len(summary.field_lineage))
+            )
 
     labels = [column.label for column in summary.columns] + ["是否达到要求"]
+    header_row = len(metadata) + 2
+    data_start_row = header_row + 1
     for column_index, label in enumerate(labels, start=1):
-        cell = sheet.cell(10, column_index, label)
+        cell = sheet.cell(header_row, column_index, label)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="087F78")
         cell.alignment = Alignment(horizontal="center")
-    for row_index, row in enumerate(rows, start=11):
+    for row_index, row in enumerate(rows, start=data_start_row):
         values = [row.get(column.field) for column in summary.columns]
         values.append("是" if int(row.get("__meets_numerator") or 0) == 1 else "否")
         for column_index, value in enumerate(values, start=1):
             sheet.cell(row_index, column_index, safe_excel_value(value))
-    sheet.freeze_panes = "A11"
-    sheet.auto_filter.ref = f"A10:{sheet.cell(10, len(labels)).coordinate}"
+    sheet.freeze_panes = f"A{data_start_row}"
+    last_row = max(header_row, data_start_row + len(rows) - 1)
+    sheet.auto_filter.ref = (
+        f"A{header_row}:{sheet.cell(last_row, len(labels)).coordinate}"
+    )
     for index, label in enumerate(labels, start=1):
-        sheet.column_dimensions[sheet.cell(10, index).column_letter].width = min(
+        sheet.column_dimensions[sheet.cell(header_row, index).column_letter].width = min(
             36, max(14, len(label) * 2 + 4)
         )
+    sheet.column_dimensions["B"].width = max(
+        float(sheet.column_dimensions["B"].width or 0), 36
+    )
 
 
 def create_indicator_workbook(

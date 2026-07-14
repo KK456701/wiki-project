@@ -8,7 +8,11 @@ import pytest
 openpyxl = pytest.importorskip("openpyxl")
 
 from app.indicator_details.exporter import create_indicator_workbook, safe_excel_value
-from app.indicator_details.models import DetailColumn, DetailSnapshotSummary
+from app.indicator_details.models import (
+    DetailColumn,
+    DetailFieldLineage,
+    DetailSnapshotSummary,
+)
 
 
 def _summary() -> DetailSnapshotSummary:
@@ -32,6 +36,34 @@ def _summary() -> DetailSnapshotSummary:
         ],
         created_at=datetime(2026, 7, 14, 9, 0, 0),
         expires_at=datetime(2026, 7, 15, 9, 0, 0),
+        source_database="hospital_demo_data",
+        source_tables=["consult_record"],
+        field_lineage=[
+            DetailFieldLineage(
+                field="patient_id",
+                label="患者标识",
+                kind="column",
+                sources=["consult_record.patient_id"],
+                explanation="来自 consult_record.patient_id",
+            ),
+            DetailFieldLineage(
+                field="dept_id",
+                label="科室",
+                kind="column",
+                sources=["consult_record.dept_id"],
+                explanation="来自 consult_record.dept_id",
+            ),
+            DetailFieldLineage(
+                field="arrive_minutes",
+                label="到位耗时（分钟）",
+                kind="derived",
+                sources=[
+                    "consult_record.request_time",
+                    "consult_record.arrive_time",
+                ],
+                explanation="由申请时间、到位时间计算",
+            ),
+        ],
     )
 
 
@@ -48,16 +80,27 @@ def test_excel_contains_three_counted_sheets_and_run_metadata(tmp_path: Path) ->
 
     create_indicator_workbook(path, _summary(), _rows(), actor_id="user_001")
 
-    workbook = openpyxl.load_workbook(path, read_only=True, data_only=False)
+    workbook = openpyxl.load_workbook(path, read_only=False, data_only=False)
     assert workbook.sheetnames == ["统计范围_3", "达到要求_2", "未达到要求_1"]
+    for sheet in workbook.worksheets:
+        metadata = {
+            sheet.cell(row, 1).value: sheet.cell(row, 2).value
+            for row in range(1, 12)
+        }
+        assert metadata["来源数据库"] == "hospital_demo_data"
+        assert metadata["取数表"] == "consult_record"
+        assert "患者标识 → consult_record.patient_id" in metadata["字段来源"]
+        assert "到位耗时（分钟） → 由申请时间、到位时间计算" in metadata["字段来源"]
+
     scope = workbook["统计范围_3"]
     assert scope["A1"].value == "指标名称"
     assert scope["B1"].value == "急会诊及时到位率"
     assert scope["A3"].value == "口径来源与版本"
     assert "本院口径 v1" in scope["B3"].value
-    assert scope["A10"].value == "患者标识"
-    assert scope["A11"].value == "PATIENT001"
-    assert scope["A13"].value == "'=2+2"
+    assert scope["A13"].value == "患者标识"
+    assert scope["A14"].value == "PATIENT001"
+    assert scope["A16"].value == "'=2+2"
+    assert scope.freeze_panes == "A14"
 
 
 def test_excel_rejects_count_mismatch_and_formula_values_are_escaped(tmp_path: Path) -> None:

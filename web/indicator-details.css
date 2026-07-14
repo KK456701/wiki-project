@@ -31,7 +31,7 @@
   width: min(1180px, 100%);
   height: min(820px, calc(100vh - 36px));
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
@@ -64,6 +64,47 @@
   font-size: 13px;
 }
 .indicator-detail-meta span { overflow-wrap: anywhere; }
+.indicator-detail-source {
+  padding: 11px 24px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #f7fbfa;
+}
+.indicator-detail-source-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 24px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+.indicator-detail-source-summary strong { color: var(--ink); }
+.indicator-detail-source-summary span { overflow-wrap: anywhere; }
+.indicator-detail-lineage { margin-top: 8px; }
+.indicator-detail-lineage[hidden] { display: none; }
+.indicator-detail-lineage summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--teal-deep);
+  font-size: 13px;
+  font-weight: 800;
+}
+.indicator-detail-lineage dl {
+  max-height: 180px;
+  display: grid;
+  grid-template-columns: minmax(120px, .35fr) minmax(0, 1fr);
+  margin: 9px 0 0;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.indicator-detail-lineage dt,
+.indicator-detail-lineage dd {
+  margin: 0;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.indicator-detail-lineage dt { color: var(--ink); font-weight: 800; }
+.indicator-detail-lineage dd { color: var(--muted); }
 .indicator-detail-close {
   width: 40px;
   height: 40px;
@@ -243,6 +284,11 @@
   .indicator-detail-close { position: absolute; top: 14px; right: 14px; }
   .indicator-detail-header h2 { font-size: 21px; }
   .indicator-detail-meta { display: grid; gap: 4px; }
+  .indicator-detail-source { padding: 10px 16px; }
+  .indicator-detail-source-summary { display: grid; gap: 4px; }
+  .indicator-detail-lineage dl { grid-template-columns: 1fr; max-height: 150px; }
+  .indicator-detail-lineage dt { padding-bottom: 2px; border-bottom: 0; }
+  .indicator-detail-lineage dd { padding-top: 2px; }
   .indicator-detail-tab { min-height: 62px; padding: 9px 8px; text-align: center; }
   .indicator-detail-tab strong { font-size: 14px; overflow-wrap: anywhere; }
   .indicator-detail-content { padding: 12px 12px 0; }

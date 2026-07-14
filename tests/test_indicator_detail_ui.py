@@ -31,6 +31,16 @@ def test_detail_ui_has_doctor_friendly_tabs_paging_and_export_confirmation() -> 
         "indicator_detail_export",
         "hospitalAuthToken",
         "/api/auth/hospital/change-password",
+        'id="indicatorDetailSource"',
+        'id="indicatorDetailLineageList"',
+        "来源数据库",
+        "取数表",
+        "查看字段来源",
+        "summary.source_database",
+        "summary.source_tables",
+        "lineage.explanation",
+        "lineageList.replaceChildren",
+        "detail.textContent = lineage.explanation",
     ):
         assert text in javascript
     assert "detail-table-scroll" in css
@@ -38,6 +48,8 @@ def test_detail_ui_has_doctor_friendly_tabs_paging_and_export_confirmation() -> 
     assert "@media (max-width: 900px)" in css
     assert "@media (max-width: 760px)" in css
     assert "prefers-reduced-motion" in css
+    assert ".indicator-detail-source" in css
+    assert ".indicator-detail-lineage" in css
 
 
 def test_detail_ui_never_uses_inner_html_for_patient_rows() -> None:
