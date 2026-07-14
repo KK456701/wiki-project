@@ -533,6 +533,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/monitoring.css" />
 <link rel="stylesheet" href="/static/metadata.css" />
 <link rel="stylesheet" href="/static/terminology.css" />
+<link rel="stylesheet" href="/static/package-exchange.css" />
 <link rel="stylesheet" href="/static/workbench.css" />
 <link rel="stylesheet" href="/static/indicator-details.css" />
 </head>
@@ -643,6 +644,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         <div class="data-foundation-tabs" role="tablist" aria-label="数据基础视图">
           <button id="metadataStructureTab" class="data-foundation-tab active" type="button" role="tab" aria-selected="true" aria-controls="metadataStructurePanel">数据库结构</button>
           <button id="terminologyTab" class="data-foundation-tab" type="button" role="tab" aria-selected="false" aria-controls="terminologyWorkspace">医学术语库</button>
+          <button id="packageExchangeTab" class="data-foundation-tab" type="button" role="tab" aria-selected="false" aria-controls="packageExchangeWorkspace">离线包交换</button>
         </div>
 
         <div id="metadataStructurePanel" role="tabpanel" aria-labelledby="metadataStructureTab">
@@ -765,6 +767,68 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <div><h3 id="terminologyTestTitle">识别测试</h3><p>只测试标准化和 SQL 安全判断，不会执行 SQL。</p></div>
             <form id="terminologyTestForm"><label for="terminologyTestInput">输入业务说法</label><div><input id="terminologyTestInput" required placeholder="例如：统计上感患者" /><button type="submit">测试识别</button></div></form>
             <div id="terminologyTestResult" class="terminology-test-result">尚未测试。</div>
+          </section>
+        </section>
+
+        <section id="packageExchangeWorkspace" class="package-exchange-workspace" role="tabpanel" aria-labelledby="packageExchangeTab" hidden>
+          <header class="package-exchange-heading">
+            <div>
+              <span class="metadata-eyebrow">院内离线交付</span>
+              <h2>安全交换指标知识与数据库结构</h2>
+              <p>医院反馈包只带出已勾选的表结构、字段映射、本院生效口径和聚合验证结果，不包含患者明细、样例值、连接地址或密码。</p>
+            </div>
+            <button id="packageExchangeAuthorizeButton" class="ghost" type="button">管理员授权</button>
+          </header>
+
+          <div id="packageExchangeNotice" class="package-exchange-notice" role="status">先检查允许带出院区的字段，再生成签名反馈包。</div>
+
+          <div class="package-exchange-grid">
+            <section class="package-exchange-section" aria-labelledby="hospitalFeedbackTitle">
+              <header>
+                <div><span>医院发往公司</span><h3 id="hospitalFeedbackTitle">医院反馈包</h3></div>
+                <strong id="metadataScopeCount">0 个字段</strong>
+              </header>
+              <p class="package-section-copy">勾选公司适配指标所需的数据库结构。字段默认值和任何业务数据行始终不会导出。</p>
+              <div class="package-action-row">
+                <button id="metadataScopeSaveButton" type="button">保存允许范围</button>
+                <button id="metadataScopePreviewButton" class="ghost" type="button">检查包内容</button>
+                <button id="hospitalFeedbackExportButton" class="ghost" type="button">生成并下载反馈包</button>
+              </div>
+              <div id="metadataScopeList" class="metadata-scope-table" aria-live="polite">
+                <div class="package-empty">正在读取已同步的数据库结构...</div>
+              </div>
+            </section>
+
+            <aside class="package-preview-panel" aria-labelledby="metadataExportPreviewTitle">
+              <div><span>导出前核对</span><h3 id="metadataExportPreviewTitle">反馈包预览</h3></div>
+              <div id="metadataExportPreview" class="metadata-export-preview">
+                <p>保存允许范围后，可在这里核对将要导出的表和字段。</p>
+              </div>
+            </aside>
+          </div>
+
+          <section class="package-exchange-section company-release-section" aria-labelledby="companyReleaseTitle">
+            <header>
+              <div><span>公司发往医院</span><h3 id="companyReleaseTitle">公司发布包隔离导入</h3></div>
+              <button id="companyReleaseRefreshButton" class="ghost" type="button">刷新记录</button>
+            </header>
+            <p class="package-section-copy">导入后先验签并检查系统版本，只进入待适配区，不会直接修改本院正在使用的指标或 SQL。</p>
+            <div class="company-release-import">
+              <label class="package-file-picker" for="companyReleaseImportInput">
+                <span>选择公司发布包</span>
+                <small id="companyReleaseFileName">尚未选择文件</small>
+              </label>
+              <input id="companyReleaseImportInput" type="file" accept=".medrelease,.medpkg,.zip,application/zip" />
+              <button id="companyReleaseImportButton" type="button">验签并导入隔离区</button>
+            </div>
+            <div class="package-import-layout">
+              <div id="companyReleaseImportList" class="package-import-history">
+                <div class="package-empty">管理员授权后可查看历史导入记录。</div>
+              </div>
+              <div id="companyReleaseImportDetail" class="package-import-detail">
+                <div class="package-empty">选择一条导入记录，查看签名、兼容性和包内项目。</div>
+              </div>
+            </div>
           </section>
         </section>
       </div>
@@ -1222,6 +1286,10 @@ function openAdminArea(area) {
   }
   if (area === "terminology") {
     if (window.activateTerminologyAdminMode) window.activateTerminologyAdminMode();
+    return;
+  }
+  if (area === "packageExchange") {
+    if (window.activatePackageExchangeAdmin) window.activatePackageExchangeAdmin();
     return;
   }
   reviewModal.hidden = false;
@@ -2747,6 +2815,7 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 <script src="/static/monitoring.js"></script>
 <script src="/static/metadata.js"></script>
 <script src="/static/terminology.js"></script>
+<script src="/static/package-exchange.js"></script>
 <script src="/static/workbench.js"></script>
 </body>
 </html>

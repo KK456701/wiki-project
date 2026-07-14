@@ -2,8 +2,10 @@
 
 var metadataStructureTab = document.getElementById("metadataStructureTab");
 var terminologyTab = document.getElementById("terminologyTab");
+var packageExchangeTab = document.getElementById("packageExchangeTab");
 var metadataStructurePanel = document.getElementById("metadataStructurePanel");
 var terminologyWorkspace = document.getElementById("terminologyWorkspace");
+var packageExchangeWorkspace = document.getElementById("packageExchangeWorkspace");
 var metadataPrimaryActions = document.getElementById("metadataPrimaryActions");
 var terminologySearchInput = document.getElementById("terminologySearchInput");
 var terminologyRuleFilter = document.getElementById("terminologyRuleFilter");
@@ -100,14 +102,20 @@ function updateTerminologyPermissions() {
 
 function switchDataFoundationTab(target) {
   var terms = target === "terminology";
-  metadataStructureTab.classList.toggle("active", !terms);
+  var exchange = target === "packageExchange";
+  var metadata = !terms && !exchange;
+  metadataStructureTab.classList.toggle("active", metadata);
   terminologyTab.classList.toggle("active", terms);
-  metadataStructureTab.setAttribute("aria-selected", terms ? "false" : "true");
+  packageExchangeTab.classList.toggle("active", exchange);
+  metadataStructureTab.setAttribute("aria-selected", metadata ? "true" : "false");
   terminologyTab.setAttribute("aria-selected", terms ? "true" : "false");
-  metadataStructurePanel.hidden = terms;
+  packageExchangeTab.setAttribute("aria-selected", exchange ? "true" : "false");
+  metadataStructurePanel.hidden = !metadata;
   terminologyWorkspace.hidden = !terms;
-  metadataPrimaryActions.hidden = terms;
+  packageExchangeWorkspace.hidden = !exchange;
+  metadataPrimaryActions.hidden = !metadata;
   if (terms) activateTerminologyWorkspace();
+  if (exchange && window.activatePackageExchangeWorkspace) window.activatePackageExchangeWorkspace();
 }
 
 async function loadTerminologyConcepts(selectCode) {
