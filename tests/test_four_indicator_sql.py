@@ -7,6 +7,11 @@ from sqlalchemy import create_engine, event, text
 
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
+from app.rules.calculation import (
+    collect_business_dependencies,
+    parse_calculation_definition,
+    validate_calculation_definition,
+)
 
 
 KB_ROOT = Path("core-rules-wiki")
@@ -98,6 +103,32 @@ PARAMS = {
 
 
 class FourIndicatorSQLTest(unittest.TestCase):
+    def test_all_four_specs_have_valid_structured_calculation(self) -> None:
+        for code in CODES:
+            with self.subTest(code=code):
+                spec, mapping, sql = _load_contract(code)
+                field_contract = yaml.safe_load(
+                    (_spec_dir(code) / "field_contract.yaml").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                definition = parse_calculation_definition(spec["calculation"])
+                errors = validate_calculation_definition(
+                    definition,
+                    field_contract["business_fields"],
+                    {
+                        "hospital_id": "hospital_001",
+                        "start_time": "2026-07-01 00:00:00",
+                        "end_time": "2026-08-01 00:00:00",
+                        **spec["default_params"],
+                    },
+                )
+
+                self.assertEqual(errors, [])
+                for business_field in collect_business_dependencies(definition):
+                    self.assertIn(business_field, mapping["fields"])
+                    self.assertIn(mapping["fields"][business_field], sql)
+
     def test_all_four_specs_render_and_pass_safety_validation(self) -> None:
         for code in CODES:
             with self.subTest(code=code):

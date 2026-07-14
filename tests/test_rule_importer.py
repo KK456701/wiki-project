@@ -4,6 +4,11 @@ from pathlib import Path
 
 from sqlalchemy import text
 
+from app.rules.calculation import (
+    collect_business_dependencies,
+    parse_calculation_definition,
+    validate_calculation_definition,
+)
 from tests.test_rule_repository import _rule_engine
 
 
@@ -65,6 +70,57 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
         self.assertNotIn("30", custom_params)
         self.assertIn("exclude_dept_filters", standard_sql)
         self.assertEqual(mapping_groups, 4)
+
+    def test_import_persists_valid_calculation_definitions(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+
+        engine = _rule_engine()
+        result = import_four_indicator_rules(engine, Path("core-rules-wiki"))
+
+        self.assertEqual(result["failed"], [])
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT index_code, calculation_definition, "
+                    "rely_table_field, rule_params "
+                    "FROM med_index_standard ORDER BY index_code"
+                )
+            ).mappings().all()
+        self.assertEqual(len(rows), 4)
+        for row in rows:
+            with self.subTest(index_code=row["index_code"]):
+                definition = parse_calculation_definition(
+                    row["calculation_definition"]
+                )
+                field_contract = json.loads(row["rely_table_field"])
+                params = {
+                    "hospital_id": "hospital_001",
+                    "start_time": "2026-07-01 00:00:00",
+                    "end_time": "2026-08-01 00:00:00",
+                    **json.loads(row["rule_params"]),
+                }
+                self.assertEqual(
+                    validate_calculation_definition(
+                        definition, field_contract["business_fields"], params
+                    ),
+                    [],
+                )
+
+        urgent = parse_calculation_definition(
+            next(
+                row["calculation_definition"]
+                for row in rows
+                if row["index_code"] == "MQSI2025_005"
+            )
+        )
+        self.assertEqual(
+            urgent.derived_fields["arrive_minutes"].source_fields,
+            ["request_time", "arrive_time"],
+        )
+        self.assertEqual(
+            collect_business_dependencies(urgent),
+            {"hospital_id", "consult_type", "request_time", "arrive_time"},
+        )
 
 
 if __name__ == "__main__":

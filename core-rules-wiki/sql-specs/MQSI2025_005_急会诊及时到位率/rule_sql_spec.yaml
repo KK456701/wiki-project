@@ -26,3 +26,44 @@ required_params:
   - arrive_minutes_threshold
   - consult_type_value
 result: {column_name: index_value, unit: percent}
+calculation:
+  schema_version: 1
+  scope:
+    conditions:
+      - id: hospital_scope
+        field: hospital_id
+        operator: equals
+        parameter: hospital_id
+      - id: period_scope
+        field: request_time
+        operator: half_open_range
+        parameters: [start_time, end_time]
+  derived_fields:
+    arrive_minutes:
+      name: 申请至到位耗时
+      operation: timestamp_diff_minutes
+      source_fields: [request_time, arrive_time]
+  denominator:
+    name: 同期急会诊总次数
+    inherits: scope
+    conditions:
+      - id: urgent_consult
+        field: consult_type
+        operator: equals
+        parameter: consult_type_value
+    aggregate:
+      method: count_rows
+  numerator:
+    name: 及时到位急会诊次数
+    inherits: denominator
+    conditions:
+      - id: timely_arrival
+        field: arrive_minutes
+        operator: inclusive_range
+        values: [0, arrive_minutes_threshold]
+    aggregate:
+      method: count_rows
+  result:
+    operation: ratio_percent
+    numerator: numerator
+    denominator: denominator

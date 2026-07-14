@@ -30,3 +30,53 @@ required_params:
   - transfer_minutes_threshold
   - excluded_dept_id
 result: {column_name: index_value, unit: percent}
+calculation:
+  schema_version: 1
+  scope:
+    conditions:
+      - id: hospital_scope
+        field: hospital_id
+        operator: equals
+        parameter: hospital_id
+      - id: period_scope
+        field: admit_time
+        operator: half_open_range
+        parameters: [start_time, end_time]
+  derived_fields:
+    transfer_minutes:
+      name: 入院至转科耗时
+      operation: timestamp_diff_minutes
+      source_fields: [admit_time, transfer_time]
+  denominator:
+    name: 同期入院患者总人次数
+    inherits: scope
+    conditions: []
+    aggregate:
+      method: count_distinct
+      field: admission_id
+  numerator:
+    name: 入院48小时内非ICU转科患者人次数
+    inherits: denominator
+    conditions:
+      - id: transfer_present
+        field: transfer_time
+        operator: is_not_null
+      - id: timely_transfer
+        field: transfer_minutes
+        operator: inclusive_range
+        values: [0, transfer_minutes_threshold]
+      - id: exclude_from_icu
+        field: from_dept_id
+        operator: not_equals
+        parameter: excluded_dept_id
+      - id: exclude_to_icu
+        field: to_dept_id
+        operator: not_equals
+        parameter: excluded_dept_id
+    aggregate:
+      method: count_distinct
+      field: admission_id
+  result:
+    operation: ratio_percent
+    numerator: numerator
+    denominator: denominator

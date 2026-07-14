@@ -8,6 +8,13 @@ from typing import Any
 
 from sqlalchemy import Connection, Engine, text
 
+from app.rules.calculation import (
+    parse_calculation_definition,
+    validate_calculation_definition,
+)
+from app.rules.schema import ensure_rule_lineage_schema
+from app.sqlgen.spec_loader import load_field_contract, load_rule_sql_spec
+
 
 FOUR_INDICATOR_CODES = (
     "MQSI2025_001",
@@ -188,10 +195,24 @@ def build_indicator_seeds(kb_root: Path) -> list[dict[str, Any]]:
         definition, source_path = _wiki_definition(kb_root, index_code, seed["index_name"])
         seed["index_desc"] = definition
         seed["source_path"] = source_path
-        seed["field_contract"] = {
-            name: {"type": data_type, "required": name != "dept_id"}
-            for name, (_, data_type) in seed["fields"].items()
+        spec = load_rule_sql_spec(kb_root, index_code)
+        field_contract = load_field_contract(kb_root, index_code)
+        calculation = parse_calculation_definition(spec.get("calculation"))
+        validation_params = {
+            "hospital_id": "hospital_001",
+            "start_time": "2000-01-01 00:00:00",
+            "end_time": "2000-02-01 00:00:00",
+            **seed["rule_params"],
         }
+        errors = validate_calculation_definition(
+            calculation,
+            field_contract.get("business_fields") or {},
+            validation_params,
+        )
+        if errors:
+            raise ValueError(f"{index_code} 结构化计算定义无效：{'；'.join(errors)}")
+        seed["field_contract"] = field_contract
+        seed["calculation_definition"] = calculation.model_dump(mode="json")
         seeds.append(seed)
     return seeds
 
@@ -217,6 +238,9 @@ def _upsert_standard(conn: Connection, seed: dict[str, Any], now: str) -> str:
         "filter_rule": seed["filter_rule"],
         "exclude_rule": seed["exclude_rule"],
         "rely_table_field": json.dumps(seed["field_contract"], ensure_ascii=False),
+        "calculation_definition": json.dumps(
+            seed["calculation_definition"], ensure_ascii=False
+        ),
         "standard_sql": seed["standard_sql"],
         "rule_params": json.dumps(seed["rule_params"], ensure_ascii=False),
         "source_path": seed["source_path"],
@@ -231,6 +255,7 @@ def _upsert_standard(conn: Connection, seed: dict[str, Any], now: str) -> str:
                     stat_cycle='month', numerator_rule=:numerator_rule,
                     denominator_rule=:denominator_rule, filter_rule=:filter_rule,
                     exclude_rule=:exclude_rule, rely_table_field=:rely_table_field,
+                    calculation_definition=:calculation_definition,
                     standard_sql=:standard_sql, rule_params=:rule_params,
                     source_path=:source_path, version='2025', status=1, update_time=:now
                 WHERE index_code=:index_code
@@ -245,12 +270,14 @@ def _upsert_standard(conn: Connection, seed: dict[str, Any], now: str) -> str:
             INSERT INTO med_index_standard
               (index_code, index_name, index_type, index_desc, stat_cycle,
                numerator_rule, denominator_rule, filter_rule, exclude_rule,
-               rely_table_field, standard_sql, rule_params, source_path,
+               rely_table_field, calculation_definition, standard_sql,
+               rule_params, source_path,
                version, status, create_time, update_time)
             VALUES
               (:index_code, :index_name, :index_type, :index_desc, 'month',
                :numerator_rule, :denominator_rule, :filter_rule, :exclude_rule,
-               :rely_table_field, :standard_sql, :rule_params, :source_path,
+               :rely_table_field, :calculation_definition, :standard_sql,
+               :rule_params, :source_path,
                '2025', 1, :now, :now)
             """
         ),
@@ -374,6 +401,7 @@ def _insert_initial_custom(
 def import_four_indicator_rules(
     engine: Engine, kb_root: Path, hospital_id: str = "hospital_001"
 ) -> dict[str, Any]:
+    ensure_rule_lineage_schema(engine)
     result: dict[str, Any] = {"inserted": [], "updated": [], "failed": []}
     for seed in build_indicator_seeds(Path(kb_root)):
         try:

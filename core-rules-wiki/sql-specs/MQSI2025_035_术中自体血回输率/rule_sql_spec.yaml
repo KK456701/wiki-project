@@ -29,3 +29,42 @@ required_params:
   - transfusion_flag_value
   - autologous_flag_value
 result: {column_name: index_value, unit: percent}
+calculation:
+  schema_version: 1
+  scope:
+    conditions:
+      - id: hospital_scope
+        field: hospital_id
+        operator: equals
+        parameter: hospital_id
+      - id: period_scope
+        field: surgery_time
+        operator: half_open_range
+        parameters: [start_time, end_time]
+  derived_fields: {}
+  denominator:
+    name: 同期术中输血患者总数
+    inherits: scope
+    conditions:
+      - id: intraoperative_transfusion
+        field: intraoperative_transfusion_flag
+        operator: equals
+        parameter: transfusion_flag_value
+    aggregate:
+      method: count_distinct
+      field: patient_id
+  numerator:
+    name: 术中使用自体血回输的患者数
+    inherits: denominator
+    conditions:
+      - id: autologous_reinfusion
+        field: autologous_reinfusion_flag
+        operator: equals
+        parameter: autologous_flag_value
+    aggregate:
+      method: count_distinct
+      field: patient_id
+  result:
+    operation: ratio_percent
+    numerator: numerator
+    denominator: denominator

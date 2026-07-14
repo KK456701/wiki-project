@@ -27,3 +27,40 @@ required_params:
   - severity_value
   - success_value
 result: {column_name: index_value, unit: percent}
+calculation:
+  schema_version: 1
+  scope:
+    conditions:
+      - id: hospital_scope
+        field: hospital_id
+        operator: equals
+        parameter: hospital_id
+      - id: period_scope
+        field: rescue_time
+        operator: half_open_range
+        parameters: [start_time, end_time]
+  derived_fields: {}
+  denominator:
+    name: 同期急危重症患者抢救总例次
+    inherits: scope
+    conditions:
+      - id: critical_patient
+        field: severity_level
+        operator: equals
+        parameter: severity_value
+    aggregate:
+      method: count_rows
+  numerator:
+    name: 急危重症患者抢救成功例次
+    inherits: denominator
+    conditions:
+      - id: rescue_success
+        field: rescue_result
+        operator: equals
+        parameter: success_value
+    aggregate:
+      method: count_rows
+  result:
+    operation: ratio_percent
+    numerator: numerator
+    denominator: denominator
