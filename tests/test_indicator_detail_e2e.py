@@ -180,6 +180,7 @@ def test_delivery_config_and_readme_cover_detail_acceptance() -> None:
     assert "指标明细预览与短期导出验收" in readme
     assert "indicator_detail_view" in readme
     assert "页面预览脱敏，Excel 保留授权完整值" in readme
+    assert "展开“查看字段来源”" in readme
 
 
 def test_urgent_consult_preview_and_excel_are_consistent(tmp_path: Path) -> None:
@@ -188,11 +189,19 @@ def test_urgent_consult_preview_and_excel_are_consistent(tmp_path: Path) -> None
 
     snapshot = client.post("/api/sql-runs/RUN_E2E_001/details", headers=headers)
     assert snapshot.status_code == 201
+    snapshot_payload = snapshot.json()
     assert {
-        "denominator": snapshot.json()["denominator_count"],
-        "numerator": snapshot.json()["numerator_count"],
-        "unmatched": snapshot.json()["unmatched_count"],
+        "denominator": snapshot_payload["denominator_count"],
+        "numerator": snapshot_payload["numerator_count"],
+        "unmatched": snapshot_payload["unmatched_count"],
     } == {"denominator": 576, "numerator": 488, "unmatched": 88}
+    assert snapshot_payload["source_database"] == "hospital_demo_data"
+    assert snapshot_payload["source_tables"] == ["consult_record"]
+    assert next(
+        item
+        for item in snapshot_payload["field_lineage"]
+        if item["field"] == "arrive_minutes"
+    )["explanation"] == "由申请时间、到位时间计算"
 
     preview = client.get(
         "/api/sql-runs/RUN_E2E_001/details/numerator?page=1&page_size=50",
@@ -222,4 +231,14 @@ def test_urgent_consult_preview_and_excel_are_consistent(tmp_path: Path) -> None
         "未达到要求_88",
     ]
     assert workbook["统计范围_576"]["B1"].value == "急会诊及时到位率"
+    for sheet in workbook.worksheets:
+        metadata = {
+            sheet.cell(row, 1).value: sheet.cell(row, 2).value
+            for row in range(1, 12)
+        }
+        assert metadata["来源数据库"] == snapshot_payload["source_database"]
+        assert metadata["取数表"] == "、".join(snapshot_payload["source_tables"])
+        assert "到位耗时（分钟） → 由申请时间、到位时间计算" in metadata[
+            "字段来源"
+        ]
     workbook.close()
