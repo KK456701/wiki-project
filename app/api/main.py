@@ -65,8 +65,22 @@ def _create_rule_repository():
 def _create_company_repository():
     from app.db.engine import create_company_engine
     from app.kb.company_repository import CompanyKnowledgeRepository
+    from app.kb.signing import PackageSigner
 
-    return CompanyKnowledgeRepository(create_company_engine())
+    signing_path = _optional_configured_path("company_package_signing_key_path")
+    signing_key_id = get("company_package_signing_key_id", "").strip()
+    release_signer = (
+        PackageSigner.from_private_pem(signing_path, signing_key_id)
+        if signing_path is not None and signing_key_id
+        else None
+    )
+    return CompanyKnowledgeRepository(
+        create_company_engine(),
+        trusted_hospital_keys_dir=_optional_configured_path(
+            "trusted_hospital_keys_dir"
+        ),
+        release_signer=release_signer,
+    )
 
 
 def _create_agent_orchestrator(
@@ -170,6 +184,18 @@ class CompanyReleasePublishRequest(BaseModel):
     approver_id: str | None = None
 
 
+class MetadataScopeField(BaseModel):
+    table_name: str
+    column_name: str
+
+
+class MetadataScopeUpdateRequest(BaseModel):
+    hospital_id: str
+    db_name: str
+    selections: list[MetadataScopeField]
+    actor_id: str | None = None
+
+
 class RecoveryRetryRequest(BaseModel):
     approver_id: str | None = None
 
@@ -181,6 +207,31 @@ def _require_admin(authorization: str | None = Header(None)) -> str:
     if token not in _admin_tokens:
         raise HTTPException(status_code=403, detail="管理员 token 无效或已过期")
     return token
+
+
+def _configured_path(key: str) -> Path:
+    value = get(key, "").strip()
+    if not value:
+        raise RuntimeError(f"CONFIG_MISSING: {key}")
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _optional_configured_path(key: str) -> Path | None:
+    value = get(key, "").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def _hospital_package_signer():
+    from app.kb.signing import PackageSigner
+
+    return PackageSigner.from_private_pem(
+        _configured_path("hospital_package_signing_key_path"),
+        get("hospital_package_signing_key_id", "").strip(),
+    )
 
 
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
@@ -326,6 +377,16 @@ def initialize_indicator_detail_runtime() -> None:
         logger.exception("indicator detail schema initialization failed")
 
 
+def initialize_kb_exchange_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine
+        from app.kb.exchange_schema import ensure_kb_exchange_schema
+
+        ensure_kb_exchange_schema(create_runtime_engine())
+    except Exception:
+        logger.exception("kb exchange schema initialization failed")
+
+
 def stop_monitoring_scheduler() -> None:
     scheduler = get_monitoring_scheduler()
     if scheduler is not None:
@@ -336,6 +397,7 @@ app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", initialize_rule_lineage_runtime)
 app.add_event_handler("startup", initialize_hospital_auth_runtime)
 app.add_event_handler("startup", initialize_indicator_detail_runtime)
+app.add_event_handler("startup", initialize_kb_exchange_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)
 
@@ -835,16 +897,80 @@ def recovery_task_retry(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/kb/export/scope")
+def kb_export_scope(
+    hospital_id: str = "hospital_001", db_name: str = "hospital_demo_data"
+) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine
+    from app.kb.scope import MetadataExportScopeRepository
+
+    return MetadataExportScopeRepository(create_runtime_engine()).list_scope(
+        hospital_id, db_name
+    )
+
+
+@app.put("/api/kb/export/scope")
+def kb_export_scope_update(
+    body: MetadataScopeUpdateRequest,
+    _token: str | None = Header(None, alias="Authorization"),
+) -> dict[str, Any]:
+    _require_admin(_token)
+    from app.db.engine import create_runtime_engine
+    from app.kb.scope import MetadataExportScopeRepository
+
+    try:
+        return MetadataExportScopeRepository(create_runtime_engine()).replace_scope(
+            body.hospital_id,
+            body.db_name,
+            [item.model_dump() for item in body.selections],
+            body.actor_id or "admin",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": str(exc), "message": "导出白名单保存失败，请检查所选字段。"},
+        ) from exc
+
+
+@app.get("/api/kb/export/preview")
+def kb_export_preview(
+    hospital_id: str = "hospital_001", db_name: str = "hospital_demo_data"
+) -> dict[str, Any]:
+    from app.db.engine import create_runtime_engine
+    from app.kb.scope import MetadataExportScopeRepository
+
+    return MetadataExportScopeRepository(create_runtime_engine()).preview_scope(
+        hospital_id, db_name
+    )
+
+
 @app.get("/api/kb/export")
-def kb_export(hospital_id: str = "hospital_001") -> Response:
+def kb_export(
+    hospital_id: str = "hospital_001",
+    db_name: str = "hospital_demo_data",
+    _token: str | None = Header(None, alias="Authorization"),
+) -> Response:
+    _require_admin(_token)
     from app.db.engine import create_runtime_engine
     from app.kb.export import export_hospital_kb_zip
 
     try:
-        data = export_hospital_kb_zip(create_runtime_engine(), hospital_id)
+        data = export_hospital_kb_zip(
+            create_runtime_engine(),
+            hospital_id,
+            db_name=db_name,
+            signer=_hospital_package_signer(),
+            actor_id="admin",
+        )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"医院知识包导出失败：{exc}") from exc
-    filename = f"{hospital_id}_kb_export.zip"
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": str(exc),
+                "message": "医院反馈包导出失败，请检查白名单和签名密钥配置。",
+            },
+        ) from exc
+    filename = f"{hospital_id}_feedback.medfeedback"
     return Response(
         content=data,
         media_type="application/zip",

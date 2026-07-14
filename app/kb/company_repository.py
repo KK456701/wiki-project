@@ -24,6 +24,7 @@ from sqlalchemy import (
 )
 
 from app.terminology.importer import load_term_corpus
+from app.kb.signing import PackageSignatureError, PackageSigner, verify_checksums
 
 
 MAX_ZIP_BYTES = 20 * 1024 * 1024
@@ -36,16 +37,42 @@ class CompanyKnowledgeError(RuntimeError):
 
 
 class CompanyKnowledgeRepository:
-    def __init__(self, engine: Engine) -> None:
+    def __init__(
+        self,
+        engine: Engine,
+        trusted_hospital_keys_dir: str | Path | None = None,
+        release_signer: PackageSigner | None = None,
+    ) -> None:
         self.engine = engine
+        self.trusted_hospital_keys_dir = (
+            Path(trusted_hospital_keys_dir) if trusted_hospital_keys_dir else None
+        )
+        self.release_signer = release_signer
         _ensure_company_term_candidate_schema(engine)
 
     def create_merge_report(
         self, zip_bytes: bytes, uploaded_by: str = "admin"
     ) -> dict[str, Any]:
-        manifest, files = _read_exchange_package(zip_bytes)
+        manifest, files, signature_status = _read_exchange_package(
+            zip_bytes, self.trusted_hospital_keys_dir
+        )
         package_id = str(manifest["package_id"])
         hospital_id = str(manifest["hospital_id"])
+        package_checksum = hashlib.sha256(zip_bytes).hexdigest()
+        with self.engine.connect() as conn:
+            existing = conn.execute(
+                text(
+                    """SELECT report_id, package_checksum FROM company_kb_package
+                    WHERE package_id=:package_id"""
+                ),
+                {"package_id": package_id},
+            ).mappings().first()
+        if existing is not None:
+            if str(existing["package_checksum"]) != package_checksum:
+                raise CompanyKnowledgeError(f"PACKAGE_ID_CONFLICT: {package_id}")
+            report = self.read_merge_report(str(existing["report_id"]))
+            report["duplicate"] = True
+            return report
         now = _now()
         report_id = f"MR_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
         items = self._build_items(files)
@@ -73,8 +100,10 @@ class CompanyKnowledgeRepository:
                         "exported_at": manifest.get("exported_at"),
                         "uploaded_at": now,
                         "uploaded_by": uploaded_by,
-                        "manifest_json": _json_dump(manifest),
-                        "package_checksum": hashlib.sha256(zip_bytes).hexdigest(),
+                        "manifest_json": _json_dump(
+                            {**manifest, "signature_status": signature_status}
+                        ),
+                        "package_checksum": package_checksum,
                     },
                 )
                 for item in items:
@@ -108,7 +137,9 @@ class CompanyKnowledgeRepository:
             if "UNIQUE" in str(exc).upper() or "DUPLICATE" in str(exc).upper():
                 raise CompanyKnowledgeError(f"PACKAGE_ALREADY_IMPORTED: {package_id}") from exc
             raise
-        return self.read_merge_report(report_id)
+        report = self.read_merge_report(report_id)
+        report["duplicate"] = False
+        return report
 
     def list_merge_reports(self) -> list[dict[str, Any]]:
         with self.engine.connect() as conn:
@@ -145,6 +176,7 @@ class CompanyKnowledgeRepository:
             ).mappings().all()
 
         items = [_item_from_row(dict(row)) for row in rows]
+        manifest = _json_load(package.get("manifest_json")) or {}
         return {
             "report_id": str(package["report_id"]),
             "package_id": str(package["package_id"]),
@@ -152,6 +184,8 @@ class CompanyKnowledgeRepository:
             "uploaded_at": str(package["uploaded_at"]),
             "uploaded_by": str(package["uploaded_by"]),
             "status": str(package["status"]),
+            "format_version": str(package["format_version"]),
+            "signature_status": str(manifest.get("signature_status") or "legacy_unsigned"),
             "summary": _summarize(items),
             "items": items,
         }
@@ -608,14 +642,25 @@ class CompanyKnowledgeRepository:
         release = self.read_release(release_id)
         if release["status"] != "published":
             raise CompanyKnowledgeError("RELEASE_NOT_PUBLISHED")
+        signed_release = self.release_signer is not None
         manifest = {
             "release_id": release["release_id"],
             "version": release["version"],
-            "format_version": "company-release-v2",
+            "format_version": "company-release-v3" if signed_release else "company-release-v2",
             "published_at": release["published_at"],
             "rule_count": len(release["items"]),
             "contains_patient_data": False,
         }
+        if signed_release and self.release_signer is not None:
+            manifest.update(
+                {
+                    "package_id": release["release_id"],
+                    "compatible_system_versions": ["0.1.0"],
+                    "signature_algorithm": "Ed25519",
+                    "signer_key_id": self.release_signer.key_id,
+                    "permissions": ["规则与术语暂存", "字段适配", "本地只读试运行"],
+                }
+            )
         corpus = load_term_corpus(
             Path(__file__).resolve().parents[2]
             / "core-rules-wiki"
@@ -662,9 +707,14 @@ class CompanyKnowledgeRepository:
             name: hashlib.sha256(content).hexdigest()
             for name, content in sorted(files.items())
         }
-        files["checksums.json"] = json.dumps(
+        checksum_bytes = json.dumps(
             checksums, ensure_ascii=False, indent=2, sort_keys=True
         ).encode("utf-8")
+        files["checksums.json"] = checksum_bytes
+        if signed_release and self.release_signer is not None:
+            files["signature.json"] = _json_bytes(
+                self.release_signer.sign_checksums(checksum_bytes)
+            )
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for name, content in sorted(files.items()):
@@ -697,6 +747,71 @@ class CompanyKnowledgeRepository:
                     "status": "pending",
                     "source_payload": payload,
                 }
+            )
+        metadata_names = sorted(
+            name
+            for name in files
+            if name.startswith("metadata/")
+            and name != "metadata/relations.yaml"
+            and name.endswith((".yaml", ".yml"))
+        )
+        for name in metadata_names:
+            payload = _yaml_dict(files[name], name)
+            items.append(
+                _item(
+                    len(items) + 1,
+                    "metadata_schema",
+                    "",
+                    str(payload.get("db_name") or Path(name).stem),
+                    "metadata",
+                    {
+                        "table_count": len(payload.get("tables") or []),
+                        "column_count": len(payload.get("columns") or []),
+                    },
+                    None,
+                    "informational",
+                    payload,
+                )
+            )
+        if "metadata/relations.yaml" in files:
+            payload = _yaml_dict(files["metadata/relations.yaml"], "metadata/relations.yaml")
+            items.append(
+                _item(
+                    len(items) + 1,
+                    "table_relation",
+                    "",
+                    "已确认表关联",
+                    "relations",
+                    len(payload.get("relations") or []),
+                    None,
+                    "informational",
+                    payload,
+                )
+            )
+        validation_names = sorted(
+            name
+            for name in files
+            if name.startswith("validation/") and name.endswith((".yaml", ".yml"))
+        )
+        for name in validation_names:
+            payload = _yaml_dict(files[name], name)
+            rule_id = str(payload.get("rule_id") or Path(name).stem)
+            items.append(
+                _item(
+                    len(items) + 1,
+                    "validation_feedback",
+                    rule_id,
+                    rule_id,
+                    "aggregate_result",
+                    {
+                        "result_value": payload.get("result_value"),
+                        "numerator_count": payload.get("numerator_count"),
+                        "denominator_count": payload.get("denominator_count"),
+                    },
+                    None,
+                    "informational",
+                    payload,
+                )
             )
         term_candidate_names = sorted(
             name
@@ -819,7 +934,9 @@ class CompanyKnowledgeRepository:
         }
 
 
-def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, bytes]]:
+def _read_exchange_package(
+    zip_bytes: bytes, trusted_hospital_keys_dir: Path | None = None
+) -> tuple[dict[str, Any], dict[str, bytes], str]:
     if len(zip_bytes) > MAX_ZIP_BYTES:
         raise CompanyKnowledgeError("ZIP_TOO_LARGE")
     files: dict[str, bytes] = {}
@@ -847,7 +964,8 @@ def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, 
     if "manifest.yaml" not in files or "checksums.json" not in files:
         raise CompanyKnowledgeError("REQUIRED_FILE_MISSING")
     manifest = _yaml_dict(files["manifest.yaml"], "manifest.yaml")
-    if manifest.get("format_version") not in {"kb-exchange-v2", "kb-exchange-v3"}:
+    format_version = str(manifest.get("format_version") or "")
+    if format_version not in {"kb-exchange-v2", "kb-exchange-v3", "kb-exchange-v4"}:
         raise CompanyKnowledgeError("UNSUPPORTED_PACKAGE_FORMAT")
     if not str(manifest.get("package_id") or "").strip():
         raise CompanyKnowledgeError("PACKAGE_ID_MISSING")
@@ -860,14 +978,28 @@ def _read_exchange_package(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, 
         checksums = json.loads(files["checksums.json"].decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CompanyKnowledgeError("INVALID_CHECKSUM_FILE") from exc
-    expected_names = set(files) - {"checksums.json"}
+    expected_names = set(files) - {"checksums.json", "signature.json"}
     if not isinstance(checksums, dict) or set(checksums) != expected_names:
         raise CompanyKnowledgeError("CHECKSUM_FILE_SET_MISMATCH")
     for name in sorted(expected_names):
         actual = hashlib.sha256(files[name]).hexdigest()
         if actual != str(checksums[name]):
             raise CompanyKnowledgeError(f"CHECKSUM_MISMATCH: {name}")
-    return manifest, files
+    signature_status = "legacy_unsigned"
+    if format_version == "kb-exchange-v4":
+        if "signature.json" not in files:
+            raise CompanyKnowledgeError("PACKAGE_SIGNATURE_FILE_MISSING")
+        if trusted_hospital_keys_dir is None:
+            raise CompanyKnowledgeError("TRUSTED_HOSPITAL_KEYS_NOT_CONFIGURED")
+        try:
+            signature_payload = json.loads(files["signature.json"].decode("utf-8"))
+            verified = verify_checksums(
+                files["checksums.json"], signature_payload, trusted_hospital_keys_dir
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, PackageSignatureError) as exc:
+            raise CompanyKnowledgeError(str(exc)) from exc
+        signature_status = verified["status"]
+    return manifest, files, signature_status
 
 
 def _ensure_company_term_candidate_schema(engine: Engine) -> None:
@@ -1004,6 +1136,11 @@ def _summarize(items: list[dict[str, Any]]) -> dict[str, int]:
         "term_ambiguities": sum(1 for item in items if item.get("type") == "term_ambiguity"),
         "term_sql_safety_changes": sum(
             1 for item in items if item.get("type") == "term_sql_safety_change"
+        ),
+        "metadata_schemas": sum(1 for item in items if item.get("type") == "metadata_schema"),
+        "table_relations": sum(1 for item in items if item.get("type") == "table_relation"),
+        "validation_feedback": sum(
+            1 for item in items if item.get("type") == "validation_feedback"
         ),
         "pending": sum(1 for item in items if item.get("status") == "pending"),
     }

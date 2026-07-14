@@ -466,13 +466,22 @@ class ApiTest(unittest.TestCase):
             import_four_indicator_rules(runtime_engine, Path("core-rules-wiki"))
             company_engine = _company_engine()
             client = TestClient(app)
+            from app.kb.export import export_hospital_kb_zip
+
+            legacy_package = export_hospital_kb_zip(runtime_engine, "hospital_001")
 
             with patch.object(api_main, "DEFAULT_KB_ROOT", root), \
                  patch("app.db.engine.create_runtime_engine", return_value=runtime_engine), \
-                 patch("app.db.engine.create_company_engine", return_value=company_engine):
-                exported = client.get("/api/kb/export", params={"hospital_id": "hospital_001"})
+                 patch("app.db.engine.create_company_engine", return_value=company_engine), \
+                 patch("app.kb.export.export_hospital_kb_zip", return_value=legacy_package), \
+                 patch.object(api_main, "_hospital_package_signer", return_value=object()):
                 login = client.post("/api/admin/login", json={"password": "admin123"})
                 headers = {"Authorization": f"Bearer {login.json()['token']}", "Content-Type": "application/zip"}
+                exported = client.get(
+                    "/api/kb/export",
+                    params={"hospital_id": "hospital_001"},
+                    headers={"Authorization": headers["Authorization"]},
+                )
                 uploaded = client.post("/api/kb/merge/upload", content=exported.content, headers=headers)
                 report_id = uploaded.json()["report_id"]
                 listed = client.get("/api/kb/merge/reports", headers={"Authorization": headers["Authorization"]})

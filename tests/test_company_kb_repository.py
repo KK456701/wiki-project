@@ -3,15 +3,61 @@ import io
 import json
 import unittest
 import zipfile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import yaml
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 
 from app.kb.company_repository import CompanyKnowledgeError, CompanyKnowledgeRepository
+from app.kb.signing import PackageSigner, verify_checksums
 
 
 class CompanyKnowledgeRepositoryTest(unittest.TestCase):
+    def test_signed_v4_package_is_verified_and_duplicate_is_idempotent(self) -> None:
+        engine = _company_engine()
+        _insert_company_standard(engine)
+        with TemporaryDirectory() as tmp:
+            hospital_signer, trusted_hospitals = _signer_pair(
+                Path(tmp), "hospital_001", "hospital"
+            )
+            repository = CompanyKnowledgeRepository(
+                engine, trusted_hospital_keys_dir=trusted_hospitals
+            )
+            package = _exchange_package(
+                format_version="kb-exchange-v4", signer=hospital_signer
+            )
+
+            first = repository.create_merge_report(package, "admin")
+            second = repository.create_merge_report(package, "admin")
+
+        self.assertEqual(first["signature_status"], "verified")
+        self.assertEqual(second["report_id"], first["report_id"])
+        self.assertTrue(second["duplicate"])
+
+    def test_same_package_id_with_different_content_is_rejected(self) -> None:
+        engine = _company_engine()
+        with TemporaryDirectory() as tmp:
+            signer, trusted = _signer_pair(Path(tmp), "hospital_001", "hospital")
+            repository = CompanyKnowledgeRepository(
+                engine, trusted_hospital_keys_dir=trusted
+            )
+            repository.create_merge_report(
+                _exchange_package(format_version="kb-exchange-v4", signer=signer),
+                "admin",
+            )
+            changed = _exchange_package(
+                format_version="kb-exchange-v4",
+                signer=signer,
+                hospital_minutes=25,
+            )
+
+            with self.assertRaisesRegex(CompanyKnowledgeError, "PACKAGE_ID_CONFLICT"):
+                repository.create_merge_report(changed, "admin")
+
     def test_company_standard_bootstrap_is_idempotent(self) -> None:
         from pathlib import Path
 
@@ -160,6 +206,35 @@ class CompanyKnowledgeRepositoryTest(unittest.TestCase):
         self.assertIn("terminology/release.json", zf.namelist())
         self.assertIn("terminology/concepts.json", zf.namelist())
         self.assertIn("terminology/aliases.json", zf.namelist())
+
+    def test_release_signer_exports_verified_v3_package(self) -> None:
+        engine = _company_engine()
+        _insert_company_standard(engine)
+        with TemporaryDirectory() as tmp:
+            signer, trusted = _signer_pair(Path(tmp), "company_main", "company")
+            repository = CompanyKnowledgeRepository(engine, release_signer=signer)
+            report = repository.create_merge_report(_exchange_package(), "admin")
+            item = next(value for value in report["items"] if value["type"] == "caliber_conflict")
+            approved = repository.approve_merge_item(
+                report["report_id"], item["item_id"], "adopt_as_company_candidate", "reviewer"
+            )
+            release = repository.create_release([approved["candidate_id"]], "publisher", "")
+            repository.publish_release(release["release_id"], "approver")
+
+            package = repository.export_release_zip(release["release_id"])
+
+            with zipfile.ZipFile(io.BytesIO(package), "r") as zf:
+                manifest = yaml.safe_load(zf.read("manifest.yaml"))
+                checksums = zf.read("checksums.json")
+                signature = json.loads(zf.read("signature.json"))
+            self.assertEqual(manifest["format_version"], "company-release-v3")
+            self.assertEqual(
+                manifest["compatible_system_versions"], ["0.1.0"]
+            )
+            self.assertEqual(
+                verify_checksums(checksums, signature, trusted)["status"],
+                "verified",
+            )
 
     def test_v3_term_candidate_requires_review_and_uses_separate_queue(self) -> None:
         engine = _company_engine()
@@ -312,6 +387,8 @@ def _exchange_package(
     tamper_override: bool = False,
     format_version: str = "kb-exchange-v2",
     include_terms: bool = False,
+    signer: PackageSigner | None = None,
+    hospital_minutes: int = 20,
 ) -> bytes:
     manifest = {
         "package_id": "HKB_TEST_001",
@@ -322,15 +399,18 @@ def _exchange_package(
         "mapping_count": 1,
         "contains_patient_data": False,
     }
+    if signer is not None:
+        manifest["signature_algorithm"] = "Ed25519"
+        manifest["signer_key_id"] = signer.key_id
     override = {
         "rule_id": "R001",
         "rule_name": "急会诊及时到位率",
         "hospital_id": "hospital_001",
         "base_standard_version": "2025",
         "hospital_version": 3,
-        "definition": "本院急会诊按20分钟统计。",
-        "formula": "急会诊及时到位率 = 20分钟内到位次数 / 急会诊总次数 × 100%",
-        "custom_params": {"arrive_minutes_threshold": 20},
+        "definition": f"本院急会诊按{hospital_minutes}分钟统计。",
+        "formula": f"急会诊及时到位率 = {hospital_minutes}分钟内到位次数 / 急会诊总次数 × 100%",
+        "custom_params": {"arrive_minutes_threshold": hospital_minutes},
     }
     mapping = {
         "hospital_id": "hospital_001",
@@ -375,13 +455,39 @@ def _exchange_package(
     }
     if tamper_override:
         files["overrides/R001.yaml"] += b"\n# tampered"
-    files["checksums.json"] = json.dumps(checksums, sort_keys=True).encode("utf-8")
+    checksum_bytes = json.dumps(checksums, sort_keys=True).encode("utf-8")
+    files["checksums.json"] = checksum_bytes
+    if signer is not None:
+        files["signature.json"] = json.dumps(
+            signer.sign_checksums(checksum_bytes), sort_keys=True
+        ).encode("utf-8")
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for name, content in files.items():
             zf.writestr(name, content)
     return buffer.getvalue()
+
+
+def _signer_pair(root: Path, key_id: str, prefix: str) -> tuple[PackageSigner, Path]:
+    private = Ed25519PrivateKey.generate()
+    private_path = root / f"{prefix}-private.pem"
+    trusted = root / f"trusted-{prefix}"
+    trusted.mkdir()
+    private_path.write_bytes(
+        private.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    (trusted / f"{key_id}.pem").write_bytes(
+        private.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    )
+    return PackageSigner.from_private_pem(private_path, key_id), trusted
 
 
 if __name__ == "__main__":
