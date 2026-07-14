@@ -9,6 +9,10 @@ company_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_company_kb?ch
 # 业务库方言。业务库读操作在 FastAPI 主链路中通过 DBHub MCP 执行。
 business_db_dialect: "mysql"
 
+# 本地演示数据脚本使用的业务库连接。正式运行链路仍通过下方 DBHub MCP
+# 使用只读账号访问医院业务库；不要把真实密码提交到 Git。
+business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
+
 # DBHub MCP sidecar：用于访问医院业务库和运行库。
 dbhub_api_url: "http://127.0.0.1:8080"
 dbhub_http_url: "http://127.0.0.1:8080"

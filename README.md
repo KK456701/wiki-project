@@ -1,6 +1,6 @@
 # 核心制度指标 Agent
 
-本项目是一个面向医院核心制度指标的本地化 Agent。已迁移指标以 MySQL 保存国标口径、医院定制口径及不可变版本，Markdown Wiki 作为规则导入来源和数据库故障时的只读兜底；系统同时提供审批流、SQL 生成、异常诊断和医院知识库回收能力，前端采用类聊天式交互和审批管理界面。
+本项目是一个面向医院核心制度指标的本地化 Agent。已迁移指标以 MySQL 保存国标口径、医院定制口径及不可变版本，Markdown Wiki 作为规则导入来源和数据库故障时的只读兜底；系统同时提供 AI 问答、指标实施、审批发布、SQL 生成与试运行、明细审阅、异常诊断、运算监控和医院知识回收能力，前端以 AI 指标助手为主入口，并提供可直接操作的业务工作台。
 
 项目默认适配本地部署场景：知识库文件保存在仓库内，模型通过 Ollama 调用本机模型，数据库通过 `config.yaml` 配置，适合医院内网或单机验证环境。
 
@@ -39,7 +39,28 @@
 - SQL 模板：Jinja2
 - 知识库：MySQL 保存已审核术语与版本，Wiki/YAML 保存公司语料来源和只读兜底，Markdown、YAML、JSON 索引服务制度文档检索
 - 前端：原生 HTML/CSS/JavaScript，SSE 流式输出
-- 测试：unittest
+- 测试：Python `unittest` 测试套件，兼容使用 `pytest` 执行
+
+## 运行架构与数据边界
+
+主请求链路如下：
+
+```text
+浏览器 -> FastAPI / SSE -> CoreIndicatorOrchestrator -> 五类专业 Agent
+       -> MySQL 生效规则（异常时 Wiki 只读回退）
+       -> DBHub MCP 元数据预检查与只读试运行
+       -> Trace / 运行审计 -> 浏览器业务解释与技术详情
+```
+
+| 数据或组件 | 当前职责 | 边界 |
+|---|---|---|
+| `wiki_agent_runtime` | 规则版本、医院口径、字段映射、元数据快照、审批、Trace、诊断、监控和导出审计 | 系统权威运行库 |
+| 医院业务库 | 患者业务记录和指标计算原始数据 | 主服务通过 DBHub 只读访问；数据不出院 |
+| `wiki_company_kb` | 公司候选、标准版本和发布包 | 与医院运行库分离，不保存医院患者明细 |
+| `core-rules-wiki/` | 制度文档、规则与术语的可审阅导入来源 | MySQL 异常时只读兜底，不承接审批写入 |
+| SQLite / JSONL | 会话记忆与请求事件辅助记录 | 不作为指标规则事实来源 |
+| `runtime/exports/` | 经授权生成的短期指标明细和 Excel | 默认 24 小时过期，目录不进入 Git |
+| `tools/wxp-mcp` | 公司侧查询标准表模型的实施工具 | 不进入医院生产链路，不替代院内 DBHub |
 
 ## 目录结构
 
@@ -47,24 +68,32 @@
 .
 +-- app/
 |   +-- agent/
+|   +-- agents/
 |   +-- api/
 |   +-- db/
+|   +-- db_access/
 |   +-- diagnose/
+|   +-- hospital_auth/
+|   +-- indicator_details/
 |   +-- indicators/
 |   +-- kb/
-|   +-- rules/
 |   +-- llm/
 |   +-- memory/
 |   +-- metadata/
+|   +-- monitoring/
 |   +-- observability/
 |   +-- prompts/
+|   +-- rules/
 |   +-- sqlgen/
+|   +-- tasks/
+|   +-- terminology/
 |   +-- workflows/
 +-- core-rules-wiki/
 |   +-- indexes/
 |   +-- wiki/
 |   +-- sql-specs/
 |   +-- hospital-mappings/
+|   +-- terminology/
 |   +-- review/
 |   +-- merge-reports/
 +-- scripts/
@@ -72,24 +101,33 @@
 |   +-- rebuild_runtime_indexes.py
 |   +-- init_runtime_db.sql
 |   +-- init_demo_hospital_db.sql
+|   +-- migrate_runtime_schema.py
 |   +-- seed_demo_hospital_data.py
+|   +-- seed_demo_hospital_user.py
 |   +-- simulate_metadata_drift.py
 |   +-- seed_monitoring_baseline.py
 |   +-- import_four_indicator_rules.py
+|   +-- import_core_indicator_terms.py
 |   +-- generate_package_keys.py
 |   +-- kb_agent_demo.py
 +-- tests/
 +-- tools/
 |   +-- dbhub/
+|   +-- wxp-mcp/
 +-- web/
 |   +-- index.html
+|   +-- workbench.css
+|   +-- workbench.js
+|   +-- indicator-console.css
 |   +-- monitoring.css
 |   +-- monitoring.js
 |   +-- metadata.css
 |   +-- metadata.js
+|   +-- terminology.css
+|   +-- terminology.js
 |   +-- package-exchange.css
 |   +-- package-exchange.js
-+-- config.yaml
++-- config.example.yaml
 +-- requirements.txt
 ```
 
@@ -103,7 +141,7 @@ python -m pip install -r requirements.txt
 Copy-Item config.example.yaml config.yaml
 ```
 
-Edit `config.yaml` with your local database password, admin password and Ollama model before starting the service.
+启动前编辑本机 `config.yaml`，填写本地数据库连接、管理员密码和 Ollama 模型。该文件已被 Git 忽略，不要提交真实账号、密码或令牌。
 
 ### 2. 启动 Ollama 模型
 
@@ -126,17 +164,19 @@ ollama_base_url: "http://127.0.0.1:11434"
 项目默认使用 MySQL，连接信息在 `config.yaml`：
 
 ```yaml
-runtime_db_url: "mysql+pymysql://root:123456@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
-business_db_url: "mysql+pymysql://root:123456@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
+runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
+business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
 business_db_dialect: "mysql"
 ```
 
 医院端初始化运行库和演示业务库：
 
 ```powershell
-mysql -uroot -p123456 < scripts\init_runtime_db.sql
-mysql -uroot -p123456 < scripts\init_demo_hospital_db.sql
+mysql -uroot -p -e "SOURCE F:/A-wiki-project/scripts/init_runtime_db.sql"
+mysql -uroot -p -e "SOURCE F:/A-wiki-project/scripts/init_demo_hospital_db.sql"
 ```
+
+`runtime_db_url` 供系统读写运行数据；`business_db_url` 只供演示造数和结构漂移脚本直接连接本地演示库。FastAPI 正式指标查询、元数据同步和试运行仍通过 DBHub 使用医院只读账号访问业务库。
 
 `init_demo_hospital_db.sql` 只包含用于快速冒烟测试的少量记录。需要验证同比、环比、边界值和数据质量诊断时，先预览真实规模模拟数据：
 
@@ -186,13 +226,13 @@ Invoke-RestMethod -Method Post `
 公司回收与发布服务使用独立的 `wiki_company_kb`，不得与任一医院运行库共用 schema。公司端在 `config.yaml` 增加：
 
 ```yaml
-company_db_url: "mysql+pymysql://root:123456@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4"
+company_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4"
 ```
 
 初始化公司知识中心并写入首批四指标标准版本 1：
 
 ```powershell
-mysql -uroot -p123456 < scripts\init_company_kb_db.sql
+mysql -uroot -p -e "SOURCE F:/A-wiki-project/scripts/init_company_kb_db.sql"
 python -B scripts\import_company_standard_rules.py
 ```
 
@@ -210,8 +250,10 @@ python scripts\rebuild_runtime_indexes.py
 
 ```powershell
 cd F:\A-wiki-project\tools\dbhub
+Copy-Item dbhub.toml.example dbhub.local.toml
+# 编辑 dbhub.local.toml，填写医院本地只读数据库账号
 npm install
-npx @bytebase/dbhub@latest --transport http --host 127.0.0.1 --port 8080 --config F:\A-wiki-project\tools\dbhub\dbhub.local.toml
+.\start-dbhub.ps1
 ```
 
 默认 Workbench：
@@ -224,7 +266,7 @@ http://127.0.0.1:8080/
 
 ```yaml
 dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
-dbhub_source_hospital_demo_data: "hospital_demo_data"
+dbhub_source_id_hospital_demo_data: "hospital_demo_data"
 dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
 ```
 
@@ -264,9 +306,9 @@ monitoring_scheduler_lease_seconds: 600
 
 ## 常用工作流
 
-### 五页面业务工作台
+### 业务工作台
 
-第六批前端改造采用“AI 负责理解和发起任务、业务页面负责审核和执行”的工作台结构。医院人员登录后默认进入 `#/assistant` AI 指标助手首页，普通问答不需要管理员权限。
+当前前端采用“AI 负责理解和发起任务、业务页面负责审核和执行”的工作台结构。医院人员登录后默认进入 `#/assistant` AI 指标助手首页，普通问答不需要管理员权限。
 
 - 左侧第一项固定为“AI 指标助手”，业务导航只展示已经完成并可正常操作的专业页面，当前包括“指标实施控制台”“指标运算监控”和“数据库与元数据”。
 - 桌面端 AI 首页使用沉浸式工具轨道，传统品牌顶栏在该页面隐藏；医院、用户和系统工具固定在右上角，对话区域从窗口顶部开始。
@@ -839,19 +881,18 @@ python -B -m unittest discover -s tests -v
 
 当前测试覆盖：
 
-- Agent 多轮对话和意图识别
-- 本院差异项与国标基础字段的生效口径合成
-- 四指标幂等导入和 Wiki 只读故障回退
-- 四指标 SQL 语义结果及无样本状态
-- 变更申请审批
-- 医院口径版本追加与恢复
-- 索引重建
-- SQL 生成安全校验
-- 诊断 Agent 三层检查
-- DBHub MCP 元数据同步和业务库只读调用
-- 执行链路 Trace、workflow manifest 注解和前端节点详情展示
-- 知识库导出与合并
-- API 基础流程
+- 五类 Agent 编排、类型化输入输出、多轮对话和意图识别
+- 本院差异项与国标基础字段的生效口径合成、版本追加和恢复
+- 四指标幂等导入、SQL 语义结果、无样本状态和 Wiki 只读故障回退
+- 指标实施任务的取数要求、字段确认、SQL、试运行、审批、发布与恢复闭环
+- SQL 安全校验、医生可读解释、分子分母字段血缘、明细快照和 Excel 导出
+- 三层异常诊断、国标与本院口径双执行对比
+- DBHub MCP 元数据同步、字段预检查和医院业务库只读调用
+- 医学术语识别、医院值映射、审批、发布和版本回退
+- 指标运行计划、调度租约、聚合结果、波动预警和自动诊断
+- 执行链路 Trace、三个 workflow manifest、恢复任务和前端节点详情
+- 医院登录与明细权限、签名离线包、公司候选与医院隔离导入
+- AI 助手、指标实施、监控、数据与术语等工作台前端及 API 基础流程
 
 ## 安全边界
 
