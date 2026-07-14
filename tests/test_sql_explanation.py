@@ -170,6 +170,10 @@ def _trial_result(numerator=8, denominator=10, result_value=80.0):
     }
 
 
+def _visible_part(answer: str) -> str:
+    return answer.split(":::details", 1)[0]
+
+
 class SqlExplanationTest(unittest.TestCase):
     def _generation(self, effective_rule=None, lineage=URGENT_LINEAGE):
         return format_generation_explanation(
@@ -210,6 +214,18 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("只改变分子，不改变分母", answer)
         self.assertLess(answer.index("## 分母如何取数"), answer.index("```sql"))
 
+    def test_generation_defaults_to_doctor_friendly_explanation(self):
+        answer = self._generation()
+        visible = _visible_part(answer)
+
+        self.assertIn("本次统计哪些急会诊", visible)
+        self.assertIn("哪些急会诊算作及时到位", visible)
+        self.assertIn("本院规定的20分钟", visible)
+        self.assertIn("只影响分子，不改变分母", visible)
+        self.assertNotIn("consult_record.", visible)
+        self.assertNotIn("```sql", visible)
+        self.assertIn(":::details 查看技术详情（供信息科和实施人员）", answer)
+
     def test_trial_explains_eighty_percent_from_aggregates(self):
         answer = self._trial(_trial_result())
 
@@ -217,9 +233,22 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertIn("## 分母如何取数", answer)
         self.assertIn("## 分子如何从分母中筛选", answer)
         self.assertIn("申请至到位耗时为0至20分钟", answer)
-        self.assertIn("未进入分子", answer)
-        self.assertIn("| 分子 | 8 |", answer)
-        self.assertIn("| 分母 | 10 |", answer)
+        self.assertIn("未达到要求", answer)
+        self.assertIn("| 达到要求（分子） | 8 |", answer)
+        self.assertIn("| 统计范围（分母） | 10 |", answer)
+
+    def test_trial_explains_result_in_plain_language(self):
+        answer = self._trial(_trial_result())
+        visible = _visible_part(answer)
+
+        self.assertIn("本期共有10次急会诊进入统计范围", visible)
+        self.assertIn("其中8次在本院规定的20分钟内到位", visible)
+        self.assertIn("另有2次未在规定时间内到位", visible)
+        self.assertIn("8 / 10 x 100% = 80%", visible)
+        self.assertIn("统计范围（分母）", visible)
+        self.assertIn("达到要求（分子）", visible)
+        self.assertNotIn("consult_record.", visible)
+        self.assertNotIn("```sql", visible)
 
     def test_zero_denominator_is_no_data_not_zero_percent(self):
         answer = self._trial(_trial_result(0, 0, 0.0))
