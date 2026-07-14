@@ -22,7 +22,7 @@
 - **指标监控工作台**：管理员可在前端新建、编辑、启停运行计划，手工运算指标，查看聚合结果和执行链路，并确认、关闭或重新诊断预警。
 - **数据库与元数据工作台**：医院人员可在前端同步业务库结构，查看最近同步、表字段数量、结构变化和受影响指标；连接与只读工具信息集中在折叠详情中。
 - **医学术语工作台**：维护 35 个核心制度指标涉及的标准概念、同义词、本院编码映射、审核状态和术语版本，并明确区分“可检索”和“可进 SQL”。
-- **知识库导出与回收合并**：医院可导出本院知识库压缩包，公司管理员上传后生成合并报告，对候选项逐项处理。
+- **签名离线包交换**：医院按字段白名单生成 Ed25519 签名反馈包，公司验签后回收为候选；公司发布包在医院端先验签并进入隔离区，不会绕过本院适配、试运行和审批直接生效。
 - **会话记忆**：对话记忆写入 SQLite 与 JSONL，支持多轮追问和反馈上下文。
 - **五类 Agent 统一编排**：元数据解析、指标生成、口径适配、故障根因排查和人机交互 Agent 由 `CoreIndicatorOrchestrator` 统一路由；HTTP、LangGraph 适配器和 SSE 统一调用“理解请求、检索规则、解析生效口径”三个编排阶段，不再绕过编排器直接访问专业 Agent。
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
@@ -76,6 +76,7 @@
 |   +-- simulate_metadata_drift.py
 |   +-- seed_monitoring_baseline.py
 |   +-- import_four_indicator_rules.py
+|   +-- generate_package_keys.py
 |   +-- kb_agent_demo.py
 +-- tests/
 +-- tools/
@@ -86,6 +87,8 @@
 |   +-- monitoring.js
 |   +-- metadata.css
 |   +-- metadata.js
+|   +-- package-exchange.css
+|   +-- package-exchange.js
 +-- config.yaml
 +-- requirements.txt
 ```
@@ -620,25 +623,44 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/diagnose/run `
 - 通过但有风险
 - 不通过
 
-### 知识库导出与回收合并
+### 签名离线包交换
 
-医院侧从本院 MySQL 当前生效投影导出 `kb-exchange-v3` 知识包：
+医院和公司之间不需要网络互通，使用双向签名包交换指标知识。医院私钥只用于证明“反馈确实来自本院”，公司私钥只用于证明“发布确实来自公司”；私钥不得随包传输，也不得由对方保存。
 
-```http
-GET /api/kb/export?hospital_id=hospital_001
+| 部署端 | 本端保管的私钥 | 本端信任的公钥 |
+|---|---|---|
+| 医院端 | `hospital-private.pem` | `trusted-companies/company_main.pem` |
+| 公司端 | `company-private.pem` | `trusted-hospitals/{hospital_id}.pem` |
+
+本地演示可一次性生成两组 Ed25519 密钥：
+
+```powershell
+python -B scripts\generate_package_keys.py `
+  --output runtime/package-keys `
+  --hospital-id hospital_001 `
+  --company-id company_main
 ```
 
-知识包包含已审批且处于生效期的医院口径差异、已确认字段映射、已审批本院术语值映射、待公司复核的本院术语候选、版本号和逐文件 SHA-256。它不包含患者记录、数据库密码、会话、运行日志，也不会导出其他医院数据。历史版本继续保存在医院 MySQL；恢复历史版本会创建一个新版本，下一次导出只携带新的当前版本。公司端继续接受旧的 `kb-exchange-v2` 包。
+生成目录已被 Git 忽略。正式部署时应在医院端和公司端分别生成私钥，只交换公钥，并通过操作系统权限或密钥管理服务限制私钥读取。对应路径在 `config.yaml` 中配置：
 
-公司管理员上传 ZIP，内容先校验后写入公司 MySQL 暂存区：
-
-```http
-POST /api/kb/merge/upload
-Authorization: Bearer <admin_token>
-Content-Type: application/zip
+```yaml
+hospital_package_signing_key_path: "runtime/package-keys/hospital-private.pem"
+hospital_package_signing_key_id: "hospital_001"
+trusted_hospital_keys_dir: "runtime/package-keys/trusted-hospitals"
+company_package_signing_key_path: "runtime/package-keys/company-private.pem"
+company_package_signing_key_id: "company_main"
+trusted_company_keys_dir: "runtime/package-keys/trusted-companies"
 ```
 
-系统生成合并报告后，管理员可以逐项拒绝、仅保留医院本地或采纳为公司候选。术语条目会标记为术语候选、术语冲突、术语歧义或 SQL 安全映射变更，并进入独立的公司术语候选表。采纳候选不会立即改变公司标准，也不会直接进入公司术语发布版本；规则候选仍需创建并发布公司版本：
+医院日常操作全部在前端完成：
+
+1. 进入“数据库与元数据”，切换到“离线包交换”。
+2. 在“医院反馈包”中按表勾选允许带出院区的字段并保存。只有已同步元数据中的字段可以进入白名单。
+3. 点击“检查包内容”，核对表数、字段数和明确排除项，再由管理员点击“生成并下载反馈包”。
+4. `kb-exchange-v4` 反馈包包含白名单内的表字段定义、已确认字段映射、当前已审批且生效的本院口径和最近一次成功的聚合验证结果；不包含患者明细、样例值、字段默认值、数据库地址、账号密码、绑定 SQL 或其他医院数据。
+5. 公司验签后将内容写入公司暂存区并生成差异项。重复上传完全相同的包不会重复创建数据；相同包编号但内容不同会被拒绝。
+
+公司管理员逐项审核反馈候选后创建并发布公司版本：
 
 ```http
 POST /api/kb/company/releases
@@ -662,7 +684,9 @@ Content-Type: application/json
 }
 ```
 
-发布后通过 `GET /api/kb/company/releases/{release_id}/export` 下载 `company-release-v2`。包内除规则外还包含公司已审核术语快照 `terminology/release.json`、`terminology/concepts.json` 和 `terminology/aliases.json`，不会混入仅被采纳但尚未发布的医院术语候选。本批不自动在医院侧应用公司发布包，防止绕过医院审批；后续医院导入时应先比较基础标准版本，再由管理员确认冲突。
+发布后通过 `GET /api/kb/company/releases/{release_id}/export` 下载签名的 `company-release-v3`。医院管理员仍在“离线包交换”中选择该文件并点击“验签并导入隔离区”：签名有效且版本兼容时状态为“待本院适配”，签名不可信或旧版未签名包只能隔离查看，绝不写入当前生效规则。后续仍需在指标实施控制台完成本院字段映射、SQL 生成、院内试运行和审批。
+
+`INFORMATION_SCHEMA` 与反馈包中的结构可以证明“表和字段存在”，不能证明“指标业务含义映射正确”或“真实数据计算结果正确”。因此，结构校验不能替代院内真实数据试运行：任何新增或调整指标都必须在医院只读业务库中核对分子、分母、边界记录和聚合结果后才能生效。
 
 ## API 概览
 
@@ -737,8 +761,10 @@ Content-Type: application/json
 | `/api/indicator-exports` | GET | 查看当前医院仍有效的明细导出记录 |
 | `/api/indicator-exports/{export_id}/download` | GET | 下载经过权限、医院范围、期限和哈希校验的 Excel |
 | `/api/diagnose/run` | POST | 执行异常诊断 |
-| `/api/kb/export` | GET | 导出医院知识库 zip |
-| `/api/kb/merge/upload` | POST | 上传医院知识库 zip |
+| `/api/kb/export/scope` | GET、PUT | 查看或保存医院反馈包元数据字段白名单 |
+| `/api/kb/export/preview` | GET | 预览反馈包将包含和排除的结构信息 |
+| `/api/kb/export` | GET | 生成医院签名反馈包 |
+| `/api/kb/merge/upload` | POST | 公司验签并回收医院反馈包 |
 | `/api/kb/merge/reports` | GET | 查看合并报告列表 |
 | `/api/kb/merge/report/{report_id}` | GET | 查看合并报告详情 |
 | `/api/kb/merge/report/{report_id}/items/{item_id}/approve` | POST | 将回收项采纳为候选或保留在医院本地 |
@@ -748,6 +774,8 @@ Content-Type: application/json
 | `/api/kb/company/releases/{release_id}` | GET | 查看公司发布版本详情 |
 | `/api/kb/company/releases/{release_id}/publish` | POST | 发布公司知识版本并追加标准历史 |
 | `/api/kb/company/releases/{release_id}/export` | GET | 下载固定内容的公司发布包 |
+| `/api/kb/hospital/releases/imports` | GET、POST | 查看记录或验签导入公司发布包到隔离区 |
+| `/api/kb/hospital/releases/imports/{import_id}` | GET | 查看院内隔离包的签名、兼容性和项目详情 |
 
 管理员接口需要请求头：
 

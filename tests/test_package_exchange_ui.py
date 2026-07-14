@@ -60,6 +60,23 @@ class PackageExchangeUiTest(unittest.TestCase):
         ):
             self.assertIn(marker, css)
 
+    def test_readme_explains_signed_offline_exchange_workflow(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        for marker in (
+            "签名离线包交换",
+            "generate_package_keys.py",
+            "hospital-private.pem",
+            "company-private.pem",
+            "离线包交换",
+            "旧版未签名包",
+            "结构校验不能替代院内真实数据试运行",
+            "不包含患者明细",
+        ):
+            self.assertIn(marker, readme)
+
+        self.assertNotIn("医院侧从本院 MySQL 当前生效投影导出 `kb-exchange-v3`", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
