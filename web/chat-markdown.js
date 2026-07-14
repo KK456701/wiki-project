@@ -10,7 +10,20 @@
   function renderInline(value) {
     return escapeHtml(value)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(
+        /\{\{detail:(RUN_[A-Za-z0-9_]+):(denominator|numerator|unmatched)\}\}/g,
+        function (_, runId, group) {
+          var labels = {
+            denominator: "查看统计范围",
+            numerator: "查看达到要求",
+            unmatched: "查看未达到要求"
+          };
+          return '<button type="button" class="indicator-detail-trigger" data-run-id="' +
+            runId + '" data-detail-group="' + group + '" aria-label="' + labels[group] +
+            '">查看详情</button>';
+        }
+      );
   }
 
   function tableCells(line) {

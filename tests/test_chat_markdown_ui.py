@@ -83,6 +83,32 @@ process.stdout.write(html);
         self.assertNotIn("<script>", result.stdout)
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", result.stdout)
 
+    def test_renderer_only_builds_strict_indicator_detail_buttons(self) -> None:
+        markdown = (
+            "{{detail:RUN_80:denominator}}\n\n"
+            "{{detail:<script>:numerator}}\n\n"
+            "{{detail:RUN_80:result}}"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('class="indicator-detail-trigger"', result.stdout)
+        self.assertIn('data-run-id="RUN_80"', result.stdout)
+        self.assertIn('data-detail-group="denominator"', result.stdout)
+        self.assertEqual(result.stdout.count("indicator-detail-trigger"), 1)
+        self.assertNotIn("<script>", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

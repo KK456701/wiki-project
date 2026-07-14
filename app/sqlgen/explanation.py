@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime
 from typing import Any, Iterable
 
@@ -446,14 +447,52 @@ def _trial_table(trial: dict[str, Any], lineage: dict[str, Any]) -> str:
     denominator = _optional_int(trial.get("denominator_count"))
     numerator_name = str(lineage.get("numerator_name") or "符合分子条件的数量")
     denominator_name = str(lineage.get("denominator_name") or "符合分母条件的数量")
+    run_id = str(trial.get("run_id") or "")
+    can_show_details = (
+        str(trial.get("status") or "") == "success"
+        and re.fullmatch(r"RUN_[A-Za-z0-9_]+", run_id) is not None
+        and numerator is not None
+        and denominator is not None
+        and 0 <= numerator <= denominator
+    )
+
+    def action(group: str) -> str:
+        return f"{{{{detail:{run_id}:{group}}}}}" if can_show_details else "-"
+
     rows: list[list[Any]] = [
-        ["统计范围（分母）", denominator if denominator is not None else "未返回", denominator_name],
-        ["达到要求（分子）", numerator if numerator is not None else "未返回", numerator_name],
+        [
+            "统计范围（分母）",
+            denominator if denominator is not None else "未返回",
+            denominator_name,
+            action("denominator"),
+        ],
+        [
+            "达到要求（分子）",
+            numerator if numerator is not None else "未返回",
+            numerator_name,
+            action("numerator"),
+        ],
     ]
     if numerator is not None and denominator is not None and 0 <= numerator <= denominator:
-        rows.append(["未达到要求", denominator - numerator, "统计范围数量减去达到要求数量"])
-    rows.append(["指标结果", f"{_display_value(trial.get('result_value'))}%", "分子 / 分母 x 100%"])
-    return "## 本期聚合结果\n\n" + _markdown_table(["统计项", "数量", "说明"], rows)
+        rows.append(
+            [
+                "未达到要求",
+                denominator - numerator,
+                "统计范围数量减去达到要求数量",
+                action("unmatched"),
+            ]
+        )
+    rows.append(
+        [
+            "指标结果",
+            f"{_display_value(trial.get('result_value'))}%",
+            "分子 / 分母 x 100%",
+            "-",
+        ]
+    )
+    return "## 本期聚合结果\n\n" + _markdown_table(
+        ["统计项", "数量", "说明", "操作"], rows
+    )
 
 
 def _run_metadata_table(

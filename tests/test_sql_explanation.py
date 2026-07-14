@@ -252,6 +252,15 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertNotIn("consult_record.", visible)
         self.assertNotIn("```sql", visible)
 
+    def test_trial_count_rows_include_safe_detail_actions(self):
+        answer = self._trial(_trial_result())
+
+        self.assertIn("| 统计项 | 数量 | 说明 | 操作 |", answer)
+        self.assertIn("{{detail:RUN_80:denominator}}", answer)
+        self.assertIn("{{detail:RUN_80:numerator}}", answer)
+        self.assertIn("{{detail:RUN_80:unmatched}}", answer)
+        self.assertNotIn("{{detail:RUN_80:result}}", answer)
+
     def test_zero_denominator_is_no_data_not_zero_percent(self):
         answer = self._trial(_trial_result(0, 0, 0.0))
 

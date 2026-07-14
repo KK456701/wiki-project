@@ -534,6 +534,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/metadata.css" />
 <link rel="stylesheet" href="/static/terminology.css" />
 <link rel="stylesheet" href="/static/workbench.css" />
+<link rel="stylesheet" href="/static/indicator-details.css" />
 </head>
 <body>
 
@@ -541,15 +542,15 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <div id="loginScreen" class="login-screen">
   <div class="login-card">
     <h2>核心制度指标 Agent</h2>
-    <div class="subtitle">请选择身份并输入账号</div>
+    <div class="subtitle">医院人员使用本地授权账号登录；公司人员进入非患者数据工作台。</div>
     <div class="role-tabs">
       <button class="role-tab active" data-role="hospital">医院人员</button>
       <button class="role-tab" data-role="company">公司人员</button>
     </div>
     <label>账号</label>
-    <input id="loginAccount" type="text" placeholder="请输入账号" value="user_001" />
-    <label>密码（暂不校验）</label>
-    <input id="loginPassword2" type="password" placeholder="请输入密码" value="" />
+    <input id="loginAccount" type="text" placeholder="请输入账号" value="user_001" autocomplete="username" />
+    <label>密码</label>
+    <input id="loginPassword2" type="password" placeholder="请输入密码" value="" autocomplete="current-password" />
     <div id="loginError2" class="login-err" hidden></div>
     <button id="loginSubmit2">进入系统</button>
   </div>
@@ -572,6 +573,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
         </div>
       </details>
       <button id="assistantToggleButton" class="btn btn-secondary" type="button" aria-expanded="false" aria-controls="assistantDrawer" hidden>AI 助手</button>
+      <button id="logoutButton" class="btn btn-ghost" type="button" title="退出当前账号">退出</button>
     </div>
   </header>
 
@@ -1008,11 +1010,17 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 </div>
 
 <script src="/static/chat-markdown.js"></script>
+<script src="/static/indicator-details.js"></script>
 <script>
 // ===== 状态 =====
 var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
 var adminToken = sessionStorage.getItem("adminToken") || "";
-var currentUser = JSON.parse(sessionStorage.getItem("currentUser") || "null");
+var hospitalAuthToken = sessionStorage.getItem("hospitalAuthToken") || "";
+var currentUser = window.IndicatorDetails.currentUser();
+if (currentUser && currentUser.role === "hospital" && !hospitalAuthToken) {
+  currentUser = null;
+  window.IndicatorDetails.clearAuth();
+}
 var latestFeedbackPreview = null;
 var latestTraceId = "";
 var pendingAdminAction = "";
@@ -1029,6 +1037,7 @@ var loginPassword2 = document.getElementById("loginPassword2");
 var loginError2 = document.getElementById("loginError2");
 var loginSubmit2 = document.getElementById("loginSubmit2");
 var userInfo = document.getElementById("userInfo");
+var logoutButton = document.getElementById("logoutButton");
 var hospitalIdInput = document.getElementById("hospitalId");
 var queryInput = document.getElementById("queryInput");
 var sendButton = document.getElementById("sendButton");
@@ -1093,12 +1102,7 @@ document.querySelectorAll(".role-tab").forEach(function(tab) {
   });
 });
 
-loginSubmit2.addEventListener("click", function() {
-  var role = document.querySelector(".role-tab.active").dataset.role;
-  var account = loginAccount.value.trim();
-  if (!account) { loginError2.textContent = "请输入账号"; loginError2.hidden = false; return; }
-  currentUser = { role: role, accountId: account, loginTime: new Date().toISOString() };
-  sessionStorage.setItem("currentUser", JSON.stringify(currentUser));
+function enterLoggedInWorkspace() {
   loginScreen.hidden = true;
   updateUserUI();
   if (window.navigateWorkbench) {
@@ -1106,14 +1110,89 @@ loginSubmit2.addEventListener("click", function() {
   } else if (window.initializeWorkbench) {
     window.initializeWorkbench();
   }
+}
+
+function loginResponseMessage(data) {
+  if (data && data.detail && typeof data.detail === "object") return data.detail.message || "登录失败";
+  return (data && data.detail) || "登录失败";
+}
+
+loginSubmit2.addEventListener("click", async function() {
+  var role = document.querySelector(".role-tab.active").dataset.role;
+  var account = loginAccount.value.trim();
+  if (!account) { loginError2.textContent = "请输入账号"; loginError2.hidden = false; return; }
+  loginError2.hidden = true;
+  if (role === "company") {
+    await window.IndicatorDetails.logout();
+    currentUser = { role: role, accountId: account, loginTime: new Date().toISOString() };
+    hospitalAuthToken = "";
+    sessionStorage.setItem("currentUser", JSON.stringify(currentUser));
+    enterLoggedInWorkspace();
+    return;
+  }
+  var password = loginPassword2.value;
+  if (!password) { loginError2.textContent = "请输入密码"; loginError2.hidden = false; return; }
+  loginSubmit2.disabled = true;
+  loginSubmit2.textContent = "正在登录...";
+  try {
+    var response = await fetch("/api/auth/hospital/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({account_id: account, password: password})
+    });
+    var data = await response.json();
+    if (!response.ok) throw new Error(loginResponseMessage(data));
+    var auth = await window.IndicatorDetails.completeHospitalLogin(data, password);
+    currentUser = auth.user;
+    hospitalAuthToken = auth.token;
+    loginPassword2.value = "";
+    enterLoggedInWorkspace();
+  } catch (error) {
+    loginError2.textContent = error.message || "登录失败，请稍后重试";
+    loginError2.hidden = false;
+  } finally {
+    loginSubmit2.disabled = false;
+    loginSubmit2.textContent = "进入系统";
+  }
 });
 
 function updateUserUI() {
-  if (!currentUser) return;
+  logoutButton.hidden = !currentUser;
+  if (!currentUser) { userInfo.textContent = ""; return; }
   var roleLabel = currentUser.role === "company" ? "公司人员" : "医院人员";
   var cls = currentUser.role === "company" ? "company" : "";
-  userInfo.innerHTML = '<span class="user-badge ' + cls + '">' + roleLabel + '</span> ' + currentUser.accountId;
+  userInfo.replaceChildren();
+  var badge = document.createElement("span");
+  badge.className = "user-badge " + cls;
+  badge.textContent = roleLabel;
+  userInfo.append(badge, document.createTextNode(" " + currentUser.accountId));
+  if (currentUser.role === "hospital" && currentUser.hospitalId) {
+    hospitalIdInput.value = currentUser.hospitalId;
+    hospitalIdInput.readOnly = true;
+  } else {
+    hospitalIdInput.readOnly = false;
+  }
 }
+
+logoutButton.addEventListener("click", async function() {
+  await window.IndicatorDetails.logout();
+  currentUser = null;
+  hospitalAuthToken = "";
+  loginScreen.hidden = false;
+  loginError2.hidden = true;
+  updateUserUI();
+  loginAccount.focus();
+});
+
+window.addEventListener("hospital-auth-required", function() {
+  currentUser = null;
+  hospitalAuthToken = "";
+  window.IndicatorDetails.close();
+  loginScreen.hidden = false;
+  loginError2.textContent = "登录已过期，请重新登录后继续查看。";
+  loginError2.hidden = false;
+  updateUserUI();
+});
 
 // ===== 管理员登录状态 =====
 function updateAdminUI() {
