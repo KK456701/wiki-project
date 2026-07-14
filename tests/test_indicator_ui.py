@@ -75,6 +75,19 @@ class IndicatorImplementationConsoleUiTest(unittest.TestCase):
         self.assertIn("申请时间", html)
         self.assertIn("到位时间", html)
 
+    def test_readme_documents_the_formal_implementation_workflow(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        for marker in (
+            "### 指标实施控制台",
+            "定义指标 -> 确认取数要求 -> 映射医院数据 -> 生成和验证 -> 审批和发布",
+            "已有指标医院适配",
+            "本院新增指标",
+            "/api/indicator-drafts/from-release",
+            "/requirements-confirm",
+        ):
+            self.assertIn(marker, readme)
+
 
 if __name__ == "__main__":
     unittest.main()
