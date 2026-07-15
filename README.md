@@ -158,7 +158,19 @@ ollama serve
 ```yaml
 ollama_model: "qwen3:4B-instruct"
 ollama_base_url: "http://127.0.0.1:11434"
+ollama_timeout_seconds: 60
+ollama_num_ctx: 16384
+ollama_history_turns: 8
+ollama_prompt_budget_tokens: 12000
+ollama_output_reserve_tokens: 1200
 ```
+
+本项目不会把完整聊天记录无限塞给本地模型。每次请求由两部分组成：
+
+- **结构化会话状态**：当前指标、统计区间和本次会话临时口径，是后续生成 SQL 与试运行的权威依据。
+- **最近 8 轮原始消息**：只帮助模型理解“这个指标”“按入区算”等自然语言追问；长 SQL 和长工具结果会自动压缩，历史原文与结构化状态冲突时以后者为准。
+
+`ollama_num_ctx: 16384` 是当前 4B 本地模型兼顾速度、内存占用和稳定性的默认值。修改这些参数后需要重启 FastAPI 后端；系统会在每次 Ollama 请求中显式传入上下文窗口，不依赖 Ollama 的 4096 默认加载值。
 
 ### 3. 初始化数据库
 

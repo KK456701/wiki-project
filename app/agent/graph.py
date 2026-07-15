@@ -20,7 +20,7 @@ from app.agents.orchestrator import (
 )
 from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
 from app.business_source import current_business_source
-from app.config import get
+from app.config import get, get_int
 from app.db.engine import create_runtime_engine
 from app.db_access.business_db import BusinessDBClient
 from app.db_access.dbhub_mcp import DBHubMCPClient
@@ -29,6 +29,7 @@ from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
 from app.memory.context_service import ConversationContextService
+from app.memory.prompt_context import build_prompt_context
 from app.memory.contracts import (
     ContextResolution,
     ContextStorageError,
@@ -185,6 +186,19 @@ def _load_memory_context(
         context["stat_start_time"], context["stat_end_time"] = period
         context["stat_period_source"] = "recent_user_message"
         break
+    prompt_context = build_prompt_context(
+        memory_store.recent_messages(session_id, limit=40),
+        structured,
+        max_turns=get_int("ollama_history_turns", 8),
+        token_budget=get_int("ollama_prompt_budget_tokens", 12000),
+    )
+    context["structured_summary"] = prompt_context.structured_summary
+    context["recent_history"] = prompt_context.recent_history
+    context["prompt_context_stats"] = {
+        "kept_turns": prompt_context.kept_turns,
+        "trimmed_message_count": prompt_context.trimmed_message_count,
+        "estimated_tokens": prompt_context.estimated_tokens,
+    }
     return context
 
 

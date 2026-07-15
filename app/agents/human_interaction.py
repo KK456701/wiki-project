@@ -308,10 +308,20 @@ class HumanInteractionAgent:
         query: str, memory_context: dict[str, Any] | None = None
     ) -> str:
         history_block = ""
-        if memory_context and memory_context.get("rule_name"):
+        context = memory_context or {}
+        structured_summary = str(context.get("structured_summary") or "").strip()
+        recent_history = str(context.get("recent_history") or "").strip()
+        if structured_summary or recent_history:
+            history_block = "\n会话上下文：\n"
+            if structured_summary:
+                history_block += structured_summary + "\n"
+            if recent_history:
+                history_block += "最近原始对话（仅辅助理解）：\n" + recent_history + "\n"
+            history_block += "若历史原文与结构化状态冲突，以结构化状态为准。\n"
+        elif context.get("rule_name"):
             history_block = (
                 "\n上一轮对话上下文：\n"
-                f"- 上一轮用户查询的指标是：「{memory_context['rule_name']}」\n"
+                f"- 上一轮用户查询的指标是：「{context['rule_name']}」\n"
                 "- 如果当前问题是追问，请结合上一轮指标，并明确指标名。\n"
             )
         return intent_prompt_system().format(history_block=history_block, query=query)

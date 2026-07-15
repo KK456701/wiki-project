@@ -18,20 +18,26 @@ class OllamaClient:
         model: str | None = None,
         base_url: str | None = None,
         timeout_seconds: float | None = None,
+        num_ctx: int | None = None,
     ) -> None:
         self.model = model or get("ollama_model", "qwen3:4B-instruct")
         self.base_url = (base_url or get("ollama_base_url", "http://127.0.0.1:11434")).rstrip("/")
-        self.timeout_seconds = float(timeout_seconds or get_int("ollama_timeout_seconds", 20))
+        self.timeout_seconds = float(timeout_seconds or get_int("ollama_timeout_seconds", 60))
+        self.num_ctx = int(num_ctx or get_int("ollama_num_ctx", 16384))
+
+    def _options(self) -> dict[str, int | float]:
+        return {
+            "temperature": 0.2,
+            "num_predict": 700,
+            "num_ctx": self.num_ctx,
+        }
 
     def generate(self, prompt: str) -> str:
         payload = {
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": 0.2,
-                "num_predict": 700,
-            },
+            "options": self._options(),
         }
         request = urllib.request.Request(
             f"{self.base_url}/api/generate",
@@ -55,10 +61,7 @@ class OllamaClient:
             "model": self.model,
             "prompt": prompt,
             "stream": True,
-            "options": {
-                "temperature": 0.2,
-                "num_predict": 700,
-            },
+            "options": self._options(),
         }
         request = urllib.request.Request(
             f"{self.base_url}/api/generate",
@@ -80,6 +83,3 @@ class OllamaClient:
                         break
         except (urllib.error.URLError, TimeoutError) as exc:
             raise OllamaError(str(exc)) from exc
-
-
-    
