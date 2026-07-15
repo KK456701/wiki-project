@@ -72,6 +72,8 @@ class IntentResult(AgentContract):
     indicator_name: str = ""
     context_source: str | None = None
     custom_filters: list[CustomFilter] = Field(default_factory=list)
+    context_updates: list[dict[str, Any]] = Field(default_factory=list)
+    clear_working_caliber: bool = False
 
 
 class RuleMatch(AgentContract):

@@ -25,6 +25,11 @@
 - 如果用户提到"排除XX科室"、"不算XX"、"多次转科"等条件，在 custom_filters 中提取：
   · "排除ICU" → {{"field":"dept_id","operator":"!=","value":"ICU"}}
   · "算多次"、"多次分别算" → {{"count_multiple":true}}
+- 如果用户明确调整当前会话的计算方式，在 context_updates 中提取候选变更：
+  · "统计范围按入区时间" → {{"key":"period_time_field","value":"ward_entry_time"}}
+  · "48小时从入区时间开始算" → {{"key":"elapsed_time_start","value":"ward_entry_time"}}
+- "恢复本院口径"、"清除刚才的调整" → clear_working_caliber=true
+- 只说"按入区时间算"时含义不明确，不要猜测，设置 need_clarification=true
 - "为什么指标算不对"、"排查异常" → intent=diagnose
 
 JSON 格式：
@@ -40,6 +45,10 @@ JSON 格式：
     {{"field": "dept_id", "operator": "!=", "value": "ICU"}},
     {{"count_multiple": true}}
   ],
+  "context_updates": [
+    {{"key": "elapsed_time_start", "value": "ward_entry_time"}}
+  ],
+  "clear_working_caliber": false,
   "need_clarification": false,
   "clarification_question": ""
 }}

@@ -131,6 +131,8 @@ class HumanInteractionAgent:
             "rewritten_query": query,
             "indicator_name": "",
             "custom_filters": [],
+            "context_updates": [],
+            "clear_working_caliber": False,
         }
         if self.llm_client is not None:
             try:
@@ -157,6 +159,12 @@ class HumanInteractionAgent:
                 filters = data.get("custom_filters")
                 if isinstance(filters, list):
                     result["custom_filters"] = filters
+                context_updates = data.get("context_updates")
+                if isinstance(context_updates, list):
+                    result["context_updates"] = context_updates
+                result["clear_working_caliber"] = bool(
+                    data.get("clear_working_caliber", False)
+                )
             except Exception as exc:
                 error_list.append(str(exc))
         self._rewrite_contextual_action(result, query, memory_context)

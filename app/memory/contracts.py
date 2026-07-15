@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+import uuid
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -63,3 +64,37 @@ class ConversationContext(ContextModel):
     working_caliber: WorkingCaliberContext = Field(default_factory=WorkingCaliberContext)
     pending_clarifications: list[PendingClarification] = Field(default_factory=list)
     last_action: str = ""
+
+
+class ContextDelta(ContextModel):
+    overrides: list[ContextOverride] = Field(default_factory=list)
+    clear_working_caliber: bool = False
+    clarification: PendingClarification | None = None
+
+
+class ExecutionBlocker(ContextModel):
+    code: str
+    message: str
+    key: str = ""
+
+
+class ExecutionContextSnapshot(ContextModel):
+    snapshot_id: str = Field(default_factory=lambda: f"CTX_{uuid.uuid4().hex[:12]}")
+    context_version: int = 0
+    rule_id: str = ""
+    overrides: dict[str, Any] = Field(default_factory=dict)
+    resolved_fields: dict[str, str] = Field(default_factory=dict)
+    source_levels: dict[str, str] = Field(default_factory=dict)
+    executable: bool = True
+    blockers: list[ExecutionBlocker] = Field(default_factory=list)
+
+
+class ContextResolution(ContextModel):
+    context: ConversationContext
+    delta: ContextDelta = Field(default_factory=ContextDelta)
+    snapshot: ExecutionContextSnapshot
+    clarification: PendingClarification | None = None
+
+    @property
+    def blocked(self) -> bool:
+        return not self.snapshot.executable
