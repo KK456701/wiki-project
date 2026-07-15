@@ -66,9 +66,11 @@ _DATE_TOKEN_PATTERN = re.compile(
     r"(?<!\d)(20\d{2})\s*(?:-|/|年)\s*(0?[1-9]|1[0-2])"
     r"\s*(?:-|/|月)\s*(0?[1-9]|[12]\d|3[01])\s*日?(?!\d)"
 )
+_START_DATE_MARKERS = ("起始时间", "开始时间", "起始日期", "开始日期")
+_END_DATE_MARKERS = ("结束时间", "截止时间", "结束日期", "截止日期")
 
 
-def _extract_stat_period(query: str) -> tuple[str, str] | None:
+def _extract_stat_period_update(query: str) -> dict[str, str]:
     dates: list[datetime] = []
     for match in _DATE_TOKEN_PATTERN.finditer(query or ""):
         try:
@@ -77,12 +79,26 @@ def _extract_stat_period(query: str) -> tuple[str, str] | None:
             continue
         if len(dates) == 2:
             break
-    if len(dates) != 2 or dates[1] <= dates[0]:
-        return None
-    return (
-        dates[0].strftime("%Y-%m-%d 00:00:00"),
-        dates[1].strftime("%Y-%m-%d 00:00:00"),
-    )
+    if len(dates) == 2:
+        if dates[1] <= dates[0]:
+            return {}
+        return {
+            "stat_start_time": dates[0].strftime("%Y-%m-%d 00:00:00"),
+            "stat_end_time": dates[1].strftime("%Y-%m-%d 00:00:00"),
+        }
+    if len(dates) != 1:
+        return {}
+    normalized = dates[0].strftime("%Y-%m-%d 00:00:00")
+    compact = re.sub(r"\s+", "", query or "")
+    if any(marker in compact for marker in _START_DATE_MARKERS):
+        return {"stat_start_time": normalized}
+    if any(marker in compact for marker in _END_DATE_MARKERS):
+        return {"stat_end_time": normalized}
+    if "从" in compact or "自" in compact:
+        return {"stat_start_time": normalized}
+    if "到" in compact or "至" in compact:
+        return {"stat_end_time": normalized}
+    return {}
 
 
 def _default_stat_period(now: datetime | None = None) -> tuple[str, str]:
@@ -104,15 +120,23 @@ def _resolve_stat_period(
     *,
     use_default: bool,
 ) -> tuple[str, str] | None:
-    explicit = _extract_stat_period(query)
-    if explicit is not None:
-        return explicit
+    updates = _extract_stat_period_update(query)
     context = memory_context or {}
     start = str(context.get("stat_start_time") or "").strip()
     end = str(context.get("stat_end_time") or "").strip()
-    if start and end:
-        return start, end
-    return _default_stat_period() if use_default else None
+    if updates:
+        if not start or not end:
+            start, end = _default_stat_period()
+        start = updates.get("stat_start_time", start)
+        end = updates.get("stat_end_time", end)
+    elif not start or not end:
+        return _default_stat_period() if use_default else None
+    try:
+        if datetime.fromisoformat(end) <= datetime.fromisoformat(start):
+            return None
+    except ValueError:
+        return None
+    return start, end
 
 
 def _stat_period_metadata(
@@ -128,12 +152,13 @@ def _load_memory_context(
     memory_store: ConversationMemory, session_id: str
 ) -> dict[str, Any]:
     context = dict(memory_store.last_rule_context(session_id) or {})
-    if context.get("stat_start_time") and context.get("stat_end_time"):
-        return context
-    for message in reversed(memory_store.recent_messages(session_id, limit=20)):
+    for message in memory_store.recent_messages(session_id, limit=20):
         if message.get("role") != "user":
             continue
-        period = _extract_stat_period(str(message.get("content") or ""))
+        content = str(message.get("content") or "")
+        if not _extract_stat_period_update(content):
+            continue
+        period = _resolve_stat_period(content, context, use_default=False)
         if period is None:
             continue
         context["stat_start_time"], context["stat_end_time"] = period

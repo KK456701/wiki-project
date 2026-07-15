@@ -260,6 +260,30 @@ class SpecializedAgentTest(unittest.TestCase):
         self.assertEqual(understood["rewritten_query"], "生成急会诊及时到位率 SQL")
         self.assertEqual(understood["retrieval_query"], "急会诊及时到位率")
 
+    def test_stat_period_change_is_query_not_caliber_feedback(self) -> None:
+        from app.agents.human_interaction import (
+            HumanInteractionAgent,
+            detect_intent_by_rule,
+        )
+
+        class FeedbackLLM:
+            def generate(self, prompt):
+                return (
+                    '{"intent":"feedback","indicator_name":"",'
+                    '"retrieval_query":"修改统计时间"}'
+                )
+
+        query = "如果把统计时间起始时间改成2026-05-01怎么算？"
+        intent = detect_intent_by_rule(query)
+        understood = HumanInteractionAgent(FeedbackLLM()).understand(
+            query,
+            {"rule_id": "MQSI2025_005", "rule_name": "急会诊及时到位率"},
+        )
+
+        self.assertEqual(intent, "query")
+        self.assertEqual(understood["intent"], "query")
+        self.assertTrue(HumanInteractionAgent.can_reuse_memory(query, "query"))
+
 
 if __name__ == "__main__":
     unittest.main()

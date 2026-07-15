@@ -31,6 +31,21 @@ CREATE_INDICATOR_MARKERS = [
     "新增一个",
     "新建一个",
 ]
+STAT_PERIOD_MARKERS = [
+    "统计时间",
+    "统计区间",
+    "起始时间",
+    "开始时间",
+    "起始日期",
+    "开始日期",
+    "结束时间",
+    "截止时间",
+    "结束日期",
+    "截止日期",
+]
+DATE_TOKEN_PATTERN = re.compile(
+    r"20\d{2}\s*(?:-|/|年)\s*\d{1,2}\s*(?:-|/|月)\s*\d{1,2}\s*日?"
+)
 
 ACTION_QUERY_TEMPLATES = {
     "generate_sql": "生成{rule_name} SQL",
@@ -45,6 +60,14 @@ CONTEXT_ONLY_ACTIONS = {
 }
 
 
+def _is_stat_period_request(query: str) -> bool:
+    compact = re.sub(r"\s+", "", query or "")
+    return bool(
+        DATE_TOKEN_PATTERN.search(compact)
+        and any(marker in compact for marker in STAT_PERIOD_MARKERS)
+    )
+
+
 def detect_intent_by_rule(query: str) -> str:
     q = (query or "").strip()
     compact = re.sub(r"\s+", "", q)
@@ -53,6 +76,12 @@ def detect_intent_by_rule(query: str) -> str:
     query_cues = ["哪个", "什么", "多少", "怎么", "吗", "？", "?", "当前", "采用"]
     if any(marker in compact for marker in CREATE_INDICATOR_MARKERS):
         return "create_indicator"
+    if any(marker in compact for marker in SQL_MARKERS):
+        return "generate_sql"
+    if any(marker in compact for marker in TRIAL_MARKERS):
+        return "trial_run"
+    if _is_stat_period_request(compact):
+        return "query"
     if any(marker in compact for marker in feedback_actions):
         return "feedback"
     if any(subject in compact for subject in hospital_subjects) and "按" in compact and not any(cue in compact for cue in query_cues):
@@ -62,14 +91,10 @@ def detect_intent_by_rule(query: str) -> str:
         return "chat"
     if any(marker in compact for marker in CHAT_MARKERS) and not any(marker in compact for marker in KB_MARKERS):
         return "chat"
-    if any(marker in compact for marker in SQL_MARKERS):
-        return "generate_sql"
     if any(marker in compact for marker in DIAG_MARKERS):
         return "diagnose"
     if any(marker in compact for marker in SYNC_MARKERS):
         return "metadata_sync"
-    if any(marker in compact for marker in TRIAL_MARKERS):
-        return "trial_run"
     return "query"
 
 
@@ -115,7 +140,9 @@ class HumanInteractionAgent:
                 intent = str(data.get("intent", "")).strip().lower()
                 valid = {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run", "create_indicator"}
                 if intent in valid:
-                    if result["intent"] != "create_indicator" or intent == "create_indicator":
+                    if _is_stat_period_request(query) and intent == "feedback":
+                        pass
+                    elif result["intent"] != "create_indicator" or intent == "create_indicator":
                         result["intent"] = intent
                 else:
                     error_list.append("LLM_INTENT_INVALID_JSON")
@@ -257,6 +284,8 @@ class HumanInteractionAgent:
 
     @staticmethod
     def can_reuse_memory(query: str, intent: str) -> bool:
+        if intent == "query" and _is_stat_period_request(query):
+            return True
         if intent == "feedback" or any(marker in query for marker in FOLLOW_UP_MARKERS):
             return True
         compact = re.sub(r"[\s，。！？、,.!?]+", "", query or "").lower()
