@@ -48,6 +48,21 @@ def _provider_metadata_row(provider: MetadataProvider, db_name: str, table_name:
     return None
 
 
+def _types_compatible(expected_type: str, actual_type: str, field_name: str) -> bool:
+    expected = str(expected_type or "").lower()
+    actual = str(actual_type or "").lower()
+    field = str(field_name or "").lower()
+    if not expected or not actual or expected in actual:
+        return True
+    if expected == "string" and any(item in actual for item in ("char", "text", "varchar")):
+        return True
+    if expected == "datetime" and any(item in actual for item in ("date", "time")):
+        return True
+    identifier = field.endswith(("_id", "_code")) or field in {"id", "code"}
+    numeric = any(item in actual for item in ("int", "numeric", "decimal", "number"))
+    return expected == "string" and identifier and numeric
+
+
 def structure_check(
     kb_root: Path,
     runtime_engine: Engine,
@@ -118,9 +133,7 @@ def structure_check(
         expected_type = str((spec or {}).get("type") or "").lower()
         actual_type = str(row.get("data_type") or row.get("column_type") or "").lower()
         if expected_type and actual_type and expected_type not in actual_type:
-            compatible = expected_type == "string" and any(t in actual_type for t in ["char", "text", "varchar"])
-            compatible = compatible or expected_type == "datetime" and any(t in actual_type for t in ["date", "time"])
-            if not compatible:
+            if not _types_compatible(expected_type, actual_type, field_name):
                 checks.append(_check(f"type.{field_name}", "warn", f"Column {column_name} type may mismatch: expected {expected_type}, actual {actual_type}.", "Manually confirm whether this field can be used."))
         if required and str(row.get("is_nullable") or "").upper() == "YES":
             checks.append(_check(f"nullable.{field_name}", "warn", f"Required business field {column_name} is nullable in metadata.", "Focus on null rate in data quality checks."))
