@@ -68,6 +68,22 @@ class TraceUiTest(unittest.TestCase):
         self.assertIn("traceNodeVisualStatus(node)", html)
         self.assertIn("status.textContent = traceNodeStatus(node)", html)
 
+    def test_pasted_diagnosis_nodes_have_plain_language_statuses(self) -> None:
+        html = WEB_INDEX.read_text(encoding="utf-8")
+
+        for node_name in (
+            "evidence_extract",
+            "user_sql_guard",
+            "user_sql_trial",
+            "structure_compare",
+            "caliber_semantic_compare",
+            "data_quality_profile",
+            "diagnosis_compose",
+        ):
+            self.assertIn(f'node.node_name === "{node_name}"', html)
+        self.assertIn('return "未执行，已完成静态分析"', html)
+        self.assertIn('return "发现口径差异"', html)
+
     def test_context_nodes_explain_clarification_and_mapping_status(self) -> None:
         html = WEB_INDEX.read_text(encoding="utf-8")
 

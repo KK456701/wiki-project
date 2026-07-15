@@ -1641,6 +1641,23 @@ function traceNodeStatus(node) {
   var output = traceObject(node.output_data);
   if (node.status === "failed") return "失败";
   if (node.status === "fallback") return "已回退";
+  if (node.node_name === "evidence_extract") return "已识别";
+  if (node.node_name === "user_sql_guard") {
+    if (output.safe_to_execute === false || node.status === "warning") return "未执行，已完成静态分析";
+    return "安全";
+  }
+  if (node.node_name === "user_sql_trial") {
+    if (output.execution_status === "blocked") return "未执行，已完成静态分析";
+    if (output.execution_status === "failed") return "试运行失败";
+    return "试运行成功";
+  }
+  if (node.node_name === "structure_compare") return output.ok === false ? "发现结构问题" : "通过";
+  if (node.node_name === "caliber_semantic_compare") {
+    if (Number(output.finding_count || 0) > 0 || node.status === "warning") return "发现口径差异";
+    return "口径一致";
+  }
+  if (node.node_name === "data_quality_profile") return Number(output.risk_count || 0) > 0 ? "发现数据风险" : "通过";
+  if (node.node_name === "diagnosis_compose") return "已生成";
   if (node.node_name === "diagnose_structure_mcp") {
     if (output.ok === false) return "结构校验失败";
     return "通过";
@@ -1701,6 +1718,29 @@ function traceObject(value) {
 
 function traceBusinessSummary(node) {
   var output = traceObject(node.output_data);
+  if (node.node_name === "evidence_extract") {
+    return "已提取排查问题、参数名和用户声明结果，原始 SQL 不进入链路记录";
+  }
+  if (node.node_name === "user_sql_guard") {
+    return output.safe_to_execute === false ? "SQL 未通过只读检查，仅继续静态分析" : "SQL 通过只读、单语句和授权库范围检查";
+  }
+  if (node.node_name === "user_sql_trial") {
+    if (output.execution_status === "blocked") return "未访问医院业务库，已保留静态分析结果";
+    if (output.execution_status === "failed") return "医院只读库试运行失败，可结合错误和静态差异继续定位";
+    return "已在医院只读库中完成聚合试运行";
+  }
+  if (node.node_name === "structure_compare") {
+    return output.ok === false ? "指标依赖的医院表字段存在适配问题" : "指标依赖的医院表字段均可用";
+  }
+  if (node.node_name === "caliber_semantic_compare") {
+    return Number(output.finding_count || 0) > 0 ? "用户 SQL、本院口径或国标口径之间存在差异" : "三方计算口径未发现明显差异";
+  }
+  if (node.node_name === "data_quality_profile") {
+    return Number(output.risk_count || 0) > 0 ? "原始业务数据存在需要核查的质量风险" : "本次数据质量检查未发现明显风险";
+  }
+  if (node.node_name === "diagnosis_compose") {
+    return "已将技术证据整理成医生和实施人员可读的诊断结论";
+  }
   if (node.node_name === "diagnose_structure_mcp") {
     return output.ok === false ? "数据库结构或字段映射未通过校验" : "数据库结构与字段映射校验通过";
   }
@@ -1746,6 +1786,40 @@ function traceBusinessSummary(node) {
 function traceBusinessFields(node) {
   var input = traceObject(node.input_data);
   var output = traceObject(node.output_data);
+  if (node.node_name === "evidence_extract") return [
+    { label: "识别参数", value: (output.parameter_names || []).join("、") || "无" },
+    { label: "用户结果", value: output.has_claimed_result ? "已提供" : "未提供" },
+    { label: "解析提醒", value: output.warning_count || 0 },
+  ];
+  if (node.node_name === "user_sql_guard") return [
+    { label: "能否试运行", value: output.safe_to_execute ? "可以" : "不可以" },
+    { label: "阻止原因", value: (output.blocked_reasons || []).join("；") || "无" },
+    { label: "参数数量", value: output.parameter_count || 0 },
+  ];
+  if (node.node_name === "user_sql_trial") return [
+    { label: "执行状态", value: traceNodeStatus(node) },
+    { label: "用户 SQL 结果", value: output.result_value },
+    { label: "分子 / 分母", value: output.numerator_count != null && output.denominator_count != null ? output.numerator_count + " / " + output.denominator_count : "未返回" },
+    { label: "运行编号", value: output.run_id },
+    { label: "数据来源", value: output.data_source },
+  ];
+  if (node.node_name === "structure_compare") return [
+    { label: "校验结果", value: output.ok ? "通过" : "存在问题" },
+    { label: "元数据来源", value: output.metadata_source },
+    { label: "问题数量", value: output.issue_count || 0 },
+  ];
+  if (node.node_name === "caliber_semantic_compare") return [
+    { label: "差异数量", value: output.finding_count || 0 },
+    { label: "差异类型", value: (output.finding_codes || []).join("、") || "无" },
+    { label: "用户 / 本院 / 国标", value: [output.user_result, output.hospital_result, output.national_result].map(function(value) { return value == null ? "未返回" : value; }).join(" / ") },
+  ];
+  if (node.node_name === "data_quality_profile") return [
+    { label: "检查项目", value: output.check_count || 0 },
+    { label: "风险项目", value: output.risk_count || 0 },
+  ];
+  if (node.node_name === "diagnosis_compose") return [
+    { label: "诊断结论", value: output.answer_ready ? "已生成" : "未生成" },
+  ];
   if (node.node_name === "memory_load") return [
     { label: "上下文", value: Object.keys(traceObject(output.memory_context)).length ? "已读取" : "无历史上下文" },
     { label: "会话", value: output.active_session_id || input.session_id },

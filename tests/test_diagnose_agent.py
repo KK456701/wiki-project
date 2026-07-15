@@ -206,6 +206,21 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             self.assertEqual(
                 report["execution_results"]["user"]["status"], "success"
             )
+            self.assertEqual(
+                [event["node_name"] for event in report["trace_events"]],
+                [
+                    "evidence_extract",
+                    "user_sql_guard",
+                    "user_sql_trial",
+                    "structure_compare",
+                    "caliber_semantic_compare",
+                    "data_quality_profile",
+                    "diagnosis_compose",
+                ],
+            )
+            trace_payload = json.dumps(report["trace_events"], ensure_ascii=False)
+            self.assertNotIn("SELECT COUNT", trace_payload)
+            self.assertNotIn("sql_text", trace_payload)
 
 
 def _make_diag_kb(root: Path, include_arrive_metadata: bool) -> None:

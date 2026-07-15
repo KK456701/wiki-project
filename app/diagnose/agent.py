@@ -1,6 +1,7 @@
 """Three-layer diagnose agent."""
 
 from pathlib import Path
+import time
 from typing import Any
 
 from sqlalchemy import Engine
@@ -46,13 +47,17 @@ class DiagnoseAgent:
     ) -> dict[str, Any]:
         layers: list[dict[str, Any]] = []
         pasted_result: dict[str, Any] | None = None
+        evidence_started = time.perf_counter()
         evidence = extract_pasted_evidence(
             query_text,
             rule_id=rule_id,
             llm_client=self.llm_client if query_text else None,
         )
+        evidence_duration_ms = max(1, int((time.perf_counter() - evidence_started) * 1000))
 
+        structure_started = time.perf_counter()
         r1 = structure_check(self.kb_root, self.runtime_engine, hospital_id, rule_id, metadata_provider=self.metadata_provider)
+        structure_duration_ms = max(1, int((time.perf_counter() - structure_started) * 1000))
         layers.append(r1)
         if not r1["ok"]:
             return self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=1)
@@ -68,6 +73,8 @@ class DiagnoseAgent:
                 field_mapping=field_mapping,
                 stat_period=stat_period,
             )
+            pasted_result["evidence_duration_ms"] = evidence_duration_ms
+            pasted_result["structure_duration_ms"] = structure_duration_ms
             comparison = pasted_result["caliber_comparison"]
         elif caliber_context is None or field_mapping is None:
             comparison = {
@@ -109,7 +116,11 @@ class DiagnoseAgent:
             response = self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=2)
             return self._attach_pasted(response, pasted_result)
 
+        data_started = time.perf_counter()
         r3 = data_check(self.kb_root, self.business_db, hospital_id, rule_id)
+        data_duration_ms = max(1, int((time.perf_counter() - data_started) * 1000))
+        if pasted_result is not None:
+            pasted_result["data_duration_ms"] = data_duration_ms
         layers.append(r3)
         stopped_at_layer = 3 if not r3["ok"] or any(c.get("status") == "warn" for c in r3.get("checks", [])) else None
         response = self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=stopped_at_layer)
@@ -136,7 +147,94 @@ class DiagnoseAgent:
                 },
             },
         })
+        compose_started = time.perf_counter()
         response["user_summary"] = DiagnosisNarrator(self.llm_client).compose(response)
+        compose_duration_ms = max(1, int((time.perf_counter() - compose_started) * 1000))
+        events_by_name = {
+            str(event.get("node_name")): event
+            for event in pasted_result.get("trace_events", [])
+        }
+        layers = response.get("layers") or []
+        structure_layer = layers[0] if layers else {}
+        data_layer = layers[2] if len(layers) > 2 else {}
+        ordered_events = [
+            {
+                "node_name": "evidence_extract",
+                "status": "success",
+                "duration_ms": int(pasted_result.get("evidence_duration_ms") or 0),
+                "output_summary": "已识别用户问题、SQL 和执行参数",
+                "output_data": {
+                    "parameter_names": sorted(
+                        str(key)
+                        for key in (pasted_result["evidence_summary"].get("declared_params") or {})
+                    ),
+                    "has_claimed_result": bool(
+                        pasted_result["evidence_summary"].get("claimed_result")
+                    ),
+                    "warning_count": len(
+                        pasted_result["evidence_summary"].get("parse_warnings") or []
+                    ),
+                },
+            },
+            events_by_name.get("user_sql_guard", {}),
+            events_by_name.get("user_sql_trial", {}),
+            {
+                "node_name": "structure_compare",
+                "status": "success" if structure_layer.get("ok") else "warning",
+                "duration_ms": int(pasted_result.get("structure_duration_ms") or 0),
+                "output_summary": (
+                    "医院表字段校验通过"
+                    if structure_layer.get("ok")
+                    else "发现表字段适配问题"
+                ),
+                "output_data": {
+                    "ok": bool(structure_layer.get("ok")),
+                    "metadata_source": structure_layer.get("metadata_source"),
+                    "issue_count": sum(
+                        1
+                        for check in structure_layer.get("checks", [])
+                        if check.get("status") in {"warn", "fail"}
+                    ),
+                },
+            },
+            events_by_name.get("caliber_semantic_compare", {}),
+            {
+                "node_name": "data_quality_profile",
+                "status": (
+                    "warning"
+                    if any(
+                        check.get("status") in {"warn", "fail"}
+                        for check in data_layer.get("checks", [])
+                    )
+                    else "success"
+                ),
+                "duration_ms": int(pasted_result.get("data_duration_ms") or 0),
+                "output_summary": (
+                    "发现数据质量风险"
+                    if any(
+                        check.get("status") in {"warn", "fail"}
+                        for check in data_layer.get("checks", [])
+                    )
+                    else "数据质量检查通过"
+                ),
+                "output_data": {
+                    "check_count": len(data_layer.get("checks", [])),
+                    "risk_count": sum(
+                        1
+                        for check in data_layer.get("checks", [])
+                        if check.get("status") in {"warn", "fail"}
+                    ),
+                },
+            },
+            {
+                "node_name": "diagnosis_compose",
+                "status": "success",
+                "duration_ms": compose_duration_ms,
+                "output_summary": "已生成面向医生和实施人员的诊断结论",
+                "output_data": {"answer_ready": True},
+            },
+        ]
+        response["trace_events"] = [event for event in ordered_events if event]
         return response
 
     def _finish(

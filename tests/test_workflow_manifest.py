@@ -127,6 +127,29 @@ class WorkflowManifestTest(unittest.TestCase):
         )
         self.assertTrue(node["config"]["readonly"])
 
+    def test_pasted_diagnosis_declares_seven_business_nodes(self) -> None:
+        expected = {
+            "evidence_extract": "识别排查材料",
+            "user_sql_guard": "检查 SQL 安全",
+            "user_sql_trial": "试运行用户 SQL",
+            "structure_compare": "核对表字段",
+            "caliber_semantic_compare": "比较计算口径",
+            "data_quality_profile": "检查数据质量",
+            "diagnosis_compose": "生成诊断结论",
+        }
+
+        for node_id, title in expected.items():
+            with self.subTest(node_id=node_id):
+                node = get_workflow_node("core_indicator_chat", node_id)
+                self.assertEqual(node["title"], title)
+                self.assertEqual(node["agent_owner"], "root_cause_diagnosis")
+
+        guard = get_workflow_node("core_indicator_chat", "user_sql_guard")
+        trial = get_workflow_node("core_indicator_chat", "user_sql_trial")
+        self.assertTrue(guard["config"]["readonly"])
+        self.assertTrue(trial["config"]["readonly"])
+        self.assertIn("blocked_reasons", guard["outputs"])
+
     def test_annotate_trace_node_keeps_runtime_fields(self) -> None:
         runtime = {
             "node_name": "rule_search",

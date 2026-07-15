@@ -15,6 +15,13 @@ _MONITORING_BLOCKED_KEYS = {
     "rows",
 }
 
+_DIAGNOSIS_BLOCKED_KEYS = _MONITORING_BLOCKED_KEYS | {
+    "raw_text",
+    "sql_text",
+    "query_sql",
+    "patient_identifier",
+}
+
 
 def _execute_tool(source_id: str) -> str:
     suffix = re.sub(r"[^0-9a-zA-Z]+", "_", source_id).strip("_").lower()
@@ -35,6 +42,23 @@ def _safe_monitoring_payload(value: Any) -> Any:
         ("SELECT ", "INSERT ", "UPDATE ", "DELETE ")
     ):
         return "[已脱敏]"
+    return value
+
+
+def _safe_diagnosis_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _safe_diagnosis_payload(item)
+            for key, item in value.items()
+            if str(key).lower() not in _DIAGNOSIS_BLOCKED_KEYS
+            and "sql" not in str(key).lower()
+        }
+    if isinstance(value, list):
+        return [_safe_diagnosis_payload(item) for item in value]
+    if isinstance(value, str) and value.lstrip().upper().startswith(
+        ("SELECT ", "WITH ", "INSERT ", "UPDATE ", "DELETE ", "MERGE ")
+    ):
+        return "[内容已脱敏]"
     return value
 
 
@@ -108,6 +132,47 @@ def record_diagnose_trace_nodes(
     hospital_id: str | None,
 ) -> None:
     if recorder is None:
+        return
+    pasted_events = diag_result.get("trace_events") or []
+    if pasted_events:
+        node_types = {
+            "evidence_extract": "evidence",
+            "user_sql_guard": "sql_validator",
+            "user_sql_trial": "mcp_tool",
+            "structure_compare": "metadata_check",
+            "caliber_semantic_compare": "diagnose",
+            "data_quality_profile": "diagnose",
+            "diagnosis_compose": "agent",
+        }
+        for event in pasted_events:
+            node_name = str(event.get("node_name") or "")
+            if not node_name:
+                continue
+            input_data = _safe_diagnosis_payload(event.get("input_data") or {})
+            input_data.update({
+                "rule_id": str(rule_id or ""),
+                "hospital_id": str(hospital_id or ""),
+            })
+            output_data = _safe_diagnosis_payload(event.get("output_data") or {})
+            config_data = _safe_diagnosis_payload(event.get("config_data") or {})
+            recorder.record_node(
+                trace_id,
+                node_name,
+                node_types.get(node_name, "diagnose"),
+                str(event.get("status") or "success"),
+                input_summary=str(event.get("input_summary") or f"{hospital_id or ''}/{rule_id or ''}"),
+                output_summary=str(event.get("output_summary") or ""),
+                error_code=str(event.get("error_code") or ""),
+                error_message=str(event.get("error_message") or ""),
+                rule_id=str(rule_id or ""),
+                run_id=str(output_data.get("run_id") or event.get("run_id") or ""),
+                tool_name=str(event.get("tool_name") or ""),
+                db_source=str(output_data.get("data_source") or event.get("db_source") or ""),
+                duration_ms=int(event.get("duration_ms") or 0),
+                input_data=input_data,
+                output_data=output_data,
+                config_data=config_data,
+            )
         return
     node_names = {
         1: "diagnose_structure_mcp",

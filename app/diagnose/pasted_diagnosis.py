@@ -154,11 +154,13 @@ class PastedDiagnosisService:
         context = CaliberComparisonContext.model_validate(caliber_context)
         mapping = FieldMapping.model_validate(field_mapping)
         allowed_database = mapping.db_name or self.allowed_database
+        guard_started = time.perf_counter()
         prepared = prepare_pasted_sql(
             evidence.sql_text,
             allowed_database=allowed_database,
             allowed_schema=self.allowed_schema,
         )
+        guard_duration_ms = max(1, int((time.perf_counter() - guard_started) * 1000))
         effective_period = self._period(evidence, stat_period)
         stat_start, stat_end, normalized_period = parse_diagnose_period(effective_period)
 
@@ -177,6 +179,7 @@ class PastedDiagnosisService:
                 "duration_ms": 0,
             }
 
+        caliber_started = time.perf_counter()
         comparison = execute_caliber_comparison(
             runtime_engine=self.runtime_engine,
             business_db=self.business_db,
@@ -209,6 +212,70 @@ class PastedDiagnosisService:
             conclusion = "user_sql_execution_failed"
         else:
             conclusion = "no_material_difference"
+        caliber_duration_ms = max(1, int((time.perf_counter() - caliber_started) * 1000))
+
+        guard_status = "success" if prepared.safe_to_execute else "warning"
+        trial_status = (
+            "warning"
+            if user_result["status"] in {"blocked", "failed"}
+            else "success"
+        )
+        trial_summary = {
+            "blocked": "未执行，已完成静态分析",
+            "failed": "试运行失败，已保留静态分析结果",
+            "empty": "试运行完成，未返回聚合结果",
+            "success": "只读试运行成功",
+        }.get(str(user_result["status"]), "试运行已处理")
+        trace_events = [
+            {
+                "node_name": "user_sql_guard",
+                "status": guard_status,
+                "duration_ms": guard_duration_ms,
+                "output_summary": (
+                    "SQL 通过只读安全检查"
+                    if prepared.safe_to_execute
+                    else "未执行，已完成静态分析"
+                ),
+                "output_data": {
+                    "safe_to_execute": prepared.safe_to_execute,
+                    "blocked_reasons": list(prepared.blocked_reasons),
+                    "parameter_count": len(evidence.declared_params),
+                },
+                "config_data": {"readonly": True, "single_statement": True},
+            },
+            {
+                "node_name": "user_sql_trial",
+                "status": trial_status,
+                "duration_ms": int(user_result.get("duration_ms") or 0),
+                "output_summary": trial_summary,
+                "output_data": {
+                    "execution_status": user_result.get("status"),
+                    "result_value": user_result.get("result_value"),
+                    "numerator_count": user_result.get("numerator_count"),
+                    "denominator_count": user_result.get("denominator_count"),
+                    "sample_count": user_result.get("sample_count"),
+                    "run_id": user_result.get("run_id"),
+                    "data_source": user_result.get("source"),
+                },
+                "config_data": {"readonly": True},
+            },
+            {
+                "node_name": "caliber_semantic_compare",
+                "status": "warning" if findings else "success",
+                "duration_ms": caliber_duration_ms,
+                "output_summary": (
+                    "发现口径差异" if findings else "未发现明显口径差异"
+                ),
+                "output_data": {
+                    "conclusion_code": conclusion,
+                    "finding_count": len(findings),
+                    "finding_codes": [item.code for item in findings],
+                    "national_result": execution_results["national"].get("result_value"),
+                    "hospital_result": execution_results["hospital"].get("result_value"),
+                    "user_result": user_result.get("result_value"),
+                },
+            },
+        ]
 
         sql_hash = hashlib.sha256(evidence.sql_text.encode("utf-8")).hexdigest()
         return {
@@ -226,4 +293,5 @@ class PastedDiagnosisService:
                 "parse_warnings": evidence.parse_warnings,
                 "sql_sha256": sql_hash,
             },
+            "trace_events": trace_events,
         }

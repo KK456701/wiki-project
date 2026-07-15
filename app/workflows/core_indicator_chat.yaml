@@ -221,6 +221,106 @@ nodes:
       readonly: true
     failure_hint: 如果这里失败，优先检查 DBHub sidecar、MySQL 账号权限和 SQL 参数。
 
+  - id: evidence_extract
+    agent_owner: root_cause_diagnosis
+    title: 识别排查材料
+    type: evidence
+    description: 从用户粘贴内容中识别问题、SQL、参数、统计区间和用户声明的执行结果，不保存原始 SQL 或患者明细。
+    inputs: [query, rule_id]
+    outputs: [parameter_names, has_claimed_result, warning_count]
+    required: true
+    on_failure: stop
+    required_inputs: [query]
+    required_outputs: [parameter_names]
+    config:
+      storage_policy: 仅保存摘要和 SQL 指纹
+    failure_hint: 如果这里失败，请检查粘贴内容是否包含完整 SQL，并确认本地模型或规则提取器可用。
+
+  - id: user_sql_guard
+    agent_owner: root_cause_diagnosis
+    title: 检查 SQL 安全
+    type: sql_validator
+    description: 检查用户 SQL 是否只读、单语句并限制在当前医院授权数据库内；不安全时不执行，但继续静态分析。
+    inputs: [parameter_names, hospital_id]
+    outputs: [safe_to_execute, blocked_reasons, parameter_count]
+    required: true
+    on_failure: continue
+    required_outputs: [safe_to_execute, blocked_reasons]
+    config:
+      readonly: true
+      single_statement: true
+    failure_hint: 如果这里阻止执行，请查看只读限制、数据库范围和阻止原因；静态口径分析仍可继续。
+
+  - id: user_sql_trial
+    agent_owner: root_cause_diagnosis
+    title: 试运行用户 SQL
+    type: mcp_tool
+    description: 在医院只读业务库中试运行通过安全检查的用户 SQL，只记录聚合结果和运行编号。
+    inputs: [hospital_id, rule_id, stat_period]
+    outputs: [execution_status, result_value, numerator_count, denominator_count, sample_count, run_id, data_source]
+    required: false
+    on_failure: continue
+    config:
+      readonly: true
+      detail_storage: 禁止保存患者明细
+    failure_hint: 如果这里失败，请检查参数绑定、SQL 方言、医院只读库连接和业务数据权限。
+
+  - id: structure_compare
+    agent_owner: root_cause_diagnosis
+    title: 核对表字段
+    type: metadata_check
+    description: 将指标依赖的表字段与医院最新数据库结构进行核对，定位缺表、缺字段和类型不匹配。
+    inputs: [hospital_id, rule_id]
+    outputs: [ok, metadata_source, issue_count]
+    required: true
+    on_failure: continue
+    required_outputs: [ok, issue_count]
+    config:
+      source: 实时元数据优先，运行库缓存回退
+    failure_hint: 如果发现结构问题，请先同步数据库结构，再核对指标设计稿中的医院字段映射。
+
+  - id: caliber_semantic_compare
+    agent_owner: root_cause_diagnosis
+    title: 比较计算口径
+    type: diagnose
+    description: 比较用户 SQL、本院生效口径和国标口径的筛选条件、时间边界、分子分母及聚合结果。
+    inputs: [rule_id, hospital_id, stat_period]
+    outputs: [conclusion_code, finding_count, finding_codes, national_result, hospital_result, user_result]
+    required: true
+    on_failure: continue
+    required_outputs: [conclusion_code, finding_count]
+    config:
+      comparison: 用户 SQL vs 本院生效口径 vs 国标口径
+      readonly: true
+    failure_hint: 如果这里发现差异，请结合差异代码检查统计时间、筛选范围、去重方式和本院定制项。
+
+  - id: data_quality_profile
+    agent_owner: root_cause_diagnosis
+    title: 检查数据质量
+    type: diagnose
+    description: 在结构和口径检查后统计空值、重复、时间矛盾和编码异常等聚合风险，不保存患者明细。
+    inputs: [hospital_id, rule_id]
+    outputs: [check_count, risk_count]
+    required: false
+    on_failure: continue
+    config:
+      detail_storage: 禁止保存患者明细
+    failure_hint: 如果这里发现风险，请通过受控明细导出定位具体记录，并由信息科确认治理方式。
+
+  - id: diagnosis_compose
+    agent_owner: root_cause_diagnosis
+    title: 生成诊断结论
+    type: agent
+    description: 将结构、口径、执行结果和数据质量证据组织成医生与实施人员都能理解的结论和处理建议。
+    inputs: [structure_result, caliber_result, data_quality_result]
+    outputs: [answer_ready]
+    required: true
+    on_failure: stop
+    required_outputs: [answer_ready]
+    config:
+      fallback: 确定性中文模板
+    failure_hint: 如果本地模型组织语言失败，系统应回退固定模板，并保留前面各层证据。
+
   - id: diagnose_structure_mcp
     agent_owner: root_cause_diagnosis
     title: 诊断结构适配
@@ -355,8 +455,29 @@ edges:
     to: sql_trial_mcp
     condition: 用户确认试运行
   - from: working_caliber_apply
+    to: evidence_extract
+    condition: intent == diagnose 且包含粘贴 SQL
+  - from: evidence_extract
+    to: user_sql_guard
+  - from: user_sql_guard
+    to: user_sql_trial
+    condition: SQL 通过只读安全检查
+  - from: user_sql_guard
+    to: structure_compare
+    condition: SQL 被阻止时继续静态分析
+  - from: user_sql_trial
+    to: structure_compare
+  - from: structure_compare
+    to: caliber_semantic_compare
+  - from: caliber_semantic_compare
+    to: data_quality_profile
+  - from: data_quality_profile
+    to: diagnosis_compose
+  - from: diagnosis_compose
+    to: final_response
+  - from: working_caliber_apply
     to: diagnose_structure_mcp
-    condition: intent == diagnose
+    condition: intent == diagnose 且不包含粘贴 SQL
   - from: diagnose_structure_mcp
     to: diagnose_rule_check
   - from: diagnose_rule_check
