@@ -10,7 +10,6 @@ from typing import Any
 import yaml
 from sqlalchemy import Engine, text
 
-from app.db.repositories import log_sync_change, log_sync_column, log_sync_table
 from app.db_access.metadata_provider import MetadataProvider, SQLAlchemyMetadataProvider
 
 
@@ -139,7 +138,11 @@ def collect_metadata_snapshot(
     """Collect the bulk catalog and deterministically refill mapped tables."""
 
     tables = list(provider.list_tables(db_name))
-    columns = list(provider.list_columns(db_name))
+    columns = (
+        []
+        if getattr(provider, "mapped_scope_only", False)
+        else list(provider.list_columns(db_name))
+    )
     if kb_root and hospital_id:
         table_names = _mapped_table_names(Path(kb_root), hospital_id, db_name)
         table_index = {_table_key(item): dict(item) for item in tables if _table_key(item)}
@@ -215,6 +218,131 @@ def _save_snapshot(runtime_engine: Engine, hospital_id: str, db_name: str, sourc
             conn.rollback()
 
 
+def _persist_metadata_batch(
+    runtime_engine: Engine,
+    hospital_id: str,
+    db_name: str,
+    batch_id: str,
+    tables: list[dict[str, Any]],
+    columns: list[dict[str, Any]],
+    changes: list[dict[str, Any]],
+) -> None:
+    table_params = [
+        {
+            "h": hospital_id,
+            "d": db_name,
+            "t": _norm(item.get("table_name")),
+            "c": _norm(item.get("table_comment")),
+            "ty": _norm(item.get("table_type")),
+            "b": batch_id,
+        }
+        for item in tables
+        if _norm(item.get("table_name"))
+    ]
+    column_params = [
+        {
+            "h": hospital_id,
+            "d": db_name,
+            "t": _norm(item.get("table_name")),
+            "cn": _norm(item.get("column_name")),
+            "dt": _norm(item.get("data_type")),
+            "ct": _norm(item.get("column_type")),
+            "n": _norm(item.get("is_nullable")),
+            "k": _norm(item.get("column_key")),
+            "cd": _norm(item.get("column_default")),
+            "cc": _norm(item.get("column_comment")),
+            "b": batch_id,
+        }
+        for item in columns
+        if all(_column_key(item))
+    ]
+    change_params = [
+        {
+            "h": hospital_id,
+            "d": db_name,
+            "t": "",
+            "f": "",
+            "c": "full_sync",
+            "cd": f"元数据同步完成: {len(tables)} 张表, {len(columns)} 个字段",
+            "b": batch_id,
+        },
+        *[
+            {
+                "h": hospital_id,
+                "d": db_name,
+                "t": _norm(item.get("table_name")),
+                "f": _norm(item.get("field_name")),
+                "c": _norm(item.get("change_type")),
+                "cd": _norm(item.get("change_desc")),
+                "b": batch_id,
+            }
+            for item in changes
+        ],
+    ]
+    sqlite = runtime_engine.dialect.name == "sqlite"
+    table_sql = """
+        INSERT INTO med_metadata_table
+          (hospital_id, db_name, table_name, table_comment, table_type,
+           sync_batch_id, sync_time)
+        VALUES (:h, :d, :t, :c, :ty, :b, CURRENT_TIMESTAMP)
+    """
+    column_sql = """
+        INSERT INTO med_metadata_column
+          (hospital_id, db_name, table_name, column_name, data_type, column_type,
+           is_nullable, column_key, column_default, column_comment,
+           sync_batch_id, sync_time)
+        VALUES (:h, :d, :t, :cn, :dt, :ct, :n, :k, :cd, :cc, :b,
+                CURRENT_TIMESTAMP)
+    """
+    if not sqlite:
+        table_sql += """
+          ON DUPLICATE KEY UPDATE table_comment=VALUES(table_comment),
+            table_type=VALUES(table_type), sync_batch_id=VALUES(sync_batch_id),
+            sync_time=CURRENT_TIMESTAMP
+        """
+        column_sql += """
+          ON DUPLICATE KEY UPDATE data_type=VALUES(data_type),
+            column_type=VALUES(column_type), is_nullable=VALUES(is_nullable),
+            column_key=VALUES(column_key), column_default=VALUES(column_default),
+            column_comment=VALUES(column_comment),
+            sync_batch_id=VALUES(sync_batch_id), sync_time=CURRENT_TIMESTAMP
+        """
+    with runtime_engine.begin() as conn:
+        if table_params:
+            conn.execute(text(table_sql), table_params)
+        if column_params:
+            conn.execute(text(column_sql), column_params)
+        conn.execute(
+            text(
+                """
+                DELETE FROM med_metadata_table
+                WHERE hospital_id=:h AND db_name=:d AND sync_batch_id<>:b
+                """
+            ),
+            {"h": hospital_id, "d": db_name, "b": batch_id},
+        )
+        conn.execute(
+            text(
+                """
+                DELETE FROM med_metadata_column
+                WHERE hospital_id=:h AND db_name=:d AND sync_batch_id<>:b
+                """
+            ),
+            {"h": hospital_id, "d": db_name, "b": batch_id},
+        )
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_metadata_sync_log
+                  (hospital_id, db_name, table_name, field_name, change_type,
+                   change_desc, sync_batch_id, sync_time)
+                VALUES (:h, :d, :t, :f, :c, :cd, :b, CURRENT_TIMESTAMP)
+                """
+            ),
+            change_params,
+        )
+
+
 def sync_metadata_from_provider(
     runtime_engine: Engine,
     provider: MetadataProvider,
@@ -229,46 +357,29 @@ def sync_metadata_from_provider(
     )
     tables = current["tables"]
     columns = current["columns"]
+    if getattr(provider, "mapped_scope_only", False) and kb_root:
+        mapped_tables = set(
+            _mapped_table_names(Path(kb_root), hospital_id, db_name)
+        )
+        previous = {
+            **previous,
+            "columns": [
+                item
+                for item in previous.get("columns", [])
+                if _table_key(item) in mapped_tables
+            ],
+        }
     changes = diff_metadata_snapshots(previous, current)
     _save_snapshot(runtime_engine, hospital_id, db_name, provider.source_name, batch_id, current)
-
-    for table in tables:
-        log_sync_table(
-            runtime_engine,
-            hospital_id,
-            db_name,
-            _norm(table.get("table_name")),
-            _norm(table.get("table_comment")),
-            _norm(table.get("table_type")),
-            batch_id,
-        )
-    for col in columns:
-        log_sync_column(
-            runtime_engine,
-            hospital_id,
-            db_name,
-            _norm(col.get("table_name")),
-            _norm(col.get("column_name")),
-            _norm(col.get("data_type")),
-            _norm(col.get("column_type")),
-            _norm(col.get("is_nullable")),
-            _norm(col.get("column_key")),
-            _norm(col.get("column_default")),
-            _norm(col.get("column_comment")),
-            batch_id,
-        )
-    log_sync_change(runtime_engine, hospital_id, db_name, "", "", "full_sync", f"元数据同步完成: {len(tables)} 张表, {len(columns)} 个字段", batch_id)
-    for change in changes:
-        log_sync_change(
-            runtime_engine,
-            hospital_id,
-            db_name,
-            _norm(change.get("table_name")),
-            _norm(change.get("field_name")),
-            _norm(change.get("change_type")),
-            _norm(change.get("change_desc")),
-            batch_id,
-        )
+    _persist_metadata_batch(
+        runtime_engine,
+        hospital_id,
+        db_name,
+        batch_id,
+        tables,
+        columns,
+        changes,
+    )
 
     affected_rules = find_affected_rules(Path(kb_root), hospital_id, changes) if kb_root else []
     return {

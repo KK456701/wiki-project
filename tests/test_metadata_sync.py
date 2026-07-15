@@ -1,18 +1,77 @@
 import unittest
 from pathlib import Path
 
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.pool import StaticPool
+
 from app.metadata.sync import (
     collect_metadata_snapshot,
     diff_metadata_snapshots,
     find_affected_rules,
+    sync_metadata_from_provider,
 )
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
 
 class MetadataSyncDiffTest(unittest.TestCase):
+    def test_large_sync_persists_with_a_bounded_number_of_connections(self) -> None:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        with engine.begin() as conn:
+            conn.execute(text("""CREATE TABLE med_metadata_table (
+                hospital_id TEXT, db_name TEXT, table_name TEXT,
+                table_comment TEXT, table_type TEXT, sync_batch_id TEXT,
+                sync_time TEXT)"""))
+            conn.execute(text("""CREATE TABLE med_metadata_column (
+                hospital_id TEXT, db_name TEXT, table_name TEXT,
+                column_name TEXT, data_type TEXT, column_type TEXT,
+                is_nullable TEXT, column_key TEXT, column_default TEXT,
+                column_comment TEXT, sync_batch_id TEXT, sync_time TEXT)"""))
+            conn.execute(text("""CREATE TABLE med_metadata_sync_log (
+                hospital_id TEXT, db_name TEXT, table_name TEXT,
+                field_name TEXT, change_type TEXT, change_desc TEXT,
+                sync_batch_id TEXT, sync_time TEXT)"""))
+            conn.execute(text("""CREATE TABLE med_metadata_snapshot (
+                hospital_id TEXT, db_name TEXT, metadata_source TEXT,
+                sync_batch_id TEXT, snapshot_json TEXT, created_at TEXT)"""))
+
+        class Provider:
+            source_name = "dbhub"
+
+            def list_tables(self, db_name):
+                return [{"table_name": "T1", "table_type": "VIEW"}]
+
+            def list_columns(self, db_name, table_name=None):
+                return [
+                    {
+                        "table_name": "T1",
+                        "column_name": f"COL_{index}",
+                        "data_type": "numeric",
+                    }
+                    for index in range(100)
+                ]
+
+        connection_count = 0
+
+        @event.listens_for(engine, "engine_connect")
+        def count_connections(connection):
+            nonlocal connection_count
+            connection_count += 1
+
+        result = sync_metadata_from_provider(
+            engine, Provider(), "hospital_001", "TEST_DB"
+        )
+
+        self.assertEqual(result["column_count"], 100)
+        self.assertLessEqual(connection_count, 6)
+
     def test_snapshot_refetches_mapped_tables_after_bulk_result_is_truncated(self) -> None:
         class Provider:
             source_name = "dbhub"
+            mapped_scope_only = True
 
             def __init__(self) -> None:
                 self.requested_tables: list[str | None] = []
@@ -60,6 +119,7 @@ fields:
             )
 
         self.assertIn("INPATIENT_CONSULT_APPLY", provider.requested_tables)
+        self.assertNotIn(None, provider.requested_tables)
         self.assertTrue(
             any(
                 item["table_name"] == "INPATIENT_CONSULT_APPLY"

@@ -32,6 +32,8 @@ def test_sqlserver_metadata_provider_uses_catalog_and_schema() -> None:
         schema_name="WINDBA",
     )
 
+    assert provider.mapped_scope_only is True
+
     tables = provider.list_tables("WIN60_QA_991827")
     columns = provider.list_columns(
         "WIN60_QA_991827", "INPATIENT_CONSULT_APPLY"

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from app.indicator_details.lineage import build_detail_lineage
 from app.indicator_details.models import RunContext
 from app.indicator_details.sql_builder import build_detail_query
@@ -144,3 +146,24 @@ def test_sqlserver_detail_lineage_lists_both_source_tables() -> None:
         "WINDBA.INPATIENT_ENCOUNTER.ADMITTED_AT",
         "WINDBA.INPAT_TRANSFER.INPAT_TRANSFER_AT",
     ]
+
+
+def test_company_numeric_identifiers_use_code_field_contracts() -> None:
+    contract = yaml.safe_load(
+        Path(
+            "core-rules-wiki/sql-specs/"
+            "MQSI2025_001_患者入院48小时内转科比例/field_contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+
+    for field in (
+        "hospital_id",
+        "admission_id",
+        "transfer_id",
+        "transfer_type",
+        "from_dept_id",
+        "from_ward_id",
+        "to_dept_id",
+        "to_ward_id",
+    ):
+        assert contract["business_fields"][field]["type"] == "code"

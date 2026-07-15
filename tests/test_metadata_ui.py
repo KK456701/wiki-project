@@ -34,6 +34,7 @@ class MetadataUiTest(unittest.TestCase):
             "function loadMetadataOverview",
             "function loadMetadataSources",
             "function syncMetadataStructure",
+            "function readMetadataResponse",
             "function renderMetadataOverview",
             "function renderMetadataChanges",
             "function renderAffectedRules",

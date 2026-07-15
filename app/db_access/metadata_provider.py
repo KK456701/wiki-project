@@ -129,6 +129,7 @@ class DBHubMetadataProvider:
         self._execute_sql = execute_sql
         self.dialect = str(dialect or "mysql").lower()
         self.schema_name = str(schema_name or "")
+        self.mapped_scope_only = self.dialect == "sqlserver"
 
     @staticmethod
     def _literal(value: str) -> str:

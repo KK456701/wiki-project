@@ -45,6 +45,16 @@ function setMetadataNotice(message, state) {
   metadataNotice.className = "metadata-notice" + (state ? " " + state : "");
 }
 
+async function readMetadataResponse(response) {
+  var text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return {detail: text.trim() || "服务返回了无法识别的错误"};
+  }
+}
+
 function metadataDateText(value) {
   if (!value) return "尚未同步";
   var date = new Date(value.replace(" ", "T"));
@@ -196,7 +206,7 @@ async function loadMetadataOverview() {
       "/api/metadata/overview?hospital_id=" + encodeURIComponent(hospitalId)
       + "&db_name=" + encodeURIComponent(dbName)
     );
-    var data = await response.json();
+    var data = await readMetadataResponse(response);
     if (!response.ok) throw new Error(data.detail || "数据库结构状态读取失败");
     renderMetadataOverview(data);
     return data;
@@ -213,7 +223,7 @@ async function loadMetadataSources() {
   metadataConnectionSummary.textContent = "正在检查数据源连接...";
   try {
     var response = await fetch("/api/mcp/dbhub/sources");
-    var data = await response.json();
+    var data = await readMetadataResponse(response);
     if (!response.ok) throw new Error(data.detail || "数据源连接检查失败");
     var normalized = (data.sources || []).map(normalizeMetadataSource);
     metadataState.sources = normalized;
@@ -252,12 +262,13 @@ async function syncMetadataStructure() {
         source: "dbhub",
       }),
     });
-    var data = await response.json();
+    var data = await readMetadataResponse(response);
     if (!response.ok) throw new Error(data.detail || "数据库结构同步失败");
     await loadMetadataOverview();
     setMetadataNotice(
-      "数据库结构同步完成：" + data.table_count + " 张表、" + data.column_count
-      + " 个字段，发现 " + (data.changes || []).length + " 项变化。",
+      "数据库结构同步完成：" + data.table_count + " 个数据库对象、"
+      + data.column_count + " 个指标依赖字段，发现 "
+      + (data.changes || []).length + " 项变化。",
       "success"
     );
   } catch (error) {
