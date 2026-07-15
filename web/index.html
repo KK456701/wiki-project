@@ -209,6 +209,13 @@ body::before {
 .message-details > summary::marker { color: var(--teal); }
 .message-details-body { padding: 0 14px 14px; }
 .message-details-body > :first-child { margin-top: 2px; }
+.message-sql-tabs { margin-top: 14px; border: 1px solid var(--line); background: #fff; }
+.message-sql-tab-list { display: flex; min-height: 44px; overflow-x: auto; border-bottom: 1px solid var(--line); background: #f3f8f7; }
+.message-sql-tab-button { flex: 1; min-width: 160px; padding: 10px 16px; border: 0; border-right: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-weight: 700; cursor: pointer; }
+.message-sql-tab-button.is-active { background: #fff; color: var(--teal-deep); box-shadow: inset 0 -3px 0 var(--teal); }
+.message-sql-tab-button:focus-visible { outline: 2px solid var(--teal); outline-offset: -3px; }
+.message-sql-tab-panel { padding: 12px; }
+.message-sql-tab-panel .message-code { margin: 0; max-height: 480px; overflow: auto; }
 .message-meta {
   margin-bottom: 8px;
   font: 650 12px/1.2 var(--mono);

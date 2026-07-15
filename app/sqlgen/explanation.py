@@ -7,6 +7,8 @@ import re
 from datetime import datetime
 from typing import Any, Iterable
 
+from app.sqlgen.sql_export import render_sqlserver_navicat_script
+
 
 PARAMETER_LABELS = {
     "arrive_minutes_threshold": "到位时限",
@@ -66,7 +68,9 @@ def format_generation_explanation(
                 _parameter_table(
                     result.get("params") or {}, hospital_id, stat_start, stat_end
                 ),
-                f"```sql\n{result.get('sql_text') or ''}\n```",
+                _sql_versions_section(
+                    result, lineage, hospital_id, stat_start, stat_end
+                ),
             ]
         ),
     ]
@@ -102,7 +106,9 @@ def format_trial_explanation(
                 ),
                 _caliber_target_section(effective_rule, lineage),
                 _run_metadata_table(trial, hospital_id, stat_start, stat_end),
-                f"```sql\n{result.get('sql_text') or ''}\n```",
+                _sql_versions_section(
+                    result, lineage, hospital_id, stat_start, stat_end
+                ),
             ]
         ),
     ]
@@ -112,6 +118,52 @@ def format_trial_explanation(
 def _details_section(sections: Iterable[str]) -> str:
     body = "\n\n".join(section for section in sections if section)
     return f"{DETAILS_START}\n{body}\n{DETAILS_END}"
+
+
+def _sql_versions_section(
+    result: dict[str, Any],
+    lineage: dict[str, Any],
+    hospital_id: str,
+    stat_start: str,
+    stat_end: str,
+) -> str:
+    sql_text = str(result.get("sql_text") or "")
+    if str(result.get("dialect") or "").lower() not in {
+        "sqlserver",
+        "mssql",
+    }:
+        return f"```sql\n{sql_text}\n```"
+
+    bound_params = {
+        "hospital_id": hospital_id,
+        "start_time": stat_start,
+        "end_time": stat_end,
+        **dict(result.get("params") or {}),
+    }
+    database = str(
+        lineage.get("db_name")
+        or (result.get("field_mapping") or {}).get("db_name")
+        or ""
+    )
+    try:
+        navicat_sql = render_sqlserver_navicat_script(
+            sql_text,
+            bound_params,
+            database=database or None,
+        )
+    except ValueError as exc:
+        navicat_sql = f"-- 暂不能生成 Navicat 执行版本：{exc}"
+
+    return "\n".join(
+        [
+            ":::sqltabs",
+            "@@tab 系统参数化 SQL",
+            f"```sql\n{sql_text}\n```",
+            "@@tab Navicat 可执行 SQL",
+            f"```sql\n{navicat_sql}\n```",
+            ":::endsqltabs",
+        ]
+    )
 
 
 def _execution_context_notice(result: dict[str, Any]) -> str:

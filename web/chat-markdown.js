@@ -74,12 +74,54 @@
     return {html: html, nextIndex: index};
   }
 
+  function renderSqlTabs(lines, startIndex) {
+    var tabs = [];
+    var current = null;
+    var index = startIndex + 1;
+    while (index < lines.length && lines[index].trim() !== ":::endsqltabs") {
+      var marker = lines[index].match(/^@@tab\s+(.+)\s*$/);
+      if (marker) {
+        if (current) tabs.push(current);
+        current = {label: marker[1], lines: []};
+      } else if (current) {
+        current.lines.push(lines[index]);
+      }
+      index += 1;
+    }
+    if (current) tabs.push(current);
+    if (index < lines.length) index += 1;
+
+    var html = '<div class="message-sql-tabs" data-sql-tabs>';
+    html += '<div class="message-sql-tab-list" role="tablist" aria-label="SQL 版本">';
+    tabs.forEach(function (tab, tabIndex) {
+      html += '<button type="button" class="message-sql-tab-button' +
+        (tabIndex === 0 ? " is-active" : "") + '" role="tab" data-sql-tab-index="' +
+        tabIndex + '" aria-selected="' + (tabIndex === 0 ? "true" : "false") +
+        '" tabindex="' + (tabIndex === 0 ? "0" : "-1") + '">' +
+        renderInline(tab.label) + '</button>';
+    });
+    html += '</div>';
+    tabs.forEach(function (tab, tabIndex) {
+      html += '<div class="message-sql-tab-panel" role="tabpanel" data-sql-tab-panel="' +
+        tabIndex + '"' + (tabIndex === 0 ? "" : " hidden") + '>' +
+        renderAssistantMarkdown(tab.lines.join("\n")) + '</div>';
+    });
+    html += '</div>';
+    return {html: html, nextIndex: index};
+  }
+
   function renderAssistantMarkdown(text) {
     var lines = String(text == null ? "" : text).replace(/\r\n?/g, "\n").split("\n");
     var output = [];
     var index = 0;
     while (index < lines.length) {
       var line = lines[index];
+      if (line.trim() === ":::sqltabs") {
+        var sqlTabs = renderSqlTabs(lines, index);
+        output.push(sqlTabs.html);
+        index = sqlTabs.nextIndex;
+        continue;
+      }
       var details = line.match(/^:::details(?:\s+(.+))?\s*$/);
       if (details) {
         var label = details[1] || "查看技术详情";
@@ -137,6 +179,25 @@
   }
 
   root.renderAssistantMarkdown = renderAssistantMarkdown;
+  if (root.document && !root.__messageSqlTabsBound) {
+    root.__messageSqlTabsBound = true;
+    root.document.addEventListener("click", function (event) {
+      var button = event.target.closest && event.target.closest(".message-sql-tab-button");
+      if (!button) return;
+      var container = button.closest("[data-sql-tabs]");
+      if (!container) return;
+      var selectedIndex = button.getAttribute("data-sql-tab-index");
+      container.querySelectorAll(".message-sql-tab-button").forEach(function (item) {
+        var selected = item.getAttribute("data-sql-tab-index") === selectedIndex;
+        item.classList.toggle("is-active", selected);
+        item.setAttribute("aria-selected", selected ? "true" : "false");
+        item.setAttribute("tabindex", selected ? "0" : "-1");
+      });
+      container.querySelectorAll(".message-sql-tab-panel").forEach(function (panel) {
+        panel.hidden = panel.getAttribute("data-sql-tab-panel") !== selectedIndex;
+      });
+    });
+  }
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {renderAssistantMarkdown: renderAssistantMarkdown};
   }

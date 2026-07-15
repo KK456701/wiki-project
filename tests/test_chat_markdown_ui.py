@@ -109,6 +109,39 @@ process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
         self.assertEqual(result.stdout.count("indicator-detail-trigger"), 1)
         self.assertNotIn("<script>", result.stdout)
 
+    def test_renderer_builds_safe_sql_tabs(self) -> None:
+        markdown = (
+            ":::sqltabs\n"
+            "@@tab 系统参数化 SQL\n"
+            "```sql\nSELECT :hospital_soid\n```\n"
+            "@@tab Navicat 可执行 SQL\n"
+            "```sql\nDECLARE @hospital_soid BIGINT = 991827;\nSELECT @hospital_soid\n```\n"
+            ":::endsqltabs"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown, ensure_ascii=False)}));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('class="message-sql-tabs"', result.stdout)
+        self.assertIn('role="tablist"', result.stdout)
+        self.assertIn('data-sql-tab-index="0"', result.stdout)
+        self.assertIn('data-sql-tab-index="1"', result.stdout)
+        self.assertIn('系统参数化 SQL', result.stdout)
+        self.assertIn('Navicat 可执行 SQL', result.stdout)
+        self.assertIn('SELECT :hospital_soid', result.stdout)
+        self.assertIn('DECLARE @hospital_soid BIGINT = 991827;', result.stdout)
+        self.assertIn('hidden', result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
