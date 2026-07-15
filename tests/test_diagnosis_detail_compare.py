@@ -49,6 +49,27 @@ def test_builds_readonly_detail_query_from_supported_cte_aggregate():
     assert "FROM PatientResult" in detail_sql
 
 
+def test_builds_detail_query_when_numerator_flag_uses_chinese_alias():
+    sql = USER_SQL.replace(
+        "TRANSFER_WITHIN_48H",
+        "是否48小时内转科",
+    ).replace(
+        "SUM(是否48小时内转科)",
+        "SUM(CAST(是否48小时内转科 AS bigint))",
+    )
+    prepared = prepare_pasted_sql(
+        sql,
+        allowed_database="WIN60_QA_991827",
+        allowed_schema="WINDBA",
+    )
+
+    detail_sql = build_user_detail_query(prepared.query_sql, "MQSI2025_001")
+
+    assert "PatientResult.[是否48小时内转科] AS [user_meets_numerator]" in detail_sql
+    assert "SUM(CAST(是否48小时内转科 AS bigint))" not in detail_sql
+    assert "FROM PatientResult" in detail_sql
+
+
 def test_rejects_aggregate_without_supported_record_contract():
     sql = "SELECT COUNT_BIG(*) AS denominator_count FROM WINDBA.INPATIENT_ENCOUNTER"
 

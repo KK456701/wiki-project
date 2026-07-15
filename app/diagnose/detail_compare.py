@@ -97,6 +97,35 @@ def _final_top_level_select(sql: str) -> int:
     return positions[-1]
 
 
+def _numerator_flag_identifier(prefix: str, aggregate: str) -> str:
+    if re.search(r"(?i)\bTRANSFER_WITHIN_48H\b", prefix):
+        return "TRANSFER_WITHIN_48H"
+    match = re.search(
+        r"(?is)\bSUM\s*\(\s*(?:CAST\s*\(\s*)?"
+        r"(?P<identifier>\[[^\]]+\]|[A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]*)",
+        aggregate,
+    )
+    if not match:
+        raise ValueError("用户 SQL 没有保留分子判定结果，无法逐条对账。")
+    identifier = match.group("identifier").strip("[]")
+    alias_pattern = (
+        r"(?is)\bAS\s+(?:\["
+        + re.escape(identifier)
+        + r"\]|"
+        + re.escape(identifier)
+        + r")(?=\s|,|\)|$)"
+    )
+    if not re.search(alias_pattern, prefix):
+        raise ValueError("用户 SQL 没有保留分子判定结果，无法逐条对账。")
+    return identifier
+
+
+def _qualified_identifier(source: str, identifier: str) -> str:
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier):
+        return f"{source}.{identifier}"
+    return f"{source}.[{identifier}]"
+
+
 def build_user_detail_query(query_sql: str, rule_id: str) -> str:
     """将受支持的聚合 SQL 改写为业务主键与分子判定明细。"""
 
@@ -107,8 +136,7 @@ def build_user_detail_query(query_sql: str, rule_id: str) -> str:
     aggregate = query_sql[select_start:]
     if not re.search(r"(?i)\bENCOUNTER_ID\b", prefix):
         raise ValueError("用户 SQL 没有保留入院流水号业务主键，无法逐条对账。")
-    if not re.search(r"(?i)\bTRANSFER_WITHIN_48H\b", prefix):
-        raise ValueError("用户 SQL 没有保留分子判定结果，无法逐条对账。")
+    numerator_flag = _numerator_flag_identifier(prefix, aggregate)
     source_match = re.search(
         r"(?is)\bFROM\s+(\[[^\]]+\]|[A-Za-z_][A-Za-z0-9_$#]*)\s*;?\s*$",
         aggregate,
@@ -122,7 +150,8 @@ def build_user_detail_query(query_sql: str, rule_id: str) -> str:
         f"{prefix}\n"
         "SELECT\n"
         f"  {source}.ENCOUNTER_ID AS [record_key],\n"
-        f"  {source}.TRANSFER_WITHIN_48H AS [user_meets_numerator]\n"
+        f"  {_qualified_identifier(source, numerator_flag)} "
+        "AS [user_meets_numerator]\n"
         f"FROM {source}"
     )
     assert_readonly_query(detail_sql)
