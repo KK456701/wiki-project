@@ -209,3 +209,10 @@ def test_transfer_ratio_pasted_sql_is_diagnosed_end_to_end_without_model():
     assert "SELECT " not in answer
     assert ":::details 查看口径来源与技术依据（供信息科和实施人员）" in answer
     assert "<details>" not in answer
+
+    diagnosis["detail_comparison"] = {
+        "status": "ready",
+        "comparison_id": "CMP_abc123",
+    }
+    answer_with_detail = DiagnosisNarrator(None).compose(diagnosis)
+    assert "{{diagnosis_detail:CMP_abc123}}" in answer_with_detail

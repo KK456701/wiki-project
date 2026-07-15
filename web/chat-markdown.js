@@ -23,6 +23,14 @@
             runId + '" data-detail-group="' + group + '" aria-label="' + labels[group] +
             '">查看详情</button>';
         }
+      )
+      .replace(
+        /\{\{diagnosis_detail:(CMP_[A-Za-z0-9_]+)\}\}/g,
+        function (_, comparisonId) {
+          return '<button type="button" class="diagnosis-detail-trigger" data-comparison-id="' +
+            comparisonId + '" aria-label="查看用户 SQL 与当前生效 SQL 的记录差异">' +
+            '查看差异明细</button>';
+        }
       );
   }
 

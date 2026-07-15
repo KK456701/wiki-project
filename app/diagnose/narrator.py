@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -191,11 +192,25 @@ class DiagnosisNarrator:
     def compose(self, diagnosis: dict[str, Any]) -> str:
         fallback = self._fallback(diagnosis)
         if self.llm_client is None:
-            return fallback
+            return self._append_detail_marker(fallback, diagnosis)
         try:
             template = _PROMPT_PATH.read_text(encoding="utf-8")
             facts = json.dumps(self._safe_facts(diagnosis), ensure_ascii=False, indent=2)
             answer = str(self.llm_client.generate(template.replace("{{facts}}", facts))).strip()
         except Exception:
-            return fallback
-        return answer if self._passes_guard(answer, diagnosis) else fallback
+            return self._append_detail_marker(fallback, diagnosis)
+        composed = answer if self._passes_guard(answer, diagnosis) else fallback
+        return self._append_detail_marker(composed, diagnosis)
+
+    @staticmethod
+    def _append_detail_marker(answer: str, diagnosis: dict[str, Any]) -> str:
+        detail = dict(diagnosis.get("detail_comparison") or {})
+        comparison_id = str(detail.get("comparison_id") or "")
+        if detail.get("status") != "ready" or not re.fullmatch(
+            r"CMP_[A-Za-z0-9_]+", comparison_id
+        ):
+            return answer
+        marker = "{{diagnosis_detail:" + comparison_id + "}}"
+        if marker in answer:
+            return answer
+        return answer.rstrip() + "\n\n" + marker

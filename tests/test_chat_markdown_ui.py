@@ -109,6 +109,32 @@ process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
         self.assertEqual(result.stdout.count("indicator-detail-trigger"), 1)
         self.assertNotIn("<script>", result.stdout)
 
+    def test_renderer_only_builds_strict_diagnosis_comparison_buttons(self) -> None:
+        markdown = (
+            "{{diagnosis_detail:CMP_a1B2_30}}\n\n"
+            "{{diagnosis_detail:<script>}}\n\n"
+            "{{diagnosis_detail:RUN_001}}"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('class="diagnosis-detail-trigger"', result.stdout)
+        self.assertIn('data-comparison-id="CMP_a1B2_30"', result.stdout)
+        self.assertIn('>查看差异明细</button>', result.stdout)
+        self.assertEqual(result.stdout.count("diagnosis-detail-trigger"), 1)
+        self.assertNotIn("<script>", result.stdout)
+
     def test_renderer_builds_safe_sql_tabs(self) -> None:
         markdown = (
             ":::sqltabs\n"
