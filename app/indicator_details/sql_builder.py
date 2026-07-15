@@ -8,6 +8,10 @@ from app.rules.calculation import (
     ConditionDefinition,
     parse_calculation_definition,
 )
+from app.sqlgen.context_overrides import (
+    apply_execution_field_roles,
+    mapped_profile_column,
+)
 
 from .models import DetailColumn, DetailQuery, RunContext
 
@@ -329,11 +333,29 @@ def _build_inpatient_transfer_sqlserver_query(
     missing = sorted(required_params - set(context.params))
     if missing:
         raise DetailQueryError("入院转科明细缺少参数：" + "、".join(missing))
+    effective_mapping = apply_execution_field_roles(
+        context.field_mapping, context.execution_context
+    )
+    admit_time_column = mapped_profile_column(
+        effective_mapping,
+        "admit_time",
+        expected_table="INPATIENT_ENCOUNTER",
+        alias="encounter",
+    )
+    period_time_column = mapped_profile_column(
+        effective_mapping,
+        "period_time",
+        expected_table="INPATIENT_ENCOUNTER",
+        alias="encounter",
+    )
     definition = parse_calculation_definition(context.calculation_definition)
     columns = [
         DetailColumn(
             field=item.field,
-            label=item.label,
+            label=str(
+                (effective_mapping.get("field_labels") or {}).get(item.field)
+                or item.label
+            ),
             sensitivity=item.sensitivity,
         )
         for item in definition.detail_fields
@@ -380,14 +402,14 @@ def _build_inpatient_transfer_sqlserver_query(
     sql = (
         "WITH eligible_encounter AS (\n"
         "  SELECT encounter.ENCOUNTER_ID AS admission_id,\n"
-        "         encounter.ADMITTED_AT AS admit_time\n"
+        f"         {admit_time_column} AS admit_time\n"
         "  FROM WINDBA.INPATIENT_ENCOUNTER AS encounter\n"
         "  WHERE encounter.HOSPITAL_SOID = :hospital_soid\n"
         "    AND encounter.IS_DEL = 0\n"
         "    AND encounter.INPAT_ENC_BIZ_TYPE_CODE "
         "<> :excluded_inpatient_business_code\n"
-        "    AND encounter.ADMITTED_AT >= :start_time\n"
-        "    AND encounter.ADMITTED_AT < :end_time\n"
+        f"    AND {period_time_column} >= :start_time\n"
+        f"    AND {period_time_column} < :end_time\n"
         "),\n"
         "transfer_candidate AS (\n"
         "  SELECT transfer.INPAT_TRANSFER_ID AS transfer_id,\n"

@@ -38,6 +38,7 @@ def format_generation_explanation(
         _doctor_caliber_section(
             effective_rule, lineage, hospital_id, stat_start, stat_end
         ),
+        _execution_context_notice(result),
         _business_calculation_section(lineage, result),
         "如需验证本期结果，请输入「试运行」。",
         _details_section(
@@ -89,6 +90,7 @@ def format_trial_explanation(
         _doctor_caliber_section(
             effective_rule, lineage, hospital_id, stat_start, stat_end
         ),
+        _execution_context_notice(result),
         _business_calculation_section(lineage, result),
         _details_section(
             [
@@ -110,6 +112,51 @@ def format_trial_explanation(
 def _details_section(sections: Iterable[str]) -> str:
     body = "\n\n".join(section for section in sections if section)
     return f"{DETAILS_START}\n{body}\n{DETAILS_END}"
+
+
+def _execution_context_notice(result: dict[str, Any]) -> str:
+    context = result.get("execution_context") or {}
+    overrides = context.get("overrides") or {}
+    resolved = context.get("resolved_fields") or {}
+    ward_roles = [
+        key
+        for key in ("period_time_field", "elapsed_time_start")
+        if overrides.get(key) == "ward_entry_time"
+    ]
+    if not ward_roles:
+        return ""
+    field = next(
+        (str(resolved.get(key) or "") for key in ward_roles if resolved.get(key)),
+        "",
+    )
+    role_text = (
+        "统计范围和48小时计算起点"
+        if len(ward_roles) == 2
+        else (
+            "统计范围"
+            if ward_roles[0] == "period_time_field"
+            else "48小时计算起点"
+        )
+    )
+    location = f"（医院字段：`{field}`）" if field else ""
+    trial = result.get("trial_run") or {}
+    source_count = _optional_int(trial.get("ward_entry_source_count"))
+    missing_count = _optional_int(trial.get("ward_entry_missing_count"))
+    completeness = trial.get("ward_entry_completeness_percent")
+    quality_text = ""
+    if source_count is not None and missing_count is not None:
+        quality_text = (
+            f"本次按办理住院日期核对同一时间范围内的{source_count}条住院记录，"
+            f"首次入区时间缺失{missing_count}条，完整率为"
+            f"{_display_value(completeness)}%。"
+        )
+    return (
+        "## 本次临时口径\n\n"
+        f"{role_text}采用**首次入区时间**{location}。"
+        f"{quality_text}"
+        "缺失该时间的记录不会自动改用办理住院时间，"
+        "以免在同一次统计中混用两种口径；请同时核对数据完整性。"
+    )
 
 
 def _markdown_table(headers: Iterable[Any], rows: Iterable[Iterable[Any]]) -> str:

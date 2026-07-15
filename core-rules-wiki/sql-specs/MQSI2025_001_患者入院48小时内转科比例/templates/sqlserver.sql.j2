@@ -1,14 +1,30 @@
 WITH eligible_encounter AS (
   SELECT
     encounter.ENCOUNTER_ID AS admission_id,
-    encounter.ADMITTED_AT AS admit_time
+    encounter.{{ fields.admit_time.split('.')[-1] }} AS admit_time
   FROM WINDBA.INPATIENT_ENCOUNTER AS encounter
   WHERE encounter.HOSPITAL_SOID = :hospital_soid
     AND encounter.IS_DEL = 0
     AND encounter.INPAT_ENC_BIZ_TYPE_CODE <> :excluded_inpatient_business_code
-    AND encounter.ADMITTED_AT >= :start_time
-    AND encounter.ADMITTED_AT < :end_time
+    AND encounter.{{ fields.period_time.split('.')[-1] }} >= :start_time
+    AND encounter.{{ fields.period_time.split('.')[-1] }} < :end_time
 ),
+{% if fields.get('ward_entry_time') %}
+ward_entry_quality AS (
+  SELECT
+    COUNT_BIG(*) AS source_count,
+    COALESCE(SUM(CASE
+      WHEN encounter.{{ fields.ward_entry_time.split('.')[-1] }} IS NULL
+      THEN 1 ELSE 0
+    END), 0) AS missing_count
+  FROM WINDBA.INPATIENT_ENCOUNTER AS encounter
+  WHERE encounter.HOSPITAL_SOID = :hospital_soid
+    AND encounter.IS_DEL = 0
+    AND encounter.INPAT_ENC_BIZ_TYPE_CODE <> :excluded_inpatient_business_code
+    AND encounter.{{ fields.get('baseline_admit_time', fields.admit_time).split('.')[-1] }} >= :start_time
+    AND encounter.{{ fields.get('baseline_admit_time', fields.admit_time).split('.')[-1] }} < :end_time
+),
+{% endif %}
 transfer_candidate AS (
   SELECT
     transfer.INPAT_TRANSFER_ID AS transfer_id,
@@ -98,5 +114,8 @@ SELECT
     THEN 1 ELSE 0
   END), 0) AS numerator_count,
   COUNT_BIG(*) AS denominator_count,
-  COUNT_BIG(*) AS sample_count
+  COUNT_BIG(*) AS sample_count{% if fields.get('ward_entry_time') %},
+  MAX(ward_quality.source_count) AS ward_entry_source_count,
+  MAX(ward_quality.missing_count) AS ward_entry_missing_count{% endif %}
 FROM base
+{% if fields.get('ward_entry_time') %}CROSS JOIN ward_entry_quality AS ward_quality{% endif %}

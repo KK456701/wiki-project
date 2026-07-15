@@ -16,6 +16,7 @@ from app.sqlgen.spec_loader import (
 from app.sqlgen.template_renderer import render_sql
 from app.sqlgen.validator import validate_select_sql
 from app.sqlgen.runner import run_sql_trial
+from app.sqlgen.context_overrides import apply_execution_field_roles
 from app.indicator_details.models import RunContext
 from app.rules.calculation import parse_calculation_definition
 from app.rules.lineage import build_indicator_lineage
@@ -89,6 +90,7 @@ class SQLGenerationAgent:
             mapping = self.rule_repository.get_field_mapping(rule_id, hospital_id)
         else:
             mapping = load_hospital_mapping(self.kb_root, hospital_id, rule_id)
+        mapping = apply_execution_field_roles(mapping, execution_context)
 
         if self.rule_repository is not None or effective_rule.get("standard_sql"):
             spec = None

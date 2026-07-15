@@ -350,6 +350,11 @@ _WIN60_TRANSFER_FIELDS: dict[str, tuple[str, str, str]] = {
     "hospital_id": ("INPATIENT_ENCOUNTER", "HOSPITAL_SOID", "numeric"),
     "admission_id": ("INPATIENT_ENCOUNTER", "ENCOUNTER_ID", "numeric"),
     "admit_time": ("INPATIENT_ENCOUNTER", "ADMITTED_AT", "datetime"),
+    "ward_entry_time": (
+        "INPATIENT_ENCOUNTER",
+        "FIRST_ADMITTED_TO_WARD_AT",
+        "datetime",
+    ),
     "transfer_id": ("INPAT_TRANSFER", "INPAT_TRANSFER_ID", "numeric"),
     "transfer_time": ("INPAT_TRANSFER", "INPAT_TRANSFER_AT", "datetime"),
     "transfer_type": (

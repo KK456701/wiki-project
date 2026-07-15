@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 
+from app.sqlgen.context_overrides import apply_execution_field_roles
+
 from .models import DetailColumn, DetailFieldLineage, RunContext
 
 
@@ -33,13 +35,16 @@ def build_detail_lineage(
     context: RunContext,
     columns: list[DetailColumn],
 ) -> tuple[str, list[str], list[DetailFieldLineage]]:
-    mappings = dict(context.field_mapping.get("fields") or {})
+    effective_mapping = apply_execution_field_roles(
+        context.field_mapping, context.execution_context
+    )
+    mappings = dict(effective_mapping.get("fields") or {})
     derived = dict(context.calculation_definition.get("derived_fields") or {})
     labels = {column.field: column.label for column in columns}
     database = str(
-        context.field_mapping.get("db_name") or context.db_source or ""
+        effective_mapping.get("db_name") or context.db_source or ""
     ).strip()
-    schema = str(context.field_mapping.get("schema") or "").strip()
+    schema = str(effective_mapping.get("schema") or "").strip()
     main_table = f"{schema}.{context.main_table}" if schema else context.main_table
     tables = [main_table] if main_table else []
     result: list[DetailFieldLineage] = []

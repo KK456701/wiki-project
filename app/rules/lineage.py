@@ -19,6 +19,7 @@ FIELD_LABELS = {
     "arrive_time": "急会诊到位时间",
     "admission_id": "入院流水号",
     "admit_time": "入院时间",
+    "period_time": "入院时间",
     "transfer_time": "转科时间",
     "from_dept_id": "转出科室",
     "to_dept_id": "转入科室",
@@ -146,7 +147,7 @@ def _condition_row(
     effective_rule: dict[str, Any],
 ) -> dict[str, Any]:
     business_fields = _source_business_fields(condition.field, definition)
-    field_items = _field_items(business_fields, mapping)
+    field_items = _condition_field_items(condition, business_fields, mapping)
     parameter_names = _condition_parameter_names(condition, params)
     source = _condition_source(parameter_names, stage, effective_rule)
     return {
@@ -156,15 +157,21 @@ def _condition_row(
         "business_fields": business_fields,
         "physical_fields": [item["physical_field"] for item in field_items],
         "field_items": field_items,
-        "condition_text": _condition_text(condition, definition, params),
-        "derivation_text": _derivation_text(condition.field, definition),
+        "condition_text": _condition_text(
+            condition, definition, params, mapping
+        ),
+        "derivation_text": _derivation_text(
+            condition.field, definition, mapping
+        ),
         "source": source,
         "effect": _condition_effect(stage),
     }
 
 
 def _derivation_text(
-    field_name: str, definition: CalculationDefinition
+    field_name: str,
+    definition: CalculationDefinition,
+    mapping: dict[str, Any],
 ) -> str:
     derived = definition.derived_fields.get(field_name)
     if derived is None:
@@ -175,7 +182,8 @@ def _derivation_text(
     ):
         start_field, end_field = derived.source_fields
         return (
-            f"{_field_label(end_field)}减{_field_label(start_field)}，"
+            f"{_field_label(end_field, mapping)}减"
+            f"{_field_label(start_field, mapping)}，"
             "换算为分钟"
         )
     return ""
@@ -190,7 +198,7 @@ def _aggregate_row(
     business_fields = [aggregate.field] if aggregate.field else []
     field_items = _field_items(business_fields, mapping)
     if aggregate.method == "count_distinct" and aggregate.field:
-        condition_text = f"按{_field_label(aggregate.field)}去重计数"
+        condition_text = f"按{_field_label(aggregate.field, mapping)}去重计数"
     else:
         condition_text = "每条符合条件的业务记录计1次"
     return {
@@ -237,12 +245,41 @@ def _field_items(
     return [
         {
             "business_field": business_field,
-            "label": _field_label(business_field),
+            "label": _field_label(business_field, mapping),
             "physical_field": physical_field,
         }
         for business_field, physical_field in zip(
             business_fields, physical_fields, strict=True
         )
+    ]
+
+
+def _condition_field_items(
+    condition: ConditionDefinition,
+    business_fields: list[str],
+    mapping: dict[str, Any],
+) -> list[dict[str, str]]:
+    if condition.id != "period_scope":
+        return _field_items(business_fields, mapping)
+    fields = mapping.get("fields") or {}
+    period_field = str(fields.get("period_time") or "").strip()
+    if not period_field:
+        return _field_items(business_fields, mapping)
+    return [
+        {
+            "business_field": business_field,
+            "label": (
+                _field_label("period_time", mapping)
+                if business_field == condition.field
+                else _field_label(business_field, mapping)
+            ),
+            "physical_field": (
+                period_field
+                if business_field == condition.field
+                else str(fields.get(business_field) or f"未映射({business_field})")
+            ),
+        }
+        for business_field in business_fields
     ]
 
 
@@ -293,11 +330,15 @@ def _condition_text(
     condition: ConditionDefinition,
     definition: CalculationDefinition,
     params: dict[str, Any],
+    mapping: dict[str, Any],
 ) -> str:
     field_label = (
         definition.derived_fields[condition.field].name
         if condition.field in definition.derived_fields
-        else _field_label(condition.field)
+        else _field_label(
+            "period_time" if condition.id == "period_scope" else condition.field,
+            mapping,
+        )
     )
     if condition.operator == "is_not_null":
         return f"{field_label}不为空"
@@ -325,7 +366,10 @@ def _condition_text(
     return f"{field_label}按{condition.operator}判断"
 
 
-def _field_label(field_name: str) -> str:
+def _field_label(field_name: str, mapping: dict[str, Any] | None = None) -> str:
+    labels = (mapping or {}).get("field_labels") or {}
+    if isinstance(labels, dict) and labels.get(field_name):
+        return str(labels[field_name])
     return FIELD_LABELS.get(field_name, field_name)
 
 

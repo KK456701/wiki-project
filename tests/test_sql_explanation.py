@@ -323,6 +323,67 @@ class SqlExplanationTest(unittest.TestCase):
         self.assertNotIn("```sql", visible)
         self.assertIn(":::details 查看技术详情（供信息科和实施人员）", answer)
 
+    def test_ward_entry_override_warns_that_missing_values_are_not_fallbacked(self):
+        result = copy.deepcopy(GENERATION_RESULT)
+        result["execution_context"] = {
+            "overrides": {
+                "period_time_field": "ward_entry_time",
+                "elapsed_time_start": "ward_entry_time",
+            },
+            "resolved_fields": {
+                "period_time_field": (
+                    "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+                ),
+                "elapsed_time_start": (
+                    "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+                ),
+            },
+        }
+
+        answer = format_generation_explanation(
+            result=result,
+            effective_rule=HOSPITAL_RULE,
+            lineage=URGENT_LINEAGE,
+            hospital_id="hospital_001",
+            stat_start="2026-07-01 00:00:00",
+            stat_end="2026-08-01 00:00:00",
+        )
+
+        visible = _visible_part(answer)
+        self.assertIn("首次入区时间", visible)
+        self.assertIn("缺失该时间的记录不会自动改用办理住院时间", visible)
+
+    def test_ward_entry_trial_reports_missing_count_and_completeness(self):
+        result = _trial_result()
+        result["execution_context"] = {
+            "overrides": {
+                "period_time_field": "ward_entry_time",
+                "elapsed_time_start": "ward_entry_time",
+            },
+            "resolved_fields": {
+                "period_time_field": (
+                    "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+                ),
+                "elapsed_time_start": (
+                    "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+                ),
+            },
+        }
+        result["trial_run"].update(
+            {
+                "ward_entry_source_count": 190,
+                "ward_entry_missing_count": 65,
+                "ward_entry_completeness_percent": 65.79,
+            }
+        )
+
+        answer = self._trial(result)
+        visible = _visible_part(answer)
+
+        self.assertIn("190条", visible)
+        self.assertIn("缺失65条", visible)
+        self.assertIn("完整率为65.79%", visible)
+
     def test_trial_explains_eighty_percent_from_aggregates(self):
         answer = self._trial(_trial_result())
 

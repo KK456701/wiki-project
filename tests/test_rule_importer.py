@@ -70,6 +70,10 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
             "INPATIENT_ENCOUNTER.ADMITTED_AT",
         )
         self.assertEqual(
+            transfer_mapping["fields"]["ward_entry_time"],
+            "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+        )
+        self.assertEqual(
             transfer_mapping["fields"]["transfer_time"],
             "INPAT_TRANSFER.INPAT_TRANSFER_AT",
         )

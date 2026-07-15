@@ -62,7 +62,9 @@ def test_confirmed_ward_entry_uses_confirmed_hospital_field() -> None:
         field_mapping={
             "fields": {
                 "admit_time": "INPATIENT_ENCOUNTER.ADMITTED_AT",
-                "ward_entry_time": "INPATIENT_ENCOUNTER.ENTERED_WARD_AT",
+                "ward_entry_time": (
+                    "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+                ),
             }
         },
     )
@@ -70,11 +72,13 @@ def test_confirmed_ward_entry_uses_confirmed_hospital_field() -> None:
     override = result.context.working_caliber.get("elapsed_time_start")
     assert override is not None
     assert override.status == "ready"
-    assert override.hospital_field == "INPATIENT_ENCOUNTER.ENTERED_WARD_AT"
+    assert override.hospital_field == (
+        "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
+    )
     assert result.snapshot.executable is True
     assert result.snapshot.overrides["elapsed_time_start"] == "ward_entry_time"
     assert result.snapshot.resolved_fields["elapsed_time_start"] == (
-        "INPATIENT_ENCOUNTER.ENTERED_WARD_AT"
+        "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT"
     )
     assert result.snapshot.source_levels["elapsed_time_start"] == "当前会话临时调整"
 
@@ -87,7 +91,7 @@ def test_restore_hospital_caliber_clears_session_overrides() -> None:
         ContextOverride(
             key="elapsed_time_start",
             business_value="ward_entry_time",
-            hospital_field="INPATIENT_ENCOUNTER.ENTERED_WARD_AT",
+            hospital_field="INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
             status="ready",
         )
     )

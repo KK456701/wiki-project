@@ -266,6 +266,8 @@ class SqlGenerationSafetyTest(unittest.TestCase):
                         "numerator_count": 8,
                         "denominator_count": 10,
                         "sample_count": 10,
+                        "ward_entry_source_count": 190,
+                        "ward_entry_missing_count": 65,
                     }],
                     row_count=1,
                     source="hospital_demo_data",
@@ -292,6 +294,9 @@ class SqlGenerationSafetyTest(unittest.TestCase):
         self.assertEqual(result["source"], "hospital_demo_data")
         self.assertEqual(result["stat_start"], "2026-07-01 00:00:00")
         self.assertEqual(result["stat_end"], "2026-08-01 00:00:00")
+        self.assertEqual(result["ward_entry_source_count"], 190)
+        self.assertEqual(result["ward_entry_missing_count"], 65)
+        self.assertEqual(result["ward_entry_completeness_percent"], 65.79)
 
     def test_trial_run_persists_counts_and_non_patient_run_context(self) -> None:
         class FakeBusinessDB:
