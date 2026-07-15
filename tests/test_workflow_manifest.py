@@ -50,6 +50,22 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertEqual(node["title"], "合成本院生效口径")
         self.assertIn("不修改国标", node["description"])
 
+    def test_context_nodes_are_between_effective_rule_and_execution(self) -> None:
+        manifest = load_workflow_manifest("core_indicator_chat")
+        context_node = get_workflow_node("core_indicator_chat", "context_resolve")
+        apply_node = get_workflow_node(
+            "core_indicator_chat", "working_caliber_apply"
+        )
+        edges = {(item["from"], item["to"]) for item in manifest["edges"]}
+
+        self.assertEqual(context_node["title"], "解析本次会话要求")
+        self.assertIn("clarification", context_node["outputs"])
+        self.assertEqual(apply_node["title"], "应用本次临时口径")
+        self.assertIn("execution_context", apply_node["outputs"])
+        self.assertIn(("effective_rule_resolve", "context_resolve"), edges)
+        self.assertIn(("context_resolve", "working_caliber_apply"), edges)
+        self.assertIn(("working_caliber_apply", "field_mapping_precheck"), edges)
+
     def test_medical_term_normalization_runs_before_rule_search(self) -> None:
         manifest = load_workflow_manifest("core_indicator_chat")
         node = get_workflow_node("core_indicator_chat", "term_normalize")

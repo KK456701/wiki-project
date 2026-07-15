@@ -68,6 +68,17 @@ class TraceUiTest(unittest.TestCase):
         self.assertIn("traceNodeVisualStatus(node)", html)
         self.assertIn("status.textContent = traceNodeStatus(node)", html)
 
+    def test_context_nodes_explain_clarification_and_mapping_status(self) -> None:
+        html = WEB_INDEX.read_text(encoding="utf-8")
+
+        self.assertIn('node.node_name === "context_resolve"', html)
+        self.assertIn('node.node_name === "working_caliber_apply"', html)
+        self.assertIn('return "待确认"', html)
+        self.assertIn('return "待补字段"', html)
+        self.assertIn('return "已应用"', html)
+        self.assertIn("当前会话临时口径", html)
+        self.assertIn("执行前阻断原因", html)
+
 
 if __name__ == "__main__":
     unittest.main()

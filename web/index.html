@@ -1649,6 +1649,16 @@ function traceNodeStatus(node) {
     if (node.status === "warning") return "发现数据风险";
     return "通过";
   }
+  if (node.node_name === "context_resolve") {
+    if (output.resolution_status === "clarification_required") return "待确认";
+    return "已解析";
+  }
+  if (node.node_name === "working_caliber_apply") {
+    if (output.executable === false && (output.blockers || []).length) return "待补字段";
+    if (output.executable === false) return "待确认";
+    if (output.caliber_mode === "session_override") return "已应用";
+    return "本院口径";
+  }
   return traceStatusText(node.status);
 }
 
@@ -1709,6 +1719,17 @@ function traceBusinessSummary(node) {
     var version = output.hospital_version ? "v" + output.hospital_version : (output.national_version ? "国标 " + output.national_version : "");
     return [traceLevelText(output.effective_level), traceSourceText(output.rule_source), version].filter(Boolean).join(" · ");
   }
+  if (node.node_name === "context_resolve") {
+    if (output.resolution_status === "clarification_required") {
+      return "用户表达存在多种含义，等待确认后再继续";
+    }
+    if (output.resolution_status === "pending_mapping") return "已理解临时要求，但医院字段尚未映射";
+    return Number(output.override_count || 0) > 0 ? "已识别当前会话临时口径" : "本轮没有临时口径调整";
+  }
+  if (node.node_name === "working_caliber_apply") {
+    if (output.executable === false) return "执行已暂停，不会静默使用旧字段";
+    return output.caliber_mode === "session_override" ? "当前会话临时口径已应用" : "继续使用本院生效口径";
+  }
   if (node.node_name === "final_response") {
     return output.final_status === "success" || node.status === "success" ? "回答已生成" : "回答生成未完成";
   }
@@ -1738,6 +1759,18 @@ function traceBusinessFields(node) {
     { label: "国标版本", value: output.national_version },
     { label: "本院版本", value: output.hospital_version },
     { label: "差异字段", value: Array.isArray(output.overridden_fields) ? output.overridden_fields.join("、") : output.overridden_fields },
+  ];
+  if (node.node_name === "context_resolve") return [
+    { label: "解析结果", value: traceNodeStatus(node) },
+    { label: "状态版本", value: output.context_version },
+    { label: "临时调整数量", value: output.override_count },
+    { label: "需要确认", value: traceObject(output.clarification).question },
+  ];
+  if (node.node_name === "working_caliber_apply") return [
+    { label: "本次采用口径", value: output.caliber_mode === "session_override" ? "当前会话临时口径" : "本院生效口径" },
+    { label: "能否继续执行", value: output.executable === false ? "否" : "是" },
+    { label: "当前会话临时口径", value: (output.overrides || []).map(function(item) { return item.key + " = " + item.business_value; }).join("；") || "无" },
+    { label: "执行前阻断原因", value: (output.blockers || []).map(function(item) { return item.message; }).join("；") },
   ];
   if (node.node_name === "final_response") return [
     { label: "最终状态", value: output.final_status === "success" || node.status === "success" ? "已完成" : "未完成" },

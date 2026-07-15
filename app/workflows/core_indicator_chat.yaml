@@ -93,6 +93,38 @@ nodes:
       tool: RuleRepository.get_effective_rule
     failure_hint: 如果这里失败，优先检查 MySQL 国标、本院定制口径及生效时间；数据库异常时再检查 Wiki 兜底规则。
 
+  - id: context_resolve
+    agent_owner: human_interaction
+    title: 解析本次会话要求
+    type: context
+    description: 将“按入区时间”“恢复本院口径”等追问解析为结构化会话状态；含义不明确时先向用户确认，不猜测执行。
+    inputs: [query, structured_context, context_updates]
+    outputs: [resolution_status, context_version, clarification, override_count]
+    required: true
+    on_failure: stop
+    required_inputs: [query, structured_context]
+    required_outputs: [resolution_status, context_version]
+    config:
+      authority: 结构化会话状态优先于原始历史消息
+      ambiguity_policy: 先确认后执行
+    failure_hint: 如果这里失败，优先检查会话状态版本、最近用户原话和口径解析规则。
+
+  - id: working_caliber_apply
+    agent_owner: caliber_adaptation
+    title: 应用本次临时口径
+    type: caliber_context
+    description: 在不修改本院正式口径的前提下生成本次执行快照；缺少医院字段映射时阻断 SQL，不回退旧字段。
+    inputs: [rule_id, hospital_id, structured_context]
+    outputs: [execution_context, caliber_mode, overrides, executable, blockers]
+    required: true
+    on_failure: stop
+    required_inputs: [rule_id, structured_context]
+    required_outputs: [execution_context, caliber_mode, executable]
+    config:
+      scope: 当前会话
+      fallback_policy: 禁止静默回退旧字段
+    failure_hint: 如果这里显示待补字段，请先在指标设计稿确认本院入区时间等字段映射，再重新生成 SQL。
+
   - id: feedback_preview
     agent_owner: caliber_adaptation
     title: 生成口径反馈预览
@@ -289,6 +321,14 @@ edges:
   - from: rule_search
     to: effective_rule_resolve
   - from: effective_rule_resolve
+    to: context_resolve
+    condition: intent in [query, generate_sql, trial_run, diagnose]
+  - from: context_resolve
+    to: working_caliber_apply
+  - from: working_caliber_apply
+    to: final_response
+    condition: 等待用户确认或缺少字段映射
+  - from: effective_rule_resolve
     to: feedback_preview
     condition: intent == feedback
   - from: feedback_preview
@@ -304,7 +344,7 @@ edges:
     to: index_rebuild
   - from: index_rebuild
     to: final_response
-  - from: effective_rule_resolve
+  - from: working_caliber_apply
     to: field_mapping_precheck
     condition: intent in [generate_sql, trial_run]
   - from: field_mapping_precheck
@@ -314,7 +354,7 @@ edges:
   - from: sql_validate
     to: sql_trial_mcp
     condition: 用户确认试运行
-  - from: effective_rule_resolve
+  - from: working_caliber_apply
     to: diagnose_structure_mcp
     condition: intent == diagnose
   - from: diagnose_structure_mcp
@@ -325,7 +365,7 @@ edges:
     to: final_response
   - from: metadata_sync_mcp
     to: final_response
-  - from: effective_rule_resolve
+  - from: working_caliber_apply
     to: llm_answer
     condition: intent == query
   - from: llm_answer

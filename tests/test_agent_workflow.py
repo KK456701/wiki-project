@@ -527,12 +527,16 @@ class AgentWorkflowTest(unittest.TestCase):
 
             trace = TraceRecorder(engine).get_trace(result["trace_id"])
             by_name = {node["node_name"]: node for node in trace["nodes"]}
+            traced_memory = by_name["memory_load"]["output_data"]["memory_context"]
             self.assertEqual(by_name["intent_detect"]["node_title"], "识别用户意图")
             self.assertEqual(by_name["rule_search"]["node_title"], "检索指标规则")
             self.assertEqual(by_name["final_response"]["node_title"], "生成最终回答")
             self.assertIn("query", by_name["intent_detect"]["input_data"])
             self.assertEqual(by_name["rule_search"]["output_data"]["rule_id"], "R001")
             self.assertIn("answer_preview", by_name["final_response"]["output_data"])
+            self.assertNotIn("recent_history", traced_memory)
+            self.assertNotIn("structured_summary", traced_memory)
+            self.assertIn("prompt_context_stats", traced_memory)
 
     def test_query_trace_records_memory_and_effective_rule_nodes(self) -> None:
         with temp_kb_dir() as tmp:
@@ -960,6 +964,7 @@ class AgentWorkflowTest(unittest.TestCase):
             root = Path(tmp)
             make_minimal_kb(root, with_hospital=False)
             memory = ConversationMemory(root / "runtime" / "conversations")
+            engine = _trace_runtime_engine()
             first = run_chat(
                 "急会诊及时到位率怎么算？",
                 hospital_id="hospital_001",
@@ -975,7 +980,8 @@ class AgentWorkflowTest(unittest.TestCase):
                 memory=memory,
             )
 
-            with patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
                  patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
                 events = list(
                     run_chat_stream(
@@ -998,6 +1004,19 @@ class AgentWorkflowTest(unittest.TestCase):
         self.assertFalse(done["execution_context"]["executable"])
         self.assertIn("入区时间对应的医院字段", done["answer"])
         self.assertEqual(FakeSQLGenerationAgent.calls, [])
+        trace = TraceRecorder(engine).get_trace(done["trace_id"])
+        by_name = {node["node_name"]: node for node in trace["nodes"]}
+        self.assertEqual(
+            by_name["context_resolve"]["output_data"]["resolution_status"],
+            "pending_mapping",
+        )
+        apply_node = by_name["working_caliber_apply"]
+        self.assertEqual(apply_node["status"], "warning")
+        self.assertFalse(apply_node["output_data"]["executable"])
+        self.assertEqual(
+            apply_node["output_data"]["blockers"][0]["code"],
+            "CONTEXT_FIELD_MAPPING_REQUIRED",
+        )
 
 
 def _trace_runtime_engine():

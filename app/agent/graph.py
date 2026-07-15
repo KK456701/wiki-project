@@ -202,6 +202,24 @@ def _load_memory_context(
     return context
 
 
+def _trace_safe_memory_context(memory_context: dict[str, Any]) -> dict[str, Any]:
+    """保留会话定位信息，不在消息元数据和 Trace 中复制原始历史文本。"""
+    allowed = (
+        "rule_id",
+        "rule_name",
+        "stat_start_time",
+        "stat_end_time",
+        "stat_period_source",
+        "working_caliber",
+        "prompt_context_stats",
+    )
+    return {
+        key: memory_context[key]
+        for key in allowed
+        if key in memory_context
+    }
+
+
 def _load_structured_context(
     memory_store: ConversationMemory,
     session_id: str,
@@ -531,6 +549,112 @@ def _record_effective_rule_node(
         },
         config_data={"tool": "RuleRepository.get_effective_rule"},
         duration_ms=duration_ms,
+    )
+
+
+def _record_context_trace_nodes(
+    recorder: TraceRecorder | None,
+    trace_id: str,
+    query: str,
+    resolution: ContextResolution | None,
+    *,
+    duration_ms: int = 0,
+) -> None:
+    if resolution is None:
+        return
+    snapshot = resolution.snapshot
+    clarification = resolution.clarification
+    overrides = [
+        item.model_dump(mode="json")
+        for item in resolution.context.working_caliber.overrides
+    ]
+    blockers = [item.model_dump(mode="json") for item in snapshot.blockers]
+    if clarification is not None:
+        resolution_status = "clarification_required"
+        resolve_summary = clarification.question
+    elif blockers:
+        resolution_status = "pending_mapping"
+        resolve_summary = f"已解析 {len(overrides)} 项临时口径，等待字段映射"
+    elif overrides:
+        resolution_status = "ready"
+        resolve_summary = f"已解析 {len(overrides)} 项当前会话临时口径"
+    else:
+        resolution_status = "official_caliber"
+        resolve_summary = "未检测到临时调整"
+    _record_trace_node(
+        recorder,
+        trace_id,
+        "context_resolve",
+        "context",
+        "warning" if clarification is not None else "success",
+        input_summary=query,
+        output_summary=resolve_summary,
+        rule_id=snapshot.rule_id,
+        input_data={
+            "query": query,
+            "structured_context": {
+                "context_version": max(0, resolution.context.context_version - 1),
+                "active_rule": resolution.context.active_rule.model_dump(mode="json"),
+            },
+            "context_updates": overrides,
+        },
+        output_data={
+            "resolution_status": resolution_status,
+            "context_version": resolution.context.context_version,
+            "clarification": (
+                clarification.model_dump(mode="json")
+                if clarification is not None
+                else None
+            ),
+            "override_count": len(overrides),
+        },
+        config_data={
+            "authority": "结构化会话状态优先于原始历史消息",
+            "ambiguity_policy": "先确认后执行",
+        },
+        duration_ms=duration_ms,
+    )
+
+    caliber_mode = "session_override" if overrides else "hospital_effective"
+    if clarification is not None:
+        apply_summary = "等待用户确认后再应用临时口径"
+    elif blockers:
+        apply_summary = "临时口径已保存，需补齐医院字段映射后执行"
+    elif overrides:
+        apply_summary = f"已应用 {len(overrides)} 项当前会话临时口径"
+    else:
+        apply_summary = "使用本院生效口径"
+    _record_trace_node(
+        recorder,
+        trace_id,
+        "working_caliber_apply",
+        "caliber_context",
+        "success" if snapshot.executable else "warning",
+        input_summary=snapshot.rule_id,
+        output_summary=apply_summary,
+        rule_id=snapshot.rule_id,
+        input_data={
+            "rule_id": snapshot.rule_id,
+            "hospital_id": resolution.context.active_rule.hospital_id,
+            "structured_context": {
+                "context_version": resolution.context.context_version,
+                "working_caliber": resolution.context.working_caliber.model_dump(
+                    mode="json"
+                ),
+            },
+        },
+        output_data={
+            "execution_context": snapshot.model_dump(mode="json"),
+            "caliber_mode": caliber_mode,
+            "overrides": overrides,
+            "executable": snapshot.executable,
+            "blockers": blockers,
+        },
+        config_data={
+            "scope": "当前会话",
+            "fallback_policy": "禁止静默回退旧字段",
+        },
+        duration_ms=1,
     )
 
 
@@ -991,7 +1115,10 @@ def run_chat(
         input_summary=active_session_id,
         output_summary=str(memory_context.get("rule_id") or ""),
         input_data={"session_id": session_id, "active_session_id": active_session_id},
-        output_data={"active_session_id": active_session_id, "memory_context": memory_context},
+        output_data={
+            "active_session_id": active_session_id,
+            "memory_context": _trace_safe_memory_context(memory_context),
+        },
         config_data={"storage": "SQLite + JSONL"},
         duration_ms=memory_duration_ms,
     )
@@ -1006,7 +1133,10 @@ def run_chat(
         active_session_id,
         "user",
         query,
-        {"hospital_id": hospital_id, "memory_context": memory_context},
+        {
+            "hospital_id": hospital_id,
+            "memory_context": _trace_safe_memory_context(memory_context),
+        },
     )
     active_llm = llm_client if use_llm else None
     if use_llm and active_llm is None:
@@ -1027,8 +1157,10 @@ def run_chat(
             "errors": [str(exc)],
         }
     context_resolution: ContextResolution | None = None
+    context_duration_ms = 0
     if result.get("effective_rule") and result.get("intent") != "feedback":
         try:
+            context_started = time.perf_counter()
             context_resolution = _resolve_and_save_structured_context(
                 memory_store=memory_store,
                 session_id=active_session_id,
@@ -1040,6 +1172,7 @@ def run_chat(
                 memory_context=memory_context,
                 llm_updates=list(result.get("_context_updates") or []),
             )
+            context_duration_ms = _elapsed_ms(context_started)
             result["execution_context"] = context_resolution.snapshot.model_dump(
                 mode="json"
             )
@@ -1071,7 +1204,7 @@ def run_chat(
         output_summary=str(result.get("intent", "")),
         input_data={
             "query": query,
-            "session_memory": memory_context,
+            "session_memory": _trace_safe_memory_context(memory_context),
             "use_llm": use_llm,
         },
         output_data={
@@ -1131,6 +1264,13 @@ def run_chat(
         hospital_id,
         result.get("effective_rule") if isinstance(result.get("effective_rule"), dict) else None,
         duration_ms=_node_duration(result, "effective_rule_resolve"),
+    )
+    _record_context_trace_nodes(
+        trace_recorder,
+        trace_id,
+        query,
+        context_resolution,
+        duration_ms=context_duration_ms,
     )
     result.setdefault("generation_method", "tool")
     result.setdefault("workflow_engine", workflow_engine_name())
@@ -1234,7 +1374,10 @@ def run_chat_stream(
         input_summary=active_session_id,
         output_summary=str(memory_context.get("rule_id") or ""),
         input_data={"session_id": session_id, "active_session_id": active_session_id},
-        output_data={"active_session_id": active_session_id, "memory_context": memory_context},
+        output_data={
+            "active_session_id": active_session_id,
+            "memory_context": _trace_safe_memory_context(memory_context),
+        },
         config_data={"storage": "SQLite + JSONL"},
         duration_ms=memory_duration_ms,
     )
@@ -1248,7 +1391,10 @@ def run_chat_stream(
     }
     user_message_id = memory_store.append_message(
         active_session_id, "user", query,
-        {"hospital_id": hospital_id, "memory_context": memory_context},
+        {
+            "hospital_id": hospital_id,
+            "memory_context": _trace_safe_memory_context(memory_context),
+        },
     )
 
     active_llm = llm_client if use_llm else None
@@ -1294,7 +1440,7 @@ def run_chat_stream(
         output_summary=str(state.get("intent", "")),
         input_data={
             "query": query,
-            "session_memory": memory_context,
+            "session_memory": _trace_safe_memory_context(memory_context),
             "use_llm": use_llm,
         },
         output_data={
@@ -1492,6 +1638,7 @@ def run_chat_stream(
     execution_context: dict[str, Any] = {}
     if state["intent"] != "feedback":
         try:
+            context_started = time.perf_counter()
             context_resolution = _resolve_and_save_structured_context(
                 memory_store=memory_store,
                 session_id=active_session_id,
@@ -1504,6 +1651,13 @@ def run_chat_stream(
                 llm_updates=list(intent_data.context_updates),
             )
             execution_context = context_resolution.snapshot.model_dump(mode="json")
+            _record_context_trace_nodes(
+                trace_recorder,
+                trace_id,
+                query,
+                context_resolution,
+                duration_ms=_elapsed_ms(context_started),
+            )
         except (ContextStorageError, ContextVersionConflict) as exc:
             answer = f"本轮不能安全保存会话口径：{exc}"
             errors.append(str(exc))
