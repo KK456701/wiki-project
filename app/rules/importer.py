@@ -346,6 +346,125 @@ _WIN60_URGENT_FIELDS: dict[str, tuple[str, str, str]] = {
 }
 
 
+_WIN60_TRANSFER_FIELDS: dict[str, tuple[str, str, str]] = {
+    "hospital_id": ("INPATIENT_ENCOUNTER", "HOSPITAL_SOID", "numeric"),
+    "admission_id": ("INPATIENT_ENCOUNTER", "ENCOUNTER_ID", "numeric"),
+    "admit_time": ("INPATIENT_ENCOUNTER", "ADMITTED_AT", "datetime"),
+    "transfer_id": ("INPAT_TRANSFER", "INPAT_TRANSFER_ID", "numeric"),
+    "transfer_time": ("INPAT_TRANSFER", "INPAT_TRANSFER_AT", "datetime"),
+    "transfer_type": (
+        "INPAT_TRANSFER",
+        "INPAT_TRANSFER_TYPE_CODE",
+        "numeric",
+    ),
+    "from_dept_id": ("INPAT_TRANSFER", "ORIGIN_DEPT_ID", "numeric"),
+    "from_ward_id": ("INPAT_TRANSFER", "ORIGIN_WARD_ID", "numeric"),
+    "to_dept_id": ("INPAT_TRANSFER", "DESTINATION_DEPT_ID", "numeric"),
+    "to_ward_id": ("INPAT_TRANSFER", "DESTINATION_WARD_ID", "numeric"),
+}
+
+
+def _upsert_win60_transfer_mappings(
+    conn: Connection,
+    hospital_id: str,
+    db_name: str,
+    now: str,
+) -> None:
+    for business_field, (table_name, column_name, data_type) in _WIN60_TRANSFER_FIELDS.items():
+        params = {
+            "hospital_id": hospital_id,
+            "rule_id": "MQSI2025_001",
+            "business_field": business_field,
+            "db_name": db_name,
+            "table_name": table_name,
+            "column_name": column_name,
+            "data_type": data_type,
+            "now": now,
+        }
+        where = (
+            "hospital_id=:hospital_id AND rule_id=:rule_id "
+            "AND business_field=:business_field"
+        )
+        if _existing(conn, "med_field_mapping", where, params):
+            conn.execute(
+                text(
+                    f"""
+                    UPDATE med_field_mapping
+                    SET db_name=:db_name, table_name=:table_name,
+                        column_name=:column_name, data_type=:data_type,
+                        status='confirmed', updated_by='formal_source_import',
+                        updated_at=:now
+                    WHERE {where}
+                    """
+                ),
+                params,
+            )
+        else:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_field_mapping
+                      (hospital_id, rule_id, business_field, db_name, table_name,
+                       column_name, data_type, status, updated_by, updated_at)
+                    VALUES
+                      (:hospital_id, :rule_id, :business_field, :db_name,
+                       :table_name, :column_name, :data_type, 'confirmed',
+                       'formal_source_import', :now)
+                    """
+                ),
+                params,
+            )
+
+
+def _upsert_win60_transfer_relation(
+    conn: Connection, hospital_id: str, db_name: str, now: str
+) -> None:
+    params = {
+        "hospital_id": hospital_id,
+        "db_name": db_name,
+        "left_table": "INPATIENT_ENCOUNTER",
+        "left_column": "ENCOUNTER_ID",
+        "right_table": "INPAT_TRANSFER",
+        "right_column": "ENCOUNTER_ID",
+        "now": now,
+    }
+    where = (
+        "hospital_id=:hospital_id AND db_name=:db_name "
+        "AND left_table=:left_table AND left_column=:left_column "
+        "AND right_table=:right_table AND right_column=:right_column"
+    )
+    if _existing(conn, "med_table_relation", where, params):
+        conn.execute(
+            text(
+                f"""
+                UPDATE med_table_relation
+                SET join_type='left', relation_source='company_spec_and_database',
+                    status='confirmed', updated_by='formal_source_import',
+                    updated_at=:now
+                WHERE {where}
+                """
+            ),
+            params,
+        )
+    else:
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_table_relation
+                  (hospital_id, db_name, left_table, left_column, right_table,
+                   right_column, join_type, relation_source, status, updated_by,
+                   updated_at)
+                VALUES
+                  (:hospital_id, :db_name, :left_table, :left_column,
+                   :right_table, :right_column, 'left',
+                   'company_spec_and_database', 'confirmed',
+                   'formal_source_import', :now)
+                """
+            ),
+            params,
+        )
+
+
 def _upsert_win60_urgent_mappings(
     conn: Connection,
     hospital_id: str,
@@ -484,6 +603,147 @@ def _configure_win60_urgent_custom(
     )
 
 
+def _configure_win60_transfer_custom(
+    conn: Connection,
+    kb_root: Path,
+    hospital_id: str,
+    hospital_scope_value: int,
+    transfer_department_code: int,
+    transfer_ward_code: int,
+    icu_org_ids_csv: str,
+    now: str,
+) -> None:
+    lookup = {"hospital_id": hospital_id, "index_code": "MQSI2025_001"}
+    row = conn.execute(
+        text(
+            "SELECT custom_params, custom_sql, version "
+            "FROM med_index_hospital_custom "
+            "WHERE hospital_id=:hospital_id AND index_code=:index_code"
+        ),
+        lookup,
+    ).mappings().first()
+    params = json.loads(str((row or {}).get("custom_params") or "{}"))
+    params.setdefault("transfer_minutes_threshold", 48 * 60)
+    params.setdefault("excluded_inpatient_business_code", 399552157)
+    params.update(
+        {
+            "hospital_soid": int(hospital_scope_value),
+            "transfer_department_code": int(transfer_department_code),
+            "transfer_ward_code": int(transfer_ward_code),
+            "icu_org_ids_csv": str(icu_org_ids_csv).strip(),
+        }
+    )
+    custom_sql = load_template(kb_root, "MQSI2025_001", "sqlserver")
+    encoded_params = json.dumps(params, ensure_ascii=False)
+    snapshot = {
+        "custom_numerator": None,
+        "custom_denominator": None,
+        "custom_filter": None,
+        "exclude_rule": None,
+        "custom_params": params,
+        "custom_calculation_patch": None,
+        "custom_sql": custom_sql,
+        "status": 1,
+        "effective_from": None,
+        "effective_to": None,
+    }
+    if row:
+        current_matches = (
+            json.loads(str(row.get("custom_params") or "{}")) == params
+            and str(row.get("custom_sql") or "") == custom_sql
+        )
+        current_version = int(row.get("version") or 0)
+        version_row = conn.execute(
+            text(
+                "SELECT snapshot_json FROM med_index_hospital_custom_version "
+                "WHERE hospital_id=:hospital_id AND index_code=:index_code "
+                "AND version=:version"
+            ),
+            {**lookup, "version": current_version},
+        ).mappings().first()
+        version_snapshot = json.loads(
+            str((version_row or {}).get("snapshot_json") or "{}")
+        )
+        snapshot_matches = (
+            version_snapshot.get("custom_params") == params
+            and str(version_snapshot.get("custom_sql") or "") == custom_sql
+        )
+        if current_matches and snapshot_matches:
+            return
+        source_version = current_version if version_row else None
+        version = current_version + 1 if version_row else max(current_version, 1)
+        change_type = (
+            "formal_source_update" if version_row else "formal_source_backfill"
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE med_index_hospital_custom
+                SET custom_params=:custom_params, custom_sql=:custom_sql,
+                    version=:version, update_time=:now,
+                    oper_user='formal_source_import'
+                WHERE hospital_id=:hospital_id AND index_code=:index_code
+                """
+            ),
+            {
+                **lookup,
+                "custom_params": encoded_params,
+                "custom_sql": custom_sql,
+                "version": version,
+                "now": now,
+            },
+        )
+    else:
+        source_version = None
+        version = 1
+        change_type = "formal_source_import"
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_index_hospital_custom
+                  (hospital_id, index_code, custom_numerator, custom_denominator,
+                   custom_filter, exclude_rule, custom_params, custom_sql, version,
+                   status, approval_status, effective_from, effective_to, oper_user,
+                   create_time, update_time)
+                VALUES
+                  (:hospital_id, :index_code, NULL, NULL, NULL, NULL,
+                   :custom_params, :custom_sql, :version, 1, 'approved', NULL,
+                   NULL, 'formal_source_import', :now, :now)
+                """
+            ),
+            {
+                **lookup,
+                "custom_params": encoded_params,
+                "custom_sql": custom_sql,
+                "version": version,
+                "now": now,
+            },
+        )
+    conn.execute(
+        text(
+            """
+            INSERT INTO med_index_hospital_custom_version
+              (change_id, hospital_id, index_code, version, approval_status,
+               snapshot_json, source_version, change_type, oper_user,
+               approver_id, created_at, approved_at)
+            VALUES
+              (:change_id, :hospital_id, :index_code, :version, 'approved',
+               :snapshot_json, :source_version, :change_type,
+               'formal_source_import', 'formal_source_import', :now, :now)
+            """
+        ),
+        {
+            **lookup,
+            "change_id": f"FORMAL_{hospital_id}_MQSI2025_001_V{version}",
+            "version": version,
+            "source_version": source_version,
+            "change_type": change_type,
+            "snapshot_json": json.dumps(snapshot, ensure_ascii=False),
+            "now": now,
+        },
+    )
+
+
 def _insert_initial_custom(
     conn: Connection, hospital_id: str, seed: dict[str, Any], now: str
 ) -> None:
@@ -559,6 +819,9 @@ def import_four_indicator_rules(
     business_dialect: str = "mysql",
     hospital_scope_value: int | None = None,
     urgent_level_code: int | None = None,
+    transfer_department_code: int | None = None,
+    transfer_ward_code: int | None = None,
+    icu_org_ids_csv: str | None = None,
 ) -> dict[str, Any]:
     ensure_rule_lineage_schema(engine)
     result: dict[str, Any] = {"inserted": [], "updated": [], "failed": []}
@@ -570,12 +833,44 @@ def import_four_indicator_rules(
                 if seed["index_code"] == "MQSI2025_005":
                     _insert_initial_custom(conn, hospital_id, seed, now)
                 if business_dialect.lower() == "sqlserver":
-                    if seed["index_code"] == "MQSI2025_005":
+                    index_code = seed["index_code"]
+                    db_name = business_source_id.upper()
+                    if index_code == "MQSI2025_001":
+                        missing = [
+                            name
+                            for name, value in (
+                                ("hospital_scope_value", hospital_scope_value),
+                                ("transfer_department_code", transfer_department_code),
+                                ("transfer_ward_code", transfer_ward_code),
+                                ("icu_org_ids_csv", icu_org_ids_csv),
+                            )
+                            if value is None or value == ""
+                        ]
+                        if missing:
+                            raise ValueError(
+                                "SQL Server 入院转科映射缺少 " + "、".join(missing)
+                            )
+                        _upsert_win60_transfer_mappings(
+                            conn, hospital_id, db_name, now
+                        )
+                        _upsert_win60_transfer_relation(
+                            conn, hospital_id, db_name, now
+                        )
+                        _configure_win60_transfer_custom(
+                            conn,
+                            Path(kb_root),
+                            hospital_id,
+                            int(hospital_scope_value),
+                            int(transfer_department_code),
+                            int(transfer_ward_code),
+                            str(icu_org_ids_csv),
+                            now,
+                        )
+                    elif index_code == "MQSI2025_005":
                         if hospital_scope_value is None or urgent_level_code is None:
                             raise ValueError(
                                 "SQL Server 急会诊映射缺少 hospital_scope_value 或 urgent_level_code"
                             )
-                        db_name = business_source_id.upper()
                         _upsert_win60_urgent_mappings(
                             conn, hospital_id, db_name, now
                         )

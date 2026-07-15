@@ -4,6 +4,8 @@ import re
 import time
 from typing import Any, Callable
 
+import sqlparse
+
 from app.db_access.query_result import QueryResult
 
 
@@ -15,7 +17,12 @@ class BusinessDBClient:
 
     def _assert_select(self, sql: str) -> None:
         normalized = re.sub(r"\s+", " ", sql.strip()).lower()
-        if not normalized.startswith("select"):
+        statements = [
+            statement
+            for statement in sqlparse.parse(sql)
+            if str(statement).strip().rstrip(";").strip()
+        ]
+        if len(statements) != 1 or statements[0].get_type() != "SELECT":
             raise ValueError("业务库 MCP 只允许执行 SELECT 查询")
         if ";" in normalized.rstrip(";"):
             raise ValueError("业务库 MCP 禁止多语句 SQL")

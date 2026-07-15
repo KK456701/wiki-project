@@ -1,0 +1,102 @@
+WITH eligible_encounter AS (
+  SELECT
+    encounter.ENCOUNTER_ID AS admission_id,
+    encounter.ADMITTED_AT AS admit_time
+  FROM WINDBA.INPATIENT_ENCOUNTER AS encounter
+  WHERE encounter.HOSPITAL_SOID = :hospital_soid
+    AND encounter.IS_DEL = 0
+    AND encounter.INPAT_ENC_BIZ_TYPE_CODE <> :excluded_inpatient_business_code
+    AND encounter.ADMITTED_AT >= :start_time
+    AND encounter.ADMITTED_AT < :end_time
+),
+transfer_candidate AS (
+  SELECT
+    transfer.INPAT_TRANSFER_ID AS transfer_id,
+    transfer.ENCOUNTER_ID AS admission_id,
+    transfer.INPAT_TRANSFER_AT AS transfer_time,
+    transfer.ORIGIN_DEPT_ID AS from_dept_id,
+    transfer.ORIGIN_WARD_ID AS from_ward_id,
+    transfer.DESTINATION_DEPT_ID AS to_dept_id,
+    transfer.DESTINATION_WARD_ID AS to_ward_id
+  FROM WINDBA.INPAT_TRANSFER AS transfer
+  WHERE transfer.HOSPITAL_SOID = :hospital_soid
+    AND transfer.IS_DEL = 0
+    AND transfer.INPAT_TRANSFER_TYPE_CODE = :transfer_department_code
+
+  UNION ALL
+
+  SELECT
+    transfer.INPAT_TRANSFER_ID AS transfer_id,
+    transfer.ENCOUNTER_ID AS admission_id,
+    transfer.INPAT_TRANSFER_AT AS transfer_time,
+    transfer.ORIGIN_DEPT_ID AS from_dept_id,
+    transfer.ORIGIN_WARD_ID AS from_ward_id,
+    transfer.DESTINATION_DEPT_ID AS to_dept_id,
+    transfer.DESTINATION_WARD_ID AS to_ward_id
+  FROM WINDBA.INPAT_TRANSFER AS transfer
+  WHERE transfer.HOSPITAL_SOID = :hospital_soid
+    AND transfer.IS_DEL = 0
+    AND transfer.INPAT_TRANSFER_TYPE_CODE = :transfer_ward_code
+    AND transfer.ORIGIN_DEPT_ID <> transfer.DESTINATION_DEPT_ID
+),
+valid_transfer AS (
+  SELECT
+    candidate.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY candidate.admission_id
+      ORDER BY candidate.transfer_time, candidate.transfer_id
+    ) AS event_order
+  FROM transfer_candidate AS candidate
+  WHERE (
+    CASE WHEN CHARINDEX(
+      ',' + CONVERT(varchar(30), candidate.from_dept_id) + ',',
+      ',' + :icu_org_ids_csv + ','
+    ) > 0 THEN 1 ELSE 0 END
+    + CASE WHEN CHARINDEX(
+      ',' + CONVERT(varchar(30), candidate.from_ward_id) + ',',
+      ',' + :icu_org_ids_csv + ','
+    ) > 0 THEN 1 ELSE 0 END
+    + CASE WHEN CHARINDEX(
+      ',' + CONVERT(varchar(30), candidate.to_dept_id) + ',',
+      ',' + :icu_org_ids_csv + ','
+    ) > 0 THEN 1 ELSE 0 END
+    + CASE WHEN CHARINDEX(
+      ',' + CONVERT(varchar(30), candidate.to_ward_id) + ',',
+      ',' + :icu_org_ids_csv + ','
+    ) > 0 THEN 1 ELSE 0 END
+  ) = 0
+),
+base AS (
+  SELECT
+    encounter.admission_id,
+    encounter.admit_time,
+    transfer.transfer_time,
+    transfer.from_dept_id,
+    transfer.from_ward_id,
+    transfer.to_dept_id,
+    transfer.to_ward_id
+  FROM eligible_encounter AS encounter
+  LEFT JOIN valid_transfer AS transfer
+    ON transfer.admission_id = encounter.admission_id
+   AND transfer.event_order = 1
+)
+SELECT
+  CASE
+    WHEN COUNT_BIG(*) = 0 THEN CAST(0 AS decimal(10, 2))
+    ELSE CAST(
+      SUM(CASE
+        WHEN DATEDIFF(MINUTE, base.admit_time, base.transfer_time)
+             BETWEEN 0 AND :transfer_minutes_threshold
+        THEN 1 ELSE 0
+      END) * 100.0 / COUNT_BIG(*)
+      AS decimal(10, 2)
+    )
+  END AS index_value,
+  COALESCE(SUM(CASE
+    WHEN DATEDIFF(MINUTE, base.admit_time, base.transfer_time)
+         BETWEEN 0 AND :transfer_minutes_threshold
+    THEN 1 ELSE 0
+  END), 0) AS numerator_count,
+  COUNT_BIG(*) AS denominator_count,
+  COUNT_BIG(*) AS sample_count
+FROM base

@@ -14,6 +14,9 @@ business_db_database: "WIN60_QA_991827"
 business_db_schema: "WINDBA"
 business_db_hospital_scope_value: 991827
 business_db_urgent_consult_level_code: 977578
+business_db_transfer_department_code: 399549991
+business_db_transfer_ward_code: 399549990
+business_db_icu_org_ids: ""
 
 # 本地演示数据脚本使用的业务库连接。正式运行链路仍通过下方 DBHub MCP
 # 使用只读账号访问医院业务库；不要把真实密码提交到 Git。

@@ -3,10 +3,24 @@ rule_id: MQSI2025_001
 dialect: sqlserver
 db_name: WIN60_QA_991827
 schema: WINDBA
-main_table: ""
-fields: {}
+main_table: INPATIENT_ENCOUNTER
+query_profile: inpatient_transfer_48h_sqlserver
+fields:
+  hospital_id: INPATIENT_ENCOUNTER.HOSPITAL_SOID
+  admission_id: INPATIENT_ENCOUNTER.ENCOUNTER_ID
+  admit_time: INPATIENT_ENCOUNTER.ADMITTED_AT
+  transfer_id: INPAT_TRANSFER.INPAT_TRANSFER_ID
+  transfer_time: INPAT_TRANSFER.INPAT_TRANSFER_AT
+  transfer_type: INPAT_TRANSFER.INPAT_TRANSFER_TYPE_CODE
+  from_dept_id: INPAT_TRANSFER.ORIGIN_DEPT_ID
+  from_ward_id: INPAT_TRANSFER.ORIGIN_WARD_ID
+  to_dept_id: INPAT_TRANSFER.DESTINATION_DEPT_ID
+  to_ward_id: INPAT_TRANSFER.DESTINATION_WARD_ID
 filters: {}
-custom_rules: {}
-status: pending
+custom_rules:
+  event_selection: first_by_transfer_time
+  period_anchor: admitted_at
+  threshold_boundary: inclusive
+status: confirmed
 updated_by: formal_source_import
 updated_at: "2026-07-15 00:00:00"

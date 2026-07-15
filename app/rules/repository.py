@@ -556,6 +556,8 @@ class MySQLRuleRepository:
             "query_profile": (
                 "urgent_consult_sqlserver"
                 if index_code == "MQSI2025_005" and dialect == "sqlserver"
+                else "inpatient_transfer_48h_sqlserver"
+                if index_code == "MQSI2025_001" and dialect == "sqlserver"
                 else ""
             ),
         }

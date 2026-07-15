@@ -16,7 +16,12 @@ def validate_select_sql(sql_text: str, hospital_id: str, main_table: str) -> dic
     stripped_sql = sqlparse.format(sql_text, strip_comments=True).strip()
     upper = stripped_sql.upper()
 
-    if not upper.startswith("SELECT"):
+    statements = [
+        statement
+        for statement in sqlparse.parse(stripped_sql)
+        if str(statement).strip().rstrip(";").strip()
+    ]
+    if len(statements) != 1 or statements[0].get_type() != "SELECT":
         return {"ok": False, "error": "\u53ea\u5141\u8bb8 SELECT \u8bed\u53e5"}
 
     for kw in FORBIDDEN_KEYWORDS:

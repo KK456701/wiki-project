@@ -57,6 +57,35 @@ class BusinessDBClientTest(unittest.TestCase):
         self.assertEqual(fake.sql, ["SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES;"])
         self.assertEqual(result.row_count, 1)
 
+    def test_allows_read_only_cte_select(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="win60_qa_991827",
+            tool_name="execute_sql_win60_qa_991827",
+        )
+        sql = "WITH base AS (SELECT 1 AS id) SELECT id FROM base"
+
+        result = client.execute_select(sql)
+
+        self.assertEqual(fake.sql, [sql])
+        self.assertEqual(result.row_count, 1)
+
+    def test_rejects_cte_ending_in_write_statement(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="win60_qa_991827",
+            tool_name="execute_sql_win60_qa_991827",
+        )
+
+        with self.assertRaises(ValueError):
+            client.execute_select(
+                "WITH base AS (SELECT 1 AS id) DELETE FROM consult_record"
+            )
+
+        self.assertEqual(fake.sql, [])
+
     def test_rejects_multiple_statements_before_mcp(self):
         fake = FakeMCPClient()
         client = BusinessDBClient(

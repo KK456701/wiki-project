@@ -364,6 +364,29 @@ class SqlGenerationSafetyTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
 
+    def test_validator_accepts_read_only_cte_select(self) -> None:
+        sql = (
+            "WITH base AS ("
+            "SELECT * FROM consult_record "
+            "WHERE request_time>=:start_time AND request_time<:end_time"
+            ") SELECT * FROM base"
+        )
+
+        result = validate_select_sql(sql, "hospital_001", "consult_record")
+
+        self.assertTrue(result["ok"])
+
+    def test_validator_rejects_cte_ending_in_write_statement(self) -> None:
+        sql = (
+            "WITH base AS (SELECT * FROM consult_record "
+            "WHERE request_time>=:start_time AND request_time<:end_time) "
+            "DELETE FROM consult_record"
+        )
+
+        result = validate_select_sql(sql, "hospital_001", "consult_record")
+
+        self.assertFalse(result["ok"])
+
     def test_llm_filter_value_is_parameterized_not_inlined(self) -> None:
         spec_dir = next(Path("core-rules-wiki/sql-specs").glob("MQSI2025_005_*"))
         mapping = yaml.safe_load(

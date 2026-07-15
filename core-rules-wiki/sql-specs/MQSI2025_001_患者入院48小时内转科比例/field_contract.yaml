@@ -6,3 +6,7 @@ business_fields:
   transfer_time: {type: datetime, required: true, desc: 转科时间}
   from_dept_id: {type: string, required: true, desc: 转出科室ID}
   to_dept_id: {type: string, required: true, desc: 转入科室ID}
+  transfer_id: {type: string, required: true, desc: 转科记录标识}
+  transfer_type: {type: string, required: true, desc: 转科类型代码}
+  from_ward_id: {type: string, required: true, desc: 转出病区ID}
+  to_ward_id: {type: string, required: true, desc: 转入病区ID}

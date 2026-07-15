@@ -1,9 +1,13 @@
 rule_id: MQSI2025_001
 rule_name: 患者入院48小时内转科比例
-dialects: [mysql]
+dialects: [mysql, sqlserver]
 default_params:
   transfer_minutes_threshold: 2880
   excluded_dept_id: ICU
+  excluded_inpatient_business_code: 399552157
+  transfer_department_code: 399549991
+  transfer_ward_code: 399549990
+  icu_org_ids_csv: ""
 description: 入院48小时内发生非ICU转科的患者人次数占同期入院患者总人次数的比例。
 numerator:
   name: 入院48小时内非ICU转科患者人次数
@@ -23,12 +27,20 @@ required_business_fields:
   - transfer_time
   - from_dept_id
   - to_dept_id
+  - transfer_id
+  - transfer_type
+  - from_ward_id
+  - to_ward_id
 required_params:
   - hospital_id
   - start_time
   - end_time
   - transfer_minutes_threshold
   - excluded_dept_id
+  - excluded_inpatient_business_code
+  - transfer_department_code
+  - transfer_ward_code
+  - icu_org_ids_csv
 result: {column_name: index_value, unit: percent}
 calculation:
   schema_version: 1
@@ -82,8 +94,8 @@ calculation:
     denominator: denominator
   detail_fields:
     - {field: admission_id, label: 入院流水号, sensitivity: patient_id}
-    - {field: admit_time, label: 入院时间, sensitivity: none}
-    - {field: transfer_time, label: 转科时间, sensitivity: none}
+    - {field: admit_time, label: 办理住院时间, sensitivity: none}
+    - {field: transfer_time, label: 实际转科时间, sensitivity: none}
     - {field: from_dept_id, label: 转出科室, sensitivity: none}
     - {field: to_dept_id, label: 转入科室, sensitivity: none}
     - {field: transfer_minutes, label: 转科耗时（分钟）, sensitivity: none}

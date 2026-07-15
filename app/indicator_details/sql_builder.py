@@ -135,6 +135,8 @@ def build_detail_query(
         raise DetailQueryError("明细查询行数限制必须在1至20,001之间")
     if run_context.query_profile == "urgent_consult_sqlserver":
         return _build_urgent_consult_sqlserver_query(run_context, row_limit)
+    if run_context.query_profile == "inpatient_transfer_48h_sqlserver":
+        return _build_inpatient_transfer_sqlserver_query(run_context, row_limit)
     main_table = _identifier(run_context.main_table)
     if str(run_context.field_mapping.get("main_table") or main_table) != main_table:
         raise DetailQueryError("运行快照中的主表不一致")
@@ -307,5 +309,150 @@ def _build_urgent_consult_sqlserver_query(
         "           apply_record.APPLY_CONSULT_SENT_AT\n"
         ") AS base\n"
         "ORDER BY base.request_time, base.consult_id"
+    )
+    return DetailQuery(sql=sql, params=dict(context.params), columns=columns)
+
+
+def _build_inpatient_transfer_sqlserver_query(
+    context: RunContext, row_limit: int
+) -> DetailQuery:
+    required_params = {
+        "hospital_soid",
+        "excluded_inpatient_business_code",
+        "transfer_department_code",
+        "transfer_ward_code",
+        "icu_org_ids_csv",
+        "transfer_minutes_threshold",
+        "start_time",
+        "end_time",
+    }
+    missing = sorted(required_params - set(context.params))
+    if missing:
+        raise DetailQueryError("入院转科明细缺少参数：" + "、".join(missing))
+    definition = parse_calculation_definition(context.calculation_definition)
+    columns = [
+        DetailColumn(
+            field=item.field,
+            label=item.label,
+            sensitivity=item.sensitivity,
+        )
+        for item in definition.detail_fields
+    ]
+    supported = {
+        "admission_id",
+        "admit_time",
+        "transfer_time",
+        "from_dept_id",
+        "from_ward_id",
+        "to_dept_id",
+        "to_ward_id",
+        "transfer_minutes",
+    }
+    unsupported = [item.field for item in columns if item.field not in supported]
+    if unsupported:
+        raise DetailQueryError(
+            "入院转科明细包含未支持字段：" + "、".join(unsupported)
+        )
+    expressions = {
+        "admission_id": "base.admission_id",
+        "admit_time": "base.admit_time",
+        "transfer_time": "base.transfer_time",
+        "from_dept_id": "base.from_dept_id",
+        "from_ward_id": "base.from_ward_id",
+        "to_dept_id": "base.to_dept_id",
+        "to_ward_id": "base.to_ward_id",
+        "transfer_minutes": (
+            "DATEDIFF(MINUTE, base.admit_time, base.transfer_time)"
+        ),
+    }
+    selected = [
+        f"  {expressions[item.field]} AS [{_identifier(item.field)}]"
+        for item in columns
+    ]
+    selected.extend(
+        [
+            "  CASE WHEN DATEDIFF(MINUTE, base.admit_time, base.transfer_time) "
+            "BETWEEN 0 AND :transfer_minutes_threshold THEN 1 ELSE 0 END "
+            "AS [__meets_numerator]",
+            "  1 AS [__evidence_row_count]",
+        ]
+    )
+    sql = (
+        "WITH eligible_encounter AS (\n"
+        "  SELECT encounter.ENCOUNTER_ID AS admission_id,\n"
+        "         encounter.ADMITTED_AT AS admit_time\n"
+        "  FROM WINDBA.INPATIENT_ENCOUNTER AS encounter\n"
+        "  WHERE encounter.HOSPITAL_SOID = :hospital_soid\n"
+        "    AND encounter.IS_DEL = 0\n"
+        "    AND encounter.INPAT_ENC_BIZ_TYPE_CODE "
+        "<> :excluded_inpatient_business_code\n"
+        "    AND encounter.ADMITTED_AT >= :start_time\n"
+        "    AND encounter.ADMITTED_AT < :end_time\n"
+        "),\n"
+        "transfer_candidate AS (\n"
+        "  SELECT transfer.INPAT_TRANSFER_ID AS transfer_id,\n"
+        "         transfer.ENCOUNTER_ID AS admission_id,\n"
+        "         transfer.INPAT_TRANSFER_AT AS transfer_time,\n"
+        "         transfer.ORIGIN_DEPT_ID AS from_dept_id,\n"
+        "         transfer.ORIGIN_WARD_ID AS from_ward_id,\n"
+        "         transfer.DESTINATION_DEPT_ID AS to_dept_id,\n"
+        "         transfer.DESTINATION_WARD_ID AS to_ward_id\n"
+        "  FROM WINDBA.INPAT_TRANSFER AS transfer\n"
+        "  WHERE transfer.HOSPITAL_SOID = :hospital_soid\n"
+        "    AND transfer.IS_DEL = 0\n"
+        "    AND transfer.INPAT_TRANSFER_TYPE_CODE = :transfer_department_code\n"
+        "  UNION ALL\n"
+        "  SELECT transfer.INPAT_TRANSFER_ID AS transfer_id,\n"
+        "         transfer.ENCOUNTER_ID AS admission_id,\n"
+        "         transfer.INPAT_TRANSFER_AT AS transfer_time,\n"
+        "         transfer.ORIGIN_DEPT_ID AS from_dept_id,\n"
+        "         transfer.ORIGIN_WARD_ID AS from_ward_id,\n"
+        "         transfer.DESTINATION_DEPT_ID AS to_dept_id,\n"
+        "         transfer.DESTINATION_WARD_ID AS to_ward_id\n"
+        "  FROM WINDBA.INPAT_TRANSFER AS transfer\n"
+        "  WHERE transfer.HOSPITAL_SOID = :hospital_soid\n"
+        "    AND transfer.IS_DEL = 0\n"
+        "    AND transfer.INPAT_TRANSFER_TYPE_CODE = :transfer_ward_code\n"
+        "    AND transfer.ORIGIN_DEPT_ID <> transfer.DESTINATION_DEPT_ID\n"
+        "),\n"
+        "valid_transfer AS (\n"
+        "  SELECT candidate.*,\n"
+        "         ROW_NUMBER() OVER (\n"
+        "           PARTITION BY candidate.admission_id\n"
+        "           ORDER BY candidate.transfer_time, candidate.transfer_id\n"
+        "         ) AS event_order\n"
+        "  FROM transfer_candidate AS candidate\n"
+        "  WHERE (\n"
+        "    CASE WHEN CHARINDEX(\n"
+        "      ',' + CONVERT(varchar(30), candidate.from_dept_id) + ',',\n"
+        "      ',' + :icu_org_ids_csv + ','\n"
+        "    ) > 0 THEN 1 ELSE 0 END\n"
+        "    + CASE WHEN CHARINDEX(\n"
+        "      ',' + CONVERT(varchar(30), candidate.from_ward_id) + ',',\n"
+        "      ',' + :icu_org_ids_csv + ','\n"
+        "    ) > 0 THEN 1 ELSE 0 END\n"
+        "    + CASE WHEN CHARINDEX(\n"
+        "      ',' + CONVERT(varchar(30), candidate.to_dept_id) + ',',\n"
+        "      ',' + :icu_org_ids_csv + ','\n"
+        "    ) > 0 THEN 1 ELSE 0 END\n"
+        "    + CASE WHEN CHARINDEX(\n"
+        "      ',' + CONVERT(varchar(30), candidate.to_ward_id) + ',',\n"
+        "      ',' + :icu_org_ids_csv + ','\n"
+        "    ) > 0 THEN 1 ELSE 0 END\n"
+        "  ) = 0\n"
+        "),\n"
+        "base AS (\n"
+        "  SELECT encounter.admission_id, encounter.admit_time,\n"
+        "         transfer.transfer_time, transfer.from_dept_id,\n"
+        "         transfer.from_ward_id, transfer.to_dept_id,\n"
+        "         transfer.to_ward_id\n"
+        "  FROM eligible_encounter AS encounter\n"
+        "  LEFT JOIN valid_transfer AS transfer\n"
+        "    ON transfer.admission_id = encounter.admission_id\n"
+        "   AND transfer.event_order = 1\n"
+        ")\n"
+        f"SELECT TOP {row_limit}\n"
+        + ",\n".join(selected)
+        + "\nFROM base\nORDER BY base.admit_time, base.admission_id"
     )
     return DetailQuery(sql=sql, params=dict(context.params), columns=columns)

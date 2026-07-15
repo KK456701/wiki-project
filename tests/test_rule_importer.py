@@ -46,6 +46,9 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
             business_dialect="sqlserver",
             hospital_scope_value=991827,
             urgent_level_code=977578,
+            transfer_department_code=399549991,
+            transfer_ward_code=399549990,
+            icu_org_ids_csv="360896232048246943,360915701134999568",
         )
 
         self.assertEqual(result["failed"], [])
@@ -57,6 +60,23 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
             mapping["fields"]["arrive_time"],
             "INP_CONSULT_INVITATION.SIGNED_AT",
         )
+        transfer_mapping = repository.get_field_mapping(
+            "MQSI2025_001", "hospital_001"
+        )
+        self.assertEqual(transfer_mapping["db_name"], "WIN60_QA_991827")
+        self.assertEqual(transfer_mapping["main_table"], "INPATIENT_ENCOUNTER")
+        self.assertEqual(
+            transfer_mapping["fields"]["admit_time"],
+            "INPATIENT_ENCOUNTER.ADMITTED_AT",
+        )
+        self.assertEqual(
+            transfer_mapping["fields"]["transfer_time"],
+            "INPAT_TRANSFER.INPAT_TRANSFER_AT",
+        )
+        self.assertEqual(
+            transfer_mapping["query_profile"],
+            "inpatient_transfer_48h_sqlserver",
+        )
         with engine.connect() as conn:
             custom = conn.execute(
                 text(
@@ -64,6 +84,14 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
                     "FROM med_index_hospital_custom "
                     "WHERE hospital_id='hospital_001' "
                     "AND index_code='MQSI2025_005'"
+                )
+            ).mappings().one()
+            transfer_custom = conn.execute(
+                text(
+                    "SELECT custom_params, custom_sql "
+                    "FROM med_index_hospital_custom "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_001'"
                 )
             ).mappings().one()
             remaining = conn.execute(
@@ -87,10 +115,54 @@ class FourIndicatorRuleImporterTest(unittest.TestCase):
         self.assertEqual(params["hospital_soid"], 991827)
         self.assertEqual(params["urgent_level_code"], 977578)
         self.assertIn("WINDBA.INPATIENT_CONSULT_APPLY", custom["custom_sql"])
-        self.assertEqual(remaining, ["MQSI2025_005"])
-        self.assertEqual(relation_count, 1)
+        transfer_params = json.loads(transfer_custom["custom_params"])
+        self.assertEqual(transfer_params["hospital_soid"], 991827)
+        self.assertEqual(
+            transfer_params["transfer_department_code"], 399549991
+        )
+        self.assertEqual(transfer_params["transfer_ward_code"], 399549990)
+        self.assertEqual(
+            transfer_params["icu_org_ids_csv"],
+            "360896232048246943,360915701134999568",
+        )
+        self.assertIn("WINDBA.INPATIENT_ENCOUNTER", transfer_custom["custom_sql"])
+        self.assertIn("WINDBA.INPAT_TRANSFER", transfer_custom["custom_sql"])
+        self.assertEqual(remaining, ["MQSI2025_001", "MQSI2025_005"])
+        self.assertEqual(relation_count, 2)
         self.assertEqual(plans["DEMO_MONTHLY_MQSI2025_005"], "disabled")
         self.assertEqual(plans["PLAN_USER_001"], "enabled")
+
+        updated = import_four_indicator_rules(
+            engine,
+            Path("core-rules-wiki"),
+            business_source_id="win60_qa_991827",
+            business_dialect="sqlserver",
+            hospital_scope_value=991827,
+            urgent_level_code=977578,
+            transfer_department_code=399549991,
+            transfer_ward_code=399549990,
+            icu_org_ids_csv=(
+                "360896232048246943,360915701134999568,999999"
+            ),
+        )
+        self.assertEqual(updated["failed"], [])
+        with engine.connect() as conn:
+            current_version = conn.execute(
+                text(
+                    "SELECT version FROM med_index_hospital_custom "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_001'"
+                )
+            ).scalar_one()
+            version_count = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM med_index_hospital_custom_version "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_001'"
+                )
+            ).scalar_one()
+        self.assertEqual(current_version, 2)
+        self.assertEqual(version_count, 2)
 
     def test_import_is_idempotent_and_seeds_four_rules(self) -> None:
         from app.rules.importer import FOUR_INDICATOR_CODES, import_four_indicator_rules

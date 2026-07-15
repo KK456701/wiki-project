@@ -863,6 +863,13 @@ def import_four_rules(
                 "urgent_level_code": int(
                     get("business_db_urgent_consult_level_code", "0")
                 ),
+                "transfer_department_code": int(
+                    get("business_db_transfer_department_code", "0")
+                ),
+                "transfer_ward_code": int(
+                    get("business_db_transfer_ward_code", "0")
+                ),
+                "icu_org_ids_csv": str(get("business_db_icu_org_ids", "")),
             }
         )
     result = import_four_indicator_rules(
