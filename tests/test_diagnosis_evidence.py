@@ -37,6 +37,15 @@ class _SequenceLLM:
         return self.responses.pop(0)
 
 
+class _CountingLLM:
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, prompt):
+        self.calls += 1
+        return "{}"
+
+
 def test_extracts_sqlserver_script_params_period_and_claimed_result():
     evidence = extract_pasted_evidence(
         RAW_DIAGNOSIS_TEXT,
@@ -114,11 +123,14 @@ def test_deterministic_sql_and_numbers_win_when_model_conflicts():
 
 
 def test_plain_question_without_sql_keeps_empty_sql():
+    llm = _CountingLLM()
     evidence = extract_pasted_evidence(
         "帮我诊断急会诊及时到位率为什么下降",
         rule_id="MQSI2025_005",
+        llm_client=llm,
     )
 
     assert evidence.sql_text == ""
     assert evidence.question == "帮我诊断急会诊及时到位率为什么下降"
     assert evidence.declared_params == {}
+    assert llm.calls == 0

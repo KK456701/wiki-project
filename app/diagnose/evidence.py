@@ -164,7 +164,7 @@ def extract_pasted_evidence(
         claimed_result=_extract_claimed_result(raw_text),
         stat_period=_extract_period(params, raw_text),
     )
-    if llm_client is None:
+    if llm_client is None or not deterministic.sql_text:
         return deterministic
 
     try:

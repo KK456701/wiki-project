@@ -332,6 +332,7 @@ def _create_agent_orchestrator(
         runtime_engine=runtime_engine,
         business_db=business_db,
         metadata_provider=_create_metadata_provider(),
+        llm_client=llm_client,
     )
     terminology_repository = TerminologyRepository(runtime_engine)
     return CoreIndicatorOrchestrator(
@@ -1044,6 +1045,8 @@ def _localize_diagnose_text(text: str) -> str:
 
 
 def _format_diagnose_answer(diag_result: dict[str, Any]) -> str:
+    if str(diag_result.get("user_summary") or "").strip():
+        return str(diag_result["user_summary"]).strip()
     lines = ["\U0001f4cb \u4e09\u5c42\u5f02\u5e38\u6392\u67e5\u7ed3\u679c\uff1a\n"]
     for layer in diag_result.get("layers", []):
         checks = layer.get("checks", []) or []

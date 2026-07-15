@@ -99,6 +99,7 @@ def _create_agent_orchestrator(
     from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
     from app.db.engine import create_runtime_engine
     from app.diagnose.agent import DiagnoseAgent
+    from app.llm.ollama import OllamaClient
     from app.sqlgen.agent import SQLGenerationAgent
     from app.terminology.normalizer import TerminologyNormalizer
     from app.terminology.repository import TerminologyRepository
@@ -125,6 +126,7 @@ def _create_agent_orchestrator(
                 runtime_engine=engine,
                 business_db=db_client,
                 metadata_provider=metadata,
+                llm_client=OllamaClient(),
             )
         ),
         metadata=MetadataParsingAgent(engine, DEFAULT_KB_ROOT),

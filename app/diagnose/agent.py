@@ -12,6 +12,7 @@ from app.diagnose.rule_check import rule_check
 from app.diagnose.data_check import data_check
 from app.diagnose.caliber_compare import execute_caliber_comparison
 from app.diagnose.evidence import extract_pasted_evidence
+from app.diagnose.narrator import DiagnosisNarrator
 from app.diagnose.pasted_diagnosis import PastedDiagnosisService
 from app.diagnose.report import build_report, save_report
 
@@ -114,8 +115,8 @@ class DiagnoseAgent:
         response = self._finish(hospital_id, rule_id, layers, trigger, related_sql_id, stat_period, stopped_at_layer=stopped_at_layer)
         return self._attach_pasted(response, pasted_result)
 
-    @staticmethod
     def _attach_pasted(
+        self,
         response: dict[str, Any],
         pasted_result: dict[str, Any] | None,
     ) -> dict[str, Any]:
@@ -135,6 +136,7 @@ class DiagnoseAgent:
                 },
             },
         })
+        response["user_summary"] = DiagnosisNarrator(self.llm_client).compose(response)
         return response
 
     def _finish(

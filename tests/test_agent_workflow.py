@@ -202,6 +202,17 @@ class FakeDiagnoseAgent:
 
 
 class DiagnoseFormattingTest(unittest.TestCase):
+    def test_pasted_diagnosis_uses_doctor_readable_summary(self) -> None:
+        answer = _format_diagnose_answer({
+            "user_summary": "## 结论\n两段 SQL 的结果不同，主要是口径差异。",
+            "layers": [],
+        })
+
+        self.assertEqual(
+            answer,
+            "## 结论\n两段 SQL 的结果不同，主要是口径差异。",
+        )
+
     def test_warning_layers_show_warning_details_instead_of_normal(self) -> None:
         answer = _format_diagnose_answer({
             "layers": [
