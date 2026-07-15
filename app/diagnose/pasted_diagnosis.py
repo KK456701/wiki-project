@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import Engine
@@ -15,6 +16,7 @@ from app.agents.contracts import (
     PastedDiagnosisEvidence,
 )
 from app.business_source import current_business_source
+from app.config import get
 from app.db.repositories import insert_sql_run_log
 from app.db_access.business_db import BusinessDBClient
 from app.diagnose.caliber_compare import (
@@ -28,6 +30,12 @@ from app.diagnose.sql_semantics import (
     profile_sql,
 )
 from app.diagnose.user_sql import prepare_pasted_sql
+from app.diagnose.detail_compare import (
+    DiagnosisComparisonStore,
+    build_current_detail_query,
+    build_user_detail_query,
+    create_detail_comparison,
+)
 from app.sqlgen.template_renderer import render_sql
 
 
@@ -39,12 +47,16 @@ class PastedDiagnosisService:
         business_db: BusinessDBClient,
         allowed_database: str | None = None,
         allowed_schema: str | None = None,
+        comparison_store: DiagnosisComparisonStore | None = None,
     ) -> None:
         settings = current_business_source()
         self.runtime_engine = runtime_engine
         self.business_db = business_db
         self.allowed_database = allowed_database or settings.database_name
         self.allowed_schema = allowed_schema if allowed_schema is not None else settings.schema
+        self.comparison_store = comparison_store or DiagnosisComparisonStore(
+            Path(get("diagnosis_detail_root", "runtime/diagnosis-details"))
+        )
 
     @staticmethod
     def _period(evidence: PastedDiagnosisEvidence, stat_period: str | None) -> str | None:
@@ -287,6 +299,7 @@ class PastedDiagnosisService:
         caliber_context: dict[str, Any],
         field_mapping: dict[str, Any],
         stat_period: str | None,
+        effective_rule: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         context = CaliberComparisonContext.model_validate(caliber_context)
         mapping = FieldMapping.model_validate(field_mapping)
@@ -344,6 +357,39 @@ class PastedDiagnosisService:
             user_profile,
             execution_results,
         )
+
+        detail_comparison: dict[str, Any] | None = None
+        if (
+            effective_rule
+            and prepared.safe_to_execute
+            and user_result.get("status") == "success"
+            and execution_results["hospital"].get("status") == "success"
+        ):
+            try:
+                user_detail_sql = build_user_detail_query(
+                    prepared.query_sql,
+                    str(evidence.rule_id or context.rule_id),
+                )
+                current_detail_query = build_current_detail_query(
+                    effective_rule=dict(effective_rule),
+                    caliber_context=context.model_dump(),
+                    field_mapping=mapping.model_dump(by_alias=True),
+                    stat_start=stat_start,
+                    stat_end=stat_end,
+                )
+                detail_comparison = create_detail_comparison(
+                    business_db=self.business_db,
+                    store=self.comparison_store,
+                    hospital_id=hospital_id,
+                    rule_id=str(evidence.rule_id or context.rule_id),
+                    source_database=mapping.db_name or self.allowed_database,
+                    user_detail_sql=user_detail_sql,
+                    current_detail_query=current_detail_query,
+                    user_result=user_result,
+                    current_result=execution_results["hospital"],
+                )
+            except Exception as exc:
+                detail_comparison = {"status": "unavailable", "reason": str(exc)}
 
         if user_result["status"] == "blocked":
             conclusion = "user_sql_blocked"
@@ -437,4 +483,5 @@ class PastedDiagnosisService:
                 "sql_sha256": sql_hash,
             },
             "trace_events": trace_events,
+            "detail_comparison": detail_comparison,
         }

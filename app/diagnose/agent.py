@@ -72,6 +72,7 @@ class DiagnoseAgent:
                 caliber_context=caliber_context,
                 field_mapping=field_mapping,
                 stat_period=stat_period,
+                effective_rule=effective_rule,
             )
             pasted_result["evidence_duration_ms"] = evidence_duration_ms
             pasted_result["structure_duration_ms"] = structure_duration_ms
@@ -139,6 +140,7 @@ class DiagnoseAgent:
             "comparison_rows": pasted_result.get("comparison_rows") or [],
             "effective_source": pasted_result.get("effective_source") or {},
             "execution_results": pasted_result["execution_results"],
+            "detail_comparison": pasted_result.get("detail_comparison"),
             "evidence": {
                 "raw_text": "",
                 "sql_text": "",

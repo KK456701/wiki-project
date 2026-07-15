@@ -327,6 +327,10 @@ from app.api.indicator_details import (
     get_indicator_detail_service,
     router as indicator_details_router,
 )
+from app.api.diagnosis_details import (
+    get_diagnosis_comparison_store,
+    router as diagnosis_details_router,
+)
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
@@ -334,6 +338,7 @@ app.include_router(monitoring_router)
 app.include_router(terminology_router)
 app.include_router(hospital_auth_router)
 app.include_router(indicator_details_router)
+app.include_router(diagnosis_details_router)
 
 
 def start_monitoring_scheduler() -> None:
@@ -356,7 +361,7 @@ def start_monitoring_scheduler() -> None:
             timezone_name=get(
                 "monitoring_scheduler_timezone", "Asia/Shanghai"
             ),
-            cleanup_callback=lambda: get_indicator_detail_service().cleanup_expired(),
+            cleanup_callback=cleanup_detail_snapshots,
         )
         scheduler.start()
         set_monitoring_scheduler(scheduler)
@@ -408,6 +413,18 @@ def initialize_indicator_detail_runtime() -> None:
         logger.exception("indicator detail schema initialization failed")
 
 
+def cleanup_detail_snapshots() -> None:
+    get_indicator_detail_service().cleanup_expired()
+    get_diagnosis_comparison_store().cleanup_expired()
+
+
+def initialize_diagnosis_detail_runtime() -> None:
+    try:
+        get_diagnosis_comparison_store().cleanup_expired()
+    except Exception:
+        logger.exception("diagnosis detail cleanup failed")
+
+
 def initialize_kb_exchange_runtime() -> None:
     try:
         from app.db.engine import create_runtime_engine
@@ -428,6 +445,7 @@ app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", initialize_rule_lineage_runtime)
 app.add_event_handler("startup", initialize_hospital_auth_runtime)
 app.add_event_handler("startup", initialize_indicator_detail_runtime)
+app.add_event_handler("startup", initialize_diagnosis_detail_runtime)
 app.add_event_handler("startup", initialize_kb_exchange_runtime)
 app.add_event_handler("startup", start_monitoring_scheduler)
 app.add_event_handler("shutdown", stop_monitoring_scheduler)

@@ -1,8 +1,12 @@
+from pathlib import Path
+
+import yaml
 from sqlalchemy import create_engine, event, text
 
 from app.agents.contracts import PastedDiagnosisEvidence
 from app.db_access.query_result import QueryResult
 from app.diagnose.pasted_diagnosis import PastedDiagnosisService
+from app.diagnose.detail_compare import DiagnosisComparisonStore
 
 
 USER_SQL = """
@@ -47,9 +51,10 @@ class _SequencedBusinessDB:
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
+        rows = outcome if isinstance(outcome, list) else [outcome]
         return QueryResult(
-            rows=[outcome],
-            row_count=1,
+            rows=rows,
+            row_count=len(rows),
             source=self.source_id,
             tool_name=self.tool_name,
             duration_ms=3,
@@ -198,6 +203,74 @@ def test_user_sql_result_accepts_doctor_readable_chinese_aliases():
     assert user_result["denominator_count"] == 158
     assert user_result["sample_count"] == 158
     assert user_result["result_value"] == 1.27
+
+
+def test_supported_diagnosis_creates_record_comparison_snapshot(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    sql_text = (
+        root / "tests/fixtures/diagnosis/transfer_ratio_user_sql.sql"
+    ).read_text(encoding="utf-8")
+    specification = yaml.safe_load((
+        root
+        / "core-rules-wiki/sql-specs/MQSI2025_001_患者入院48小时内转科比例/rule_sql_spec.yaml"
+    ).read_text(encoding="utf-8"))
+    mapping = yaml.safe_load((
+        root / "core-rules-wiki/hospital-mappings/hospital_001/MQSI2025_001.yaml"
+    ).read_text(encoding="utf-8"))
+    context = {
+        **_context(),
+        "effective_params": {
+            "hospital_soid": 991827,
+            "excluded_inpatient_business_code": 399552157,
+            "transfer_department_code": 399549991,
+            "transfer_ward_code": 399549990,
+            "icu_org_ids_csv": "101,102",
+            "transfer_minutes_threshold": 2880,
+        },
+    }
+    business_db = _SequencedBusinessDB([
+        {"index_value": 50, "numerator_count": 1, "denominator_count": 2},
+        {"index_value": 0, "numerator_count": 0, "denominator_count": 2},
+        {"index_value": 0, "numerator_count": 0, "denominator_count": 2},
+        [
+            {"record_key": "E001", "user_meets_numerator": 1},
+            {"record_key": "E002", "user_meets_numerator": 0},
+        ],
+        [
+            {"admission_id": "E001", "__meets_numerator": 0},
+            {"admission_id": "E002", "__meets_numerator": 0},
+        ],
+    ])
+    store = DiagnosisComparisonStore(tmp_path)
+    service = PastedDiagnosisService(
+        runtime_engine=_runtime_engine(),
+        business_db=business_db,
+        allowed_database="WIN60_QA_991827",
+        allowed_schema="WINDBA",
+        comparison_store=store,
+    )
+
+    result = service.run(
+        evidence=_evidence(sql_text),
+        hospital_id="hospital_001",
+        caliber_context=context,
+        field_mapping=mapping,
+        stat_period=None,
+        effective_rule={
+            "rule_id": "MQSI2025_001",
+            "rule_name": "患者入院48小时内转科比例",
+            "effective_level": "hospital",
+            "national_version": "2025",
+            "hospital_version": 4,
+            "calculation_definition": specification["calculation"],
+        },
+    )
+
+    detail = result["detail_comparison"]
+    assert detail["status"] == "ready"
+    assert detail["counts"]["user_only_numerator"] == 1
+    assert len(business_db.sql) == 5
+    assert store.read_summary("hospital_001", detail["comparison_id"])["rule_id"] == "MQSI2025_001"
 
 
 def test_unsafe_user_sql_is_not_executed_but_calibers_still_run():
