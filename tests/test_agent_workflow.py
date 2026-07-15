@@ -704,6 +704,80 @@ class AgentWorkflowTest(unittest.TestCase):
                 "急会诊及时到位率",
             )
 
+    def test_sql_command_reuses_previous_session_stat_period(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
+                first = run_chat(
+                    "急会诊及时到位率统计时间从2026-06-01到2026-08-01怎么算？",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=False,
+                    session_id="sql-period-memory-session",
+                    memory=memory,
+                )
+                list(run_chat_stream(
+                    "生成 SQL",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=ContextOnlySQLCommandLLM(),
+                    session_id=first["session_id"],
+                    memory=memory,
+                ))
+
+        self.assertEqual(len(FakeSQLGenerationAgent.calls), 1)
+        call = FakeSQLGenerationAgent.calls[0]
+        self.assertEqual(call["stat_start_time"], "2026-06-01 00:00:00")
+        self.assertEqual(call["stat_end_time"], "2026-08-01 00:00:00")
+
+    def test_sql_command_recovers_stat_period_from_legacy_user_message(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            session_id = memory.ensure_session(
+                "legacy-period-memory-session", "hospital_001"
+            )
+            memory.append_message(
+                session_id,
+                "user",
+                "如果统计时间改成从2026-06-01到2026-08-01怎么算？",
+            )
+            memory.append_message(
+                session_id,
+                "assistant",
+                "已按新的统计时间说明。",
+                {"rule_id": "R001", "rule_name": "急会诊及时到位率"},
+            )
+            engine = _trace_runtime_engine()
+
+            with patch("app.agent.graph.create_runtime_engine", return_value=engine), \
+                 patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
+                list(run_chat_stream(
+                    "生成 SQL",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=ContextOnlySQLCommandLLM(),
+                    session_id=session_id,
+                    memory=memory,
+                ))
+
+        self.assertEqual(len(FakeSQLGenerationAgent.calls), 1)
+        call = FakeSQLGenerationAgent.calls[0]
+        self.assertEqual(call["stat_start_time"], "2026-06-01 00:00:00")
+        self.assertEqual(call["stat_end_time"], "2026-08-01 00:00:00")
+
     def test_search_match_count_accepts_mysql_repository_shape(self) -> None:
         self.assertEqual(_search_match_count({"matches": [{}, {}]}), 2)
         self.assertEqual(_search_match_count({"results": [{}]}), 1)

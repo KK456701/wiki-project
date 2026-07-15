@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import time
 import uuid
+from datetime import datetime
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Iterator, Protocol, Tuple, TypedDict
@@ -59,6 +60,86 @@ class AgentState(TypedDict, total=False):
     _node_timings: dict[str, int]
     _term_normalization: dict[str, Any]
     _term_normalization_error: str
+
+
+_DATE_TOKEN_PATTERN = re.compile(
+    r"(?<!\d)(20\d{2})\s*(?:-|/|年)\s*(0?[1-9]|1[0-2])"
+    r"\s*(?:-|/|月)\s*(0?[1-9]|[12]\d|3[01])\s*日?(?!\d)"
+)
+
+
+def _extract_stat_period(query: str) -> tuple[str, str] | None:
+    dates: list[datetime] = []
+    for match in _DATE_TOKEN_PATTERN.finditer(query or ""):
+        try:
+            dates.append(datetime(*(int(value) for value in match.groups())))
+        except ValueError:
+            continue
+        if len(dates) == 2:
+            break
+    if len(dates) != 2 or dates[1] <= dates[0]:
+        return None
+    return (
+        dates[0].strftime("%Y-%m-%d 00:00:00"),
+        dates[1].strftime("%Y-%m-%d 00:00:00"),
+    )
+
+
+def _default_stat_period(now: datetime | None = None) -> tuple[str, str]:
+    current = now or datetime.now()
+    start = current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return (
+        start.strftime("%Y-%m-%d %H:%M:%S"),
+        end.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+
+
+def _resolve_stat_period(
+    query: str,
+    memory_context: dict[str, Any] | None,
+    *,
+    use_default: bool,
+) -> tuple[str, str] | None:
+    explicit = _extract_stat_period(query)
+    if explicit is not None:
+        return explicit
+    context = memory_context or {}
+    start = str(context.get("stat_start_time") or "").strip()
+    end = str(context.get("stat_end_time") or "").strip()
+    if start and end:
+        return start, end
+    return _default_stat_period() if use_default else None
+
+
+def _stat_period_metadata(
+    query: str, memory_context: dict[str, Any] | None
+) -> dict[str, str]:
+    period = _resolve_stat_period(query, memory_context, use_default=False)
+    if period is None:
+        return {}
+    return {"stat_start_time": period[0], "stat_end_time": period[1]}
+
+
+def _load_memory_context(
+    memory_store: ConversationMemory, session_id: str
+) -> dict[str, Any]:
+    context = dict(memory_store.last_rule_context(session_id) or {})
+    if context.get("stat_start_time") and context.get("stat_end_time"):
+        return context
+    for message in reversed(memory_store.recent_messages(session_id, limit=20)):
+        if message.get("role") != "user":
+            continue
+        period = _extract_stat_period(str(message.get("content") or ""))
+        if period is None:
+            continue
+        context["stat_start_time"], context["stat_end_time"] = period
+        context["stat_period_source"] = "recent_user_message"
+        break
+    return context
 
 
 def _create_business_db_client(db_name: str | None = None) -> BusinessDBClient:
@@ -766,7 +847,7 @@ def run_chat(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
-    memory_context = memory_store.last_rule_context(active_session_id) or {}
+    memory_context = _load_memory_context(memory_store, active_session_id)
     memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
@@ -905,6 +986,7 @@ def run_chat(
             "generation_method": result.get("generation_method"),
             "errors": result.get("errors", []),
             "has_feedback_preview": bool(result.get("feedback_preview")),
+            **_stat_period_metadata(query, memory_context),
         },
     )
     error_count = len(result.get("errors", []) or [])
@@ -967,7 +1049,7 @@ def run_chat_stream(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
-    memory_context = memory_store.last_rule_context(active_session_id) or {}
+    memory_context = _load_memory_context(memory_store, active_session_id)
     memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
@@ -1254,6 +1336,7 @@ def run_chat_stream(
             "rule_name": effective.get("rule_name"),
             "generation_method": "tool", "errors": errors,
             "has_feedback_preview": True,
+            **_stat_period_metadata(query, memory_context),
         })
         preview = state.get("feedback_preview")
         _record_trace_node(
@@ -1300,15 +1383,10 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "sqlgen",
         })
+        start, end = _resolve_stat_period(
+            query, memory_context, use_default=True
+        ) or _default_stat_period()
         try:
-            from datetime import datetime as dt
-
-            now = dt.now()
-            start = f"{now.year}-{now.month:02d}-01 00:00:00"
-            if now.month == 12:
-                end = f"{now.year + 1}-01-01 00:00:00"
-            else:
-                end = f"{now.year}-{now.month + 1:02d}-01 00:00:00"
 
             result = active_orchestrator.generate_indicator(
                 prepared,
@@ -1350,6 +1428,8 @@ def run_chat_stream(
             "intent": state.get("intent"), "rule_id": rule_id,
             "rule_name": effective.get("rule_name"),
             "generation_method": "sqlgen", "errors": errors,
+            "stat_start_time": start,
+            "stat_end_time": end,
         })
         _record_trace_node(
             trace_recorder,
@@ -1379,12 +1459,10 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": "trial_run",
             "rule_id": rule_id, "generation_method": "trial_run",
         })
+        start, end = _resolve_stat_period(
+            query, memory_context, use_default=True
+        ) or _default_stat_period()
         try:
-            from datetime import datetime as dt
-
-            now = dt.now()
-            start = f"{now.year}-{now.month:02d}-01 00:00:00"
-            end = f"{now.year}-{now.month + 1:02d}-01 00:00:00" if now.month < 12 else f"{now.year + 1}-01-01 00:00:00"
 
             result = active_orchestrator.generate_indicator(
                 prepared,
@@ -1432,6 +1510,8 @@ def run_chat_stream(
             "intent": "trial_run", "rule_id": rule_id,
             "rule_name": effective.get("rule_name"),
             "generation_method": "trial_run", "errors": errors,
+            "stat_start_time": start,
+            "stat_end_time": end,
         })
         _record_trace_node(
             trace_recorder,
@@ -1565,6 +1645,7 @@ def run_chat_stream(
         "intent": state.get("intent"), "rule_id": rule_id,
         "rule_name": effective.get("rule_name"),
         "generation_method": generation_method, "errors": errors,
+        **_stat_period_metadata(query, memory_context),
     })
     _record_trace_node(
         trace_recorder,

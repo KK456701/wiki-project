@@ -171,11 +171,15 @@ class ConversationMemory:
             metadata = message.get("metadata") or {}
             rule_id = metadata.get("rule_id")
             if rule_id:
-                return {
+                context = {
                     "rule_id": rule_id,
                     "rule_name": metadata.get("rule_name"),
                     "source_message_id": metadata.get("jsonl_line"),
                 }
+                for key in ("stat_start_time", "stat_end_time"):
+                    if metadata.get(key):
+                        context[key] = metadata[key]
+                return context
         return None
 
     def last_rule_context(self, session_id: str) -> dict[str, Any] | None:
@@ -203,9 +207,13 @@ class ConversationMemory:
                 continue
             rule_id = metadata.get("rule_id")
             if rule_id:
-                return {
+                context = {
                     "rule_id": rule_id,
                     "rule_name": metadata.get("rule_name"),
                     "source_message_id": row["id"],
                 }
+                for key in ("stat_start_time", "stat_end_time"):
+                    if metadata.get(key):
+                        context[key] = metadata[key]
+                return context
         return None
