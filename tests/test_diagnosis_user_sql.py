@@ -48,6 +48,7 @@ def test_prepares_current_database_declare_and_cte_for_readonly_execution():
         "CREATE TABLE #TMP (ID int); SELECT * FROM #TMP;",
         "SELECT * INTO #TMP FROM WINDBA.T;",
         "DECLARE @sql nvarchar(max) = N'SELECT 1'; EXEC(@sql);",
+        "SELECT * FROM WINDBA.T; SELECT * FROM WINDBA.S;",
     ],
 )
 def test_rejects_unsafe_scripts(unsafe_sql):

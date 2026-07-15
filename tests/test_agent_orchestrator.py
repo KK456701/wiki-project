@@ -418,6 +418,42 @@ class AgentOrchestratorTest(unittest.TestCase):
 
         self.assertFalse(indicator.calls[0]["persist_run_result"])
 
+    def test_diagnose_applies_default_and_session_time_field_roles(self) -> None:
+        orchestrator, _, _, _, diagnosis, _ = _orchestrator()
+        prepared = orchestrator.prepare("诊断这个指标", "hospital_001")
+        prepared.field_mapping.fields = {
+            "admit_time": "INPATIENT_ENCOUNTER.ADMITTED_AT",
+            "ward_entry_time": "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+        }
+
+        orchestrator.diagnose(
+            prepared,
+            execution_context={
+                "overrides": {
+                    "period_time_field": "ward_entry_time",
+                    "elapsed_time_start": "ward_entry_time",
+                },
+                "resolved_fields": {
+                    "period_time_field": "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+                    "elapsed_time_start": "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+                },
+            },
+        )
+
+        fields = diagnosis.calls[0]["field_mapping"]["fields"]
+        self.assertEqual(
+            fields["baseline_admit_time"],
+            "INPATIENT_ENCOUNTER.ADMITTED_AT",
+        )
+        self.assertEqual(
+            fields["period_time"],
+            "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+        )
+        self.assertEqual(
+            fields["admit_time"],
+            "INPATIENT_ENCOUNTER.FIRST_ADMITTED_TO_WARD_AT",
+        )
+
     def test_precheck_failure_stops_before_indicator_generation(self) -> None:
         orchestrator, _, _, indicator, _, metadata = _orchestrator()
         prepared = orchestrator.prepare("生成SQL", "hospital_001")

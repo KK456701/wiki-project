@@ -17,6 +17,7 @@ from app.agents.contracts import (
     SQLGenerationResult,
 )
 from app.terminology.sql_binding import resolve_sql_bindings
+from app.sqlgen.context_overrides import apply_execution_field_roles
 
 INTENT_OWNERS = {
     "chat": "human_interaction",
@@ -358,6 +359,7 @@ class CoreIndicatorOrchestrator:
         trigger: str = "manual",
         related_sql_id: str | None = None,
         stat_period: str | None = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self._require_rule(prepared)
         diagnose = getattr(
@@ -388,6 +390,10 @@ class CoreIndicatorOrchestrator:
             prepared.field_mapping.model_dump()
             if prepared.field_mapping is not None
             else {}
+        )
+        mapping_payload = apply_execution_field_roles(
+            mapping_payload,
+            execution_context,
         )
         result = diagnose(
             hospital_id=str(prepared.hospital_id or ""),

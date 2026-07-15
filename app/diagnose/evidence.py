@@ -15,7 +15,9 @@ from app.agents.contracts import (
 
 
 _SQL_START = re.compile(
-    r"(?im)^\s*(?:USE\s+\[?[\w-]+\]?\s*;|DECLARE\s+@\w+|;?WITH\s+\w+\s+AS\s*\(|SELECT\s+)"
+    r"(?im)^\s*(?:USE\s+\[?[\w-]+\]?\s*;|DECLARE\s+@\w+|;?WITH\s+\w+\s+AS\s*\(|"
+    r"SELECT\s+|UPDATE\s+|DELETE\s+|INSERT\s+|MERGE\s+|EXEC(?:UTE)?\s+|"
+    r"CREATE\s+|ALTER\s+|DROP\s+|TRUNCATE\s+)"
 )
 _DATE_VALUE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)?$")
 

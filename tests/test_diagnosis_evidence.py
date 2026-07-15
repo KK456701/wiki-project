@@ -134,3 +134,13 @@ def test_plain_question_without_sql_keeps_empty_sql():
     assert evidence.question == "帮我诊断急会诊及时到位率为什么下降"
     assert evidence.declared_params == {}
     assert llm.calls == 0
+
+
+def test_extracts_unsafe_statement_so_guard_can_block_it():
+    evidence = extract_pasted_evidence(
+        "请帮我排查这段 SQL。\nUPDATE WINDBA.INPATIENT_ENCOUNTER SET IS_DEL = 1;",
+        rule_id="MQSI2025_001",
+    )
+
+    assert evidence.question == "请帮我排查这段 SQL。"
+    assert evidence.sql_text == "UPDATE WINDBA.INPATIENT_ENCOUNTER SET IS_DEL = 1;"

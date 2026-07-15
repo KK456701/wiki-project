@@ -1969,7 +1969,8 @@ def run_chat_stream(
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u7cfb\u7edf\u7ed3\u6784\u548c\u5143\u6570\u636e"})
             yield ("progress", {"message": "\u6b63\u5728\u6821\u9a8c\u53e3\u5f84\u89c4\u5219\u548c\u6570\u636e\u8d28\u91cf"})
             diag_result = active_orchestrator.diagnose(
-                prepared
+                prepared,
+                execution_context=execution_context,
             )
             record_diagnose_trace_nodes(trace_recorder, trace_id, diag_result, rule_id, state.get("hospital_id"))
             yield ("progress", {"message": "\u6b63\u5728\u6574\u7406\u8bca\u65ad\u7ed3\u679c"})
