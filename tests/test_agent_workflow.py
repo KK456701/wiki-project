@@ -64,6 +64,21 @@ class ContextOnlySQLCommandLLM:
         )
 
 
+class StatPeriodUpdateLLM:
+    def __init__(self) -> None:
+        self.answer_stream_calls = 0
+
+    def generate(self, prompt: str) -> str:
+        return (
+            '{"intent":"query","indicator_name":"急会诊及时到位率",'
+            '"retrieval_query":"急会诊及时到位率","custom_filters":[]}'
+        )
+
+    def generate_stream(self, prompt: str):
+        self.answer_stream_calls += 1
+        yield "不应调用普通指标回答"
+
+
 class FakeSQLGenerationAgent:
     calls: list[dict[str, object]] = []
 
@@ -752,6 +767,43 @@ class AgentWorkflowTest(unittest.TestCase):
         call = FakeSQLGenerationAgent.calls[0]
         self.assertEqual(call["stat_start_time"], "2026-06-01 00:00:00")
         self.assertEqual(call["stat_end_time"], "2026-08-01 00:00:00")
+
+    def test_stat_period_update_returns_confirmation_without_llm_answer(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            first = run_chat(
+                "急会诊及时到位率怎么算？",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id="period-update-confirmation",
+                memory=memory,
+            )
+            llm = StatPeriodUpdateLLM()
+
+            events = list(
+                run_chat_stream(
+                    "统计时间改为2026-06-01至2026-08-01。",
+                    hospital_id="hospital_001",
+                    kb_root=root,
+                    use_llm=True,
+                    llm_client=llm,
+                    session_id=first["session_id"],
+                    memory=memory,
+                )
+            )
+
+        done = next(data for event, data in reversed(events) if event == "done")
+        self.assertEqual(done["generation_method"], "context_command")
+        self.assertIn("统计时间已更新", done["answer"])
+        self.assertIn("2026-06-01 00:00:00", done["answer"])
+        self.assertIn("2026-08-01 00:00:00", done["answer"])
+        self.assertIn("不含结束时刻", done["answer"])
+        self.assertIn("生成 SQL、试运行和异常诊断", done["answer"])
+        self.assertNotIn("计算公式", done["answer"])
+        self.assertNotIn("定义", done["answer"])
+        self.assertEqual(llm.answer_stream_calls, 0)
 
     def test_sql_command_recovers_stat_period_from_legacy_user_message(self) -> None:
         FakeSQLGenerationAgent.calls = []

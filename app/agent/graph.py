@@ -76,6 +76,16 @@ _DATE_TOKEN_PATTERN = re.compile(
 )
 _START_DATE_MARKERS = ("起始时间", "开始时间", "起始日期", "开始日期")
 _END_DATE_MARKERS = ("结束时间", "截止时间", "结束日期", "截止日期")
+_STAT_PERIOD_UPDATE_ACTIONS = (
+    "改为",
+    "改成",
+    "调整为",
+    "调整成",
+    "修改为",
+    "修改成",
+    "设置为",
+    "设为",
+)
 
 
 def _extract_stat_period_update(query: str) -> dict[str, str]:
@@ -154,6 +164,28 @@ def _stat_period_metadata(
     if period is None:
         return {}
     return {"stat_start_time": period[0], "stat_end_time": period[1]}
+
+
+def _stat_period_update_answer(
+    query: str,
+    resolution: ContextResolution | None,
+) -> str | None:
+    compact = re.sub(r"\s+", "", query or "")
+    if (
+        resolution is None
+        or not _extract_stat_period_update(query)
+        or not any(marker in compact for marker in _STAT_PERIOD_UPDATE_ACTIONS)
+    ):
+        return None
+    period = resolution.context.stat_period
+    if not period.start_time or not period.end_time:
+        return None
+    return (
+        "统计时间已更新\n\n"
+        f"- 起始时间：{period.start_time}\n"
+        f"- 结束时间：{period.end_time}（不含结束时刻）\n\n"
+        "后续生成 SQL、试运行和异常诊断都将采用这个统计区间。"
+    )
 
 
 def _load_memory_context(
@@ -1193,6 +1225,13 @@ def run_chat(
                     + "\n\n"
                     + _context_block_answer(context_resolution)
                 ).strip()
+            elif result.get("intent") == "query":
+                period_answer = _stat_period_update_answer(
+                    query, context_resolution
+                )
+                if period_answer:
+                    result["answer"] = period_answer
+                    result["generation_method"] = "context_command"
         except (ContextStorageError, ContextVersionConflict) as exc:
             result["status"] = "context_storage_failed"
             result["answer"] = f"本轮不能安全保存会话口径：{exc}"
@@ -2023,7 +2062,22 @@ def run_chat_stream(
 
     # ---- Phase 3: 查询模式 —— 真正的流式 LLM 生成 ----
     answer_start = time.perf_counter()
-    if active_llm is None:
+    period_answer = (
+        _stat_period_update_answer(query, context_resolution)
+        if state.get("intent") == "query"
+        else None
+    )
+    if period_answer:
+        answer = period_answer
+        generation_method = "context_command"
+        yield ("meta", {
+            "session_id": active_session_id,
+            "intent": state.get("intent"),
+            "rule_id": rule_id,
+            "generation_method": generation_method,
+        })
+        yield ("token", {"text": answer})
+    elif active_llm is None:
         # 无 LLM，直接用模板回答
         yield ("progress", {"message": "\u6b63\u5728\u6309\u77e5\u8bc6\u5e93\u6a21\u677f\u751f\u6210\u56de\u7b54"})
         answer = active_orchestrator.answer_from_rule(effective)
