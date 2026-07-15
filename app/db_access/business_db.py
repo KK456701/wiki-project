@@ -5,8 +5,44 @@ import time
 from typing import Any, Callable
 
 import sqlparse
+from sqlparse import tokens as T
 
 from app.db_access.query_result import QueryResult
+
+
+def _security_text(sql: str) -> str:
+    parts: list[str] = []
+    for statement in sqlparse.parse(sql):
+        for token in statement.flatten():
+            if token.ttype in T.Comment or token.ttype in T.Literal.String:
+                parts.append(" ")
+            else:
+                parts.append(token.value)
+    return re.sub(r"\s+", " ", "".join(parts).strip()).lower()
+
+
+def assert_readonly_query(sql: str) -> None:
+    statements = [
+        statement
+        for statement in sqlparse.parse(sql)
+        if str(statement).strip().rstrip(";").strip()
+    ]
+    if len(statements) != 1 or statements[0].get_type() != "SELECT":
+        raise ValueError("业务库 MCP 只允许执行单条 SELECT 查询")
+
+    security_text = _security_text(sql)
+    padded = f" {security_text} "
+    blocked_keywords = (
+        " insert ", " update ", " delete ", " merge ", " exec ",
+        " execute ", " drop ", " alter ", " truncate ", " create ",
+        " grant ", " revoke ",
+    )
+    if any(keyword in padded for keyword in blocked_keywords):
+        raise ValueError("业务库 MCP 禁止写入、执行过程或结构变更 SQL")
+    if re.search(r"\bselect\b[\s\S]*\binto\s+#?\w+", security_text):
+        raise ValueError("业务库 MCP 禁止 SELECT INTO")
+    if "#" in security_text:
+        raise ValueError("业务库 MCP 禁止使用临时表")
 
 
 class BusinessDBClient:
@@ -16,20 +52,7 @@ class BusinessDBClient:
         self.tool_name = tool_name
 
     def _assert_select(self, sql: str) -> None:
-        normalized = re.sub(r"\s+", " ", sql.strip()).lower()
-        statements = [
-            statement
-            for statement in sqlparse.parse(sql)
-            if str(statement).strip().rstrip(";").strip()
-        ]
-        if len(statements) != 1 or statements[0].get_type() != "SELECT":
-            raise ValueError("业务库 MCP 只允许执行 SELECT 查询")
-        if ";" in normalized.rstrip(";"):
-            raise ValueError("业务库 MCP 禁止多语句 SQL")
-        blocked_keywords = (" insert ", " update ", " delete ", " drop ", " alter ", " truncate ", " create ")
-        padded = f" {normalized} "
-        if any(keyword in padded for keyword in blocked_keywords):
-            raise ValueError("业务库 MCP 禁止写入或结构变更 SQL")
+        assert_readonly_query(sql)
 
     def execute_select(self, sql: str) -> QueryResult:
         self._assert_select(sql)

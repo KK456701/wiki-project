@@ -99,6 +99,36 @@ class BusinessDBClientTest(unittest.TestCase):
 
         self.assertEqual(fake.sql, [])
 
+    def test_rejects_select_into_temporary_table(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="win60_qa_991827",
+            tool_name="execute_sql_win60_qa_991827",
+        )
+
+        with self.assertRaises(ValueError):
+            client.execute_select("SELECT * INTO #tmp FROM WINDBA.T")
+
+        self.assertEqual(fake.sql, [])
+
+    def test_rejects_exec_and_merge_before_mcp(self):
+        fake = FakeMCPClient()
+        client = BusinessDBClient(
+            fake.execute_sql,
+            source_id="win60_qa_991827",
+            tool_name="execute_sql_win60_qa_991827",
+        )
+
+        for sql in (
+            "EXEC WINDBA.DO_SOMETHING",
+            "MERGE WINDBA.T AS target USING WINDBA.S AS source ON 1=1 WHEN MATCHED THEN DELETE",
+        ):
+            with self.assertRaises(ValueError):
+                client.execute_select(sql)
+
+        self.assertEqual(fake.sql, [])
+
 
 if __name__ == "__main__":
     unittest.main()
