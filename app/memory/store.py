@@ -7,6 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
+from app.memory.contracts import (
+    ContextStorageError,
+    ContextVersionConflict,
+    ConversationContext,
+)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MEMORY_ROOT = PROJECT_ROOT / "runtime" / "conversations"
 
@@ -60,6 +68,18 @@ class ConversationMemory:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id, id)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS session_contexts (
+                    session_id TEXT PRIMARY KEY,
+                    context_version INTEGER NOT NULL,
+                    context_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(session_id) REFERENCES sessions(session_id)
+                )
+                """
+            )
 
     def ensure_session(self, session_id: str | None = None, hospital_id: str | None = None) -> str:
         active_session_id = session_id or uuid.uuid4().hex
@@ -162,6 +182,84 @@ class ConversationMemory:
                 item["metadata"] = {}
             messages.append(item)
         return messages
+
+    def load_context(self, session_id: str) -> ConversationContext:
+        if not self.sqlite_available:
+            raise ContextStorageError("结构化会话状态存储当前不可用")
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    """
+                    SELECT context_version, context_json
+                    FROM session_contexts
+                    WHERE session_id = ?
+                    """,
+                    (session_id,),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            self.sqlite_available = False
+            raise ContextStorageError("读取结构化会话状态失败") from exc
+        if row is None:
+            return ConversationContext()
+        try:
+            context = ConversationContext.model_validate_json(row["context_json"])
+        except (ValidationError, ValueError) as exc:
+            raise ContextStorageError("结构化会话状态内容已损坏") from exc
+        context.context_version = int(row["context_version"])
+        return context
+
+    def save_context(
+        self,
+        session_id: str,
+        context: ConversationContext,
+        expected_version: int,
+    ) -> ConversationContext:
+        if not self.sqlite_available:
+            raise ContextStorageError("结构化会话状态存储当前不可用")
+        now = self._now()
+        saved = context.model_copy(deep=True)
+        try:
+            with self._connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute(
+                    "SELECT context_version FROM session_contexts WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                current_version = int(row["context_version"]) if row else 0
+                if current_version != expected_version:
+                    raise ContextVersionConflict(
+                        f"会话状态版本已变化：期望 {expected_version}，当前 {current_version}"
+                    )
+                saved.context_version = current_version + 1
+                payload = saved.model_dump_json()
+                if row is None:
+                    conn.execute(
+                        """
+                        INSERT INTO session_contexts(
+                            session_id, context_version, context_json, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (session_id, saved.context_version, payload, now, now),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE session_contexts
+                        SET context_version = ?, context_json = ?, updated_at = ?
+                        WHERE session_id = ?
+                        """,
+                        (saved.context_version, payload, now, session_id),
+                    )
+                conn.execute(
+                    "UPDATE sessions SET updated_at = ? WHERE session_id = ?",
+                    (now, session_id),
+                )
+        except ContextVersionConflict:
+            raise
+        except sqlite3.Error as exc:
+            self.sqlite_available = False
+            raise ContextStorageError("保存结构化会话状态失败") from exc
+        return saved
 
 
     def _last_rule_context_from_jsonl(self, session_id: str) -> dict[str, Any] | None:
