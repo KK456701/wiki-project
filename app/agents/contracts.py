@@ -227,12 +227,34 @@ class DiagnosisLayer(AgentContract):
         return normalized
 
 
+class DiagnosisStatPeriod(AgentContract):
+    start: str | None = None
+    end: str | None = None
+
+
+class PastedDiagnosisEvidence(AgentContract):
+    raw_text: str
+    question: str = ""
+    rule_id: str | None = None
+    sql_text: str = ""
+    declared_params: dict[str, Any] = Field(default_factory=dict)
+    claimed_result: dict[str, Any] = Field(default_factory=dict)
+    stat_period: DiagnosisStatPeriod = Field(default_factory=DiagnosisStatPeriod)
+    parse_warnings: list[str] = Field(default_factory=list)
+    model_parse_status: str = "not_used"
+
+
 class DiagnosisResult(AgentContract):
     ok: bool = True
     diagnose_status: str = "success"
     report_id: str | None = None
     layers: list[DiagnosisLayer] = Field(default_factory=list)
     summary: str = ""
+    user_summary: str = ""
+    evidence: PastedDiagnosisEvidence | None = None
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    execution_results: dict[str, Any] = Field(default_factory=dict)
+    trace_events: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PreparedRequest(AgentContract):
