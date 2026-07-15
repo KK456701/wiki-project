@@ -83,6 +83,9 @@ class TraceUiTest(unittest.TestCase):
             self.assertIn(f'node.node_name === "{node_name}"', html)
         self.assertIn('return "未执行，已完成静态分析"', html)
         self.assertIn('return "发现口径差异"', html)
+        self.assertIn("用户 SQL 与当前生效 SQL 存在计算差异", html)
+        self.assertNotIn("用户 SQL、本院口径或国标口径之间存在差异", html)
+        self.assertNotIn("三方计算口径未发现明显差异", html)
 
     def test_context_nodes_explain_clarification_and_mapping_status(self) -> None:
         html = WEB_INDEX.read_text(encoding="utf-8")

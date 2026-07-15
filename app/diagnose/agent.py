@@ -136,6 +136,8 @@ class DiagnoseAgent:
         response.update({
             "primary_conclusion": pasted_result["primary_conclusion"],
             "findings": pasted_result["findings"],
+            "comparison_rows": pasted_result.get("comparison_rows") or [],
+            "effective_source": pasted_result.get("effective_source") or {},
             "execution_results": pasted_result["execution_results"],
             "evidence": {
                 "raw_text": "",

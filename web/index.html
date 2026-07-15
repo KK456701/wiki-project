@@ -1733,7 +1733,7 @@ function traceBusinessSummary(node) {
     return output.ok === false ? "指标依赖的医院表字段存在适配问题" : "指标依赖的医院表字段均可用";
   }
   if (node.node_name === "caliber_semantic_compare") {
-    return Number(output.finding_count || 0) > 0 ? "用户 SQL、本院口径或国标口径之间存在差异" : "三方计算口径未发现明显差异";
+    return Number(output.finding_count || 0) > 0 ? "用户 SQL 与当前生效 SQL 存在计算差异" : "用户 SQL 与当前生效 SQL 未发现明显差异";
   }
   if (node.node_name === "data_quality_profile") {
     return Number(output.risk_count || 0) > 0 ? "原始业务数据存在需要核查的质量风险" : "本次数据质量检查未发现明显风险";

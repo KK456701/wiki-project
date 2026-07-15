@@ -23,6 +23,7 @@ from app.diagnose.caliber_compare import (
 )
 from app.diagnose.sql_semantics import (
     DiagnosisFinding,
+    SqlSemanticProfile,
     compare_sql_profiles,
     profile_sql,
 )
@@ -142,6 +143,97 @@ class PastedDiagnosisService:
             suggestion="结合其他口径差异项确认应采用的计算方式。",
         )
 
+    @staticmethod
+    def _comparison_rows(
+        findings: list[DiagnosisFinding],
+        current: SqlSemanticProfile,
+        user: SqlSemanticProfile,
+        execution_results: dict[str, dict[str, Any]],
+    ) -> list[dict[str, str]]:
+        def joined(values: list[str]) -> str:
+            return "、".join(values) if values else "未明确识别"
+
+        def elapsed_starts(profile: SqlSemanticProfile) -> str:
+            return joined(list(dict.fromkeys(
+                item.get("start", "")
+                for item in profile.elapsed_pairs
+                if item.get("start")
+            )))
+
+        boundary_labels = {
+            "inclusive": "包含正好 48 小时",
+            "exclusive": "不包含正好 48 小时",
+            "unknown": "未明确识别",
+        }
+        icu_labels = {
+            "configured_id_list": "使用系统配置的 ICU 组织 ID 清单",
+            "organization_code_lookup": "从医院组织字典按组织编码查询 ICU",
+            "unknown": "未明确识别",
+        }
+        event_labels = {
+            "earliest_matching_event": "每次入院取最早一条符合条件的转科记录",
+            "any_matching_event": "每次入院只要存在任意一条符合条件的转科记录",
+            "unknown": "未明确识别",
+        }
+        values: dict[str, tuple[str, str]] = {
+            "period_field_changed": (
+                joined(user.period_fields),
+                joined(current.period_fields),
+            ),
+            "elapsed_start_field_changed": (
+                elapsed_starts(user),
+                elapsed_starts(current),
+            ),
+            "upper_boundary_inclusive_changed": (
+                boundary_labels[user.upper_boundary_mode],
+                boundary_labels[current.upper_boundary_mode],
+            ),
+            "icu_scope_strategy_changed": (
+                icu_labels[user.icu_scope_strategy],
+                icu_labels[current.icu_scope_strategy],
+            ),
+            "event_selection_changed": (
+                event_labels[user.event_selection],
+                event_labels[current.event_selection],
+            ),
+            "null_handling_changed": (
+                joined(user.null_handling),
+                joined(current.null_handling),
+            ),
+        }
+        user_result = execution_results.get("user") or {}
+        current_result = execution_results.get("hospital") or {}
+        values["execution_result_changed"] = (
+            str(user_result.get("result_value") or "--"),
+            str(current_result.get("result_value") or "--"),
+        )
+
+        return [
+            {
+                "item": finding.title,
+                "user_sql": values.get(finding.code, (finding.evidence, "--"))[0],
+                "current_sql": values.get(finding.code, ("--", finding.evidence))[1],
+                "impact": finding.impact,
+                "suggestion": finding.suggestion,
+            }
+            for finding in findings
+        ]
+
+    @staticmethod
+    def _effective_source(context: CaliberComparisonContext) -> dict[str, Any]:
+        if context.overridden_fields:
+            version = f" v{context.hospital_version}" if context.hospital_version is not None else ""
+            label = f"本院生效口径{version}"
+        else:
+            version = f" v{context.national_version}" if context.national_version is not None else ""
+            label = f"国标口径{version}"
+        return {
+            "label": label,
+            "national_version": context.national_version,
+            "hospital_version": context.hospital_version,
+            "overridden_fields": list(context.overridden_fields),
+        }
+
     def run(
         self,
         *,
@@ -196,13 +288,17 @@ class PastedDiagnosisService:
         user_sql = prepared.query_sql or evidence.sql_text
         hospital_sql = self._render_profile_sql(context.effective_sql_template, mapping)
         user_profile = profile_sql(user_sql, mapping.dialect)
-        findings = compare_sql_profiles(
-            profile_sql(hospital_sql, mapping.dialect),
-            user_profile,
-        )
+        current_profile = profile_sql(hospital_sql, mapping.dialect)
+        findings = compare_sql_profiles(current_profile, user_profile)
         result_finding = self._result_finding(user_result, execution_results["hospital"])
         if result_finding:
             findings.append(result_finding)
+        comparison_rows = self._comparison_rows(
+            findings,
+            current_profile,
+            user_profile,
+            execution_results,
+        )
 
         if user_result["status"] == "blocked":
             conclusion = "user_sql_blocked"
@@ -281,6 +377,8 @@ class PastedDiagnosisService:
         return {
             "primary_conclusion": conclusion,
             "findings": [item.model_dump() for item in findings],
+            "comparison_rows": comparison_rows,
+            "effective_source": self._effective_source(context),
             "execution_results": execution_results,
             "caliber_comparison": comparison,
             "stat_period": normalized_period,

@@ -283,14 +283,15 @@ nodes:
     agent_owner: root_cause_diagnosis
     title: 比较计算口径
     type: diagnose
-    description: 比较用户 SQL、本院生效口径和国标口径的筛选条件、时间边界、分子分母及聚合结果。
+    description: 以用户 SQL 和当前生效 SQL 为主，比较筛选条件、时间边界、分子分母及聚合结果；国标仅用于追溯口径来源。
     inputs: [rule_id, hospital_id, stat_period]
     outputs: [conclusion_code, finding_count, finding_codes, national_result, hospital_result, user_result]
     required: true
     on_failure: continue
     required_outputs: [conclusion_code, finding_count]
     config:
-      comparison: 用户 SQL vs 本院生效口径 vs 国标口径
+      comparison: 用户 SQL vs 当前生效 SQL
+      reference: 国标口径仅用于来源追溯
       readonly: true
     failure_hint: 如果这里发现差异，请结合差异代码检查统计时间、筛选范围、去重方式和本院定制项。
 

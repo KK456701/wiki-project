@@ -201,4 +201,9 @@ def test_transfer_ratio_pasted_sql_is_diagnosed_end_to_end_without_model():
     assert "第一层" not in answer
     assert "2 / 158" in answer
     assert "5 / 166" in answer
+    assert "| 用户 SQL |" in answer
+    assert "| 当前生效 SQL |" in answer
+    assert "| 国标口径 |" not in answer
+    assert "## 计算规则差异" in answer
+    assert "统计范围使用的时间字段不同" in answer
     assert "SELECT " not in answer

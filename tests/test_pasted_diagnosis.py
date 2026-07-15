@@ -157,6 +157,14 @@ def test_executes_user_national_and_hospital_sql_and_compares_results():
     assert result["execution_results"]["hospital"]["numerator_count"] == 3
     assert result["primary_conclusion"] == "caliber_difference"
     assert "period_field_changed" in {item["code"] for item in result["findings"]}
+    assert result["comparison_rows"][0] == {
+        "item": "统计范围使用的时间字段不同",
+        "user_sql": "FIRST_ADMITTED_TO_WARD_AT",
+        "current_sql": "ADMITTED_AT",
+        "impact": "两段 SQL 纳入统计的患者批次可能不同，分母会直接变化。",
+        "suggestion": "请业务确认统计周期应按入院时间还是首次入区时间。",
+    }
+    assert result["effective_source"]["label"] == "本院生效口径 v1"
     assert result["stat_period"].startswith("2026-06-01 00:00:00~")
 
 
