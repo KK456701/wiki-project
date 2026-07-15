@@ -142,7 +142,7 @@ class DiagnosisNarrator:
             lines.append("- 如业务仍认为结果异常，请补充本次执行参数和聚合结果后再次诊断。")
         lines.extend([
             "",
-            "<details><summary>查看口径来源与技术依据（供信息科和实施人员）</summary>",
+            ":::details 查看口径来源与技术依据（供信息科和实施人员）",
             "",
         ])
         national = dict(executions.get("national") or {})
@@ -156,7 +156,7 @@ class DiagnosisNarrator:
             lines.append(f"- 本院生效口径调整项：{'、'.join(str(item) for item in overridden)}。")
         for finding in findings:
             lines.append(f"- `{finding.get('code', '')}`：{finding.get('evidence', '')}")
-        lines.extend(["", "</details>"])
+        lines.extend(["", ":::"])
         return "\n".join(lines)
 
     @staticmethod

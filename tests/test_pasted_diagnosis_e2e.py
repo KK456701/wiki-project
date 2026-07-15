@@ -207,3 +207,5 @@ def test_transfer_ratio_pasted_sql_is_diagnosed_end_to_end_without_model():
     assert "## 计算规则差异" in answer
     assert "统计范围使用的时间字段不同" in answer
     assert "SELECT " not in answer
+    assert ":::details 查看口径来源与技术依据（供信息科和实施人员）" in answer
+    assert "<details>" not in answer

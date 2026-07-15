@@ -52,6 +52,25 @@ class PastedDiagnosisService:
             return f"{evidence.stat_period.start}~{evidence.stat_period.end}"
         return stat_period
 
+    @staticmethod
+    def _aggregate_value(
+        row: dict[str, Any],
+        *,
+        aliases: tuple[str, ...],
+        chinese_keyword: str,
+    ) -> Any:
+        normalized = {
+            str(key).strip().lower(): value
+            for key, value in row.items()
+        }
+        for alias in aliases:
+            if alias in normalized:
+                return normalized[alias]
+        for key, value in normalized.items():
+            if chinese_keyword in key:
+                return value
+        return None
+
     def _execute_user(
         self,
         query_sql: str,
@@ -72,11 +91,37 @@ class PastedDiagnosisService:
         try:
             query_result = self.business_db.execute_select(query_sql)
             first = query_result.rows[0] if query_result.rows else {}
-            lowered = {str(key).lower(): value for key, value in first.items()}
-            result_value = lowered.get("index_value")
-            numerator_count = lowered.get("numerator_count")
-            denominator_count = lowered.get("denominator_count")
-            sample_count = lowered.get("sample_count", denominator_count)
+            result_value = self._aggregate_value(
+                first,
+                aliases=("index_value", "indicator_value", "result_value"),
+                chinese_keyword="比例",
+            )
+            numerator_count = self._aggregate_value(
+                first,
+                aliases=("numerator_count", "numerator"),
+                chinese_keyword="分子",
+            )
+            denominator_count = self._aggregate_value(
+                first,
+                aliases=("denominator_count", "denominator"),
+                chinese_keyword="分母",
+            )
+            sample_count = self._aggregate_value(
+                first,
+                aliases=("sample_count", "sample_size"),
+                chinese_keyword="样本",
+            )
+            if sample_count is None:
+                sample_count = denominator_count
+            if (
+                result_value is None
+                and numerator_count is not None
+                and denominator_count not in {None, 0}
+            ):
+                result_value = round(
+                    float(numerator_count) / float(denominator_count) * 100,
+                    2,
+                )
             status = "success" if first else "empty"
         except Exception as exc:
             error_message = str(exc)

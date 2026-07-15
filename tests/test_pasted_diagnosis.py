@@ -168,6 +168,38 @@ def test_executes_user_national_and_hospital_sql_and_compares_results():
     assert result["stat_period"].startswith("2026-06-01 00:00:00~")
 
 
+def test_user_sql_result_accepts_doctor_readable_chinese_aliases():
+    business_db = _SequencedBusinessDB([
+        {
+            "分子_入区48小时内转科人次": 2,
+            "分母_同期入区人次": 158,
+            "入区48小时内转科比例_百分比": 1.27,
+        },
+        {"index_value": 1.27, "numerator_count": 2, "denominator_count": 158},
+        {"index_value": 1.27, "numerator_count": 2, "denominator_count": 158},
+    ])
+    service = PastedDiagnosisService(
+        runtime_engine=_runtime_engine(),
+        business_db=business_db,
+        allowed_database="WIN60_QA_991827",
+        allowed_schema="WINDBA",
+    )
+
+    result = service.run(
+        evidence=_evidence(),
+        hospital_id="hospital_001",
+        caliber_context=_context(),
+        field_mapping=_mapping(),
+        stat_period=None,
+    )
+
+    user_result = result["execution_results"]["user"]
+    assert user_result["numerator_count"] == 2
+    assert user_result["denominator_count"] == 158
+    assert user_result["sample_count"] == 158
+    assert user_result["result_value"] == 1.27
+
+
 def test_unsafe_user_sql_is_not_executed_but_calibers_still_run():
     business_db = _SequencedBusinessDB([
         {"index_value": 50, "sample_count": 4},
