@@ -89,6 +89,8 @@ def _execute_side(
     status = "failed"
     result_value: float | None = None
     sample_count: int | None = None
+    numerator_count: int | None = None
+    denominator_count: int | None = None
     no_sample = False
     error_code = ""
     error_message = ""
@@ -125,9 +127,16 @@ def _execute_side(
         if not first_row or first_row.get("index_value") is None:
             raise CaliberCompareError("口径 SQL 未返回 index_value")
         result_value = round(float(first_row["index_value"]), 2)
+        if first_row.get("numerator_count") is not None:
+            numerator_count = int(first_row["numerator_count"] or 0)
+        if first_row.get("denominator_count") is not None:
+            denominator_count = int(first_row["denominator_count"] or 0)
         if first_row.get("sample_count") is not None:
             sample_count = int(first_row["sample_count"] or 0)
             no_sample = sample_count == 0
+        elif denominator_count is not None:
+            sample_count = denominator_count
+            no_sample = denominator_count == 0
         status = "success"
     except Exception as exc:
         error_code = _error_code(exc)
@@ -153,6 +162,8 @@ def _execute_side(
         "version": version,
         "status": status,
         "result_value": result_value,
+        "numerator_count": numerator_count,
+        "denominator_count": denominator_count,
         "sample_count": sample_count,
         "no_sample": no_sample,
         "error_code": error_code,

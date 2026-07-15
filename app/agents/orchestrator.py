@@ -393,6 +393,7 @@ class CoreIndicatorOrchestrator:
             hospital_id=str(prepared.hospital_id or ""),
             rule_id=str(prepared.rule_id),
             effective_rule=prepared.effective_rule.model_dump(),
+            query_text=prepared.query,
             trigger=trigger,
             related_sql_id=related_sql_id,
             stat_period=stat_period,

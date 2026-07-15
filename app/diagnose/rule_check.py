@@ -78,6 +78,7 @@ def _comparison_check(comparison: dict[str, Any]) -> dict[str, str]:
 def rule_check(
     effective_rule: dict[str, Any],
     caliber_comparison: dict[str, Any] | None = None,
+    sql_zero_guard: bool = False,
 ) -> dict[str, Any]:
     formula = str(effective_rule.get("formula") or "").strip()
     definition = str(effective_rule.get("definition") or "").strip()
@@ -94,7 +95,7 @@ def rule_check(
         checks.append(_check("formula", "fail", "Rule formula is missing.", "Confirm the indicator formula first."))
 
     zero_guard_tokens = ["NULLIF", "CASE", "NONZERO", "NON-ZERO"]
-    if formula and "/" in formula and not any(token in formula.upper() for token in zero_guard_tokens):
+    if formula and "/" in formula and not sql_zero_guard and not any(token in formula.upper() for token in zero_guard_tokens):
         checks.append(_check("zero_guard", "warn", "Formula contains division but no explicit zero-denominator guard.", "Generated SQL should use NULLIF or CASE for denominator protection."))
 
     if formula and "100" not in formula and "%" not in formula:

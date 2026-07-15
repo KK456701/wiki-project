@@ -62,7 +62,7 @@ def profile_sql(sql: str, dialect: str = "sqlserver") -> SqlSemanticProfile:
 
     period_fields: list[str] = []
     period_pattern = re.compile(
-        r"(?is)([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*(?:>=|>)\s*(?::(?:start|begin|from)[A-Za-z0-9_]*|@(?:start|begin|from)[A-Za-z0-9_]*)"
+        r"(?is)([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)?)\s*(?:>=|>)\s*(?::(?:start|begin|from)[A-Za-z0-9_]*|@(?:start|begin|from)[A-Za-z0-9_]*|'\d{4}-\d{2}-\d{2}[^']*')"
     )
     period_fields.extend(_field(match) for match in period_pattern.findall(normalized))
 

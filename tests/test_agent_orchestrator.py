@@ -399,6 +399,7 @@ class AgentOrchestratorTest(unittest.TestCase):
         self.assertEqual(
             diagnosis.calls[0]["field_mapping"]["main_table"], "consult_record"
         )
+        self.assertEqual(diagnosis.calls[0]["query_text"], "生成SQL")
         self.assertEqual(synced["batch_id"], "B001")
         self.assertEqual(metadata.calls[0]["operation"], "precheck")
         self.assertEqual(metadata.calls[1]["db_name"], "hospital_demo_data")

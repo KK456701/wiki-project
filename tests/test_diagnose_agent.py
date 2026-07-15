@@ -173,6 +173,40 @@ class DiagnoseAgentProductionTest(unittest.TestCase):
             self.assertEqual(report["stopped_at_layer"], 2)
             self.assertEqual(len(report["layers"]), 2)
 
+    def test_pasted_sql_nullif_prevents_false_zero_guard_warning(self) -> None:
+        with temp_kb_dir() as root:
+            root = Path(root)
+            _make_diag_kb(root, include_arrive_metadata=True)
+            runtime_engine = _runtime_engine(
+                root / "runtime.db", include_arrive_metadata=True
+            )
+            business_db = _business_db(root / "business.db")
+            agent = DiagnoseAgent(root, runtime_engine, business_db)
+
+            report = agent.run(
+                "hospital_001",
+                "MQSI2025_005",
+                _effective_rule(),
+                query_text=(
+                    "SELECT COUNT(*) * 100.0 / NULLIF(COUNT(*), 0) AS index_value, "
+                    "COUNT(*) AS numerator_count, COUNT(*) AS denominator_count, "
+                    "COUNT(*) AS sample_count FROM consult_record;"
+                ),
+                caliber_context=_comparison_context(),
+                field_mapping=_comparison_mapping(),
+                stat_period="2026-07-01~2026-07-31",
+            )
+
+            zero_guard = [
+                check
+                for check in report["layers"][1]["checks"]
+                if check["name"] == "zero_guard"
+            ]
+            self.assertEqual(zero_guard, [])
+            self.assertEqual(
+                report["execution_results"]["user"]["status"], "success"
+            )
+
 
 def _make_diag_kb(root: Path, include_arrive_metadata: bool) -> None:
     root = Path(root)
