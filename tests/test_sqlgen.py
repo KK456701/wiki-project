@@ -367,7 +367,7 @@ class SqlGenerationSafetyTest(unittest.TestCase):
     def test_llm_filter_value_is_parameterized_not_inlined(self) -> None:
         spec_dir = next(Path("core-rules-wiki/sql-specs").glob("MQSI2025_005_*"))
         mapping = yaml.safe_load(
-            Path("core-rules-wiki/hospital-mappings/hospital_001/MQSI2025_005.yaml").read_text(encoding="utf-8")
+            Path("core-rules-wiki/hospital-mappings/hospital_demo/MQSI2025_005.yaml").read_text(encoding="utf-8")
         )
         template = (spec_dir / "templates" / "mysql.sql.j2").read_text(encoding="utf-8")
 
@@ -384,7 +384,7 @@ class SqlGenerationSafetyTest(unittest.TestCase):
     def test_transfer_template_distinct_count_names_the_identifier(self) -> None:
         spec_dir = next(Path("core-rules-wiki/sql-specs").glob("MQSI2025_001_*"))
         mapping = yaml.safe_load(
-            Path("core-rules-wiki/hospital-mappings/hospital_001/MQSI2025_001.yaml").read_text(encoding="utf-8")
+            Path("core-rules-wiki/hospital-mappings/hospital_demo/MQSI2025_001.yaml").read_text(encoding="utf-8")
         )
         template = (spec_dir / "templates" / "mysql.sql.j2").read_text(encoding="utf-8")
         rules = dict(mapping["custom_rules"])

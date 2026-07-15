@@ -36,9 +36,14 @@ class DBHubMCPClient:
         data = _post_json(self.endpoint, payload, self.timeout_seconds)
         if "error" in data:
             raise DBHubMCPError(f"DBHub MCP 调用失败: {data['error']}")
-        rows = _extract_rows(data.get("result", data))
+        result = data.get("result", data)
+        error = _extract_error(result)
+        if isinstance(result, dict) and result.get("isError"):
+            raise DBHubMCPError(f"DBHub MCP 执行失败: {error or '工具返回错误'}")
+        rows = _extract_rows(result)
         if rows is None:
-            raise DBHubMCPError("DBHub MCP 返回格式中没有可解析的 rows")
+            suffix = f": {error}" if error else ""
+            raise DBHubMCPError(f"DBHub MCP 返回格式中没有可解析的 rows{suffix}")
         self.last_duration_ms = int((time.perf_counter() - started) * 1000)
         return rows
 
@@ -122,3 +127,24 @@ def _extract_rows(payload: Any) -> list[dict[str, Any]] | None:
             if rows is not None:
                 return rows
     return None
+
+
+def _extract_error(payload: Any) -> str:
+    if isinstance(payload, dict):
+        value = payload.get("error")
+        if value:
+            return str(value)
+        for item in payload.get("content") or []:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return text.strip()
+            nested = _extract_error(parsed)
+            if nested:
+                return nested
+    return ""

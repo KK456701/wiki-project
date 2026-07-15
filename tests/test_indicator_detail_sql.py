@@ -24,7 +24,7 @@ def _builder_module():
 def make_context(rule_id: str) -> RunContext:
     root = Path("core-rules-wiki")
     spec = load_rule_sql_spec(root, rule_id)
-    mapping_path = root / "hospital-mappings" / "hospital_001" / f"{rule_id}.yaml"
+    mapping_path = root / "hospital-mappings" / "hospital_demo" / f"{rule_id}.yaml"
     mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
     params = {
         "hospital_id": "hospital_001",

@@ -170,6 +170,7 @@ class SQLGenerationAgent:
 
         if trial_run and validation["ok"]:
             run_context = RunContext(
+                rule_id=rule_id,
                 rule_name=str(effective_rule.get("rule_name") or rule_id),
                 effective_level=str(effective_rule.get("effective_level") or "national"),
                 national_version=(
@@ -198,6 +199,8 @@ class SQLGenerationAgent:
                     or ""
                 ),
                 main_table=str(mapping.get("main_table") or ""),
+                dialect=str(dialect),
+                query_profile=str(mapping.get("query_profile") or ""),
             ).model_dump(mode="json")
             trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
                                    hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by,

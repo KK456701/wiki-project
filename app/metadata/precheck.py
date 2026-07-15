@@ -18,6 +18,10 @@ TYPE_GROUPS = {
     "integer": {"tinyint", "smallint", "mediumint", "int", "integer", "bigint"},
     "numeric": {"decimal", "numeric", "float", "double", "real"},
     "boolean": {"bool", "boolean", "tinyint", "bit"},
+    "code": {
+        "char", "varchar", "text", "tinyint", "smallint", "mediumint",
+        "int", "integer", "bigint", "decimal", "numeric",
+    },
 }
 
 

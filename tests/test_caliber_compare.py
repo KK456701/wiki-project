@@ -18,7 +18,7 @@ def _template() -> str:
 def _mapping() -> FieldMapping:
     payload = yaml.safe_load(
         Path(
-            "core-rules-wiki/hospital-mappings/hospital_001/MQSI2025_005.yaml"
+            "core-rules-wiki/hospital-mappings/hospital_demo/MQSI2025_005.yaml"
         ).read_text(encoding="utf-8")
     )
     return FieldMapping.model_validate(payload)

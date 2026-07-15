@@ -1,19 +1,30 @@
 hospital_id: hospital_001
 rule_id: MQSI2025_005
-dialect: mysql
-db_name: hospital_demo_data
-main_table: consult_record
+dialect: sqlserver
+db_name: WIN60_QA_991827
+schema: WINDBA
+main_table: INPATIENT_CONSULT_APPLY
+query_profile: urgent_consult_sqlserver
 fields:
-  hospital_id: consult_record.hospital_id
-  patient_id: consult_record.patient_id
-  consult_type: consult_record.consult_type
-  request_time: consult_record.request_time
-  arrive_time: consult_record.arrive_time
-  dept_id: consult_record.dept_id
+  hospital_id: INPATIENT_CONSULT_APPLY.HOSPITAL_SOID
+  consult_id: INPATIENT_CONSULT_APPLY.INP_CONSULT_APPLY_ID
+  patient_id: INPATIENT_CONSULT_APPLY.ADMISSION_NUMBER
+  consult_type: INPATIENT_CONSULT_APPLY.CONSULT_LEVEL_CODE
+  request_time: INPATIENT_CONSULT_APPLY.APPLY_CONSULT_SENT_AT
+  arrive_time: INP_CONSULT_INVITATION.SIGNED_AT
+  dept_id: INPATIENT_CONSULT_APPLY.DEPT_ID
 filters:
-  consult_type_value: 急会诊
+  hospital_soid: 991827
+  urgent_level_code: 977578
 custom_rules:
   exclude_depts: []
+relations:
+  - left_table: INPATIENT_CONSULT_APPLY
+    left_column: INP_CONSULT_APPLY_ID
+    right_table: INP_CONSULT_INVITATION
+    right_column: INP_CONSULT_APPLY_ID
+    join_type: left
+    relation_source: wxp_and_database
 status: confirmed
-updated_by: admin
-updated_at: "2026-07-06 22:00:00"
+updated_by: formal_source_import
+updated_at: "2026-07-15 00:00:00"

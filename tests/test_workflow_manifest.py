@@ -107,7 +107,7 @@ class WorkflowManifestTest(unittest.TestCase):
         self.assertIn("caliber_comparison", node["outputs"])
         self.assertIn("conclusion_code", node["outputs"])
         self.assertEqual(
-            node["config"]["tool"], "execute_sql_hospital_demo_data"
+            node["config"]["tool"], "execute_sql_win60_qa_991827"
         )
         self.assertTrue(node["config"]["readonly"])
 

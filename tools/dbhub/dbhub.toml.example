@@ -11,6 +11,31 @@ connection_timeout = 10
 lazy = true
 
 [[sources]]
+# 公司 SQL Server 业务库。账号必须仅授予 VIEW DEFINITION 和指定对象 SELECT 权限。
+id = "win60_qa_991827"
+type = "sqlserver"
+host = "CHANGE_ME"
+port = 1455
+database = "WIN60_QA_991827"
+user = "readonly_user"
+password = "CHANGE_ME"
+sslmode = "disable"
+query_timeout = 30
+connection_timeout = 15
+lazy = true
+
+[[tools]]
+name = "execute_sql"
+source = "win60_qa_991827"
+readonly = true
+# 与系统明细导出上限一致；查询本身仍由系统限制为最多 20,001 行。
+max_rows = 20001
+
+[[tools]]
+name = "search_objects"
+source = "win60_qa_991827"
+
+[[sources]]
 # 运行库：保存 Agent 记忆、审批记录、元数据缓存、诊断报告等。
 id = "wiki_agent_runtime"
 # 医院部署时建议使用只读账号；确需维护表结构时应走数据库管理员流程。

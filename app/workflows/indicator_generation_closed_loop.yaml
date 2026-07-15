@@ -80,7 +80,7 @@ nodes:
     required_inputs: [sql_id, sql_text, stat_start_time, stat_end_time]
     required_outputs: [trial_result]
     config:
-      tool: execute_sql_hospital_demo_data
+      tool: execute_sql_win60_qa_991827
       readonly: true
     failure_hint: 检查 DBHub、业务库只读账号、统计区间参数和 SQL 中使用的实际字段。
 

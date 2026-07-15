@@ -1,7 +1,7 @@
 rule_id: MQSI2025_005
 business_fields:
   hospital_id:
-    type: string
+    type: code
     required: true
     desc: 医院 ID
   patient_id:
@@ -9,7 +9,7 @@ business_fields:
     required: false
     desc: 患者标识（用于授权明细核对）
   consult_type:
-    type: string
+    type: code
     required: true
     desc: 会诊类型
   request_time:

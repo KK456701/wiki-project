@@ -133,6 +133,8 @@ def build_detail_query(
     )
     if not 1 <= row_limit <= 20_001:
         raise DetailQueryError("明细查询行数限制必须在1至20,001之间")
+    if run_context.query_profile == "urgent_consult_sqlserver":
+        return _build_urgent_consult_sqlserver_query(run_context, row_limit)
     main_table = _identifier(run_context.main_table)
     if str(run_context.field_mapping.get("main_table") or main_table) != main_table:
         raise DetailQueryError("运行快照中的主表不一致")
@@ -219,3 +221,91 @@ def build_detail_query(
         params={**run_context.params, **generated},
         columns=columns,
     )
+
+
+def _build_urgent_consult_sqlserver_query(
+    context: RunContext, row_limit: int
+) -> DetailQuery:
+    required_params = {
+        "hospital_soid",
+        "urgent_level_code",
+        "arrive_minutes_threshold",
+        "start_time",
+        "end_time",
+    }
+    missing = sorted(required_params - set(context.params))
+    if missing:
+        raise DetailQueryError("急会诊明细缺少参数：" + "、".join(missing))
+    definition = parse_calculation_definition(context.calculation_definition)
+    columns = [
+        DetailColumn(
+            field=item.field,
+            label=item.label,
+            sensitivity=item.sensitivity,
+        )
+        for item in definition.detail_fields
+    ]
+    supported = {
+        "consult_id",
+        "patient_id",
+        "dept_id",
+        "consult_type",
+        "request_time",
+        "arrive_time",
+        "arrive_minutes",
+    }
+    unsupported = [item.field for item in columns if item.field not in supported]
+    if unsupported:
+        raise DetailQueryError(
+            "急会诊明细包含未支持字段：" + "、".join(unsupported)
+        )
+    expressions = {
+        "consult_id": "base.consult_id",
+        "patient_id": "base.patient_id",
+        "dept_id": "base.dept_id",
+        "consult_type": "N'急会诊'",
+        "request_time": "base.request_time",
+        "arrive_time": "base.arrive_time",
+        "arrive_minutes": "DATEDIFF(MINUTE, base.request_time, base.arrive_time)",
+    }
+    selected = [
+        f"  {expressions[item.field]} AS [{_identifier(item.field)}]"
+        for item in columns
+    ]
+    selected.extend(
+        [
+            "  CASE WHEN DATEDIFF(MINUTE, base.request_time, base.arrive_time) "
+            "BETWEEN 0 AND :arrive_minutes_threshold THEN 1 ELSE 0 END "
+            "AS [__meets_numerator]",
+            "  1 AS [__evidence_row_count]",
+        ]
+    )
+    sql = (
+        f"SELECT TOP {row_limit}\n"
+        + ",\n".join(selected)
+        + "\nFROM (\n"
+        "  SELECT\n"
+        "    apply_record.INP_CONSULT_APPLY_ID AS consult_id,\n"
+        "    apply_record.ADMISSION_NUMBER AS patient_id,\n"
+        "    apply_record.DEPT_ID AS dept_id,\n"
+        "    apply_record.APPLY_CONSULT_SENT_AT AS request_time,\n"
+        "    MIN(CASE WHEN invitation.IS_DEL = 0\n"
+        "                  AND invitation.SIGNED_AT >= apply_record.APPLY_CONSULT_SENT_AT\n"
+        "             THEN invitation.SIGNED_AT END) AS arrive_time\n"
+        "  FROM WINDBA.INPATIENT_CONSULT_APPLY AS apply_record\n"
+        "  LEFT JOIN WINDBA.INP_CONSULT_INVITATION AS invitation\n"
+        "    ON invitation.INP_CONSULT_APPLY_ID = apply_record.INP_CONSULT_APPLY_ID\n"
+        "   AND invitation.HOSPITAL_SOID = apply_record.HOSPITAL_SOID\n"
+        "  WHERE apply_record.HOSPITAL_SOID = :hospital_soid\n"
+        "    AND apply_record.CONSULT_LEVEL_CODE = :urgent_level_code\n"
+        "    AND apply_record.IS_DEL = 0\n"
+        "    AND apply_record.CONSULT_CANCEL_AT IS NULL\n"
+        "    AND apply_record.APPLY_CONSULT_SENT_AT >= :start_time\n"
+        "    AND apply_record.APPLY_CONSULT_SENT_AT < :end_time\n"
+        "  GROUP BY apply_record.INP_CONSULT_APPLY_ID,\n"
+        "           apply_record.ADMISSION_NUMBER, apply_record.DEPT_ID,\n"
+        "           apply_record.APPLY_CONSULT_SENT_AT\n"
+        ") AS base\n"
+        "ORDER BY base.request_time, base.consult_id"
+    )
+    return DetailQuery(sql=sql, params=dict(context.params), columns=columns)

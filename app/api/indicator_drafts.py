@@ -96,7 +96,7 @@ def _create_indicator_draft_services() -> IndicatorDraftServices:
         ),
         workflow=IndicatorDraftWorkflowService(
             runtime_engine=engine,
-            business_db=create_business_db_client("hospital_demo_data"),
+            business_db=create_business_db_client(),
             draft_repository=repository,
         ),
         publisher=HospitalIndicatorPublisher(engine, repository),

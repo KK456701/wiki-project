@@ -37,7 +37,7 @@ function currentMetadataHospitalId() {
 }
 
 function selectedMetadataDatabase() {
-  return metadataDbSelect.value || "hospital_demo_data";
+  return metadataDbSelect.value || "win60_qa_991827";
 }
 
 function setMetadataNotice(message, state) {
@@ -181,7 +181,7 @@ function updateMetadataBusinessSources(sources) {
     metadataDbSelect.appendChild(option);
   });
   var preferred = businessSources.find(function(source) { return source.name === previous; })
-    || businessSources.find(function(source) { return source.name === "hospital_demo_data"; })
+    || businessSources.find(function(source) { return source.name === "win60_qa_991827"; })
     || businessSources[0];
   if (preferred) metadataDbSelect.value = preferred.name;
   metadataSyncButton.disabled = !preferred;

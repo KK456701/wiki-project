@@ -185,7 +185,7 @@ nodes:
     inputs: [sql_text, parameters, db_source]
     outputs: [run_id, rows, duration_ms]
     config:
-      tool: execute_sql_hospital_demo_data
+      tool: execute_sql_win60_qa_991827
       readonly: true
     failure_hint: 如果这里失败，优先检查 DBHub sidecar、MySQL 账号权限和 SQL 参数。
 
@@ -209,7 +209,7 @@ nodes:
     outputs: [rule_checks, caliber_comparison, conclusion_code]
     config:
       layer: 2
-      tool: execute_sql_hospital_demo_data
+      tool: execute_sql_win60_qa_991827
       readonly: true
       comparison: 国标口径 vs 本院生效口径
     failure_hint: 如果这里失败，先根据结论检查国标或本院 SQL、参数和字段映射；两侧都失败时再检查 DBHub 与业务库连接。
@@ -222,7 +222,7 @@ nodes:
     inputs: [rule_id, hospital_id, db_source]
     outputs: [data_checks]
     config:
-      tool: execute_sql_hospital_demo_data
+      tool: execute_sql_win60_qa_991827
     failure_hint: 如果这里失败，优先检查 DBHub 连接、业务表数据和只读 SQL 权限。
 
   - id: metadata_sync_mcp

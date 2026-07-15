@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from sqlalchemy import Engine, text
 
 from app.rules.calculation import merge_calculation_patch
+from app.business_source import current_business_source
 
 
 class RuleNotFoundError(LookupError):
@@ -501,11 +502,46 @@ class MySQLRuleRepository:
         }
         first = rows[0] if rows else {}
         statuses = {str(row.get("status") or "") for row in rows}
+        db_name = str(first.get("db_name") or "")
+        configured_dialect = current_business_source().dialect
+        dialect = (
+            "sqlserver"
+            if db_name.upper().startswith("WIN60_")
+            else configured_dialect
+            if db_name
+            else configured_dialect
+        )
+        relations: list[dict[str, Any]] = []
+        if rows:
+            with self.engine.connect() as conn:
+                if __import__("sqlalchemy").inspect(self.engine).has_table(
+                    "med_table_relation"
+                ):
+                    relations = [
+                        dict(item)
+                        for item in conn.execute(
+                            text(
+                                """
+                                SELECT left_table, left_column, right_table,
+                                       right_column, join_type, relation_source,
+                                       status
+                                FROM med_table_relation
+                                WHERE hospital_id=:hospital_id AND db_name=:db_name
+                                  AND status='confirmed'
+                                ORDER BY id
+                                """
+                            ),
+                            {"hospital_id": hospital_id, "db_name": db_name},
+                        ).mappings().all()
+                    ]
         return {
             "rule_id": index_code,
             "hospital_id": hospital_id,
-            "dialect": "mysql",
-            "db_name": str(first.get("db_name") or ""),
+            "dialect": dialect,
+            "db_name": db_name,
+            "schema": (
+                current_business_source().schema if dialect == "sqlserver" else ""
+            ),
             "main_table": str(first.get("table_name") or ""),
             "fields": fields,
             "status": (
@@ -516,6 +552,12 @@ class MySQLRuleRepository:
                 else "missing"
             ),
             "items": [dict(row) for row in rows],
+            "relations": relations,
+            "query_profile": (
+                "urgent_consult_sqlserver"
+                if index_code == "MQSI2025_005" and dialect == "sqlserver"
+                else ""
+            ),
         }
 
     def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:

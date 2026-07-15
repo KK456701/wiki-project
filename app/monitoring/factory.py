@@ -22,8 +22,8 @@ def create_monitoring_service(runtime_engine: Any | None = None):
     orchestrator = _create_agent_orchestrator(
         runtime_engine=engine,
         rule_repository=rules,
-        business_db=create_business_db_client("hospital_demo_data"),
-        metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
+        business_db=create_business_db_client(),
+        metadata_provider=create_dbhub_metadata_provider(),
     )
     return IndicatorRunService(
         runtime_engine=engine,

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+import re
 
+from app.business_source import current_business_source
 from app.observability.trace import TraceRecorder
 
 
@@ -12,6 +14,11 @@ _MONITORING_BLOCKED_KEYS = {
     "id_card",
     "rows",
 }
+
+
+def _execute_tool(source_id: str) -> str:
+    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", source_id).strip("_").lower()
+    return f"execute_sql_{suffix}"
 
 
 def _safe_monitoring_payload(value: Any) -> Any:
@@ -52,6 +59,9 @@ def record_monitoring_trace_nodes(
         input_data = _safe_monitoring_payload(event.get("input_data") or {})
         output_data = _safe_monitoring_payload(event.get("output_data") or {})
         config_data = _safe_monitoring_payload(event.get("config_data") or {})
+        business_source = str(
+            output_data.get("data_source") or current_business_source().source_id
+        )
         recorder.record_node(
             trace_id,
             node_name,
@@ -62,12 +72,12 @@ def record_monitoring_trace_nodes(
             error_code=str(event.get("error_code") or ""),
             error_message=str(event.get("error_message") or ""),
             tool_name=(
-                "execute_sql_hospital_demo_data"
+                _execute_tool(business_source)
                 if node_name == "monitor_indicator_execute_mcp"
                 else ""
             ),
             db_source=(
-                str(output_data.get("data_source") or "hospital_demo_data")
+                business_source
                 if node_name == "monitor_indicator_execute_mcp"
                 else ""
             ),
@@ -113,11 +123,11 @@ def record_diagnose_trace_nodes(
         1: {"provider": "DBHub 实时元数据，失败后回退运行库缓存"},
         2: {
             "layer": 2,
-            "tool": "execute_sql_hospital_demo_data",
+            "tool": _execute_tool(current_business_source().source_id),
             "readonly": True,
             "comparison": "国标口径 vs 本院生效口径",
         },
-        3: {"tool": "execute_sql_hospital_demo_data"},
+        3: {"tool": _execute_tool(current_business_source().source_id)},
     }
     for index, layer in enumerate(diag_result.get("layers", []), start=1):
         node_name = node_names.get(index)
@@ -135,6 +145,7 @@ def record_diagnose_trace_nodes(
         comparison_source = str(
             national.get("source") or hospital.get("source") or ""
         )
+        business_source = comparison_source or current_business_source().source_id
         duration_ms = (
             int(national.get("duration_ms") or 0)
             + int(hospital.get("duration_ms") or 0)
@@ -177,12 +188,12 @@ def record_diagnose_trace_nodes(
             tool_name=(
                 comparison_tool
                 if index == 2
-                else ("execute_sql_hospital_demo_data" if index == 3 else "")
+                else (_execute_tool(business_source) if index == 3 else "")
             ),
             db_source=(
                 comparison_source
                 if index == 2
-                else ("hospital_demo_data" if index in {1, 3} else "")
+                else (business_source if index in {1, 3} else "")
             ),
             duration_ms=duration_ms,
             input_data=input_data,

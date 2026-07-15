@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.agent.graph import langgraph_installed, run_chat, run_chat_stream, workflow_engine_name
+from app.business_source import current_business_source
 from app.config import get
 from app.db_access.business_db import BusinessDBClient
 from app.db_access.dbhub_mcp import DBHubMCPClient, DBHubMCPError, dbhub_sources
@@ -104,10 +105,8 @@ def _create_agent_orchestrator(
 
     engine = runtime_engine or create_runtime_engine()
     rules = rule_repository or create_rule_repository(engine, DEFAULT_KB_ROOT)
-    db_client = business_db or create_business_db_client("hospital_demo_data")
-    metadata = metadata_provider or create_dbhub_metadata_provider(
-        "hospital_demo_data"
-    )
+    db_client = business_db or create_business_db_client()
+    metadata = metadata_provider or create_dbhub_metadata_provider()
     terminology_repository = TerminologyRepository(engine)
     return CoreIndicatorOrchestrator(
         interaction=HumanInteractionAgent(),
@@ -280,18 +279,37 @@ def create_dbhub_client_for_db(db_name: str) -> DBHubMCPClient:
     )
 
 
-def create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
-    client = create_dbhub_client_for_db(db_name)
+def create_business_db_client(db_name: str | None = None) -> BusinessDBClient:
+    active_db = db_name or current_business_source().source_id
+    client = create_dbhub_client_for_db(active_db)
     return BusinessDBClient(
         client.execute_sql,
-        source_id=_dbhub_source_id_for_db(db_name),
-        tool_name=_dbhub_execute_tool_for_db(db_name),
+        source_id=_dbhub_source_id_for_db(active_db),
+        tool_name=_dbhub_execute_tool_for_db(active_db),
     )
 
 
-def create_dbhub_metadata_provider(db_name: str = "hospital_demo_data") -> DBHubMetadataProvider:
-    client = create_dbhub_client_for_db(db_name)
-    return DBHubMetadataProvider(client.execute_sql)
+def create_dbhub_metadata_provider(db_name: str | None = None) -> DBHubMetadataProvider:
+    active_db = db_name or current_business_source().source_id
+    client = create_dbhub_client_for_db(active_db)
+    settings = current_business_source()
+    dialect = settings.dialect if active_db == settings.source_id else "mysql"
+    return DBHubMetadataProvider(
+        client.execute_sql,
+        dialect=dialect,
+        schema_name=settings.schema if dialect == "sqlserver" else "",
+    )
+
+
+def _business_source_and_database(value: str | None = None) -> tuple[str, str]:
+    settings = current_business_source()
+    requested = str(value or "").strip()
+    if not requested or requested.lower() in {
+        settings.source_id.lower(),
+        settings.database_name.lower(),
+    }:
+        return settings.source_id, settings.database_name
+    return requested, requested
 
 
 app = FastAPI(title="Core Rules Wiki Agent", version="0.1.0")
@@ -515,7 +533,7 @@ def _collect_dependency_checks() -> dict[str, dict[str, Any]]:
 
     try:
         checks["business_db_mcp"] = _normalize_dependency_result(
-            create_business_db_client("hospital_demo_data").check_available(),
+            create_business_db_client().check_available(),
             "BUSINESS_DB_MCP_UNAVAILABLE",
         )
     except Exception as exc:
@@ -678,11 +696,14 @@ def _retry_recovery_task(runtime_engine, task: dict[str, Any], approver_id: str 
         if task_type == "metadata_sync":
             from app.metadata.sync import sync_metadata_from_provider
 
+            source_id, database_name = _business_source_and_database(
+                str(payload.get("db_name") or "")
+            )
             result = sync_metadata_from_provider(
                 runtime_engine=runtime_engine,
-                provider=create_dbhub_metadata_provider(str(payload.get("db_name") or "hospital_demo_data")),
+                provider=create_dbhub_metadata_provider(source_id),
                 hospital_id=str(payload.get("hospital_id") or "hospital_001"),
-                db_name=str(payload.get("db_name") or "hospital_demo_data"),
+                db_name=database_name,
                 kb_root=DEFAULT_KB_ROOT,
             )
         elif task_type == "index_rebuild":
@@ -828,8 +849,27 @@ def import_four_rules(
     _require_admin(authorization)
     from app.db.engine import create_runtime_engine
 
+    business_source = current_business_source()
+    import_options: dict[str, Any] = {
+        "business_source_id": business_source.source_id,
+        "business_dialect": business_source.dialect,
+    }
+    if business_source.dialect == "sqlserver":
+        import_options.update(
+            {
+                "hospital_scope_value": int(
+                    get("business_db_hospital_scope_value", "0")
+                ),
+                "urgent_level_code": int(
+                    get("business_db_urgent_consult_level_code", "0")
+                ),
+            }
+        )
     result = import_four_indicator_rules(
-        create_runtime_engine(), DEFAULT_KB_ROOT, "hospital_001"
+        create_runtime_engine(),
+        DEFAULT_KB_ROOT,
+        "hospital_001",
+        **import_options,
     )
     if result.get("failed"):
         raise HTTPException(status_code=500, detail=result)
@@ -910,13 +950,13 @@ def recovery_task_retry(
 
 @app.get("/api/kb/export/scope")
 def kb_export_scope(
-    hospital_id: str = "hospital_001", db_name: str = "hospital_demo_data"
+    hospital_id: str = "hospital_001", db_name: str | None = None
 ) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.kb.scope import MetadataExportScopeRepository
 
     return MetadataExportScopeRepository(create_runtime_engine()).list_scope(
-        hospital_id, db_name
+        hospital_id, _business_source_and_database(db_name)[1]
     )
 
 
@@ -945,20 +985,20 @@ def kb_export_scope_update(
 
 @app.get("/api/kb/export/preview")
 def kb_export_preview(
-    hospital_id: str = "hospital_001", db_name: str = "hospital_demo_data"
+    hospital_id: str = "hospital_001", db_name: str | None = None
 ) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.kb.scope import MetadataExportScopeRepository
 
     return MetadataExportScopeRepository(create_runtime_engine()).preview_scope(
-        hospital_id, db_name
+        hospital_id, _business_source_and_database(db_name)[1]
     )
 
 
 @app.get("/api/kb/export")
 def kb_export(
     hospital_id: str = "hospital_001",
-    db_name: str = "hospital_demo_data",
+    db_name: str | None = None,
     _token: str | None = Header(None, alias="Authorization"),
 ) -> Response:
     _require_admin(_token)
@@ -969,7 +1009,7 @@ def kb_export(
         data = export_hospital_kb_zip(
             create_runtime_engine(),
             hospital_id,
-            db_name=db_name,
+            db_name=_business_source_and_database(db_name)[1],
             signer=_hospital_package_signer(),
             actor_id="admin",
         )
@@ -1388,7 +1428,7 @@ def dbhub_sources_api() -> dict[str, Any]:
 @app.get("/api/metadata/overview")
 def metadata_overview(
     hospital_id: str,
-    db_name: str = "hospital_demo_data",
+    db_name: str | None = None,
 ) -> dict[str, Any]:
     from app.db.engine import create_runtime_engine
     from app.metadata.overview import load_metadata_overview
@@ -1397,7 +1437,7 @@ def metadata_overview(
         create_runtime_engine(),
         DEFAULT_KB_ROOT,
         hospital_id,
-        db_name,
+        _business_source_and_database(db_name)[1],
     )
 
 
@@ -1426,7 +1466,8 @@ def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, A
     )
 
     try:
-        metadata_provider = create_dbhub_metadata_provider(payload.db_name)
+        source_id, database_name = _business_source_and_database(payload.db_name)
+        metadata_provider = create_dbhub_metadata_provider(source_id)
         orchestrator = _create_agent_orchestrator(
             runtime_engine=runtime_engine,
             metadata_provider=metadata_provider,
@@ -1434,9 +1475,9 @@ def metadata_sync(request: Request, payload: MetadataSyncRequest) -> dict[str, A
         result = orchestrator.sync_metadata(
             metadata_provider,
             payload.hospital_id,
-            payload.db_name,
+            database_name,
         )
-        record_metadata_sync_trace_node(recorder, trace_id, result, payload.hospital_id, payload.db_name)
+        record_metadata_sync_trace_node(recorder, trace_id, result, payload.hospital_id, database_name)
         recorder.finish_trace(trace_id, "success", str(result.get("batch_id") or ""), intent="metadata_sync")
         complete_recovery_task(runtime_engine, recovery_task_id, result)
         result["trace_id"] = trace_id
@@ -1458,7 +1499,7 @@ def sql_generate(request: SqlGenerateRequest) -> dict[str, Any]:
     rules = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
     orchestrator = _create_agent_orchestrator(
         runtime_engine=runtime_engine,
-        business_db=create_business_db_client("hospital_demo_data"),
+        business_db=create_business_db_client(),
         rule_repository=rules,
     )
     prepared = orchestrator.prepare_rule_request(
@@ -1486,9 +1527,9 @@ def diagnose_run(request: DiagnoseRequest) -> dict[str, Any]:
     rules = create_rule_repository(runtime_engine, DEFAULT_KB_ROOT)
     orchestrator = _create_agent_orchestrator(
         runtime_engine=runtime_engine,
-        business_db=create_business_db_client("hospital_demo_data"),
+        business_db=create_business_db_client(),
         rule_repository=rules,
-        metadata_provider=create_dbhub_metadata_provider("hospital_demo_data"),
+        metadata_provider=create_dbhub_metadata_provider(),
     )
     prepared = orchestrator.prepare_rule_request(
         query=f"diagnose:{request.rule_id}",

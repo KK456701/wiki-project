@@ -1,0 +1,42 @@
+SELECT
+  CASE
+    WHEN COUNT(*) = 0 THEN CAST(0 AS decimal(10, 2))
+    ELSE CAST(
+      SUM(CASE
+        WHEN DATEDIFF(MINUTE, base.request_time, base.arrive_time)
+             BETWEEN 0 AND :arrive_minutes_threshold
+        THEN 1 ELSE 0
+      END) * 100.0 / COUNT(*)
+      AS decimal(10, 2)
+    )
+  END AS index_value,
+  SUM(CASE
+    WHEN DATEDIFF(MINUTE, base.request_time, base.arrive_time)
+         BETWEEN 0 AND :arrive_minutes_threshold
+    THEN 1 ELSE 0
+  END) AS numerator_count,
+  COUNT(*) AS denominator_count,
+  COUNT(*) AS sample_count
+FROM (
+  SELECT
+    apply_record.INP_CONSULT_APPLY_ID AS consult_id,
+    apply_record.APPLY_CONSULT_SENT_AT AS request_time,
+    MIN(CASE
+      WHEN invitation.IS_DEL = 0
+       AND invitation.SIGNED_AT >= apply_record.APPLY_CONSULT_SENT_AT
+      THEN invitation.SIGNED_AT
+    END) AS arrive_time
+  FROM WINDBA.INPATIENT_CONSULT_APPLY AS apply_record
+  LEFT JOIN WINDBA.INP_CONSULT_INVITATION AS invitation
+    ON invitation.INP_CONSULT_APPLY_ID = apply_record.INP_CONSULT_APPLY_ID
+   AND invitation.HOSPITAL_SOID = apply_record.HOSPITAL_SOID
+  WHERE apply_record.HOSPITAL_SOID = :hospital_soid
+    AND apply_record.CONSULT_LEVEL_CODE = :urgent_level_code
+    AND apply_record.IS_DEL = 0
+    AND apply_record.CONSULT_CANCEL_AT IS NULL
+    AND apply_record.APPLY_CONSULT_SENT_AT >= :start_time
+    AND apply_record.APPLY_CONSULT_SENT_AT < :end_time
+  GROUP BY
+    apply_record.INP_CONSULT_APPLY_ID,
+    apply_record.APPLY_CONSULT_SENT_AT
+) AS base

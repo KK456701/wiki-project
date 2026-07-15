@@ -453,7 +453,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["hospital_id"], "hospital_001")
-        self.assertEqual(data["db_name"], "hospital_demo_data")
+        self.assertEqual(data["db_name"], "WIN60_QA_991827")
         self.assertFalse(data["has_snapshot"])
 
     def test_kb_export_and_merge_upload_workflow(self) -> None:

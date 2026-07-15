@@ -1,18 +1,12 @@
 hospital_id: hospital_001
 rule_id: MQSI2025_014
-dialect: mysql
-db_name: hospital_demo_data
-main_table: critical_rescue_record
-fields:
-  hospital_id: critical_rescue_record.hospital_id
-  patient_id: critical_rescue_record.patient_id
-  rescue_id: critical_rescue_record.rescue_id
-  rescue_time: critical_rescue_record.rescue_time
-  severity_level: critical_rescue_record.severity_level
-  rescue_result: critical_rescue_record.rescue_result
-  dept_id: critical_rescue_record.dept_id
+dialect: sqlserver
+db_name: WIN60_QA_991827
+schema: WINDBA
+main_table: ""
+fields: {}
 filters: {}
 custom_rules: {}
-status: confirmed
-updated_by: rule_import
-updated_at: "2026-07-10 00:00:00"
+status: pending
+updated_by: formal_source_import
+updated_at: "2026-07-15 00:00:00"

@@ -1,11 +1,73 @@
 import unittest
 from pathlib import Path
 
-from app.metadata.sync import diff_metadata_snapshots, find_affected_rules
+from app.metadata.sync import (
+    collect_metadata_snapshot,
+    diff_metadata_snapshots,
+    find_affected_rules,
+)
 from tests.test_kb_tools import make_minimal_kb, temp_kb_dir
 
 
 class MetadataSyncDiffTest(unittest.TestCase):
+    def test_snapshot_refetches_mapped_tables_after_bulk_result_is_truncated(self) -> None:
+        class Provider:
+            source_name = "dbhub"
+
+            def __init__(self) -> None:
+                self.requested_tables: list[str | None] = []
+
+            def list_tables(self, db_name):
+                return [{"table_name": "EARLY_TABLE", "table_type": "VIEW"}]
+
+            def list_columns(self, db_name, table_name=None):
+                self.requested_tables.append(table_name)
+                if table_name == "INPATIENT_CONSULT_APPLY":
+                    return [
+                        {
+                            "table_name": table_name,
+                            "column_name": "APPLY_CONSULT_SENT_AT",
+                            "data_type": "datetime",
+                        }
+                    ]
+                return [
+                    {
+                        "table_name": "EARLY_TABLE",
+                        "column_name": "ID",
+                        "data_type": "numeric",
+                    }
+                ]
+
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            mapping = root / "hospital-mappings" / "hospital_001" / "R001.yaml"
+            mapping.parent.mkdir(parents=True, exist_ok=True)
+            mapping.write_text(
+                """db_name: WIN60_QA_991827
+main_table: INPATIENT_CONSULT_APPLY
+fields:
+  request_time: INPATIENT_CONSULT_APPLY.APPLY_CONSULT_SENT_AT
+""",
+                encoding="utf-8",
+            )
+            provider = Provider()
+
+            snapshot = collect_metadata_snapshot(
+                provider,
+                "WIN60_QA_991827",
+                root,
+                "hospital_001",
+            )
+
+        self.assertIn("INPATIENT_CONSULT_APPLY", provider.requested_tables)
+        self.assertTrue(
+            any(
+                item["table_name"] == "INPATIENT_CONSULT_APPLY"
+                and item["column_name"] == "APPLY_CONSULT_SENT_AT"
+                for item in snapshot["columns"]
+            )
+        )
+
     def test_diff_metadata_snapshots_detects_table_and_column_changes(self) -> None:
         previous = {
             "tables": [

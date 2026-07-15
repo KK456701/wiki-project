@@ -147,6 +147,8 @@ class FieldMapping(AgentContract):
     mapping_items: list[dict[str, Any]] = Field(
         default_factory=list, alias="items"
     )
+    relations: list[dict[str, Any]] = Field(default_factory=list)
+    query_profile: str = ""
 
 
 class MetadataPrecheckResult(AgentContract):

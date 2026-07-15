@@ -18,6 +18,80 @@ def _count(engine, table_name: str) -> int:
 
 
 class FourIndicatorRuleImporterTest(unittest.TestCase):
+    def test_formal_sqlserver_import_replaces_demo_mapping_safely(self) -> None:
+        from app.rules.importer import import_four_indicator_rules
+        from app.rules.repository import MySQLRuleRepository
+
+        engine = _rule_engine()
+        import_four_indicator_rules(engine, Path("core-rules-wiki"))
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE med_indicator_run_plan ("
+                    "plan_id TEXT PRIMARY KEY, hospital_id TEXT, status TEXT)"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO med_indicator_run_plan VALUES "
+                    "('DEMO_MONTHLY_MQSI2025_005','hospital_001','enabled'),"
+                    "('PLAN_USER_001','hospital_001','enabled')"
+                )
+            )
+
+        result = import_four_indicator_rules(
+            engine,
+            Path("core-rules-wiki"),
+            business_source_id="win60_qa_991827",
+            business_dialect="sqlserver",
+            hospital_scope_value=991827,
+            urgent_level_code=977578,
+        )
+
+        self.assertEqual(result["failed"], [])
+        repository = MySQLRuleRepository(engine)
+        mapping = repository.get_field_mapping("MQSI2025_005", "hospital_001")
+        self.assertEqual(mapping["db_name"], "WIN60_QA_991827")
+        self.assertEqual(mapping["main_table"], "INPATIENT_CONSULT_APPLY")
+        self.assertEqual(
+            mapping["fields"]["arrive_time"],
+            "INP_CONSULT_INVITATION.SIGNED_AT",
+        )
+        with engine.connect() as conn:
+            custom = conn.execute(
+                text(
+                    "SELECT custom_params, custom_sql "
+                    "FROM med_index_hospital_custom "
+                    "WHERE hospital_id='hospital_001' "
+                    "AND index_code='MQSI2025_005'"
+                )
+            ).mappings().one()
+            remaining = conn.execute(
+                text(
+                    "SELECT DISTINCT rule_id FROM med_field_mapping "
+                    "WHERE hospital_id='hospital_001' ORDER BY rule_id"
+                )
+            ).scalars().all()
+            relation_count = conn.execute(
+                text("SELECT COUNT(*) FROM med_table_relation")
+            ).scalar_one()
+            plans = dict(
+                conn.execute(
+                    text(
+                        "SELECT plan_id, status FROM med_indicator_run_plan "
+                        "ORDER BY plan_id"
+                    )
+                ).all()
+            )
+        params = json.loads(custom["custom_params"])
+        self.assertEqual(params["hospital_soid"], 991827)
+        self.assertEqual(params["urgent_level_code"], 977578)
+        self.assertIn("WINDBA.INPATIENT_CONSULT_APPLY", custom["custom_sql"])
+        self.assertEqual(remaining, ["MQSI2025_005"])
+        self.assertEqual(relation_count, 1)
+        self.assertEqual(plans["DEMO_MONTHLY_MQSI2025_005"], "disabled")
+        self.assertEqual(plans["PLAN_USER_001"], "enabled")
+
     def test_import_is_idempotent_and_seeds_four_rules(self) -> None:
         from app.rules.importer import FOUR_INDICATOR_CODES, import_four_indicator_rules
 

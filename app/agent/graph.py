@@ -18,6 +18,7 @@ from app.agents.orchestrator import (
     PreparedRequest,
 )
 from app.agents.root_cause_diagnosis import RootCauseDiagnosisAgent
+from app.business_source import current_business_source
 from app.config import get
 from app.db.engine import create_runtime_engine
 from app.db_access.business_db import BusinessDBClient
@@ -60,24 +61,32 @@ class AgentState(TypedDict, total=False):
     _term_normalization_error: str
 
 
-def _create_business_db_client(db_name: str = "hospital_demo_data") -> BusinessDBClient:
-    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", db_name).strip("_").lower()
+def _create_business_db_client(db_name: str | None = None) -> BusinessDBClient:
+    active_db = db_name or current_business_source().source_id
+    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", active_db).strip("_").lower()
     execute_tool = get(f"dbhub_execute_tool_{suffix}", f"execute_sql_{suffix}")
-    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", db_name))
+    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", active_db))
     endpoint = get("dbhub_mcp_url", "http://127.0.0.1:8080/mcp")
     timeout_seconds = int(get("dbhub_timeout_seconds", "10"))
     client = DBHubMCPClient(endpoint, execute_tool, timeout_seconds, source_id)
     return BusinessDBClient(client.execute_sql, source_id=source_id, tool_name=execute_tool)
 
 
-def _create_metadata_provider(db_name: str = "hospital_demo_data") -> DBHubMetadataProvider:
-    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", db_name).strip("_").lower()
+def _create_metadata_provider(db_name: str | None = None) -> DBHubMetadataProvider:
+    active_db = db_name or current_business_source().source_id
+    suffix = re.sub(r"[^0-9a-zA-Z]+", "_", active_db).strip("_").lower()
     execute_tool = get(f"dbhub_execute_tool_{suffix}", f"execute_sql_{suffix}")
-    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", db_name))
+    source_id = get(f"dbhub_source_id_{suffix}", get(f"dbhub_source_{suffix}", active_db))
     endpoint = get("dbhub_mcp_url", "http://127.0.0.1:8080/mcp")
     timeout_seconds = int(get("dbhub_timeout_seconds", "10"))
     client = DBHubMCPClient(endpoint, execute_tool, timeout_seconds, source_id)
-    return DBHubMetadataProvider(client.execute_sql)
+    settings = current_business_source()
+    dialect = settings.dialect if active_db == settings.source_id else "mysql"
+    return DBHubMetadataProvider(
+        client.execute_sql,
+        dialect=dialect,
+        schema_name=settings.schema if dialect == "sqlserver" else "",
+    )
 
 
 def _create_agent_orchestrator(
@@ -91,7 +100,7 @@ def _create_agent_orchestrator(
     from app.terminology.repository import TerminologyRepository
 
     runtime_engine = create_runtime_engine()
-    business_db = _create_business_db_client("hospital_demo_data")
+    business_db = _create_business_db_client()
     indicator_executor = SQLGenerationAgent(
         kb_root=kb_root,
         runtime_engine=runtime_engine,
@@ -102,7 +111,7 @@ def _create_agent_orchestrator(
         kb_root=kb_root,
         runtime_engine=runtime_engine,
         business_db=business_db,
-        metadata_provider=_create_metadata_provider("hospital_demo_data"),
+        metadata_provider=_create_metadata_provider(),
     )
     terminology_repository = TerminologyRepository(runtime_engine)
     return CoreIndicatorOrchestrator(
@@ -411,6 +420,11 @@ def _record_sql_trace_nodes(
 
     trial = result.get("trial_run")
     if isinstance(trial, dict) and trial:
+        business_source = current_business_source().source_id
+        business_tool = (
+            "execute_sql_"
+            + re.sub(r"[^0-9a-zA-Z]+", "_", business_source).strip("_").lower()
+        )
         status = str(trial.get("status") or "")
         _record_trace_node(
             recorder,
@@ -423,13 +437,13 @@ def _record_sql_trace_nodes(
             rule_id=str(rule_id or ""),
             sql_id=str(result.get("sql_id") or ""),
             run_id=str(trial.get("run_id") or ""),
-            tool_name="execute_sql_hospital_demo_data",
-            db_source="hospital_demo_data",
+            tool_name=business_tool,
+            db_source=str(trial.get("source") or business_source),
             duration_ms=int(trial.get("duration_ms") or 0),
             input_data={
                 "sql_id": result.get("sql_id"),
                 "params": result.get("params", {}),
-                "db_source": "hospital_demo_data",
+                "db_source": str(trial.get("source") or business_source),
             },
             output_data={
                 "run_id": trial.get("run_id"),
@@ -443,7 +457,7 @@ def _record_sql_trace_nodes(
                 "duration_ms": trial.get("duration_ms"),
                 "error_message": trial.get("error_message"),
             },
-            config_data={"tool": "execute_sql_hospital_demo_data", "readonly": True},
+            config_data={"tool": business_tool, "readonly": True},
             error_message=str(trial.get("error_message") or ""),
         )
 
@@ -1401,8 +1415,15 @@ def run_chat_stream(
                 rule_id=str(rule_id or ""),
                 input_data={"rule_id": rule_id, "hospital_id": state.get("hospital_id")},
                 output_data={"error": str(exc)},
-                tool_name="execute_sql_hospital_demo_data",
-                db_source="hospital_demo_data",
+                tool_name=(
+                    "execute_sql_"
+                    + re.sub(
+                        r"[^0-9a-zA-Z]+",
+                        "_",
+                        current_business_source().source_id,
+                    ).strip("_").lower()
+                ),
+                db_source=current_business_source().source_id,
                 error_code=type(exc).__name__,
                 error_message=str(exc),
             )

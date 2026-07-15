@@ -453,7 +453,7 @@ class SqlExplanationTest(unittest.TestCase):
                     )
                 )
                 mapping_path = Path(
-                    f"core-rules-wiki/hospital-mappings/hospital_001/{rule_id}.yaml"
+                    f"core-rules-wiki/hospital-mappings/hospital_demo/{rule_id}.yaml"
                 )
                 spec = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
                 mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))

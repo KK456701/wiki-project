@@ -29,7 +29,7 @@ def _load_contract(code: str):
     spec_dir = _spec_dir(code)
     spec = yaml.safe_load((spec_dir / "rule_sql_spec.yaml").read_text(encoding="utf-8"))
     mapping = yaml.safe_load(
-        (KB_ROOT / "hospital-mappings" / "hospital_001" / f"{code}.yaml").read_text(
+        (KB_ROOT / "hospital-mappings" / "hospital_demo" / f"{code}.yaml").read_text(
             encoding="utf-8"
         )
     )

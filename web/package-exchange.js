@@ -37,7 +37,7 @@ function packageHospitalId() {
 }
 
 function packageDatabaseName() {
-  return (metadataDbSelect.value || "hospital_demo_data").trim() || "hospital_demo_data";
+  return (metadataDbSelect.value || "win60_qa_991827").trim() || "win60_qa_991827";
 }
 
 function packageActorId() {

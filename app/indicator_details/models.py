@@ -12,6 +12,7 @@ class RunContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1] = 1
+    rule_id: str = ""
     rule_name: str
     effective_level: str
     national_version: str | None = None
@@ -23,6 +24,8 @@ class RunContext(BaseModel):
     stat_end: str
     db_source: str
     main_table: str
+    dialect: str = "mysql"
+    query_profile: str = ""
 
 
 class DetailColumn(BaseModel):

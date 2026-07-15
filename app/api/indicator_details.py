@@ -50,7 +50,7 @@ def get_indicator_detail_service() -> IndicatorDetailService:
     max_rows = max(1, get_int("indicator_detail_max_rows", 20_000))
     snapshot_store = DetailSnapshotStore(
         repository,
-        create_business_db_client("hospital_demo_data"),
+        create_business_db_client(),
         export_root=export_root,
         max_detail_rows=max_rows,
         snapshot_ttl=timedelta(hours=expire_hours),

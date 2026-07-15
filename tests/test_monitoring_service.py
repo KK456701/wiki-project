@@ -151,16 +151,19 @@ class MonitoringRunServiceTest(unittest.TestCase):
         with patch(
             "app.api.main._create_agent_orchestrator",
             return_value=_FakeOrchestrator(),
-        ), patch(
+        ) as create_orchestrator, patch(
             "app.api.main.create_business_db_client", return_value=object()
-        ), patch(
+        ) as create_business, patch(
             "app.api.main.create_dbhub_metadata_provider", return_value=object()
-        ), patch(
+        ) as create_metadata, patch(
             "app.rules.repository.create_rule_repository", return_value=object()
         ), patch("app.config.get_int", return_value=777):
             service = create_monitoring_service(engine)
 
         self.assertEqual(service.lease_seconds, 777)
+        create_business.assert_called_once_with()
+        create_metadata.assert_called_once_with()
+        self.assertTrue(create_orchestrator.called)
 
     def test_each_monitoring_run_records_safe_workflow_trace(self) -> None:
         recorder = _FakeTraceRecorder()

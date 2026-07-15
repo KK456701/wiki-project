@@ -1,18 +1,12 @@
 hospital_id: hospital_001
 rule_id: MQSI2025_035
-dialect: mysql
-db_name: hospital_demo_data
-main_table: intraoperative_transfusion_record
-fields:
-  hospital_id: intraoperative_transfusion_record.hospital_id
-  patient_id: intraoperative_transfusion_record.patient_id
-  surgery_id: intraoperative_transfusion_record.surgery_id
-  surgery_time: intraoperative_transfusion_record.surgery_time
-  intraoperative_transfusion_flag: intraoperative_transfusion_record.intraoperative_transfusion_flag
-  autologous_reinfusion_flag: intraoperative_transfusion_record.autologous_reinfusion_flag
-  dept_id: intraoperative_transfusion_record.dept_id
+dialect: sqlserver
+db_name: WIN60_QA_991827
+schema: WINDBA
+main_table: ""
+fields: {}
 filters: {}
 custom_rules: {}
-status: confirmed
-updated_by: rule_import
-updated_at: "2026-07-10 00:00:00"
+status: pending
+updated_by: formal_source_import
+updated_at: "2026-07-15 00:00:00"

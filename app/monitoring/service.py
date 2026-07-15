@@ -5,6 +5,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from app.business_source import current_business_source
+
 from sqlalchemy import Engine
 
 from app.db.repositories import create_recovery_task, fail_recovery_task
@@ -195,7 +197,10 @@ class IndicatorRunService:
                     "effective_level": str(effective.get("effective_level") or ""),
                     "national_version": effective.get("national_version"),
                     "hospital_version": effective.get("hospital_version"),
-                    "data_source": str(mapping.get("db_name") or "hospital_demo_data"),
+                    "data_source": str(
+                        mapping.get("db_name")
+                        or current_business_source().source_id
+                    ),
                     "duration_ms": int(trial.get("duration_ms") or 0),
                     "run_id": trial.get("run_id"),
                 }

@@ -1,6 +1,6 @@
 rule_id: MQSI2025_005
 rule_name: 急会诊及时到位率
-dialects: [mysql]
+dialects: [mysql, sqlserver]
 default_params:
   arrive_minutes_threshold: 10
   consult_type_value: 急会诊

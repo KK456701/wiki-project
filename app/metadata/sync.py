@@ -108,6 +108,64 @@ def _read_yaml(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _mapped_table_names(
+    kb_root: Path, hospital_id: str, db_name: str
+) -> list[str]:
+    mapping_dir = Path(kb_root) / "hospital-mappings" / hospital_id
+    names: list[str] = []
+    if not mapping_dir.exists():
+        return names
+    for path in sorted(mapping_dir.glob("*.yaml")):
+        mapping = _read_yaml(path)
+        if str(mapping.get("db_name") or "") != db_name:
+            continue
+        candidates = [str(mapping.get("main_table") or "")]
+        for value in (mapping.get("fields") or {}).values():
+            parts = [part for part in str(value or "").split(".") if part]
+            if len(parts) >= 2:
+                candidates.append(parts[-2])
+        for name in candidates:
+            if name and name not in names:
+                names.append(name)
+    return names
+
+
+def collect_metadata_snapshot(
+    provider: MetadataProvider,
+    db_name: str,
+    kb_root: str | Path | None = None,
+    hospital_id: str = "",
+) -> dict[str, list[dict[str, Any]]]:
+    """Collect the bulk catalog and deterministically refill mapped tables."""
+
+    tables = list(provider.list_tables(db_name))
+    columns = list(provider.list_columns(db_name))
+    if kb_root and hospital_id:
+        table_names = _mapped_table_names(Path(kb_root), hospital_id, db_name)
+        table_index = {_table_key(item): dict(item) for item in tables if _table_key(item)}
+        column_index = {
+            _column_key(item): dict(item)
+            for item in columns
+            if all(_column_key(item))
+        }
+        for table_name in table_names:
+            table_index.setdefault(
+                table_name,
+                {
+                    "table_name": table_name,
+                    "table_comment": "指标映射依赖表",
+                    "table_type": "MAPPED_OBJECT",
+                },
+            )
+            for item in provider.list_columns(db_name, table_name):
+                key = _column_key(item)
+                if all(key):
+                    column_index[key] = dict(item)
+        tables = list(table_index.values())
+        columns = list(column_index.values())
+    return {"tables": tables, "columns": columns}
+
+
 def find_affected_rules(kb_root: Path, hospital_id: str, changes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     kb_root = Path(kb_root)
     mapping_dir = kb_root / "hospital-mappings" / hospital_id
@@ -166,9 +224,11 @@ def sync_metadata_from_provider(
 ) -> dict[str, Any]:
     batch_id = uuid.uuid4().hex[:12]
     previous = load_runtime_snapshot(runtime_engine, hospital_id, db_name)
-    tables = provider.list_tables(db_name)
-    columns = provider.list_columns(db_name)
-    current = {"tables": tables, "columns": columns}
+    current = collect_metadata_snapshot(
+        provider, db_name, kb_root=kb_root, hospital_id=hospital_id
+    )
+    tables = current["tables"]
+    columns = current["columns"]
     changes = diff_metadata_snapshots(previous, current)
     _save_snapshot(runtime_engine, hospital_id, db_name, provider.source_name, batch_id, current)
 

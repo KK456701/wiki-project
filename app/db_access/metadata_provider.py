@@ -119,11 +119,39 @@ class DBHubMetadataProvider:
 
     source_name = "dbhub"
 
-    def __init__(self, execute_sql) -> None:  # type: ignore[no-untyped-def]
+    def __init__(
+        self,
+        execute_sql,
+        *,
+        dialect: str = "mysql",
+        schema_name: str = "",
+    ) -> None:  # type: ignore[no-untyped-def]
         self._execute_sql = execute_sql
+        self.dialect = str(dialect or "mysql").lower()
+        self.schema_name = str(schema_name or "")
+
+    @staticmethod
+    def _literal(value: str) -> str:
+        return str(value).replace("'", "''")
+
+    def _sqlserver_scope(self, db_name: str) -> str:
+        catalog = self._literal(db_name)
+        schema = self._literal(self.schema_name or "dbo")
+        return (
+            f"TABLE_CATALOG = '{catalog}' "
+            f"AND TABLE_SCHEMA = '{schema}'"
+        )
 
     def list_tables(self, db_name: str) -> list[dict[str, Any]]:
-        sql = "SELECT TABLE_NAME, TABLE_COMMENT, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME"
+        if self.dialect == "sqlserver":
+            sql = (
+                "SELECT TABLE_NAME, '' AS TABLE_COMMENT, TABLE_TYPE "
+                "FROM INFORMATION_SCHEMA.TABLES WHERE "
+                + self._sqlserver_scope(db_name)
+                + " ORDER BY TABLE_NAME"
+            )
+        else:
+            sql = "SELECT TABLE_NAME, TABLE_COMMENT, TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME"
         rows = self._execute_sql(sql)
         return [
             TableMetadata(
@@ -135,10 +163,19 @@ class DBHubMetadataProvider:
         ]
 
     def list_columns(self, db_name: str, table_name: str | None = None) -> list[dict[str, Any]]:
-        sql = (
-            "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT "
-            "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE()"
-        )
+        if self.dialect == "sqlserver":
+            sql = (
+                "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, "
+                "DATA_TYPE AS COLUMN_TYPE, IS_NULLABLE, '' AS COLUMN_KEY, "
+                "COLUMN_DEFAULT, '' AS COLUMN_COMMENT "
+                "FROM INFORMATION_SCHEMA.COLUMNS WHERE "
+                + self._sqlserver_scope(db_name)
+            )
+        else:
+            sql = (
+                "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, COLUMN_DEFAULT, COLUMN_COMMENT "
+                "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE()"
+            )
         if table_name:
             # 表名来自医院字段映射或固定系统配置，仅用于元数据查询。
             safe_table = str(table_name).replace("'", "''")

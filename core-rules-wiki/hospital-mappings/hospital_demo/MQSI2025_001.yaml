@@ -1,0 +1,15 @@
+hospital_id: hospital_demo
+rule_id: MQSI2025_001
+dialect: mysql
+db_name: hospital_demo_data
+main_table: inpatient_transfer_record
+fields:
+  hospital_id: inpatient_transfer_record.hospital_id
+  admission_id: inpatient_transfer_record.admission_id
+  admit_time: inpatient_transfer_record.admit_time
+  transfer_time: inpatient_transfer_record.transfer_time
+  from_dept_id: inpatient_transfer_record.from_dept_id
+  to_dept_id: inpatient_transfer_record.to_dept_id
+filters: {}
+custom_rules: {}
+status: confirmed

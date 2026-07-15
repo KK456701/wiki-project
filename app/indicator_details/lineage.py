@@ -10,18 +10,21 @@ _QUALIFIED_COLUMN = re.compile(
 )
 
 
-def _mapped_column(mappings: dict[str, object], field: str) -> str:
+def _mapped_column(
+    mappings: dict[str, object], field: str, schema: str = ""
+) -> str:
     value = str(mappings.get(field) or "").strip()
     if not value:
         raise ValueError(f"明细字段尚未完成本院映射：{field}")
     if _QUALIFIED_COLUMN.fullmatch(value) is None:
         raise ValueError(f"医院字段映射格式无效：{field}")
-    return value
+    return f"{schema}.{value}" if schema else value
 
 
 def _append_source_tables(tables: list[str], sources: list[str]) -> None:
     for source in sources:
-        table = source.split(".", 1)[0]
+        parts = source.split(".")
+        table = ".".join(parts[:-1]) if len(parts) >= 2 else ""
         if table and table not in tables:
             tables.append(table)
 
@@ -36,7 +39,9 @@ def build_detail_lineage(
     database = str(
         context.field_mapping.get("db_name") or context.db_source or ""
     ).strip()
-    tables = [context.main_table] if context.main_table else []
+    schema = str(context.field_mapping.get("schema") or "").strip()
+    main_table = f"{schema}.{context.main_table}" if schema else context.main_table
+    tables = [main_table] if main_table else []
     result: list[DetailFieldLineage] = []
 
     for column in columns:
@@ -45,7 +50,10 @@ def build_detail_lineage(
             source_fields = list(definition.get("source_fields") or [])
             if not source_fields:
                 raise ValueError(f"派生字段缺少来源字段：{column.field}")
-            sources = [_mapped_column(mappings, str(field)) for field in source_fields]
+            sources = [
+                _mapped_column(mappings, str(field), schema)
+                for field in source_fields
+            ]
             source_labels = [labels.get(str(field), str(field)) for field in source_fields]
             lineage = DetailFieldLineage(
                 field=column.field,
@@ -55,7 +63,7 @@ def build_detail_lineage(
                 explanation=f"由{'、'.join(source_labels)}计算",
             )
         else:
-            source = _mapped_column(mappings, column.field)
+            source = _mapped_column(mappings, column.field, schema)
             lineage = DetailFieldLineage(
                 field=column.field,
                 label=column.label,

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Connection, Engine, text
+from sqlalchemy import Connection, Engine, inspect, text
 
 from app.rules.calculation import (
     parse_calculation_definition,
@@ -14,6 +14,7 @@ from app.rules.calculation import (
 )
 from app.rules.schema import ensure_rule_lineage_schema
 from app.sqlgen.spec_loader import load_field_contract, load_rule_sql_spec
+from app.sqlgen.spec_loader import load_template
 
 
 FOUR_INDICATOR_CODES = (
@@ -334,6 +335,155 @@ def _upsert_field_mappings(
             )
 
 
+_WIN60_URGENT_FIELDS: dict[str, tuple[str, str, str]] = {
+    "hospital_id": ("INPATIENT_CONSULT_APPLY", "HOSPITAL_SOID", "numeric"),
+    "consult_id": ("INPATIENT_CONSULT_APPLY", "INP_CONSULT_APPLY_ID", "numeric"),
+    "patient_id": ("INPATIENT_CONSULT_APPLY", "ADMISSION_NUMBER", "varchar"),
+    "consult_type": ("INPATIENT_CONSULT_APPLY", "CONSULT_LEVEL_CODE", "numeric"),
+    "request_time": ("INPATIENT_CONSULT_APPLY", "APPLY_CONSULT_SENT_AT", "datetime"),
+    "arrive_time": ("INP_CONSULT_INVITATION", "SIGNED_AT", "datetime"),
+    "dept_id": ("INPATIENT_CONSULT_APPLY", "DEPT_ID", "numeric"),
+}
+
+
+def _upsert_win60_urgent_mappings(
+    conn: Connection,
+    hospital_id: str,
+    db_name: str,
+    now: str,
+) -> None:
+    for business_field, (table_name, column_name, data_type) in _WIN60_URGENT_FIELDS.items():
+        params = {
+            "hospital_id": hospital_id,
+            "rule_id": "MQSI2025_005",
+            "business_field": business_field,
+            "db_name": db_name,
+            "table_name": table_name,
+            "column_name": column_name,
+            "data_type": data_type,
+            "now": now,
+        }
+        where = (
+            "hospital_id=:hospital_id AND rule_id=:rule_id "
+            "AND business_field=:business_field"
+        )
+        if _existing(conn, "med_field_mapping", where, params):
+            conn.execute(
+                text(
+                    f"""
+                    UPDATE med_field_mapping
+                    SET db_name=:db_name, table_name=:table_name,
+                        column_name=:column_name, data_type=:data_type,
+                        status='confirmed', updated_by='formal_source_import',
+                        updated_at=:now
+                    WHERE {where}
+                    """
+                ),
+                params,
+            )
+        else:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_field_mapping
+                      (hospital_id, rule_id, business_field, db_name, table_name,
+                       column_name, data_type, status, updated_by, updated_at)
+                    VALUES
+                      (:hospital_id, :rule_id, :business_field, :db_name,
+                       :table_name, :column_name, :data_type, 'confirmed',
+                       'formal_source_import', :now)
+                    """
+                ),
+                params,
+            )
+
+
+def _upsert_win60_urgent_relation(
+    conn: Connection, hospital_id: str, db_name: str, now: str
+) -> None:
+    params = {
+        "hospital_id": hospital_id,
+        "db_name": db_name,
+        "left_table": "INPATIENT_CONSULT_APPLY",
+        "left_column": "INP_CONSULT_APPLY_ID",
+        "right_table": "INP_CONSULT_INVITATION",
+        "right_column": "INP_CONSULT_APPLY_ID",
+        "now": now,
+    }
+    where = (
+        "hospital_id=:hospital_id AND db_name=:db_name "
+        "AND left_table=:left_table AND left_column=:left_column "
+        "AND right_table=:right_table AND right_column=:right_column"
+    )
+    if _existing(conn, "med_table_relation", where, params):
+        conn.execute(
+            text(
+                f"""
+                UPDATE med_table_relation
+                SET join_type='left', relation_source='wxp_and_database',
+                    status='confirmed', updated_by='formal_source_import',
+                    updated_at=:now
+                WHERE {where}
+                """
+            ),
+            params,
+        )
+    else:
+        conn.execute(
+            text(
+                """
+                INSERT INTO med_table_relation
+                  (hospital_id, db_name, left_table, left_column, right_table,
+                   right_column, join_type, relation_source, status, updated_by,
+                   updated_at)
+                VALUES
+                  (:hospital_id, :db_name, :left_table, :left_column,
+                   :right_table, :right_column, 'left', 'wxp_and_database',
+                   'confirmed', 'formal_source_import', :now)
+                """
+            ),
+            params,
+        )
+
+
+def _configure_win60_urgent_custom(
+    conn: Connection,
+    kb_root: Path,
+    hospital_id: str,
+    hospital_scope_value: int,
+    urgent_level_code: int,
+    now: str,
+) -> None:
+    row = conn.execute(
+        text(
+            "SELECT custom_params FROM med_index_hospital_custom "
+            "WHERE hospital_id=:hospital_id AND index_code='MQSI2025_005'"
+        ),
+        {"hospital_id": hospital_id},
+    ).mappings().first()
+    params = json.loads(str((row or {}).get("custom_params") or "{}"))
+    params.setdefault("arrive_minutes_threshold", 20)
+    params["hospital_soid"] = int(hospital_scope_value)
+    params["urgent_level_code"] = int(urgent_level_code)
+    custom_sql = load_template(kb_root, "MQSI2025_005", "sqlserver")
+    conn.execute(
+        text(
+            """
+            UPDATE med_index_hospital_custom
+            SET custom_params=:custom_params, custom_sql=:custom_sql,
+                update_time=:now, oper_user='formal_source_import'
+            WHERE hospital_id=:hospital_id AND index_code='MQSI2025_005'
+            """
+        ),
+        {
+            "hospital_id": hospital_id,
+            "custom_params": json.dumps(params, ensure_ascii=False),
+            "custom_sql": custom_sql,
+            "now": now,
+        },
+    )
+
+
 def _insert_initial_custom(
     conn: Connection, hospital_id: str, seed: dict[str, Any], now: str
 ) -> None:
@@ -401,7 +551,14 @@ def _insert_initial_custom(
 
 
 def import_four_indicator_rules(
-    engine: Engine, kb_root: Path, hospital_id: str = "hospital_001"
+    engine: Engine,
+    kb_root: Path,
+    hospital_id: str = "hospital_001",
+    *,
+    business_source_id: str = "hospital_demo_data",
+    business_dialect: str = "mysql",
+    hospital_scope_value: int | None = None,
+    urgent_level_code: int | None = None,
 ) -> dict[str, Any]:
     ensure_rule_lineage_schema(engine)
     result: dict[str, Any] = {"inserted": [], "updated": [], "failed": []}
@@ -410,12 +567,62 @@ def import_four_indicator_rules(
             now = datetime.now().isoformat(sep=" ", timespec="seconds")
             with engine.begin() as conn:
                 action = _upsert_standard(conn, seed, now)
-                _upsert_field_mappings(conn, hospital_id, seed, now)
                 if seed["index_code"] == "MQSI2025_005":
                     _insert_initial_custom(conn, hospital_id, seed, now)
+                if business_dialect.lower() == "sqlserver":
+                    if seed["index_code"] == "MQSI2025_005":
+                        if hospital_scope_value is None or urgent_level_code is None:
+                            raise ValueError(
+                                "SQL Server 急会诊映射缺少 hospital_scope_value 或 urgent_level_code"
+                            )
+                        db_name = business_source_id.upper()
+                        _upsert_win60_urgent_mappings(
+                            conn, hospital_id, db_name, now
+                        )
+                        _upsert_win60_urgent_relation(
+                            conn, hospital_id, db_name, now
+                        )
+                        _configure_win60_urgent_custom(
+                            conn,
+                            Path(kb_root),
+                            hospital_id,
+                            hospital_scope_value,
+                            urgent_level_code,
+                            now,
+                        )
+                    else:
+                        conn.execute(
+                            text(
+                                "DELETE FROM med_field_mapping "
+                                "WHERE hospital_id=:hospital_id "
+                                "AND rule_id=:rule_id AND db_name='hospital_demo_data'"
+                            ),
+                            {
+                                "hospital_id": hospital_id,
+                                "rule_id": seed["index_code"],
+                            },
+                        )
+                else:
+                    _upsert_field_mappings(conn, hospital_id, seed, now)
             result[action].append(seed["index_code"])
         except Exception as exc:
             result["failed"].append(
                 {"index_code": seed["index_code"], "error": str(exc)}
+            )
+    if business_dialect.lower() == "sqlserver" and not result["failed"]:
+        try:
+            if inspect(engine).has_table("med_indicator_run_plan"):
+                with engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "UPDATE med_indicator_run_plan SET status='disabled' "
+                            "WHERE hospital_id=:hospital_id "
+                            "AND plan_id LIKE 'DEMO_%'"
+                        ),
+                        {"hospital_id": hospital_id},
+                    )
+        except Exception as exc:
+            result["failed"].append(
+                {"index_code": "monitoring_plans", "error": str(exc)}
             )
     return result
