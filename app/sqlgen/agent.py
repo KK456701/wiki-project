@@ -71,7 +71,8 @@ class SQLGenerationAgent:
                  custom_filters: list[dict[str, str]] | None = None,
                  term_bindings: list[dict[str, Any]] | None = None,
                  persist_run_result: bool = True,
-                 field_mapping: dict[str, Any] | None = None) -> dict[str, Any]:
+                 field_mapping: dict[str, Any] | None = None,
+                 execution_context: dict[str, Any] | None = None) -> dict[str, Any]:
         node_timings: dict[str, int] = {}
         if not precheck.get("ok"):
             return {
@@ -152,6 +153,7 @@ class SQLGenerationAgent:
                 effective_rule.get("calculation_definition") or {}
             ),
             "field_mapping": mapping,
+            "execution_context": dict(execution_context or {}),
             "_node_timings": node_timings,
         }
         calculation_payload = effective_rule.get("calculation_definition")
@@ -201,6 +203,7 @@ class SQLGenerationAgent:
                 main_table=str(mapping.get("main_table") or ""),
                 dialect=str(dialect),
                 query_profile=str(mapping.get("query_profile") or ""),
+                execution_context=dict(execution_context or {}),
             ).model_dump(mode="json")
             trial = run_sql_trial(self.runtime_engine, self.business_db, sql_id, sql_text,
                                    hospital_id, rule_id, stat_start_time, stat_end_time, params, generated_by,

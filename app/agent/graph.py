@@ -28,6 +28,13 @@ from app.db_access.metadata_provider import DBHubMetadataProvider
 from app.kb.tools import DEFAULT_KB_ROOT, KBToolError, KnowledgeBaseTools
 from app.llm.ollama import OllamaClient
 from app.memory.store import DEFAULT_MEMORY_ROOT, ConversationMemory
+from app.memory.context_service import ConversationContextService
+from app.memory.contracts import (
+    ContextResolution,
+    ContextStorageError,
+    ContextVersionConflict,
+    ConversationContext,
+)
 from app.observability.trace import TraceRecorder
 from app.observability.workflow_nodes import record_diagnose_trace_nodes
 from app.sqlgen.explanation import (
@@ -149,10 +156,24 @@ def _stat_period_metadata(
 
 
 def _load_memory_context(
-    memory_store: ConversationMemory, session_id: str
+    memory_store: ConversationMemory,
+    session_id: str,
+    structured_context: ConversationContext | None = None,
 ) -> dict[str, Any]:
     context = dict(memory_store.last_rule_context(session_id) or {})
-    for message in memory_store.recent_messages(session_id, limit=20):
+    structured = structured_context
+    if structured is not None:
+        if structured.active_rule.rule_id:
+            context["rule_id"] = structured.active_rule.rule_id
+            context["rule_name"] = structured.active_rule.rule_name
+        if structured.stat_period.start_time and structured.stat_period.end_time:
+            context["stat_start_time"] = structured.stat_period.start_time
+            context["stat_end_time"] = structured.stat_period.end_time
+        if structured.working_caliber.overrides:
+            context["working_caliber"] = structured.working_caliber.model_dump(
+                mode="json"
+            )
+    for message in reversed(memory_store.recent_messages(session_id, limit=20)):
         if message.get("role") != "user":
             continue
         content = str(message.get("content") or "")
@@ -165,6 +186,67 @@ def _load_memory_context(
         context["stat_period_source"] = "recent_user_message"
         break
     return context
+
+
+def _load_structured_context(
+    memory_store: ConversationMemory,
+    session_id: str,
+    hospital_id: str | None,
+) -> ConversationContext:
+    context = memory_store.load_context(session_id)
+    if hospital_id:
+        context.active_rule.hospital_id = hospital_id
+    return context
+
+
+def _resolve_and_save_structured_context(
+    *,
+    memory_store: ConversationMemory,
+    session_id: str,
+    query: str,
+    structured_context: ConversationContext,
+    effective_rule: Any,
+    field_mapping: Any,
+    source_message_id: int | None,
+    memory_context: dict[str, Any],
+    llm_updates: list[dict[str, Any]] | None = None,
+) -> ContextResolution:
+    service = ConversationContextService()
+    resolution = service.resolve(
+        query,
+        structured_context,
+        effective_rule=effective_rule,
+        field_mapping=field_mapping,
+        source_message_id=source_message_id,
+        llm_updates=llm_updates,
+    )
+    period = _resolve_stat_period(query, memory_context, use_default=False)
+    if period is not None:
+        resolution.context.stat_period.start_time = period[0]
+        resolution.context.stat_period.end_time = period[1]
+        resolution.context.stat_period.source_message_id = source_message_id
+    resolution.context.last_action = str(query or "")[:200]
+    saved = memory_store.save_context(
+        session_id,
+        resolution.context,
+        expected_version=structured_context.context_version,
+    )
+    resolution.context = saved
+    resolution.snapshot.context_version = saved.context_version
+    return resolution
+
+
+def _context_block_answer(resolution: ContextResolution) -> str:
+    if resolution.clarification is not None:
+        clarification = resolution.clarification
+        options = "\n".join(
+            f"{index}. {option}" for index, option in enumerate(clarification.options, 1)
+        )
+        return f"需要先确认计算范围\n\n{clarification.question}\n\n{options}"
+    messages = [item.message for item in resolution.snapshot.blockers]
+    return "暂不能按本次临时口径执行\n\n" + "\n".join(
+        f"- {message}" for message in messages
+    )
 
 
 def _create_business_db_client(db_name: str | None = None) -> BusinessDBClient:
@@ -307,6 +389,8 @@ def _intent_result_from_state(state: AgentState) -> IntentResult:
         indicator_name=str(state.get("_indicator_name") or ""),  # type: ignore[typeddict-item]
         context_source=state.get("_context_source"),  # type: ignore[typeddict-item]
         custom_filters=list(state.get("_custom_filters") or []),  # type: ignore[typeddict-item]
+        context_updates=list(state.get("_context_updates") or []),  # type: ignore[typeddict-item]
+        clear_working_caliber=bool(state.get("_clear_working_caliber", False)),  # type: ignore[typeddict-item]
     )
 
 
@@ -601,6 +685,8 @@ def _run_deterministic(
     state["_indicator_name"] = intent_data.indicator_name  # type: ignore[typeddict-unknown-key]
     state["_context_source"] = intent_data.context_source  # type: ignore[typeddict-unknown-key]
     state["_custom_filters"] = [item.model_dump() for item in intent_data.custom_filters]  # type: ignore[typeddict-unknown-key]
+    state["_context_updates"] = list(intent_data.context_updates)  # type: ignore[typeddict-unknown-key]
+    state["_clear_working_caliber"] = intent_data.clear_working_caliber  # type: ignore[typeddict-unknown-key]
     prepared = active_orchestrator.create_request(
         query, state.get("hospital_id"), intent_data, errors
     )
@@ -664,6 +750,8 @@ def _run_langgraph(
         s["_indicator_name"] = intent_data.indicator_name  # type: ignore[typeddict-unknown-key]
         s["_context_source"] = intent_data.context_source  # type: ignore[typeddict-unknown-key]
         s["_custom_filters"] = [item.model_dump() for item in intent_data.custom_filters]  # type: ignore[typeddict-unknown-key]
+        s["_context_updates"] = list(intent_data.context_updates)  # type: ignore[typeddict-unknown-key]
+        s["_clear_working_caliber"] = intent_data.clear_working_caliber  # type: ignore[typeddict-unknown-key]
         _record_node_duration(s, "intent_detect", node_start)
         return s
 
@@ -872,7 +960,12 @@ def run_chat(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
-    memory_context = _load_memory_context(memory_store, active_session_id)
+    structured_context = _load_structured_context(
+        memory_store, active_session_id, hospital_id
+    )
+    memory_context = _load_memory_context(
+        memory_store, active_session_id, structured_context
+    )
     memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
@@ -895,7 +988,7 @@ def run_chat(
         "memory_context": memory_context,
         "errors": [],
     }
-    memory_store.append_message(
+    user_message_id = memory_store.append_message(
         active_session_id,
         "user",
         query,
@@ -919,6 +1012,41 @@ def run_chat(
             "answer": f"\u77e5\u8bc6\u5e93\u5de5\u5177\u8c03\u7528\u5931\u8d25\uff1a{exc}",
             "errors": [str(exc)],
         }
+    context_resolution: ContextResolution | None = None
+    if result.get("effective_rule") and result.get("intent") != "feedback":
+        try:
+            context_resolution = _resolve_and_save_structured_context(
+                memory_store=memory_store,
+                session_id=active_session_id,
+                query=query,
+                structured_context=structured_context,
+                effective_rule=result.get("effective_rule"),
+                field_mapping=result.get("field_mapping") or {},
+                source_message_id=user_message_id,
+                memory_context=memory_context,
+                llm_updates=list(result.get("_context_updates") or []),
+            )
+            result["execution_context"] = context_resolution.snapshot.model_dump(
+                mode="json"
+            )
+            result["structured_context"] = context_resolution.context.model_dump(
+                mode="json"
+            )
+            if context_resolution.clarification is not None:
+                result["status"] = "context_clarification_required"
+                result["answer"] = _context_block_answer(context_resolution)
+                result["generation_method"] = "tool"
+            elif context_resolution.blocked:
+                result["status"] = "context_pending_mapping"
+                result["answer"] = (
+                    str(result.get("answer") or "")
+                    + "\n\n"
+                    + _context_block_answer(context_resolution)
+                ).strip()
+        except (ContextStorageError, ContextVersionConflict) as exc:
+            result["status"] = "context_storage_failed"
+            result["answer"] = f"本轮不能安全保存会话口径：{exc}"
+            result.setdefault("errors", []).append(str(exc))
     _record_trace_node(
         trace_recorder,
         trace_id,
@@ -1011,6 +1139,7 @@ def run_chat(
             "generation_method": result.get("generation_method"),
             "errors": result.get("errors", []),
             "has_feedback_preview": bool(result.get("feedback_preview")),
+            "execution_context": result.get("execution_context"),
             **_stat_period_metadata(query, memory_context),
         },
     )
@@ -1074,7 +1203,12 @@ def run_chat_stream(
     memory_store = memory or ConversationMemory(DEFAULT_MEMORY_ROOT)
     memory_start = time.perf_counter()
     active_session_id = memory_store.ensure_session(session_id, hospital_id)
-    memory_context = _load_memory_context(memory_store, active_session_id)
+    structured_context = _load_structured_context(
+        memory_store, active_session_id, hospital_id
+    )
+    memory_context = _load_memory_context(
+        memory_store, active_session_id, structured_context
+    )
     memory_duration_ms = _elapsed_ms(memory_start)
     trace_id, trace_recorder = _start_trace(active_session_id, hospital_id, query)
     _record_trace_node(
@@ -1098,7 +1232,7 @@ def run_chat_stream(
         "memory_context": memory_context,
         "errors": [],
     }
-    memory_store.append_message(
+    user_message_id = memory_store.append_message(
         active_session_id, "user", query,
         {"hospital_id": hospital_id, "memory_context": memory_context},
     )
@@ -1131,6 +1265,8 @@ def run_chat_stream(
     state["_indicator_name"] = intent_data.indicator_name  # type: ignore[typeddict-unknown-key]
     state["_retrieval_query"] = intent_data.retrieval_query  # type: ignore[typeddict-unknown-key]
     state["_context_source"] = intent_data.context_source  # type: ignore[typeddict-unknown-key]
+    state["_context_updates"] = list(intent_data.context_updates)  # type: ignore[typeddict-unknown-key]
+    state["_clear_working_caliber"] = intent_data.clear_working_caliber  # type: ignore[typeddict-unknown-key]
     prepared = active_orchestrator.create_request(
         query, hospital_id, intent_data, errors
     )
@@ -1338,6 +1474,92 @@ def run_chat_stream(
     effective_duration_ms = _elapsed_ms(effective_start)
     _record_effective_rule_node(trace_recorder, trace_id, rule_id, state.get("hospital_id"), effective, duration_ms=effective_duration_ms)
 
+    context_resolution: ContextResolution | None = None
+    execution_context: dict[str, Any] = {}
+    if state["intent"] != "feedback":
+        try:
+            context_resolution = _resolve_and_save_structured_context(
+                memory_store=memory_store,
+                session_id=active_session_id,
+                query=query,
+                structured_context=structured_context,
+                effective_rule=prepared.effective_rule,
+                field_mapping=prepared.field_mapping,
+                source_message_id=user_message_id,
+                memory_context=memory_context,
+                llm_updates=list(intent_data.context_updates),
+            )
+            execution_context = context_resolution.snapshot.model_dump(mode="json")
+        except (ContextStorageError, ContextVersionConflict) as exc:
+            answer = f"本轮不能安全保存会话口径：{exc}"
+            errors.append(str(exc))
+            yield ("token", {"text": answer})
+            yield ("done", {
+                "session_id": active_session_id,
+                "intent": state.get("intent"),
+                "rule_id": rule_id,
+                "generation_method": "tool",
+                "status": "context_storage_failed",
+                "answer": answer,
+                "errors": errors,
+                "trace_id": trace_id,
+                "orchestrator": active_orchestrator.orchestrator_id,
+                "agent_owner": active_orchestrator.owner_for_intent(
+                    str(state.get("intent") or "query")
+                ),
+            })
+            return
+
+        must_stop = context_resolution.clarification is not None or (
+            context_resolution.blocked
+            and state["intent"] in ("generate_sql", "trial_run", "diagnose")
+        )
+        if must_stop:
+            answer = _context_block_answer(context_resolution)
+            status = (
+                "context_clarification_required"
+                if context_resolution.clarification is not None
+                else "context_blocked"
+            )
+            yield ("token", {"text": answer})
+            memory_store.append_message(
+                active_session_id,
+                "assistant",
+                answer,
+                {
+                    "intent": state.get("intent"),
+                    "rule_id": rule_id,
+                    "rule_name": effective.get("rule_name"),
+                    "generation_method": "tool",
+                    "errors": errors,
+                    "execution_context": execution_context,
+                },
+            )
+            _finish_trace(
+                trace_recorder,
+                trace_id,
+                "blocked",
+                answer[:500],
+                intent=str(state.get("intent") or "query"),
+                error_count=0,
+            )
+            yield ("done", {
+                "session_id": active_session_id,
+                "intent": state.get("intent"),
+                "rule_id": rule_id,
+                "generation_method": "tool",
+                "status": status,
+                "answer": answer,
+                "errors": errors,
+                "execution_context": execution_context,
+                "trace_id": trace_id,
+                "orchestrator": active_orchestrator.orchestrator_id,
+                "agent_owner": active_orchestrator.owner_for_intent(
+                    str(state.get("intent") or "query")
+                ),
+            })
+            return
+
     # ---- Phase 2: 反馈模式（模板化，无需流式） ----
     if state["intent"] == "feedback":
         yield ("progress", {"message": "\u6b63\u5728\u751f\u6210\u53e3\u5f84\u5dee\u5f02\u786e\u8ba4"})
@@ -1418,6 +1640,7 @@ def run_chat_stream(
                 stat_start_time=start,
                 stat_end_time=end,
                 trial_run=False,
+                execution_context=execution_context,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             if result.get("status") == "field_precheck_failed":
@@ -1455,6 +1678,7 @@ def run_chat_stream(
             "generation_method": "sqlgen", "errors": errors,
             "stat_start_time": start,
             "stat_end_time": end,
+            "execution_context": execution_context,
         })
         _record_trace_node(
             trace_recorder,
@@ -1473,6 +1697,7 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": state.get("intent"),
             "rule_id": rule_id, "generation_method": "sqlgen",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "execution_context": execution_context,
             "orchestrator": active_orchestrator.orchestrator_id,
             "agent_owner": active_orchestrator.owner_for_intent("generate_sql"),
         })
@@ -1494,6 +1719,7 @@ def run_chat_stream(
                 stat_start_time=start,
                 stat_end_time=end,
                 trial_run=True,
+                execution_context=execution_context,
             )
             _record_sql_trace_nodes(trace_recorder, trace_id, result, rule_id, state.get("hospital_id"))
             answer = format_trial_explanation(
@@ -1537,6 +1763,7 @@ def run_chat_stream(
             "generation_method": "trial_run", "errors": errors,
             "stat_start_time": start,
             "stat_end_time": end,
+            "execution_context": execution_context,
         })
         _record_trace_node(
             trace_recorder,
@@ -1555,6 +1782,7 @@ def run_chat_stream(
             "session_id": active_session_id, "intent": "trial_run",
             "rule_id": rule_id, "generation_method": "trial_run",
             "answer": answer, "errors": errors, "trace_id": trace_id,
+            "execution_context": execution_context,
             "orchestrator": active_orchestrator.orchestrator_id,
             "agent_owner": active_orchestrator.owner_for_intent("trial_run"),
         })
@@ -1664,12 +1892,21 @@ def run_chat_stream(
             generation_method = "tool_fallback"
             yield ("token", {"text": answer})
 
+    if context_resolution is not None and context_resolution.blocked:
+        answer = (
+            answer
+            + "\n\n"
+            + _context_block_answer(context_resolution)
+        ).strip()
+        yield ("token", {"text": "\n\n" + _context_block_answer(context_resolution)})
+
     # ---- Phase 4: 记录记忆，返回 done ----
     answer_duration_ms = _elapsed_ms(answer_start)
     memory_store.append_message(active_session_id, "assistant", answer, {
         "intent": state.get("intent"), "rule_id": rule_id,
         "rule_name": effective.get("rule_name"),
         "generation_method": generation_method, "errors": errors,
+        "execution_context": execution_context,
         **_stat_period_metadata(query, memory_context),
     })
     _record_trace_node(
@@ -1709,6 +1946,7 @@ def run_chat_stream(
         "session_id": active_session_id, "intent": state.get("intent"),
         "rule_id": rule_id, "generation_method": generation_method,
         "answer": answer, "errors": errors, "trace_id": trace_id,
+        "execution_context": execution_context,
         "orchestrator": active_orchestrator.orchestrator_id,
         "agent_owner": active_orchestrator.owner_for_intent(str(state.get("intent") or "query")),
     })

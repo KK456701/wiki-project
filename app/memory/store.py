@@ -111,20 +111,22 @@ class ConversationMemory:
         role: str,
         content: str,
         metadata: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> int | None:
         now = self._now()
         safe_metadata = metadata or {}
         metadata_json = json.dumps(safe_metadata, ensure_ascii=False, default=str)
+        message_id: int | None = None
         if self.sqlite_available:
             try:
                 with self._connect() as conn:
-                    conn.execute(
+                    cursor = conn.execute(
                         """
                         INSERT INTO messages(session_id, role, content, created_at, metadata_json)
                         VALUES (?, ?, ?, ?, ?)
                         """,
                         (session_id, role, content, now, metadata_json),
                     )
+                    message_id = int(cursor.lastrowid)
                     conn.execute("UPDATE sessions SET updated_at = ? WHERE session_id = ?", (now, session_id))
             except sqlite3.Error:
                 self.sqlite_available = False
@@ -137,6 +139,7 @@ class ConversationMemory:
         }
         with self.events_path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+        return message_id
 
     def _recent_messages_from_jsonl(self, session_id: str, limit: int) -> list[dict[str, Any]]:
         if not self.events_path.exists():

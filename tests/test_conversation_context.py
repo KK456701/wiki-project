@@ -44,3 +44,13 @@ def test_context_is_isolated_between_sessions(tmp_path) -> None:
 
     assert memory.load_context(first_session).working_caliber.overrides
     assert memory.load_context(second_session).working_caliber.overrides == []
+
+
+def test_append_message_returns_persisted_message_id(tmp_path) -> None:
+    memory = ConversationMemory(tmp_path)
+    session_id = memory.ensure_session("session-1", "hospital_001")
+
+    message_id = memory.append_message(session_id, "user", "按入区时间算")
+
+    assert isinstance(message_id, int)
+    assert message_id > 0

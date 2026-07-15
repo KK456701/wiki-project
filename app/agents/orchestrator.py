@@ -247,6 +247,7 @@ class CoreIndicatorOrchestrator:
         trial_run: bool = False,
         generated_by: str = "agent",
         persist_run_result: bool = True,
+        execution_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self._require_rule(prepared)
         precheck_started = time.perf_counter()
@@ -333,6 +334,7 @@ class CoreIndicatorOrchestrator:
                 if prepared.field_mapping is not None
                 else None
             ),
+            execution_context=execution_context or {},
         )
         contract = (
             result

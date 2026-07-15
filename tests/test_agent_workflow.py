@@ -925,6 +925,80 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertTrue(meta["trace_id"].startswith("TRACE_"))
             self.assertEqual(done["trace_id"], meta["trace_id"])
 
+    def test_ambiguous_ward_entry_request_is_persisted_as_clarification(self) -> None:
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            first = run_chat(
+                "急会诊及时到位率怎么算？",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id="ward-entry-clarification",
+                memory=memory,
+            )
+
+            result = run_chat(
+                "按入区时间算",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id=first["session_id"],
+                memory=memory,
+            )
+
+        context = memory.load_context(first["session_id"])
+        self.assertEqual(result["status"], "context_clarification_required")
+        self.assertIn("统计范围", result["answer"])
+        self.assertEqual(
+            context.pending_clarifications[0].code,
+            "WARD_ENTRY_SCOPE_REQUIRED",
+        )
+
+    def test_generate_sql_uses_session_caliber_and_blocks_unmapped_field(self) -> None:
+        FakeSQLGenerationAgent.calls = []
+        with temp_kb_dir() as tmp:
+            root = Path(tmp)
+            make_minimal_kb(root, with_hospital=False)
+            memory = ConversationMemory(root / "runtime" / "conversations")
+            first = run_chat(
+                "急会诊及时到位率怎么算？",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id="ward-entry-generation",
+                memory=memory,
+            )
+            run_chat(
+                "48小时从入区时间开始算",
+                hospital_id="hospital_001",
+                kb_root=root,
+                session_id=first["session_id"],
+                memory=memory,
+            )
+
+            with patch("app.sqlgen.agent.SQLGenerationAgent", FakeSQLGenerationAgent), \
+                 patch("app.agents.metadata_parsing.MetadataParsingAgent.precheck", return_value=PRECHECK_OK):
+                events = list(
+                    run_chat_stream(
+                        "生成 SQL",
+                        hospital_id="hospital_001",
+                        kb_root=root,
+                        use_llm=True,
+                        llm_client=ContextOnlySQLCommandLLM(),
+                        session_id=first["session_id"],
+                        memory=memory,
+                    )
+                )
+
+        done = next(data for event, data in reversed(events) if event == "done")
+        context = memory.load_context(first["session_id"])
+        override = context.working_caliber.get("elapsed_time_start")
+        self.assertIsNotNone(override)
+        self.assertEqual(override.business_value, "ward_entry_time")
+        self.assertEqual(done["status"], "context_blocked")
+        self.assertFalse(done["execution_context"]["executable"])
+        self.assertIn("入区时间对应的医院字段", done["answer"])
+        self.assertEqual(FakeSQLGenerationAgent.calls, [])
+
 
 def _trace_runtime_engine():
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)

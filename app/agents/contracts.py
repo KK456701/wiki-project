@@ -202,6 +202,7 @@ class SQLGenerationResult(AgentContract):
     calculation_definition: dict[str, Any] = Field(default_factory=dict)
     field_mapping: dict[str, Any] = Field(default_factory=dict)
     lineage: dict[str, Any] = Field(default_factory=dict)
+    execution_context: dict[str, Any] = Field(default_factory=dict)
     message: str = ""
     node_timings: dict[str, int] = Field(default_factory=dict, alias="_node_timings")
 

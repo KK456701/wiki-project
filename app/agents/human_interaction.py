@@ -296,6 +296,10 @@ class HumanInteractionAgent:
             return True
         if intent == "feedback" or any(marker in query for marker in FOLLOW_UP_MARKERS):
             return True
+        if intent == "query" and any(
+            marker in query for marker in ("入区", "恢复本院口径", "清除刚才的调整", "临时口径")
+        ):
+            return True
         compact = re.sub(r"[\s，。！？、,.!?]+", "", query or "").lower()
         return compact in CONTEXT_ONLY_ACTIONS.get(intent, set())
 

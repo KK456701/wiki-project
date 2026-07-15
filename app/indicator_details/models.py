@@ -26,6 +26,7 @@ class RunContext(BaseModel):
     main_table: str
     dialect: str = "mysql"
     query_profile: str = ""
+    execution_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class DetailColumn(BaseModel):
