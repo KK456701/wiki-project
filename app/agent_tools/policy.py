@@ -18,6 +18,7 @@ _SENSITIVE_KEY_PARTS = (
     "connection",
     "db_url",
     "sql_text",
+    "pasted_sql",
 )
 
 

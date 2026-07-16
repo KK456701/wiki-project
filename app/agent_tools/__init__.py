@@ -1,4 +1,11 @@
 from .contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
+from .catalog import build_agent_tool_registry
+from .diagnosis_tools import (
+    DiagnoseIndicatorIssueInput,
+    DiagnosisToolServices,
+    build_diagnosis_tools,
+    diagnose_indicator_issue,
+)
 from .gateway import ToolGateway
 from .policy import RepeatDecision, ToolExecutionPolicy, redact_payload, tool_call_fingerprint
 from .read_tools import (
@@ -31,6 +38,8 @@ from .state_facts import has_active_sql, has_verified_rule, verified_rule_ids
 __all__ = [
     "AgentTool",
     "AgentSqlObjectStore",
+    "DiagnoseIndicatorIssueInput",
+    "DiagnosisToolServices",
     "PreparedSqlObject",
     "PrepareIndicatorSqlInput",
     "RepeatDecision",
@@ -49,8 +58,11 @@ __all__ = [
     "TrialRunIndicatorSqlInput",
     "build_read_tool_registry",
     "build_read_tools",
+    "build_agent_tool_registry",
+    "build_diagnosis_tools",
     "build_sql_tools",
     "ensure_agent_sql_object_schema",
+    "diagnose_indicator_issue",
     "get_effective_rule",
     "has_active_sql",
     "has_verified_rule",

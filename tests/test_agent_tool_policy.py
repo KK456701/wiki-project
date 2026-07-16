@@ -32,6 +32,7 @@ class AgentToolPolicyTest(unittest.TestCase):
             "nested": {
                 "database_password": "123456",
                 "sql_text": "SELECT * FROM patient",
+                "pasted_sql": "SELECT patient_name FROM patient",
                 "safe_count": 3,
             },
         }
@@ -42,6 +43,7 @@ class AgentToolPolicyTest(unittest.TestCase):
         self.assertEqual(redacted["authorization"], "[REDACTED]")
         self.assertEqual(redacted["nested"]["database_password"], "[REDACTED]")
         self.assertEqual(redacted["nested"]["sql_text"], "[REDACTED]")
+        self.assertEqual(redacted["nested"]["pasted_sql"], "[REDACTED]")
         self.assertEqual(redacted["nested"]["safe_count"], 3)
 
 
