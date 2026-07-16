@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import re
 
 from app.agent_runtime.contracts import AgentRunResult, AgentRunState, AgentRuntimeContext
 from app.agent_runtime.model_adapter import AgentModelAdapter, AgentModelError
-from app.agent_runtime.prompts import AGENT_SYSTEM_PROMPT
+from app.agent_runtime.prompts import (
+    AGENT_SYSTEM_PROMPT,
+    CHINESE_REQUIRED_PROMPT,
+    EVIDENCE_REQUIRED_PROMPT,
+)
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
+
+
+def _contains_chinese(text: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
 class AgentRunner:
@@ -36,11 +46,45 @@ class AgentRunner:
         state: AgentRunState | None = None,
     ) -> AgentRunResult:
         run_state = state or AgentRunState()
+        if run_state.cancelled:
+            run_state.stop_reason = "cancelled"
+            return AgentRunResult(
+                answer="本次运行已取消。",
+                stop_reason="cancelled",
+                state=run_state,
+            )
+        try:
+            return await asyncio.wait_for(
+                self._run(user_message, context, run_state),
+                timeout=self.request_timeout_seconds,
+            )
+        except TimeoutError:
+            run_state.stop_reason = "request_timeout"
+            return AgentRunResult(
+                answer="本次请求处理超时，请稍后重试。",
+                stop_reason="request_timeout",
+                state=run_state,
+            )
+
+    async def _run(
+        self,
+        user_message: str,
+        context: AgentRuntimeContext,
+        run_state: AgentRunState,
+    ) -> AgentRunResult:
         if not run_state.messages:
             run_state.messages.append({"role": "system", "content": AGENT_SYSTEM_PROMPT})
         run_state.messages.append({"role": "user", "content": user_message})
         model_name: str | None = None
         for _ in range(self.max_steps):
+            if run_state.cancelled:
+                run_state.stop_reason = "cancelled"
+                return AgentRunResult(
+                    answer="本次运行已取消。",
+                    stop_reason="cancelled",
+                    state=run_state,
+                    model=model_name,
+                )
             run_state.step_count += 1
             available = self.registry.list_for_context(context, run_state)
             try:
@@ -64,6 +108,18 @@ class AgentRunner:
             }
             run_state.messages.append(assistant_message)
             if not response.tool_calls:
+                if not run_state.evidence:
+                    run_state.messages.append({
+                        "role": "system",
+                        "content": EVIDENCE_REQUIRED_PROMPT,
+                    })
+                    continue
+                if not _contains_chinese(response.content):
+                    run_state.messages.append({
+                        "role": "system",
+                        "content": CHINESE_REQUIRED_PROMPT,
+                    })
+                    continue
                 run_state.stop_reason = "final_answer"
                 return AgentRunResult(
                     answer=response.content,
@@ -71,7 +127,23 @@ class AgentRunner:
                     state=run_state,
                     model=model_name,
                 )
+            if len(response.tool_calls) > self.max_tool_calls_per_step:
+                run_state.stop_reason = "tool_error"
+                return AgentRunResult(
+                    answer="单步工具调用数量超过限制，本次运行已停止。",
+                    stop_reason="tool_error",
+                    state=run_state,
+                    model=model_name,
+                )
             for call in response.tool_calls:
+                if run_state.cancelled:
+                    run_state.stop_reason = "cancelled"
+                    return AgentRunResult(
+                        answer="本次运行已取消。",
+                        stop_reason="cancelled",
+                        state=run_state,
+                        model=model_name,
+                    )
                 result = await self.gateway.execute(
                     call.name, call.arguments, context, run_state
                 )
@@ -91,6 +163,21 @@ class AgentRunner:
                     return AgentRunResult(
                         answer=result.summary,
                         stop_reason="need_clarification",
+                        state=run_state,
+                        model=model_name,
+                    )
+                if (
+                    result.code == "TOOL_NOT_FOUND"
+                    or result.status
+                    in {"forbidden", "unavailable", "cancelled", "error"}
+                ) and not result.retryable:
+                    stop_reason = (
+                        "cancelled" if result.status == "cancelled" else "tool_error"
+                    )
+                    run_state.stop_reason = stop_reason
+                    return AgentRunResult(
+                        answer=result.summary,
+                        stop_reason=stop_reason,
                         state=run_state,
                         model=model_name,
                     )
