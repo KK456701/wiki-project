@@ -80,8 +80,29 @@ ollama_output_reserve_tokens: 1200
 agent_enabled: false
 agent_mode: "legacy"
 agent_model: "qwen3:4B-instruct"
+default_model: "ollama-qwen3"
 agent_max_steps: 8
 agent_request_timeout_seconds: 120
 agent_default_tool_timeout_seconds: 30
 agent_max_tool_result_chars: 12000
 agent_sql_ttl_minutes: 30
+
+# 工具调用型 Agent 可用模型列表。不配置 models 时会自动回退到上方 Ollama 配置。
+models:
+  - id: "ollama-qwen3"
+    name: "Qwen3 4B（本地 Ollama）"
+    provider: "ollama"
+    model: "qwen3:4B-instruct"
+    base_url: "http://127.0.0.1:11434"
+  - id: "deepseek-v4-flash"
+    name: "DeepSeek V4 Flash（API）"
+    provider: "openai"
+    model: "deepseek-v4-flash"
+    base_url: "https://api.deepseek.com"
+    api_key: "${DEEPSEEK_API_KEY}"
+  - id: "deepseek-v4-pro"
+    name: "DeepSeek V4 Pro（API）"
+    provider: "openai"
+    model: "deepseek-v4-pro"
+    base_url: "https://api.deepseek.com"
+    api_key: "${DEEPSEEK_API_KEY}"

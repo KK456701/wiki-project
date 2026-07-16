@@ -111,8 +111,9 @@ class FakeMemory:
 
 
 class FakeRunner:
-    def __init__(self, callback):
+    def __init__(self, callback, model_id=None):
         self.callback = callback
+        self.model_id = model_id
         self.states = []
 
     async def run(self, query, context, state=None):
@@ -142,8 +143,8 @@ def test_chat_loads_and_completes_agent_conversation_memory() -> None:
     memory = FakeMemory()
     runners = []
 
-    def runner_factory(callback):
-        runner = FakeRunner(callback)
+    def runner_factory(callback, model_id=None):
+        runner = FakeRunner(callback, model_id=model_id)
         runners.append(runner)
         return runner
 
@@ -161,9 +162,11 @@ def test_chat_loads_and_completes_agent_conversation_memory() -> None:
         principal=_principal({"indicator_detail_view"}),
         request_id="REQ_001",
         session_id="chat-1",
+        model_id="deepseek-v4-pro",
     ))
 
     assert result["answer"] == "已基于当前指标回答。"
+    assert runners[0].model_id == "deepseek-v4-pro"
     assert memory.contexts[0].session_id == "chat-1"
     assert memory.session.user_queries == ["这个指标怎么算？"]
     assert runners[0].states == [memory.session.state]

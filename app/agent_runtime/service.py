@@ -11,6 +11,7 @@ from typing import Any
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
 from app.agent_runtime.memory import AgentConversationMemory
 from app.agent_runtime.events import public_agent_event
+from app.agent_runtime.model_adapter import AgentModelError
 from app.agent_runtime.tracing import AgentTraceBridge
 from app.config import get, get_bool, get_int
 from app.hospital_auth.models import (
@@ -79,19 +80,29 @@ class AgentRuntimeService:
 
     @classmethod
     def from_config(cls) -> "AgentRuntimeService":
+        from app.llm.model_registry import get_model_registry
+
+        registry = get_model_registry()
         return cls(
             enabled=get_bool("agent_enabled", False),
             mode=get("agent_mode", "legacy").strip().lower(),
-            model=get("agent_model", get("ollama_model", "qwen3:4B-instruct")),
+            model=registry.default_model_id,
             max_steps=max(1, get_int("agent_max_steps", 8)),
             request_timeout_seconds=max(1, get_int("agent_request_timeout_seconds", 120)),
         )
 
     def capabilities(self) -> dict[str, Any]:
+        from app.llm.model_registry import get_model_registry
+
+        registry = get_model_registry()
         return {
             "enabled": self.enabled and self.mode == "tool_calling",
             "mode": self.mode,
             "model": self.model,
+            "models": [
+                model.model_dump_public()
+                for model in registry.list_models()
+            ],
             "streaming": True,
             "max_steps": self.max_steps,
             "formal_writes": False,
@@ -110,6 +121,7 @@ class AgentRuntimeService:
         principal: HospitalPrincipal,
         request_id: str,
         session_id: str | None = None,
+        model_id: str | None = None,
     ) -> dict[str, Any]:
         self.ensure_available()
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
@@ -146,7 +158,7 @@ class AgentRuntimeService:
                 )
             bridge.handle(event)
 
-        result = await self.runner_factory(handle).run(
+        result = await self._make_runner(handle, model_id=model_id).run(
             query, context, memory_session.state
         )
         if not memory_completion_attempted:
@@ -169,6 +181,7 @@ class AgentRuntimeService:
         principal: HospitalPrincipal,
         request_id: str,
         session_id: str | None = None,
+        model_id: str | None = None,
     ):
         self.ensure_available()
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
@@ -208,7 +221,7 @@ class AgentRuntimeService:
             queue.put_nowait(public_agent_event(event, trace_id=trace_id))
 
         state = memory_session.state
-        runner = self.runner_factory(handle)
+        runner = self._make_runner(handle, model_id=model_id)
 
         async def execute() -> None:
             try:
@@ -276,7 +289,16 @@ class AgentRuntimeService:
             raise AgentRunAccessError("无权查看其他医院的 Agent 运行记录。", 403)
         return trace
 
-    def _build_runner(self, event_callback):
+    def _make_runner(self, event_callback, *, model_id: str | None = None):
+        try:
+            try:
+                return self.runner_factory(event_callback, model_id=model_id)
+            except TypeError:
+                return self.runner_factory(event_callback)
+        except AgentModelError as exc:
+            raise AgentRuntimeUnavailable(str(exc)) from exc
+
+    def _build_runner(self, event_callback, model_id: str | None = None):
         from app.agent_runtime.runner import AgentRunner
         from app.agent_tools import (
             AgentSqlObjectStore,
@@ -290,8 +312,7 @@ class AgentRuntimeService:
         )
         from app.api.main import _create_agent_orchestrator, create_business_db_client
         from app.db.engine import create_runtime_engine
-        from app.llm.ollama import OllamaClient
-        from app.llm.ollama_tools import OllamaToolCallingAdapter
+        from app.llm.model_registry import get_model_registry
 
         engine = create_runtime_engine()
         ensure_agent_sql_object_schema(engine)
@@ -316,7 +337,7 @@ class AgentRuntimeService:
             preview_services=PreviewToolServices(orchestrator=orchestrator),
         )
         gateway = ToolGateway(registry, trace_callback=event_callback)
-        adapter = OllamaToolCallingAdapter(OllamaClient(model=self.model))
+        adapter = get_model_registry().build_adapter(model_id or self.model)
         return AgentRunner(
             adapter,
             registry,

@@ -10,10 +10,14 @@ from app.hospital_auth.models import HospitalPrincipal
 
 
 class FakeStreamService:
+    def __init__(self):
+        self.calls = []
+
     def ensure_available(self):
         return None
 
     async def stream(self, **kwargs):
+        self.calls.append(kwargs)
         assert kwargs["principal"].hospital_id == "h1"
         yield {"event": "agent_start", "trace_id": "TRACE_001", "step": 0}
         yield {
@@ -48,7 +52,7 @@ def _client():
     )
     app.dependency_overrides[get_agent_runtime_service] = lambda: service
     app.dependency_overrides[require_hospital_session] = lambda: principal
-    return TestClient(app)
+    return TestClient(app), service
 
 
 def _events(text):
@@ -64,9 +68,10 @@ def _events(text):
 
 
 def test_stream_returns_ordered_business_events_and_safe_headers() -> None:
-    response = _client().post(
+    client, service = _client()
+    response = client.post(
         "/api/agent/chat/stream",
-        json={"query": "急会诊及时到位率怎么算？"},
+        json={"query": "急会诊及时到位率怎么算？", "model_id": "deepseek-v4-pro"},
     )
 
     assert response.status_code == 200
@@ -81,6 +86,7 @@ def test_stream_returns_ordered_business_events_and_safe_headers() -> None:
         "agent_done",
     ]
     assert {payload["trace_id"] for _, payload in events} == {"TRACE_001"}
+    assert service.calls[0]["model_id"] == "deepseek-v4-pro"
 
 
 def test_public_event_projection_removes_arguments_results_and_sql() -> None:

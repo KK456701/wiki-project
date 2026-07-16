@@ -31,7 +31,19 @@
   box-shadow: inset 3px 0 0 var(--teal);
 }
 
+.agent-model-select {
+  min-height: 28px;
+  max-width: 220px;
+  padding: 3px 26px 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink-soft);
+  background: #fff;
+  font: 750 12px/1.2 var(--sans);
+}
+
 .agent-runtime-mode:focus-visible,
+.agent-model-select:focus-visible,
 .agent-evidence-track:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 3px;
@@ -80,10 +92,12 @@
 
 @media (max-width: 720px) {
   .agent-runtime-status { align-items: flex-start; flex-direction: column; }
+  .agent-model-select { max-width: 100%; }
   .agent-evidence-track li { grid-template-columns: 1fr; gap: 3px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-runtime-mode,
+  .agent-model-select,
   .agent-evidence-track li { transition: none !important; }
 }

@@ -626,6 +626,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
             <div>
               <strong>当前会话</strong>
               <span id="agentRuntimeMode" class="agent-runtime-mode" data-mode="legacy" tabindex="0">稳定流程</span>
+              <select id="modelSelector" class="agent-model-select" hidden aria-label="选择 Agent 模型"></select>
               <span id="sessionLabel"></span>
             </div>
             <button id="newSessionButton" class="ghost" type="button">新会话</button>
@@ -1191,6 +1192,7 @@ var traceModal = document.getElementById("traceModal");
 var traceMeta = document.getElementById("traceMeta");
 var traceNodeList = document.getElementById("traceNodeList");
 var agentRuntimeMode = document.getElementById("agentRuntimeMode");
+var modelSelector = document.getElementById("modelSelector");
 
 sessionLabel.textContent = "session: " + currentSessionId;
 updateUserUI();
@@ -1219,7 +1221,8 @@ async function refreshAgentRuntimeMode() {
   await window.AgentRuntimeUI.refreshCapabilities({
     token: hospitalAuthToken,
     user: currentUser,
-    element: agentRuntimeMode
+    element: agentRuntimeMode,
+    modelSelector: modelSelector
   });
 }
 refreshAgentRuntimeMode();
@@ -2281,6 +2284,7 @@ async function streamToolCallingChat(query) {
       query: query,
       sessionId: currentSessionId,
       token: hospitalAuthToken,
+      modelId: modelSelector && modelSelector.value || "",
       onEvent: function(event) {
         if (event.trace_id) {
           latestTraceId = event.trace_id;

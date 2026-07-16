@@ -16,8 +16,8 @@ class FakeAgentService:
     def __init__(self):
         self.calls = []
 
-    async def chat(self, *, query, principal, request_id, session_id=None):
-        self.calls.append((query, principal, request_id, session_id))
+    async def chat(self, *, query, principal, request_id, session_id=None, model_id=None):
+        self.calls.append((query, principal, request_id, session_id, model_id))
         return {
             "answer": "已完成指标说明。",
             "stop_reason": "final_answer",
@@ -31,6 +31,7 @@ class FakeAgentService:
             "enabled": True,
             "mode": "tool_calling",
             "model": "fake",
+            "models": [{"id": "fake", "name": "Fake", "provider": "ollama"}],
             "streaming": True,
             "max_steps": 8,
             "formal_writes": False,
@@ -84,6 +85,23 @@ def test_chat_uses_authenticated_principal_and_server_request_id() -> None:
     }
     assert service.calls[0][1].hospital_id == "h1"
     assert service.calls[0][2] == "REQ_001"
+    assert service.calls[0][4] is None
+
+
+def test_chat_accepts_optional_model_id() -> None:
+    client, service = _client()
+
+    response = client.post(
+        "/api/agent/chat",
+        json={
+            "query": "急会诊及时到位率怎么算？",
+            "session_id": "chat-1",
+            "model_id": "deepseek-v4-pro",
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.calls[0][4] == "deepseek-v4-pro"
 
 
 def test_chat_rejects_tenant_identity_and_authority_fields() -> None:
@@ -121,6 +139,9 @@ def test_capabilities_and_run_are_scoped_to_principal() -> None:
 
     assert capabilities.status_code == 200
     assert capabilities.json()["formal_writes"] is False
+    assert capabilities.json()["models"] == [
+        {"id": "fake", "name": "Fake", "provider": "ollama"}
+    ]
     assert run.json() == {"trace_id": "TRACE_001", "hospital_id": "h1"}
 
 

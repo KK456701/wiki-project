@@ -42,6 +42,43 @@
     return "稳定流程";
   }
 
+  function modelSelectorOptions(caps) {
+    var models = caps && Array.isArray(caps.models) ? caps.models : [];
+    var current = String(caps && caps.model || "");
+    return models.map(function (model) {
+      var id = String(model && model.id || "");
+      return {
+        value: id,
+        label: String(model && model.name || id || "未命名模型"),
+        selected: id === current
+      };
+    });
+  }
+
+  function renderModelSelector(element, caps) {
+    if (!element) return;
+    var options = modelSelectorOptions(caps);
+    element.innerHTML = "";
+    if (!options.length) {
+      element.hidden = true;
+      return;
+    }
+    options.forEach(function (item) {
+      var option = document.createElement("option");
+      option.value = item.value;
+      option.textContent = item.label;
+      option.selected = item.selected;
+      element.appendChild(option);
+    });
+    element.hidden = false;
+  }
+
+  function buildChatPayload(query, sessionId, modelId) {
+    var payload = {query: query, session_id: sessionId};
+    if (modelId) payload.model_id = modelId;
+    return payload;
+  }
+
   function renderModeBadge(element, user) {
     if (!element) return;
     var mode = selectMode(capabilities, user);
@@ -70,6 +107,7 @@
       capabilities = {enabled: false, mode: "legacy"};
     }
     renderModeBadge(options && options.element, user);
+    renderModelSelector(options && options.modelSelector, capabilities);
     return capabilities;
   }
 
@@ -102,7 +140,11 @@
         "Content-Type": "application/json",
         Authorization: "Bearer " + options.token
       },
-      body: JSON.stringify({query: options.query, session_id: options.sessionId})
+      body: JSON.stringify(buildChatPayload(
+        options.query,
+        options.sessionId,
+        options.modelId
+      ))
     });
     if (!response.ok) {
       var error = new Error("工具协作模式暂不可用，请切回稳定流程后重试。");
@@ -175,6 +217,8 @@
 
   return {
     selectMode: selectMode,
+    modelSelectorOptions: modelSelectorOptions,
+    buildChatPayload: buildChatPayload,
     projectEvent: projectEvent,
     canFallbackToLegacy: canFallbackToLegacy,
     refreshCapabilities: refreshCapabilities,

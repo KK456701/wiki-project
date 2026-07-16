@@ -23,6 +23,7 @@ class AgentChatRequest(BaseModel):
 
     query: str = Field(min_length=1, max_length=5000)
     session_id: str | None = Field(default=None, min_length=1, max_length=128)
+    model_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class AgentChatResponse(BaseModel):
@@ -55,6 +56,7 @@ async def agent_chat(
             principal=principal,
             request_id=request_id or f"REQ_{uuid.uuid4().hex[:12]}",
             session_id=body.session_id,
+            model_id=body.model_id,
         )
     except AgentRuntimeUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -82,13 +84,21 @@ def agent_chat_stream(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     async def generate():
-        async for event in service.stream(
-            query=body.query,
-            principal=principal,
-            request_id=request_id or f"REQ_{uuid.uuid4().hex[:12]}",
-            session_id=body.session_id,
-        ):
-            yield _sse_event(event)
+        try:
+            async for event in service.stream(
+                query=body.query,
+                principal=principal,
+                request_id=request_id or f"REQ_{uuid.uuid4().hex[:12]}",
+                session_id=body.session_id,
+                model_id=body.model_id,
+            ):
+                yield _sse_event(event)
+        except AgentRuntimeUnavailable as exc:
+            yield _sse_event({
+                "event": "agent_error",
+                "stop_reason": "tool_error",
+                "message": str(exc),
+            })
 
     return StreamingResponse(
         generate(),

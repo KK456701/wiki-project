@@ -32,6 +32,7 @@ def test_page_loads_runtime_assets_before_inline_chat_code() -> None:
     assert script in html
     assert html.index(script) < html.index("<script>")
     assert 'id="agentRuntimeMode"' in html
+    assert 'id="modelSelector"' in html
 
 
 def test_mode_selection_requires_implementation_permission_and_capability() -> None:
@@ -51,6 +52,27 @@ def test_mode_selection_requires_implementation_permission_and_capability() -> N
     ]"""
 
     assert _run_node(expression) == ["tool_calling", "legacy", "legacy"]
+
+
+def test_model_selector_payload_uses_selected_model() -> None:
+    expression = """[
+      runtime.modelSelectorOptions({
+        models: [
+          {id:'ollama-qwen3', name:'Qwen3 4B', provider:'ollama'},
+          {id:'deepseek-v4-pro', name:'DeepSeek V4 Pro', provider:'openai'}
+        ],
+        model: 'deepseek-v4-pro'
+      }),
+      runtime.buildChatPayload('查询指标', 's1', 'deepseek-v4-pro')
+    ]"""
+
+    assert _run_node(expression) == [
+        [
+            {"value": "ollama-qwen3", "label": "Qwen3 4B", "selected": False},
+            {"value": "deepseek-v4-pro", "label": "DeepSeek V4 Pro", "selected": True},
+        ],
+        {"query": "查询指标", "session_id": "s1", "model_id": "deepseek-v4-pro"},
+    ]
 
 
 def test_public_event_projection_never_renders_arguments_or_result_data() -> None:
