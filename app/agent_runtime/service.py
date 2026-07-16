@@ -128,24 +128,29 @@ class AgentRuntimeService:
         )
         memory_session = self._open_memory(context)
         memory_session.append_user(query)
-        memory_completed = False
+        memory_completion_attempted = False
 
         def handle(event: dict[str, Any]) -> None:
-            nonlocal memory_completed
-            if event.get("event") in {"agent_done", "agent_error"}:
-                memory_completed = self._complete_memory(
+            nonlocal memory_completion_attempted
+            if (
+                event.get("event") in {"agent_done", "agent_error"}
+                and not memory_completion_attempted
+            ):
+                memory_completion_attempted = True
+                self._complete_memory(
                     memory_session,
                     query,
                     str(event.get("answer") or ""),
                     memory_session.state,
                     bridge,
-                ) or memory_completed
+                )
             bridge.handle(event)
 
         result = await self.runner_factory(handle).run(
             query, context, memory_session.state
         )
-        if not memory_completed:
+        if not memory_completion_attempted:
+            memory_completion_attempted = True
             self._complete_memory(
                 memory_session, query, result.answer, result.state, bridge
             )
@@ -183,18 +188,22 @@ class AgentRuntimeService:
         memory_session = self._open_memory(context)
         memory_session.append_user(query)
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        memory_completed = False
+        memory_completion_attempted = False
 
         def handle(event: dict[str, Any]) -> None:
-            nonlocal memory_completed
-            if event.get("event") in {"agent_done", "agent_error"}:
-                memory_completed = self._complete_memory(
+            nonlocal memory_completion_attempted
+            if (
+                event.get("event") in {"agent_done", "agent_error"}
+                and not memory_completion_attempted
+            ):
+                memory_completion_attempted = True
+                self._complete_memory(
                     memory_session,
                     query,
                     str(event.get("answer") or ""),
                     memory_session.state,
                     bridge,
-                ) or memory_completed
+                )
             bridge.handle(event)
             queue.put_nowait(public_agent_event(event, trace_id=trace_id))
 

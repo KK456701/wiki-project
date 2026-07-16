@@ -9,6 +9,7 @@ from app.agent_runtime.service import (
     context_from_principal,
 )
 from app.hospital_auth.models import HospitalPrincipal
+from app.memory.contracts import ContextStorageError
 
 
 def _principal(permissions):
@@ -48,6 +49,7 @@ def test_export_account_maps_to_implementation_role() -> None:
 class FakeTraceRecorder:
     def __init__(self, trace):
         self.trace = trace
+        self.nodes = []
 
     def get_trace(self, trace_id):
         return dict(self.trace, trace_id=trace_id)
@@ -56,7 +58,7 @@ class FakeTraceRecorder:
         self.started = kwargs
 
     def record_node(self, **kwargs):
-        return None
+        self.nodes.append(kwargs)
 
     def finish_trace(self, **kwargs):
         self.finished = kwargs
@@ -169,3 +171,39 @@ def test_chat_loads_and_completes_agent_conversation_memory() -> None:
         "这个指标怎么算？",
         "已基于当前指标回答。",
     )
+
+
+def test_memory_save_failure_is_recorded_once_without_retrying_completion() -> None:
+    class FailingMemorySession(FakeMemorySession):
+        def __init__(self):
+            super().__init__()
+            self.complete_calls = 0
+
+        def complete(self, query, answer, state):
+            self.complete_calls += 1
+            raise ContextStorageError("password=secret")
+
+    memory = FakeMemory()
+    memory.session = FailingMemorySession()
+    recorder = FakeTraceRecorder({"hospital_id": "h1"})
+    service = AgentRuntimeService(
+        enabled=True,
+        mode="tool_calling",
+        model="fake",
+        runner_factory=FakeRunner,
+        trace_recorder_factory=lambda: recorder,
+        memory_factory=lambda: memory,
+    )
+
+    result = asyncio.run(service.chat(
+        query="这个指标怎么算？",
+        principal=_principal({"indicator_detail_view"}),
+        request_id="REQ_002",
+        session_id="chat-2",
+    ))
+
+    assert result["answer"] == "已基于当前指标回答。"
+    assert memory.session.complete_calls == 1
+    failures = [node for node in recorder.nodes if node["node_name"] == "agent_memory"]
+    assert len(failures) == 1
+    assert "secret" not in str(failures)
