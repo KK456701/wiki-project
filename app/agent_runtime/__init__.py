@@ -9,6 +9,7 @@ from .contracts import (
     AgentToolCall,
 )
 from .model_adapter import AgentModelAdapter, AgentModelError
+from .events import AGENT_EVENT_NAMES, AgentEventCallback, emit_agent_event
 from .response_guard import evidence_correction_prompt, missing_fact_types
 
 if TYPE_CHECKING:
@@ -24,6 +25,8 @@ def __getattr__(name: str) -> Any:
 
 __all__ = [
     "AgentModelResponse",
+    "AGENT_EVENT_NAMES",
+    "AgentEventCallback",
     "AgentModelAdapter",
     "AgentModelError",
     "AgentRunResult",
@@ -33,5 +36,6 @@ __all__ = [
     "AgentToolCall",
     "AgentRunner",
     "evidence_correction_prompt",
+    "emit_agent_event",
     "missing_fact_types",
 ]

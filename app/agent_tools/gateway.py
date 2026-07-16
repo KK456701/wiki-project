@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -105,6 +106,7 @@ class ToolGateway:
                 "risk_level": tool.risk_level.value,
             }
         )
+        started_at = time.perf_counter()
         try:
             value = await asyncio.wait_for(
                 self._invoke(tool.handler, arguments, context, state),
@@ -132,6 +134,10 @@ class ToolGateway:
             {
                 "event": "tool_result",
                 "tool_name": tool.name,
+                "duration_ms": max(
+                    0,
+                    int((time.perf_counter() - started_at) * 1000),
+                ),
                 "result": redact_payload(result.model_dump(mode="json")),
             }
         )
