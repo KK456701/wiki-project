@@ -252,6 +252,7 @@ class AgentReadToolsTest(unittest.TestCase):
         self.assertEqual(result.data["missing_mappings"], ["consult_arrive_time"])
         self.assertEqual(result.data["unconfirmed_mappings"], ["consult_apply_time"])
         self.assertNotIn("db_name", str(result.data))
+        self.assertEqual(result.evidence[0].version, "2")
 
 
 if __name__ == "__main__":

@@ -119,6 +119,22 @@ class AgentReadToolCatalogTest(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    def test_failed_result_does_not_expose_follow_up_tools(self) -> None:
+        from app.agent_runtime import AgentRunState
+        from app.agent_tools.read_tools import ReadToolServices, build_read_tool_registry
+
+        registry = build_read_tool_registry(ReadToolServices(caliber=CatalogCaliber()))
+        state = AgentRunState(last_tool_results=[{
+            "ok": False,
+            "status": "not_found",
+            "data": {"rule_id": "MQSI2025_005"},
+        }])
+
+        self.assertEqual(
+            [tool.name for tool in registry.list_for_context(self._context(), state)],
+            ["search_indicator_rules"],
+        )
+
     def test_catalog_schemas_never_expose_runtime_context(self) -> None:
         from app.agent_runtime import AgentRunState
         from app.agent_tools.read_tools import ReadToolServices, build_read_tool_registry

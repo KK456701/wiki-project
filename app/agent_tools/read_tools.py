@@ -168,7 +168,10 @@ def _safe_rule_payload(rule: Any) -> dict[str, Any]:
     return {key: raw[key] for key in _RULE_RESULT_FIELDS if key in raw}
 
 
-def _rule_evidence(payload: dict[str, Any]) -> list[ToolEvidence]:
+def _rule_evidence(
+    payload: dict[str, Any],
+    fact_types: list[str] | None = None,
+) -> list[ToolEvidence]:
     version = payload.get("hospital_version")
     if version is None:
         version = payload.get("national_version")
@@ -176,7 +179,12 @@ def _rule_evidence(payload: dict[str, Any]) -> list[ToolEvidence]:
         source=str(payload.get("rule_source") or "rule_repository"),
         source_id=str(payload.get("rule_id") or "") or None,
         version=str(version) if version is not None and str(version) else None,
-        fact_types=["definition", "formula", "effective_level", "implementation_status"],
+        fact_types=fact_types or [
+            "definition",
+            "formula",
+            "effective_level",
+            "implementation_status",
+        ],
     )]
 
 
@@ -306,11 +314,10 @@ def inspect_indicator_implementation(
             else "指标实施仍有缺失或未确认映射。"
         ),
         data=payload,
-        evidence=[ToolEvidence(
-            source=str(rule_payload.get("rule_source") or "rule_repository"),
-            source_id=arguments.rule_id,
-            fact_types=["field_mapping", "implementation_status"],
-        )],
+        evidence=_rule_evidence(
+            rule_payload,
+            ["field_mapping", "implementation_status"],
+        ),
         warnings=[
             message
             for message, present in (
@@ -337,6 +344,8 @@ def _state_has_verified_rule(
 
     for item in [*state.last_tool_results, *state.evidence]:
         if not isinstance(item, dict):
+            continue
+        if "ok" in item and item.get("ok") is not True:
             continue
         data = item.get("data") if isinstance(item.get("data"), dict) else item
         if data.get("resolved_rule_id") or data.get("rule_id"):
