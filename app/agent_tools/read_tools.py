@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent_runtime import AgentRunState, AgentRuntimeContext
-from app.agent_tools.contracts import ToolEvidence, ToolResult
+from app.agent_tools.contracts import (
+    AgentTool,
+    ToolEvidence,
+    ToolResult,
+    ToolRiskLevel,
+)
+from app.agent_tools.registry import ToolRegistry
 
 
 class ReadToolInput(BaseModel):
@@ -313,3 +320,66 @@ def inspect_indicator_implementation(
             if present
         ],
     )
+
+
+def _state_has_verified_rule(
+    context: AgentRuntimeContext,
+    state: AgentRunState,
+) -> bool:
+    del context
+
+    def is_rule_evidence(value: Any) -> bool:
+        return (
+            isinstance(value, dict)
+            and bool(value.get("source_id"))
+            and "rule_identity" in (value.get("fact_types") or [])
+        )
+
+    for item in [*state.last_tool_results, *state.evidence]:
+        if not isinstance(item, dict):
+            continue
+        data = item.get("data") if isinstance(item.get("data"), dict) else item
+        if data.get("resolved_rule_id") or data.get("rule_id"):
+            return True
+        if is_rule_evidence(item):
+            return True
+        evidence_items = item.get("evidence") or []
+        if any(is_rule_evidence(evidence) for evidence in evidence_items):
+            return True
+    return False
+
+
+def build_read_tools(services: ReadToolServices) -> list[AgentTool]:
+    permission = frozenset({"indicator_read"})
+    return [
+        AgentTool(
+            name="search_indicator_rules",
+            description="根据指标名称、简称、错别字、医学同义词或主题搜索当前医院可用的核心制度指标。",
+            input_model=SearchIndicatorRulesInput,
+            handler=partial(search_indicator_rules, services=services),
+            risk_level=ToolRiskLevel.READ,
+            required_permissions=permission,
+        ),
+        AgentTool(
+            name="get_effective_rule",
+            description="读取当前医院指定指标的定义、公式、生效层级、版本和 SQL 可用状态，不返回 SQL 文本。",
+            input_model=RuleReferenceInput,
+            handler=partial(get_effective_rule, services=services),
+            risk_level=ToolRiskLevel.READ,
+            required_permissions=permission,
+            availability=_state_has_verified_rule,
+        ),
+        AgentTool(
+            name="inspect_indicator_implementation",
+            description="检查当前医院指定指标的字段映射、缺失项、未确认项、关联关系和实施状态，不读取患者数据。",
+            input_model=RuleReferenceInput,
+            handler=partial(inspect_indicator_implementation, services=services),
+            risk_level=ToolRiskLevel.READ,
+            required_permissions=permission,
+            availability=_state_has_verified_rule,
+        ),
+    ]
+
+
+def build_read_tool_registry(services: ReadToolServices) -> ToolRegistry:
+    return ToolRegistry(build_read_tools(services))
