@@ -9,7 +9,12 @@ from .contracts import (
     AgentToolCall,
 )
 from .model_adapter import AgentModelAdapter, AgentModelError
-from .events import AGENT_EVENT_NAMES, AgentEventCallback, emit_agent_event
+from .events import (
+    AGENT_EVENT_NAMES,
+    AgentEventCallback,
+    emit_agent_event,
+    public_agent_event,
+)
 from .response_guard import evidence_correction_prompt, missing_fact_types
 
 if TYPE_CHECKING:
@@ -37,5 +42,6 @@ __all__ = [
     "AgentRunner",
     "evidence_correction_prompt",
     "emit_agent_event",
+    "public_agent_event",
     "missing_fact_types",
 ]

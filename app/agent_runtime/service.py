@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
 
-from app.agent_runtime.contracts import AgentRuntimeContext
+from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
+from app.agent_runtime.events import public_agent_event
 from app.agent_runtime.tracing import AgentTraceBridge
 from app.config import get, get_bool, get_int
 from app.hospital_auth.models import (
@@ -91,6 +93,12 @@ class AgentRuntimeService:
             "formal_writes": False,
         }
 
+    def ensure_available(self) -> None:
+        if not self.enabled or self.mode != "tool_calling":
+            raise AgentRuntimeUnavailable(
+                "工具调用型 Agent 当前未启用，旧聊天入口仍可使用。"
+            )
+
     async def chat(
         self,
         *,
@@ -99,10 +107,7 @@ class AgentRuntimeService:
         request_id: str,
         session_id: str | None = None,
     ) -> dict[str, Any]:
-        if not self.enabled or self.mode != "tool_calling":
-            raise AgentRuntimeUnavailable(
-                "工具调用型 Agent 当前未启用，旧聊天入口仍可使用。"
-            )
+        self.ensure_available()
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
         context = context_from_principal(
             principal,
@@ -125,6 +130,72 @@ class AgentRuntimeService:
             "session_id": context.session_id,
             "step_count": result.state.step_count,
         }
+
+    async def stream(
+        self,
+        *,
+        query: str,
+        principal: HospitalPrincipal,
+        request_id: str,
+        session_id: str | None = None,
+    ):
+        self.ensure_available()
+        trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
+        context = context_from_principal(
+            principal,
+            request_id=request_id,
+            trace_id=trace_id,
+            session_id=session_id,
+            db_source_id=self._db_source_id(),
+        )
+        bridge = AgentTraceBridge(self.trace_recorder_factory(), trace_id)
+        bridge.start(
+            session_id=context.session_id,
+            hospital_id=context.hospital_id,
+            user_query=query,
+        )
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+        def handle(event: dict[str, Any]) -> None:
+            bridge.handle(event)
+            queue.put_nowait(public_agent_event(event, trace_id=trace_id))
+
+        state = AgentRunState()
+        runner = self.runner_factory(handle)
+
+        async def execute() -> None:
+            try:
+                await runner.run(query, context, state)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                handle({
+                    "event": "agent_error",
+                    "stop_reason": "tool_error",
+                    "step_count": state.step_count,
+                })
+
+        task = asyncio.create_task(execute())
+        terminal_seen = False
+        try:
+            while not terminal_seen:
+                event = await queue.get()
+                terminal_seen = event["event"] in {"agent_done", "agent_error"}
+                yield event
+            await task
+        finally:
+            if not task.done():
+                state.cancelled = True
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                bridge.handle({
+                    "event": "agent_done",
+                    "stop_reason": "cancelled",
+                    "step_count": state.step_count,
+                })
 
     def get_run(self, trace_id: str, principal: HospitalPrincipal) -> dict[str, Any]:
         trace = self.trace_recorder_factory().get_trace(trace_id)
