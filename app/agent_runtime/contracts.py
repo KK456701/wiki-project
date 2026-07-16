@@ -46,6 +46,7 @@ class AgentRunState(RuntimeContract):
     validated_sql_ids: list[str] = Field(default_factory=list)
     last_run_id: str | None = None
     last_diagnosis_id: str | None = None
+    last_draft_id: str | None = None
     stop_reason: AgentStopReason | None = None
     cancelled: bool = False
 
