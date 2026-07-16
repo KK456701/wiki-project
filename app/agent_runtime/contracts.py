@@ -18,6 +18,11 @@ AgentStopReason = Literal[
     "context_conflict",
 ]
 
+AgentRequestKind = Literal[
+    "diagnosis",
+    "trial_run",
+]
+
 
 class RuntimeContract(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -44,6 +49,7 @@ class AgentRunState(RuntimeContract):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
     current_rule_id: str | None = None
+    current_request_kind: AgentRequestKind | None = None
     validated_sql_ids: list[str] = Field(default_factory=list)
     last_run_id: str | None = None
     last_diagnosis_id: str | None = None

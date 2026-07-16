@@ -274,6 +274,47 @@ $$"""
         self.assertNotIn("SELECT 92.5", observations)
         self.assertNotIn("protected_template", observations)
 
+    async def test_period_followup_hides_diagnosis_tool(self) -> None:
+        adapter = SequenceAdapter([AgentModelResponse(content="需要重新试运行该统计区间。")])
+        runner, _ = _runner(adapter, max_steps=1)
+        state = AgentRunState(
+            current_rule_id="MQSI2025_005",
+            evidence=[{
+                "source": "conversation_memory",
+                "source_id": "MQSI2025_005",
+                "fact_types": ["rule_identity"],
+            }],
+        )
+
+        await runner.run("统计时间要是从 26 年 6 月 1 号开始怎么算", _context(), state)
+
+        names = [
+            tool["function"]["name"]
+            for tool in adapter.calls[0]["tools"]
+        ]
+        self.assertIn("prepare_indicator_sql", names)
+        self.assertNotIn("diagnose_indicator_issue", names)
+
+    async def test_explicit_diagnosis_request_keeps_diagnosis_tool(self) -> None:
+        adapter = SequenceAdapter([AgentModelResponse(content="需要诊断该指标。")])
+        runner, _ = _runner(adapter, max_steps=1)
+        state = AgentRunState(
+            current_rule_id="MQSI2025_005",
+            evidence=[{
+                "source": "conversation_memory",
+                "source_id": "MQSI2025_005",
+                "fact_types": ["rule_identity"],
+            }],
+        )
+
+        await runner.run("这个指标结果异常，帮我排查原因", _context(), state)
+
+        names = [
+            tool["function"]["name"]
+            for tool in adapter.calls[0]["tools"]
+        ]
+        self.assertIn("diagnose_indicator_issue", names)
+
     async def test_concrete_trial_numbers_without_trial_evidence_are_rejected(self) -> None:
         adapter = SequenceAdapter([AgentModelResponse(
             content="本次试运行分子 37、分母 40，指标值 92.5%。"
