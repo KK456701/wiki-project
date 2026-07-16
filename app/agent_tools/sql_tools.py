@@ -306,6 +306,32 @@ def _load_failure(exc: SqlObjectAccessError) -> ToolResult:
     )
 
 
+def _current_metadata_precheck(
+    services: SqlToolServices,
+    prepared: Any,
+) -> dict[str, Any] | None:
+    metadata = getattr(services.orchestrator, "metadata", None)
+    if metadata is None:
+        return None
+    checker = getattr(metadata, "precheck_contract", None)
+    if not callable(checker):
+        checker = getattr(metadata, "precheck", None)
+    if not callable(checker):
+        return None
+    effective_rule = prepared.effective_rule
+    result = checker(
+        str(prepared.hospital_id or ""),
+        str(prepared.rule_id or ""),
+        calculation_definition=(
+            effective_rule.calculation_definition
+            if effective_rule is not None
+            else None
+        ),
+        field_mapping=_model_payload(prepared.field_mapping),
+    )
+    return _model_payload(result)
+
+
 def trial_run_indicator_sql(
     arguments: TrialRunIndicatorSqlInput,
     context: AgentRuntimeContext,
@@ -338,6 +364,28 @@ def trial_run_indicator_sql(
             status="validation_failed",
             code="SQL_CONTEXT_STALE",
             summary="指标规则或字段映射已变化，请重新准备 SQL 后再试运行。",
+        )
+
+    precheck = _current_metadata_precheck(services, prepared)
+    if precheck is not None and precheck.get("ok") is not True:
+        state.stop_reason = "context_conflict"
+        safe_precheck = {
+            key: precheck.get(key) or []
+            for key in (
+                "missing_mappings",
+                "unconfirmed_mappings",
+                "missing_columns",
+                "type_mismatches",
+                "missing_relations",
+            )
+            if precheck.get(key)
+        }
+        return ToolResult(
+            ok=False,
+            status="validation_failed",
+            code="SQL_CONTEXT_STALE",
+            summary="医院字段或元数据已变化，请重新准备 SQL 后再试运行。",
+            data=safe_precheck,
         )
 
     mapping = sql_object.context_snapshot.get("field_mapping") or {}

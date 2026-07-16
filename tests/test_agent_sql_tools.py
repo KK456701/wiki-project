@@ -55,6 +55,7 @@ class FakeOrchestrator:
         self.generation = generation
         self.prepare_calls = []
         self.generate_calls = []
+        self.metadata = FakeMetadata()
 
     def prepare_rule_request(self, **kwargs):
         self.prepare_calls.append(kwargs)
@@ -102,6 +103,20 @@ class FakeOrchestrator:
             "calculation_definition": {"measure": "ratio"},
             "execution_context": {},
         }
+
+
+class FakeMetadata:
+    def __init__(self) -> None:
+        self.result = {"ok": True}
+        self.calls = []
+
+    def precheck_contract(self, hospital_id, rule_id, **kwargs):
+        self.calls.append({
+            "hospital_id": hospital_id,
+            "rule_id": rule_id,
+            **kwargs,
+        })
+        return dict(self.result)
 
 
 class TrialRecorder:
@@ -370,6 +385,29 @@ def test_trial_rejects_sql_that_fails_second_validation() -> None:
 
     assert not result.ok
     assert result.code == "SQL_REVALIDATION_FAILED"
+
+
+def test_trial_stops_when_current_metadata_precheck_fails() -> None:
+    orchestrator = FakeOrchestrator()
+    services = _services(orchestrator=orchestrator)
+    state, prepared = _prepare(services)
+    assert prepared.ok
+    orchestrator.metadata.result = {
+        "ok": False,
+        "missing_columns": ["arrival_time"],
+    }
+
+    result = trial_run_indicator_sql(
+        TrialRunIndicatorSqlInput(sql_id="SQL_001"),
+        _context(),
+        state,
+        services=services,
+    )
+
+    assert not result.ok
+    assert result.code == "SQL_CONTEXT_STALE"
+    assert result.data == {"missing_columns": ["arrival_time"]}
+    assert state.stop_reason == "context_conflict"
 
 
 def test_trial_failure_hides_internal_error_and_has_no_evidence() -> None:
