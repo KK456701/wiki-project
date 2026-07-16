@@ -16,6 +16,7 @@ from app.agent_tools.contracts import (
     ToolRiskLevel,
 )
 from app.agent_tools.registry import ToolRegistry
+from app.agent_tools.state_facts import has_verified_rule
 
 
 class ReadToolInput(BaseModel):
@@ -334,28 +335,7 @@ def _state_has_verified_rule(
     state: AgentRunState,
 ) -> bool:
     del context
-
-    def is_rule_evidence(value: Any) -> bool:
-        return (
-            isinstance(value, dict)
-            and bool(value.get("source_id"))
-            and "rule_identity" in (value.get("fact_types") or [])
-        )
-
-    for item in [*state.last_tool_results, *state.evidence]:
-        if not isinstance(item, dict):
-            continue
-        if "ok" in item and item.get("ok") is not True:
-            continue
-        data = item.get("data") if isinstance(item.get("data"), dict) else item
-        if data.get("resolved_rule_id") or data.get("rule_id"):
-            return True
-        if is_rule_evidence(item):
-            return True
-        evidence_items = item.get("evidence") or []
-        if any(is_rule_evidence(evidence) for evidence in evidence_items):
-            return True
-    return False
+    return has_verified_rule(state)
 
 
 def build_read_tools(services: ReadToolServices) -> list[AgentTool]:

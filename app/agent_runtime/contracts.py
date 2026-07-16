@@ -42,6 +42,10 @@ class AgentRunState(RuntimeContract):
     tool_call_counts: dict[str, int] = Field(default_factory=dict)
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
+    current_rule_id: str | None = None
+    validated_sql_ids: list[str] = Field(default_factory=list)
+    last_run_id: str | None = None
+    last_diagnosis_id: str | None = None
     stop_reason: AgentStopReason | None = None
     cancelled: bool = False
 

@@ -12,6 +12,7 @@ from .read_tools import (
     search_indicator_rules,
 )
 from .registry import ToolRegistry, ToolRegistryError
+from .state_facts import has_active_sql, has_verified_rule, verified_rule_ids
 
 __all__ = [
     "AgentTool",
@@ -29,8 +30,11 @@ __all__ = [
     "build_read_tool_registry",
     "build_read_tools",
     "get_effective_rule",
+    "has_active_sql",
+    "has_verified_rule",
     "inspect_indicator_implementation",
     "redact_payload",
     "search_indicator_rules",
     "tool_call_fingerprint",
+    "verified_rule_ids",
 ]
