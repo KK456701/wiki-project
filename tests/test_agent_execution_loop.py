@@ -334,6 +334,29 @@ $$"""
             for message in result.state.messages
         ))
 
+    async def test_result_followup_does_not_accept_formula_without_trial_evidence(self) -> None:
+        adapter = SequenceAdapter([
+            AgentModelResponse(content=(
+                "指标率 = 入院后0至48小时内转科人数 ÷ 同期入院患者总人次数 × 100%"
+            )),
+            AgentModelResponse(content="请先提供统计周期，例如 2026年6月1日至今。"),
+        ])
+        runner, _ = _runner(adapter, max_steps=2)
+        state = AgentRunState(evidence=[{
+            "source": "mysql",
+            "source_id": "MQSI2025_005",
+            "fact_types": ["rule_identity", "formula"],
+        }])
+
+        result = await runner.run("直接给我结果", _context(), state)
+
+        self.assertEqual(result.stop_reason, "final_answer")
+        self.assertEqual(result.answer, "请先提供统计周期，例如 2026年6月1日至今。")
+        self.assertTrue(any(
+            "用户正在索要实际结果" in message.get("content", "")
+            for message in result.state.messages
+        ))
+
     async def test_context_conflict_stops_without_another_model_call(self) -> None:
         adapter = SequenceAdapter([
             AgentModelResponse(tool_calls=[AgentToolCall(

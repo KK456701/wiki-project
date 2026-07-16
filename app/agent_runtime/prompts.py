@@ -16,6 +16,11 @@ search_indicator_rules 只负责定位指标，不能支持定义或公式结论
 
 EVIDENCE_REQUIRED_PROMPT = "当前回答缺少工具证据。请调用可见工具取得证据后再回答。"
 CHINESE_REQUIRED_PROMPT = "请基于已有工具证据重新使用中文回答，不要增加未经证实的事实。"
+TRIAL_RUN_REQUIRED_PROMPT = (
+    "用户正在索要实际结果，不能只重复定义或公式。"
+    "请先调用可见工具取得试运行聚合结果后再回答；"
+    "如果统计周期不明确，请用一句中文向用户澄清统计周期，不要编造默认周期。"
+)
 
 
 def build_agent_system_prompt(
