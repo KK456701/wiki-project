@@ -1,0 +1,67 @@
+workflow_id: agent_runtime
+name: 工具调用型 Agent 运行链路
+description: 记录登录态 Agent 的模型规划、受控工具调用、工具观察和会话记忆故障。
+
+nodes:
+  - id: agent_model
+    agent_owner: human_interaction
+    title: 调用模型规划
+    type: agent_model
+    description: 基于当前会话状态与可见工具，由模型判断下一步调用工具或生成回答。
+    inputs: [agent_step, model_name]
+    outputs: [next_action]
+    required: true
+    on_failure: stop
+    required_inputs: []
+    required_outputs: []
+    config:
+      chain_of_thought: not_recorded
+    failure_hint: 检查模型服务状态、超时配置和当前可见工具列表。
+
+  - id: agent_tool_call
+    agent_owner: human_interaction
+    title: 请求业务工具
+    type: agent_tool_call
+    description: 将模型选择的工具和经过脱敏的参数交给统一工具网关。
+    inputs: [arguments, tool_name, risk_level]
+    outputs: [gateway_acceptance]
+    required: false
+    on_failure: stop
+    required_inputs: [arguments]
+    required_outputs: []
+    config:
+      authority: server_injected
+    failure_hint: 检查工具权限、参数约束和当前运行状态是否允许调用。
+
+  - id: agent_tool_result
+    agent_owner: human_interaction
+    title: 观察工具结果
+    type: agent_tool_result
+    description: 记录脱敏后的工具状态码、证据来源和耗时，供模型决定后续步骤。
+    inputs: [tool_name]
+    outputs: [tool_result_code, evidence_source]
+    required: false
+    on_failure: continue
+    required_inputs: []
+    required_outputs: [tool_result_code, evidence_source]
+    config:
+      sensitive_result: redacted
+    failure_hint: 根据工具结果码检查数据源、字段映射或工具服务状态。
+
+  - id: agent_memory
+    agent_owner: human_interaction
+    title: 保存会话记忆
+    type: memory
+    description: 保存结构化上下文和安全对象引用；失败时不覆盖已经生成的有效回答。
+    inputs: [session_id]
+    outputs: [problem_code]
+    required: false
+    on_failure: continue
+    required_inputs: []
+    required_outputs: [problem_code]
+    config:
+      storage: SQLite + JSONL
+      history_turns: 8
+    failure_hint: 检查会话存储目录权限、SQLite 状态和上下文版本冲突。
+
+edges: []

@@ -1618,7 +1618,7 @@ function createMessage(role, text) {
   return { container: container, bubble: bubble, meta: meta, body: body };
 }
 
-function attachTraceButton(message, traceId) {
+function attachTraceButton(message, traceId, options) {
   if (!traceId || !message || message.traceButtonAttached) return;
   var wrap = document.createElement("div");
   wrap.className = "review-actions";
@@ -1628,7 +1628,7 @@ function attachTraceButton(message, traceId) {
   btn.type = "button";
   btn.className = "ghost";
   btn.textContent = "查看链路";
-  btn.addEventListener("click", function() { showTrace(traceId); });
+  btn.addEventListener("click", function() { showTrace(traceId, options); });
   wrap.appendChild(btn);
   message.body.appendChild(wrap);
   message.traceButtonAttached = true;
@@ -2022,12 +2022,19 @@ function renderTraceTimeline(nodes, totalDurationMs) {
   return timeline;
 }
 
-async function showTrace(traceId) {
+async function showTrace(traceId, options) {
   traceModal.hidden = false;
   traceMeta.textContent = traceId;
   traceNodeList.innerHTML = "正在加载链路...";
   try {
-    var resp = await fetch("/api/traces/" + encodeURIComponent(traceId));
+    var agentRun = options && options.agentRun;
+    var traceUrl = agentRun
+      ? "/api/agent/runs/" + encodeURIComponent(traceId)
+      : "/api/traces/" + encodeURIComponent(traceId);
+    var fetchOptions = agentRun
+      ? {headers: {Authorization: "Bearer " + hospitalAuthToken}}
+      : undefined;
+    var resp = await fetch(traceUrl, fetchOptions);
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || "链路加载失败");
     traceNodeList.innerHTML = "";
@@ -2296,7 +2303,7 @@ async function streamToolCallingChat(query) {
         }
         if (event.event === "agent_done") {
           ass.meta.textContent = "核心制度指标 Agent - 已完成";
-          attachTraceButton(ass, ass.traceId || latestTraceId);
+          attachTraceButton(ass, ass.traceId || latestTraceId, {agentRun: true});
         }
         scrollToBottom();
       }

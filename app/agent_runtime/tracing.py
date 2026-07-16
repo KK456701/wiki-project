@@ -55,13 +55,14 @@ class AgentTraceBridge:
                 for item in (result.get("evidence") or [])
                 if isinstance(item, dict) and item.get("source")
             })
+        node_names = {
+            "model_start": "agent_model",
+            "tool_call": "agent_tool_call",
+            "tool_result": "agent_tool_result",
+        }
         self.recorder.record_node(
             trace_id=self.trace_id,
-            node_name=(
-                f"model_step_{step}"
-                if event_name == "model_start"
-                else f"{event_name}_{tool_name or 'unknown'}"
-            ),
+            node_name=node_names[event_name],
             node_type=f"agent_{event_name}",
             status=status,
             output_summary=str(
@@ -86,6 +87,20 @@ class AgentTraceBridge:
                 "model_name": safe.get("model_name"),
                 "risk_level": safe.get("risk_level"),
             },
+        )
+
+    def record_memory_failure(self, message: str) -> None:
+        del message
+        self.recorder.record_node(
+            trace_id=self.trace_id,
+            node_name="agent_memory",
+            node_type="agent_memory",
+            status="failed",
+            output_summary="AGENT_MEMORY_SAVE_FAILED",
+            error_code="AGENT_MEMORY_SAVE_FAILED",
+            error_message="会话记忆保存失败，回答未受影响。",
+            output_data={"problem_code": "AGENT_MEMORY_SAVE_FAILED"},
+            config_data={"agent_mode": "tool_calling", "operation": "save"},
         )
 
     def _finish(self, event: dict[str, Any]) -> None:

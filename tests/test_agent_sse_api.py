@@ -107,5 +107,6 @@ def test_public_event_projection_removes_arguments_results_and_sql() -> None:
         "message": "只读试运行完成。",
         "retryable": False,
         "duration_ms": 12,
+        "reused": False,
     }
     assert "SELECT" not in json.dumps(event, ensure_ascii=False)
