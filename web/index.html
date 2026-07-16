@@ -545,7 +545,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/indicator-console.css?v=20260714-implementation-console" />
 <link rel="stylesheet" href="/static/indicator-details.css" />
 <link rel="stylesheet" href="/static/diagnosis-details.css" />
-<link rel="stylesheet" href="/static/agent-runtime.css?v=20260716-agent-runtime" />
+<link rel="stylesheet" href="/static/agent-runtime.css?v=20260717-full-trace" />
 </head>
 <body>
 
@@ -1110,7 +1110,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <script src="/static/chat-markdown.js"></script>
 <script src="/static/indicator-details.js"></script>
 <script src="/static/diagnosis-details.js"></script>
-<script src="/static/agent-runtime.js?v=20260716-agent-runtime"></script>
+<script src="/static/agent-runtime.js?v=20260717-full-trace"></script>
 <script>
 // ===== 状态 =====
 var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
@@ -1744,6 +1744,30 @@ function traceObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function traceNodeType(node) {
+  var value = String(node.manifest_type || node.node_type || "code").toLowerCase();
+  if (value.indexOf("llm") >= 0 || value.indexOf("model") >= 0) return "llm";
+  if (value.indexOf("tool") >= 0 || value.indexOf("database") >= 0) return "tool";
+  if (value.indexOf("storage") >= 0 || value.indexOf("memory") >= 0) return "storage";
+  return "code";
+}
+
+function traceNodeTypeLabel(value) {
+  return ({llm: "LLM 节点", code: "代码节点", tool: "工具 / 数据库", storage: "记忆 / 存储"})[value] || value;
+}
+
+function renderTraceLegend() {
+  var legend = document.createElement("div");
+  legend.className = "trace-legend";
+  ["llm", "code", "tool", "storage"].forEach(function(type) {
+    var item = document.createElement("span");
+    item.className = "trace-legend-item trace-type-" + type;
+    item.textContent = traceNodeTypeLabel(type);
+    legend.appendChild(item);
+  });
+  return legend;
+}
+
 function traceBusinessSummary(node) {
   var output = traceObject(node.output_data);
   if (node.node_name === "evidence_extract") {
@@ -1918,11 +1942,12 @@ function appendTraceJsonDisclosure(parent, node) {
   var disclosure = document.createElement("details");
   disclosure.className = "trace-json-disclosure";
   var summary = document.createElement("summary");
-  summary.textContent = "原始输入输出";
+  summary.textContent = "完整节点数据";
   var body = document.createElement("div");
   body.className = "trace-json-body";
-  appendTraceSection(body, "本次输入", node.input_data, node.input_summary || "无");
-  appendTraceSection(body, "本次输出", node.output_data, node.output_summary || "无");
+  appendTraceSection(body, "输入参数", node.input_data, node.input_summary || "无");
+  appendTraceSection(body, "输出参数", node.output_data, node.output_summary || "无");
+  appendTraceSection(body, "数据处理", node.processing_data, node.node_description || "无");
   appendTraceSection(body, "节点配置", node.config_data && Object.keys(node.config_data).length ? node.config_data : node.node_config, "无");
   disclosure.append(summary, body);
   parent.appendChild(disclosure);
@@ -2039,12 +2064,14 @@ async function showTrace(traceId) {
     traceNodeList.innerHTML = "";
     var nodes = data.nodes || [];
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
+    traceNodeList.appendChild(renderTraceLegend());
     traceNodeList.appendChild(renderTraceTimingSummary(nodes, data.duration_ms));
     traceNodeList.appendChild(renderTraceTimeline(nodes, data.duration_ms));
     nodes.forEach(function(node, index) {
       var box = document.createElement("div");
       var visualStatus = traceNodeVisualStatus(node);
-      box.className = "review-item trace-node " + visualStatus;
+      var nodeType = traceNodeType(node);
+      box.className = "review-item trace-node trace-type-" + nodeType + " " + visualStatus;
       var nodeHealthy = visualStatus === "success" && node.contract_status === "ok";
       var titleRow = document.createElement("div");
       titleRow.className = "trace-title-row";
@@ -2056,11 +2083,14 @@ async function showTrace(traceId) {
       var titleContent = document.createElement("div");
       var title = document.createElement("div");
       title.className = "trace-title";
-      title.textContent = node.node_title || node.node_name || "未知节点";
+      title.textContent = node.node_title || "未知节点";
+      var englishName = document.createElement("div");
+      englishName.className = "trace-node-english";
+      englishName.textContent = node.node_name || "unknown_node";
       var summary = document.createElement("div");
       summary.className = "trace-node-summary";
       summary.textContent = traceBusinessSummary(node);
-      titleContent.append(title, summary);
+      titleContent.append(title, englishName, summary);
       titleWrap.append(stepIndex, titleContent);
       var actions = document.createElement("div");
       actions.className = "trace-actions";
@@ -2070,6 +2100,9 @@ async function showTrace(traceId) {
       var status = document.createElement("span");
       status.className = "trace-status";
       status.textContent = traceNodeStatus(node);
+      var typeBadge = document.createElement("span");
+      typeBadge.className = "trace-type-badge trace-type-" + nodeType;
+      typeBadge.textContent = traceNodeTypeLabel(nodeType);
       if (!nodeHealthy && node.status === "success") {
         var contractWarning = document.createElement("span");
         contractWarning.className = "trace-status";
@@ -2080,7 +2113,7 @@ async function showTrace(traceId) {
       toggle.type = "button";
       toggle.className = "ghost trace-toggle";
       toggle.textContent = nodeHealthy ? "详情" : "收起";
-      actions.append(duration, status, toggle);
+      actions.append(typeBadge, duration, status, toggle);
       titleRow.append(titleWrap, actions);
       var ioCheckText = node.contract_status === "ok" ? "正常" : "需要查看";
       box.appendChild(titleRow);
@@ -2166,13 +2199,26 @@ function formatTraceValue(value, fallback) {
 function appendTraceSection(parent, title, value, fallback) {
   var section = document.createElement("div");
   section.className = "trace-section";
+  var head = document.createElement("div");
+  head.className = "trace-section-head";
   var heading = document.createElement("div");
   heading.className = "trace-section-title";
   heading.textContent = title;
+  var copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "ghost trace-copy";
+  copy.textContent = "复制";
   var body = document.createElement("pre");
   body.className = "trace-json";
   body.textContent = formatTraceValue(value, fallback);
-  section.append(heading, body);
+  copy.addEventListener("click", function() {
+    navigator.clipboard.writeText(body.textContent || "").then(function() {
+      copy.textContent = "已复制";
+      setTimeout(function() { copy.textContent = "复制"; }, 1200);
+    });
+  });
+  head.append(heading, copy);
+  section.append(head, body);
   parent.appendChild(section);
 }
 
@@ -2236,6 +2282,7 @@ async function streamToolCallingChat(query) {
         if (event.event === "agent_error") {
           ass.meta.textContent = "核心制度指标 Agent - 未完成";
           ass.body.textContent = event.message || "Agent 未完成本次请求，请稍后重试或联系系统管理员。";
+          attachTraceButton(ass, ass.traceId || latestTraceId);
         }
         if (event.event === "agent_done") {
           ass.meta.textContent = "核心制度指标 Agent - 已完成";

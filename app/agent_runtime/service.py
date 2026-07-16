@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
@@ -138,7 +139,19 @@ class AgentRuntimeService:
             hospital_id=context.hospital_id,
             user_query=query,
         )
+        memory_started = time.perf_counter()
         memory_session = self._open_memory(context)
+        bridge.handle({
+            "event": "trace_node",
+            "node_name": "memory_load",
+            "node_type": "storage",
+            "status": "success",
+            "duration_ms": max(1, int((time.perf_counter() - memory_started) * 1000)),
+            "input_data": {"context": context.model_dump(mode="json")},
+            "output_data": {"state": memory_session.state.model_dump(mode="json")},
+            "processing_data": {"description": "读取结构化会话状态和最近 8 轮压缩对话。"},
+            "config_data": {"storage": "SQLite + JSONL", "history_turns": 8},
+        })
         memory_session.append_user(query)
         memory_completion_attempted = False
 
@@ -198,7 +211,19 @@ class AgentRuntimeService:
             hospital_id=context.hospital_id,
             user_query=query,
         )
+        memory_started = time.perf_counter()
         memory_session = self._open_memory(context)
+        bridge.handle({
+            "event": "trace_node",
+            "node_name": "memory_load",
+            "node_type": "storage",
+            "status": "success",
+            "duration_ms": max(1, int((time.perf_counter() - memory_started) * 1000)),
+            "input_data": {"context": context.model_dump(mode="json")},
+            "output_data": {"state": memory_session.state.model_dump(mode="json")},
+            "processing_data": {"description": "读取结构化会话状态和最近 8 轮压缩对话。"},
+            "config_data": {"storage": "SQLite + JSONL", "history_turns": 8},
+        })
         memory_session.append_user(query)
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         memory_completion_attempted = False
@@ -218,7 +243,8 @@ class AgentRuntimeService:
                     bridge,
                 )
             bridge.handle(event)
-            queue.put_nowait(public_agent_event(event, trace_id=trace_id))
+            if event.get("event") != "trace_node":
+                queue.put_nowait(public_agent_event(event, trace_id=trace_id))
 
         state = memory_session.state
         runner = self._make_runner(handle, model_id=model_id)
@@ -273,8 +299,24 @@ class AgentRuntimeService:
         state: AgentRunState,
         bridge: AgentTraceBridge,
     ) -> bool:
+        started = time.perf_counter()
         try:
             memory_session.complete(query, answer, state)
+            bridge.handle({
+                "event": "trace_node",
+                "node_name": "memory_save",
+                "node_type": "storage",
+                "status": "success",
+                "duration_ms": max(1, int((time.perf_counter() - started) * 1000)),
+                "input_data": {
+                    "query": query,
+                    "answer": answer,
+                    "state": state.model_dump(mode="json"),
+                },
+                "output_data": {"saved": True},
+                "processing_data": {"description": "保存本轮问答、结构化状态和安全对象引用。"},
+                "config_data": {"storage": "SQLite + JSONL"},
+            })
             return True
         except (ContextStorageError, ContextVersionConflict) as exc:
             if hasattr(bridge, "record_memory_failure"):
@@ -342,7 +384,10 @@ class AgentRuntimeService:
         gateway = ToolGateway(registry, trace_callback=event_callback)
         adapter = get_model_registry().build_adapter(model_id or self.model)
         planning_runtime = (
-            AgentPlanningRuntime(planner=ModelRequestPlanner(adapter))
+            AgentPlanningRuntime(
+                planner=ModelRequestPlanner(adapter, trace_callback=event_callback),
+                event_callback=event_callback,
+            )
             if self.planning_enabled
             else None
         )
@@ -353,6 +398,7 @@ class AgentRuntimeService:
             max_steps=self.max_steps,
             request_timeout_seconds=self.request_timeout_seconds,
             event_callback=event_callback,
+            trace_callback=event_callback,
             planning_runtime=planning_runtime,
         )
 

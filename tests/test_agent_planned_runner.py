@@ -191,6 +191,31 @@ def test_model_planner_normalizes_safe_scalar_container_shapes_for_4b():
     assert len(adapter.calls) == 1
 
 
+def test_model_planner_normalizes_null_optional_containers_for_general_chat():
+    adapter = SequenceAdapter([AgentModelResponse(content='''{
+      "intent":"general_chat",
+      "goal":"",
+      "target_indicator":null,
+      "time_expression":null,
+      "requested_outputs":["explanation"],
+      "constraints":[],
+      "semantic_ambiguities":[]
+    }''')])
+
+    plan = asyncio.run(ModelRequestPlanner(adapter).plan(
+        query="你好",
+        context=_context(),
+        state=AgentRunState(),
+        now=NOW,
+    ))
+
+    assert plan.intent.value == "general_chat"
+    assert plan.goal == "回应普通问候或帮助请求"
+    assert plan.target_indicator.raw_name == ""
+    assert plan.time_expression.raw_text == ""
+    assert len(adapter.calls) == 1
+
+
 def test_model_planner_normalizes_string_semantic_ambiguities_for_4b():
     adapter = SequenceAdapter([AgentModelResponse(content='''{
       "intent":"indicator_trial_run",

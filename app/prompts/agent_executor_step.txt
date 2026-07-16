@@ -1,0 +1,7 @@
+当前请求已由服务端计划控制器约束。
+当前业务能力：{{capability}}。
+本步只允许调用：{{tool_names}}。
+{{target_line}}
+{{rule_line}}
+{{period_line}}
+不得调用未展示工具，不得自行增加或跳过业务步骤。

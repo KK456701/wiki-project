@@ -226,6 +226,6 @@ def test_memory_save_failure_is_recorded_once_without_retrying_completion() -> N
 
     assert result["answer"] == "已基于当前指标回答。"
     assert memory.session.complete_calls == 1
-    failures = [node for node in recorder.nodes if node["node_name"] == "agent_memory"]
+    failures = [node for node in recorder.nodes if node["node_name"] == "memory_save"]
     assert len(failures) == 1
     assert "secret" not in str(failures)

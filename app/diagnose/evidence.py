@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from app.prompts import format_prompt
+
 from app.agents.contracts import (
     DiagnosisStatPeriod,
     PastedDiagnosisEvidence,
@@ -139,11 +141,10 @@ def _parse_model_json(raw: str) -> dict[str, Any]:
 
 
 def _model_prompt(raw_text: str, rule_id: str | None) -> str:
-    return (
-        "请从以下医院本地诊断文本中提取问题、SQL参数和用户声称的聚合结果。"
-        "只返回JSON，不判断SQL安全，不补造数据。字段为question、rule_id、sql_text、"
-        "declared_params、claimed_result、stat_period、parse_warnings。\n"
-        f"当前指标：{rule_id or '未确认'}\n文本：\n{raw_text}"
+    return format_prompt(
+        "diagnosis_evidence",
+        rule_id=rule_id or "未确认",
+        raw_text=raw_text,
     )
 
 

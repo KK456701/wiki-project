@@ -119,3 +119,28 @@ def test_agent_trace_uses_only_the_authenticated_run_endpoint() -> None:
     assert '"/api/agent/runs/" + encodeURIComponent(traceId)' in html
     assert 'Authorization: "Bearer " + hospitalAuthToken' in html
     assert '"/api/traces/" + encodeURIComponent(traceId)' not in html
+
+
+def test_agent_trace_button_is_attached_for_success_and_failure() -> None:
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+    done_block = html[html.index('if (event.event === "agent_done")'):]
+    error_start = html.index('if (event.event === "agent_error")')
+    error_end = html.index('if (event.event === "agent_done")', error_start)
+    error_block = html[error_start:error_end]
+
+    assert "attachTraceButton" in done_block
+    assert "attachTraceButton" in error_block
+
+
+def test_agent_trace_ui_distinguishes_node_types_and_full_detail_sections() -> None:
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    css = (ROOT / "web" / "agent-runtime.css").read_text(encoding="utf-8")
+
+    for node_type in ("llm", "code", "tool", "storage"):
+        assert f"trace-type-{node_type}" in css
+        assert node_type in html
+    for title in ("输入参数", "输出参数", "数据处理", "节点配置"):
+        assert title in html
+    assert "node.node_name" in html
+    assert "processing_data" in html

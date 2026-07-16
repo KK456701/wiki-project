@@ -3,3 +3,7 @@
 只返回合法 JSON，不要使用 Markdown，不要判断 SQL 是否安全，不要补造表、字段、参数或结果。
 允许字段：question、rule_id、sql_text、declared_params、claimed_result、stat_period、parse_warnings。
 程序解析出的 SQL、参数和数值拥有最终优先级；你的输出仅用于补充自然语言问题。
+
+当前指标：{{rule_id}}
+诊断文本：
+{{raw_text}}

@@ -25,7 +25,7 @@ class TraceUiTest(unittest.TestCase):
             "function traceBusinessSummary",
             "function traceBusinessFields",
             "处理结果",
-            "原始输入输出",
+            "完整节点数据",
             "开发与排障",
             "trace-json-disclosure",
             "trace-node-summary",

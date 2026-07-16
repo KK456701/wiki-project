@@ -154,7 +154,17 @@ def test_real_agent_trace_returns_200_and_rejects_other_hospital(tmp_path) -> No
     recorder = TraceRecorder(engine, jsonl_path)
     bridge = AgentTraceBridge(recorder, "TRACE_REAL")
     bridge.start(session_id="s1", hospital_id="h1", user_query="查询指标")
-    bridge.handle({"event": "model_start", "step": 1, "model_name": "fake"})
+    bridge.handle({
+        "event": "trace_node",
+        "node_name": "planner_llm",
+        "node_type": "llm",
+        "status": "success",
+        "duration_ms": 3,
+        "input_data": {"messages": [{"role": "user", "content": "查询指标"}]},
+        "output_data": {"normalized_plan": {"intent": "rule_explanation"}},
+        "processing_data": {"description": "规划业务目标"},
+        "config_data": {"prompt_file": "agent_planner.txt"},
+    })
     bridge.handle({"event": "agent_done", "stop_reason": "final_answer"})
     service = AgentRuntimeService(
         enabled=True,
@@ -168,5 +178,6 @@ def test_real_agent_trace_returns_200_and_rejects_other_hospital(tmp_path) -> No
 
     response = owner.get("/api/agent/runs/TRACE_REAL")
     assert response.status_code == 200
-    assert response.json()["nodes"][0]["node_title"] == "调用模型规划"
+    assert response.json()["nodes"][0]["node_title"] == "规划业务目标"
+    assert response.json()["nodes"][0]["processing_data"]["description"] == "规划业务目标"
     assert outsider.get("/api/agent/runs/TRACE_REAL").status_code == 403

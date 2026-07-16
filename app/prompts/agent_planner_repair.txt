@@ -1,0 +1,4 @@
+上一个计划不符合严格 JSON 合约。请重新输出完整 JSON，不得包含步骤、工具名或额外字段。
+target_indicator 和 time_expression 不适用时必须输出空对象 {}，不得输出 null。
+semantic_ambiguities 中每一项必须是包含 field 和 description 的对象。
+上次校验错误：{{validation_error}}

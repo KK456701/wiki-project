@@ -79,3 +79,32 @@
   .agent-model-select,
   .agent-evidence-track li { transition: none !important; }
 }
+
+/* Agent full-trace diagnostic view */
+#traceModal .dialog { width: min(1420px, 100%); }
+.trace-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+.trace-legend-item,
+.trace-type-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 999px; padding: 4px 9px; font: 800 11px/1.2 var(--mono); }
+.trace-legend-item::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.trace-type-llm { --trace-type-color: #7357a6; --trace-type-bg: #f4effc; }
+.trace-type-code { --trace-type-color: #2d6f9f; --trace-type-bg: #edf7fd; }
+.trace-type-tool { --trace-type-color: #a45e17; --trace-type-bg: #fff5e8; }
+.trace-type-storage { --trace-type-color: #387759; --trace-type-bg: #edf8f1; }
+.trace-legend-item.trace-type-llm,
+.trace-legend-item.trace-type-code,
+.trace-legend-item.trace-type-tool,
+.trace-legend-item.trace-type-storage,
+.trace-type-badge { color: var(--trace-type-color); background: var(--trace-type-bg); }
+.trace-node.trace-type-llm,
+.trace-node.trace-type-code,
+.trace-node.trace-type-tool,
+.trace-node.trace-type-storage { border-left-color: var(--trace-type-color); background: linear-gradient(90deg, var(--trace-type-bg), #fff 24%); }
+.trace-node.failed { border-left-color: var(--red) !important; background: #fff8f6 !important; }
+.trace-node-english { margin-top: 3px; color: var(--muted); font: 750 12px/1.3 var(--mono); }
+.trace-json-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.trace-section { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: #fbfdfc; overflow: hidden; }
+.trace-section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.trace-section-head .trace-section-title { color: var(--ink); }
+.trace-copy { padding: 4px 8px; font-size: 11px; }
+.trace-section .trace-json { margin: 0; max-height: 420px; overflow: auto; border: 0; border-radius: 0; background: #fff; white-space: pre; overflow-wrap: normal; }
+@media (max-width: 900px) { .trace-json-body { grid-template-columns: 1fr; } }

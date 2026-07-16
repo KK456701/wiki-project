@@ -101,6 +101,7 @@ class TraceRecorder:
         duration_ms: int = 0,
         input_data: dict[str, Any] | None = None,
         output_data: dict[str, Any] | None = None,
+        processing_data: dict[str, Any] | None = None,
         config_data: dict[str, Any] | None = None,
     ) -> None:
         started_at = _now()
@@ -129,6 +130,7 @@ class TraceRecorder:
             "started_at": _format_time(started_at),
             "input_data": input_data or {},
             "output_data": output_data or {},
+            "processing_data": processing_data or {},
             "config_data": config_data or {},
         }
         try:
@@ -248,7 +250,7 @@ class TraceRecorder:
             payload = payloads.get(node.get("node_id"))
             if not payload:
                 continue
-            for key in ("input_data", "output_data", "config_data"):
+            for key in ("input_data", "output_data", "processing_data", "config_data"):
                 if key in payload:
                     node[key] = payload[key]
 

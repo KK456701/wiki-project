@@ -226,7 +226,7 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result_events[2]["reused"])
         self.assertEqual(result_events[2]["result"]["code"], "AGENT_REPEATED_TOOL_CALL")
 
-    async def test_trace_callback_receives_redacted_arguments_and_results(self) -> None:
+    async def test_internal_trace_callback_receives_full_arguments_and_results(self) -> None:
         from app.agent_runtime.contracts import AgentRunState
 
         events = []
@@ -244,7 +244,10 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(events[0]["event"], "tool_call")
         self.assertEqual(events[-1]["event"], "tool_result")
-        self.assertEqual(events[-1]["result"]["data"]["sql_text"], "[REDACTED]")
+        self.assertEqual(
+            events[-1]["result"]["data"]["sql_text"],
+            "SELECT patient_name FROM patient",
+        )
 
 
 if __name__ == "__main__":

@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from app.prompts import format_prompt
+
 from .contracts import IndicatorDraftSpec
 
 
@@ -164,51 +166,13 @@ def _provisional_code(hospital_id: str) -> str:
 
 
 def _prompt(query: str) -> str:
-    return f"""你是医院医务指标设计助手。把用户描述转换为结构化指标设计稿。
-只输出 JSON，不要解释，不要 Markdown，不要输出任何 SQL。
-
-第一版限制：只允许单表；metric_type 只能是 ratio 或 count；条件操作符只能是
-eq、ne、gt、gte、lt、lte、in、not_in、is_null、not_null、minutes_between_lte。
-如果必须多表关联，设置 requires_join=true，并列出 required_tables。
-
-必须严格遵守这些 JSON 类型：
-- metadata_requirements 和 required_tables 必须是字符串数组。
-- numerator_conditions 和 denominator_conditions 必须是条件对象数组，不能写成字符串。
-- 普通条件对象格式：{{"field":"consult_type","operator":"eq","value":"急会诊"}}。
-- 两个时间字段相差不超过若干分钟时，格式：
-  {{"field":"arrive_time","operator":"minutes_between_lte","compare_field":"request_time","value":10}}。
-- 没有条件时输出空数组 []。
-
-完整结构示例：
-{{"index_name":"急会诊及时到位率","index_type":"会诊制度","index_desc":"统计急会诊请求后10分钟内到位的患者比例","stat_cycle":"month","numerator_rule":"急会诊请求后10分钟内到位的患者数","denominator_rule":"同期急会诊患者总数","filter_rule":"仅统计急会诊","exclude_rule":"","metric_type":"ratio","metadata_requirements":["id","consult_type","request_time","arrive_time","hospital_id"],"required_tables":["consult_record"],"requires_join":false,"sql_plan":{{"main_table":"consult_record","metric_type":"ratio","subject_field":"id","time_field":"request_time","hospital_field":"hospital_id","numerator_conditions":[{{"field":"consult_type","operator":"eq","value":"急会诊"}},{{"field":"arrive_time","operator":"minutes_between_lte","compare_field":"request_time","value":10}}],"denominator_conditions":[{{"field":"consult_type","operator":"eq","value":"急会诊"}}]}},"base_index_code":null}}
-
-JSON 必须包含：
-index_name、index_type、index_desc、stat_cycle、numerator_rule、
-denominator_rule、filter_rule、exclude_rule、metric_type、
-metadata_requirements、required_tables、requires_join、sql_plan。
-sql_plan 必须包含 main_table、metric_type、subject_field、time_field、
-hospital_field、numerator_conditions、denominator_conditions。
-如果明确基于已有指标，增加 base_index_code；否则为空。
-
-用户描述：
-{query}
-
-只输出 JSON。"""
+    return format_prompt("indicator_draft_parser", query=query)
 
 
 def _repair_prompt(query: str, raw: str, error: str) -> str:
-    return f"""你刚才生成的指标设计稿未通过结构校验，请只修正 JSON，不要解释，不要 Markdown，不要输出 SQL。
-校验错误：{error}
-
-必须满足：
-- numerator_rule、denominator_rule、filter_rule、exclude_rule 必须是文本字符串。
-- metadata_requirements 和 required_tables 必须是字符串数组。
-- numerator_conditions 和 denominator_conditions 必须是对象数组。
-- 条件中的 field、compare_field、subject_field、time_field、hospital_field 必须原样出现在 metadata_requirements 中，不能翻译或改写英文字段名。
-- 时间差条件使用 operator=minutes_between_lte，并同时提供 field、compare_field、数值 value。
-- 只允许单表、ratio 或 count，不得输出任何 SQL。
-
-用户原始描述：{query}
-待修正内容：{raw[:6000]}
-
-只输出修正后的 JSON。"""
+    return format_prompt(
+        "indicator_draft_repair",
+        query=query,
+        raw_content=raw[:6000],
+        validation_error=error,
+    )

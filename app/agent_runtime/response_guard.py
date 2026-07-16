@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.agent_runtime.prompts import executor_correction
+
 
 @dataclass(frozen=True, slots=True)
 class ClaimRule:
@@ -125,7 +127,7 @@ def evidence_correction_prompt(missing: set[str]) -> str:
         if fact_type in missing
     ]
     joined = "、".join(labels) or "对应工具"
-    return (
-        f"当前回答缺少{joined}证据。请先调用可见工具取得证据，"
-        "或删除相关完成性结论；不得编造医院结果。"
+    return executor_correction(
+        "missing_evidence",
+        evidence_labels=joined,
     )

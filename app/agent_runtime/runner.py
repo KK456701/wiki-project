@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 
 from app.agent_runtime.contracts import AgentRunResult, AgentRunState, AgentRuntimeContext
 from app.agent_runtime.events import AgentEventCallback, emit_agent_event
@@ -15,6 +16,7 @@ from app.agent_runtime.prompts import (
     CHINESE_REQUIRED_PROMPT,
     EVIDENCE_REQUIRED_PROMPT,
     TRIAL_RUN_REQUIRED_PROMPT,
+    executor_correction,
 )
 from app.agent_runtime.response_guard import (
     evidence_correction_prompt,
@@ -25,6 +27,7 @@ from app.agent_planning.runtime import AgentPlanningRuntime
 from app.agent_planning.planner import AgentPlanningError
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
+from app.prompts import prompt_version
 
 
 logger = logging.getLogger("wiki_agent.agent_runtime")
@@ -105,6 +108,7 @@ class AgentRunner:
         max_tool_calls_per_step: int = 3,
         request_timeout_seconds: float = 120.0,
         event_callback: AgentEventCallback | None = None,
+        trace_callback: AgentEventCallback | None = None,
         planning_runtime: AgentPlanningRuntime | None = None,
     ) -> None:
         self.adapter = adapter
@@ -114,7 +118,16 @@ class AgentRunner:
         self.max_tool_calls_per_step = max_tool_calls_per_step
         self.request_timeout_seconds = request_timeout_seconds
         self.event_callback = event_callback
+        self.trace_callback = trace_callback
         self.planning_runtime = planning_runtime
+
+    def _trace(self, **payload) -> None:
+        if self.trace_callback is None:
+            return
+        try:
+            self.trace_callback({"event": "trace_node", **payload})
+        except Exception:
+            return
 
     async def run(
         self,
@@ -226,8 +239,29 @@ class AgentRunner:
                 run_state.step_count += 1
                 decision = None
                 if planning_execution is not None:
+                    controller_started = time.perf_counter()
                     decision = self.planning_runtime.next_decision(
                         planning_execution, run_state
+                    )
+                    self._trace(
+                        node_name="state_controller",
+                        node_type="code",
+                        status=("failed" if decision.action.value == "fallback" else "success"),
+                        duration_ms=max(1, int((time.perf_counter() - controller_started) * 1000)),
+                        input_data={
+                            "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
+                            "validation": planning_execution.validation.model_dump(mode="json"),
+                            "state": run_state.model_dump(mode="json"),
+                        },
+                        output_data={"decision": decision.model_dump(mode="json")},
+                        processing_data={
+                            "description": "根据已完成事实选择下一业务能力，并只开放当前允许的工具。"
+                        },
+                        config_data={
+                            "controller": type(self.planning_runtime.controller).__name__,
+                            "prompt_file": "agent_executor_step.txt",
+                            "prompt_version": prompt_version("agent_executor_step"),
+                        },
                     )
                     if decision.action.value == "fallback":
                         clarification = (
@@ -276,13 +310,31 @@ class AgentRunner:
                     model_name=model_name,
                     tool_count=len(available),
                 )
+                tool_schemas = self.registry.to_ollama_schema(available)
+                model_input = {
+                    "messages": list(run_state.messages),
+                    "tools": tool_schemas,
+                    "temperature": 0.0,
+                }
+                model_started = time.perf_counter()
                 try:
                     response = await self.adapter.chat(
                         messages=run_state.messages,
-                        tools=self.registry.to_ollama_schema(available),
+                        tools=tool_schemas,
                         temperature=0.0,
                     )
                 except AgentModelError as exc:
+                    self._trace(
+                        node_name="executor_llm",
+                        node_type="llm",
+                        status="failed",
+                        duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
+                        input_data=model_input,
+                        output_data={"error": str(exc)},
+                        processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
+                        config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
+                        error_message=str(exc),
+                    )
                     run_state.stop_reason = "tool_error"
                     return AgentRunResult(
                         answer=str(exc) or "模型服务暂时不可用，请稍后重试。",
@@ -290,6 +342,17 @@ class AgentRunner:
                         state=run_state,
                     )
                 except Exception:
+                    self._trace(
+                        node_name="executor_llm",
+                        node_type="llm",
+                        status="failed",
+                        duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
+                        input_data=model_input,
+                        output_data={"error": "模型调用异常"},
+                        processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
+                        config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
+                        error_message="模型调用异常",
+                    )
                     run_state.stop_reason = "tool_error"
                     return AgentRunResult(
                         answer="模型调用异常，请稍后重试。",
@@ -297,6 +360,25 @@ class AgentRunner:
                         state=run_state,
                     )
                 model_name = response.model or model_name
+                self._trace(
+                    node_name="executor_llm",
+                    node_type="llm",
+                    status="success",
+                    duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
+                    input_data=model_input,
+                    output_data={
+                        "model": response.model,
+                        "content": response.content,
+                        "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
+                    },
+                    processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
+                    config_data={
+                        "adapter": type(self.adapter).__name__,
+                        "step": run_state.step_count,
+                        "prompt_file": "agent_executor.txt",
+                        "prompt_version": prompt_version("agent_executor"),
+                    },
+                )
                 assistant_message = {
                     "role": "assistant",
                     "content": response.content,
@@ -304,6 +386,7 @@ class AgentRunner:
                 }
                 run_state.messages.append(assistant_message)
                 if not response.tool_calls:
+                    guard_started = time.perf_counter()
                     answer = normalize_agent_answer(response.content)
                     assistant_message["content"] = answer
                     if (
@@ -319,9 +402,10 @@ class AgentRunner:
                             run_state.messages.append({
                                 "role": "system",
                                 "content": (
-                                    "当前回答过早，计划要求先调用："
-                                    + "、".join(decision.tool_names)
-                                    + "。请完成该受控步骤后再回答。"
+                                    executor_correction(
+                                        "premature_answer",
+                                        tool_names="、".join(decision.tool_names),
+                                    )
                                 ),
                             })
                             continue
@@ -375,8 +459,25 @@ class AgentRunner:
                             })
                             continue
                     if planning_execution is not None:
+                        verify_started = time.perf_counter()
                         verification = self.planning_runtime.verify(
                             planning_execution, run_state, context
+                        )
+                        self._trace(
+                            node_name="plan_verify",
+                            node_type="code",
+                            status="success" if verification.ok else "failed",
+                            duration_ms=max(1, int((time.perf_counter() - verify_started) * 1000)),
+                            input_data={
+                                "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
+                                "state": run_state.model_dump(mode="json"),
+                                "context": context.model_dump(mode="json"),
+                            },
+                            output_data={"verification": verification.model_dump(mode="json")},
+                            processing_data={
+                                "description": "校验规则、医院、统计时间、SQL 对象和数值证据链一致性。"
+                            },
+                            config_data={"verifier": type(self.planning_runtime.verifier).__name__},
                         )
                         if not verification.ok:
                             run_state.stop_reason = "tool_error"
@@ -386,6 +487,21 @@ class AgentRunner:
                                 state=run_state,
                                 model=model_name,
                             )
+                    self._trace(
+                        node_name="response_guard",
+                        node_type="code",
+                        status="success",
+                        duration_ms=max(1, int((time.perf_counter() - guard_started) * 1000)),
+                        input_data={
+                            "raw_content": response.content,
+                            "evidence": run_state.evidence,
+                        },
+                        output_data={"answer": answer, "missing_fact_types": []},
+                        processing_data={
+                            "description": "规范 Markdown 和公式格式，并阻止缺少工具证据的完成性声明。"
+                        },
+                        config_data={"guard": "deterministic_response_guard"},
+                    )
                     run_state.stop_reason = "final_answer"
                     return AgentRunResult(
                         answer=answer,
@@ -422,10 +538,9 @@ class AgentRunner:
                             and run_state.step_count < self.max_steps
                         ):
                             planned_tool_corrections += 1
-                            correction = (
-                                "当前计划未允许该工具。请只调用本步展示的工具："
-                                + "、".join(decision.tool_names)
-                                + "。"
+                            correction = executor_correction(
+                                "tool_outside_plan",
+                                tool_names="、".join(decision.tool_names),
                             )
                             run_state.messages.append({
                                 "role": "tool",

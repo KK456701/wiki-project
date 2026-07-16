@@ -5,7 +5,7 @@ def test_agent_runtime_trace_manifest_is_valid() -> None:
     result = validate_workflow_manifest("agent_runtime")
 
     assert result["ok"] is True
-    assert result["node_count"] == 4
+    assert result["node_count"] == 11
 
 
 def test_missing_manifest_degrades_to_unregistered_node() -> None:

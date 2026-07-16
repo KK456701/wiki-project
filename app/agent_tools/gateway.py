@@ -15,7 +15,6 @@ from app.agent_tools.contracts import ToolResult
 from app.agent_tools.policy import (
     RepeatDecision,
     ToolExecutionPolicy,
-    redact_payload,
     tool_call_fingerprint,
 )
 from app.agent_tools.registry import ToolRegistry, ToolRegistryError
@@ -96,7 +95,7 @@ class ToolGateway:
                     "tool_name": tool.name,
                     "duration_ms": 0,
                     "reused": True,
-                    "result": redact_payload(result.model_dump(mode="json")),
+                    "result": result.model_dump(mode="json"),
                 })
                 return result
             result = ToolResult(
@@ -111,7 +110,7 @@ class ToolGateway:
                 "tool_name": tool.name,
                 "duration_ms": 0,
                 "reused": False,
-                "result": redact_payload(result.model_dump(mode="json")),
+                "result": result.model_dump(mode="json"),
             })
             return result
         if decision is RepeatDecision.STOP:
@@ -127,7 +126,7 @@ class ToolGateway:
                 "tool_name": tool.name,
                 "duration_ms": 0,
                 "reused": False,
-                "result": redact_payload(result.model_dump(mode="json")),
+                "result": result.model_dump(mode="json"),
             })
             return result
 
@@ -135,7 +134,7 @@ class ToolGateway:
             {
                 "event": "tool_call",
                 "tool_name": tool.name,
-                "arguments": redact_payload(raw_arguments),
+                "arguments": raw_arguments,
                 "risk_level": tool.risk_level.value,
             }
         )
@@ -172,7 +171,7 @@ class ToolGateway:
                     int((time.perf_counter() - started_at) * 1000),
                 ),
                 "reused": False,
-                "result": redact_payload(result.model_dump(mode="json")),
+                "result": result.model_dump(mode="json"),
             }
         )
         state.tool_result_cache[fingerprint] = result.model_dump(mode="json")

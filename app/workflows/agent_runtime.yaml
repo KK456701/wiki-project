@@ -1,67 +1,160 @@
 workflow_id: agent_runtime
 name: 工具调用型 Agent 运行链路
-description: 记录登录态 Agent 的模型规划、受控工具调用、工具观察和会话记忆故障。
+description: 记录从会话读取、业务规划、状态控制、模型执行、工具观察、证据校验到会话保存的真实阶段。
 
 nodes:
-  - id: agent_model
+  - id: memory_load
     agent_owner: human_interaction
-    title: 调用模型规划
-    type: agent_model
-    description: 基于当前会话状态与可见工具，由模型判断下一步调用工具或生成回答。
-    inputs: [agent_step, model_name]
-    outputs: [next_action]
+    title: 读取会话上下文
+    type: storage
+    description: 从 SQLite 与 JSONL 读取结构化状态和最近八轮压缩对话。
+    inputs: [context]
+    outputs: [state]
     required: true
     on_failure: stop
-    required_inputs: []
-    required_outputs: []
-    config:
-      chain_of_thought: not_recorded
-    failure_hint: 检查模型服务状态、超时配置和当前可见工具列表。
+    required_inputs: [context]
+    required_outputs: [state]
+    config: {storage: "SQLite + JSONL", history_turns: 8}
+    failure_hint: 检查会话存储、版本冲突和目录权限。
 
-  - id: agent_tool_call
+  - id: planner_llm
     agent_owner: human_interaction
-    title: 请求业务工具
-    type: agent_tool_call
-    description: 将模型选择的工具和经过脱敏的参数交给统一工具网关。
-    inputs: [arguments, tool_name, risk_level]
-    outputs: [gateway_acceptance]
+    title: 规划业务目标
+    type: llm
+    description: 将完整安全上下文发送给 Planner，并把模型 JSON 校验为业务 RequestPlan。
+    inputs: [messages, tools, temperature]
+    outputs: [raw_content, normalized_plan]
+    required: true
+    on_failure: stop
+    required_inputs: [messages]
+    required_outputs: []
+    config: {prompt_file: agent_planner.txt, max_repair_count: 1, chain_of_thought: not_recorded}
+    failure_hint: 检查原始模型输出、归一化计划和 validation_error。
+
+  - id: plan_compile
+    agent_owner: human_interaction
+    title: 编译业务计划
+    type: code
+    description: 把业务语义计划确定性编译为能力节点、依赖事实和验收事实。
+    inputs: [request_plan]
+    outputs: [compiled_plan]
+    required: true
+    on_failure: stop
+    required_inputs: [request_plan]
+    required_outputs: [compiled_plan]
+    config: {implementation: PlanCompiler}
+    failure_hint: 检查意图与 requested_outputs 是否存在冲突。
+
+  - id: plan_validate
+    agent_owner: human_interaction
+    title: 校验业务计划
+    type: code
+    description: 校验权限、目标冲突和统计时间，生成确定性澄清或安全阻断。
+    inputs: [request_plan, current_time]
+    outputs: [validation]
+    required: true
+    on_failure: stop
+    required_inputs: [request_plan]
+    required_outputs: [validation]
+    config: {implementation: PlanValidator}
+    failure_hint: 查看 validation.code、时间解析和用户约束。
+
+  - id: state_controller
+    agent_owner: human_interaction
+    title: 选择下一业务能力
+    type: code
+    description: 根据已取得事实决定下一能力，并只向模型开放当前允许的一至两个工具。
+    inputs: [compiled_plan, validation, state]
+    outputs: [decision]
+    required: true
+    on_failure: stop
+    required_inputs: [compiled_plan, validation, state]
+    required_outputs: [decision]
+    config: {implementation: AgentStateController, max_visible_tools: 2}
+    failure_hint: 检查计划事实、工具结果码和 fallback_category。
+
+  - id: executor_llm
+    agent_owner: human_interaction
+    title: 调用执行模型
+    type: llm
+    description: 使用完整上下文与当前可见工具 schema 生成一个工具调用或最终回答。
+    inputs: [messages, tools, temperature]
+    outputs: [content, tool_calls]
+    required: true
+    on_failure: stop
+    required_inputs: [messages, tools]
+    required_outputs: []
+    config: {prompt_file: agent_executor.txt, temperature: 0, chain_of_thought: not_recorded}
+    failure_hint: 检查完整 messages、可见工具和模型原始响应。
+
+  - id: tool_gateway
+    agent_owner: human_interaction
+    title: 校验并调用业务工具
+    type: tool
+    description: 校验权限、参数、风险等级、重复调用和超时后执行受控工具。
+    inputs: [tool_name, arguments]
+    outputs: [gateway_status, risk_level]
     required: false
     on_failure: stop
-    required_inputs: [arguments]
-    required_outputs: []
-    config:
-      authority: server_injected
-    failure_hint: 检查工具权限、参数约束和当前运行状态是否允许调用。
+    required_inputs: [tool_name, arguments]
+    required_outputs: [gateway_status]
+    config: {authority: server_injected}
+    failure_hint: 检查工具是否属于当前计划以及参数是否满足 schema。
 
-  - id: agent_tool_result
+  - id: tool_result
     agent_owner: human_interaction
     title: 观察工具结果
-    type: agent_tool_result
-    description: 记录脱敏后的工具状态码、证据来源和耗时，供模型决定后续步骤。
+    type: tool
+    description: 保存工具完整安全结果、证据来源和耗时，供控制器与模型继续处理。
     inputs: [tool_name]
-    outputs: [tool_result_code, evidence_source]
+    outputs: [result, tool_result_code, evidence_source]
     required: false
     on_failure: continue
-    required_inputs: []
-    required_outputs: [tool_result_code, evidence_source]
-    config:
-      sensitive_result: redacted
-    failure_hint: 根据工具结果码检查数据源、字段映射或工具服务状态。
+    required_inputs: [tool_name]
+    required_outputs: [tool_result_code]
+    config: {patient_rows: not_recorded, secrets: redacted}
+    failure_hint: 根据结果码检查数据源、字段映射、SQL 对象或业务服务。
 
-  - id: agent_memory
+  - id: plan_verify
     agent_owner: human_interaction
-    title: 保存会话记忆
-    type: memory
-    description: 保存结构化上下文和安全对象引用；失败时不覆盖已经生成的有效回答。
-    inputs: [session_id]
-    outputs: [problem_code]
+    title: 校验证据完整性
+    type: code
+    description: 校验医院、规则、版本、时间、SQL 和聚合数值证据链一致性。
+    inputs: [compiled_plan, state, context]
+    outputs: [verification]
     required: false
+    on_failure: stop
+    required_inputs: [compiled_plan, state, context]
+    required_outputs: [verification]
+    config: {implementation: PlanVerifier}
+    failure_hint: 检查 missing_facts、SQL 链路和分子分母计算。
+
+  - id: response_guard
+    agent_owner: human_interaction
+    title: 校验并整理回答
+    type: code
+    description: 规范中文 Markdown 与公式，并阻止缺少证据的完成性声明。
+    inputs: [raw_content, evidence]
+    outputs: [answer, missing_fact_types]
+    required: true
+    on_failure: stop
+    required_inputs: [raw_content]
+    required_outputs: [answer]
+    config: {implementation: deterministic_response_guard}
+    failure_hint: 检查模型回答是否引用了本轮不存在的事实。
+
+  - id: memory_save
+    agent_owner: human_interaction
+    title: 保存会话上下文
+    type: storage
+    description: 保存本轮问答、结构化状态与安全对象引用，供后续追问使用。
+    inputs: [query, answer, state]
+    outputs: [saved]
+    required: true
     on_failure: continue
     required_inputs: []
-    required_outputs: [problem_code]
-    config:
-      storage: SQLite + JSONL
-      history_turns: 8
-    failure_hint: 检查会话存储目录权限、SQLite 状态和上下文版本冲突。
+    required_outputs: []
+    config: {storage: "SQLite + JSONL", history_turns: 8}
+    failure_hint: 检查会话存储目录权限和上下文版本冲突。
 
 edges: []

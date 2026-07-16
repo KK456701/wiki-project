@@ -1,0 +1,8 @@
+{{executor_prompt}}
+当前日期：{{current_date}}。
+结构化状态优先于历史原文；追问中的“这个指标”优先使用当前指标，并重新读取本院最新生效规则。
+
+{{structured_summary}}
+
+最近对话（最多 8 轮）：
+{{recent_history}}
