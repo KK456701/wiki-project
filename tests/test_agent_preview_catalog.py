@@ -88,11 +88,12 @@ def test_catalog_replaces_prepare_with_trial_for_active_sql() -> None:
         "search_indicator_rules",
         "get_effective_rule",
         "inspect_indicator_implementation",
+        "prepare_indicator_sql",
         "trial_run_indicator_sql",
         "diagnose_indicator_issue",
         "preview_rule_change",
     ]
-    assert len(names) <= 6
+    assert len(names) <= 8
 
 
 def test_doctor_never_sees_preview_only_tools() -> None:

@@ -307,6 +307,7 @@ class AgentRuntimeService:
             ReadToolServices,
             SqlToolServices,
             ToolGateway,
+            UploadToolServices,
             build_agent_tool_registry,
             ensure_agent_sql_object_schema,
         )
@@ -335,6 +336,7 @@ class AgentRuntimeService:
             ),
             diagnosis_services=DiagnosisToolServices(orchestrator=orchestrator),
             preview_services=PreviewToolServices(orchestrator=orchestrator),
+            upload_services=UploadToolServices(),
         )
         gateway = ToolGateway(registry, trace_callback=event_callback)
         adapter = get_model_registry().build_adapter(model_id or self.model)

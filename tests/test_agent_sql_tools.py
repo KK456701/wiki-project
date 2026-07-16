@@ -450,7 +450,8 @@ def test_sql_tool_visibility_depends_on_verified_rule_and_active_sql() -> None:
     assert prepare_tool.availability(_context(), _rule_state()) is True
     active_state = _rule_state()
     active_state.validated_sql_ids.append("SQL_001")
-    assert prepare_tool.availability(_context(), active_state) is False
+    # prepare 现在只要有已验证规则就可用，不受旧 SQL ID 影响
+    assert prepare_tool.availability(_context(), active_state) is True
     assert trial_tool.availability(_context(), AgentRunState()) is False
     assert trial_tool.availability(
         _context(), AgentRunState(validated_sql_ids=["SQL_001"])

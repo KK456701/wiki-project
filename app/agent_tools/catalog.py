@@ -7,6 +7,7 @@ from app.agent_tools.preview_tools import PreviewToolServices, build_preview_too
 from app.agent_tools.read_tools import ReadToolServices, build_read_tools
 from app.agent_tools.registry import ToolRegistry
 from app.agent_tools.sql_tools import SqlToolServices, build_sql_tools
+from app.agent_tools.upload_tools import UploadToolServices, build_upload_tools
 
 
 def build_agent_shadow_tool_registry(
@@ -22,10 +23,14 @@ def build_agent_tool_registry(
     sql_services: SqlToolServices,
     diagnosis_services: DiagnosisToolServices,
     preview_services: PreviewToolServices,
+    upload_services: UploadToolServices | None = None,
 ) -> ToolRegistry:
-    return ToolRegistry([
+    tools: list = [
         *build_read_tools(read_services),
         *build_sql_tools(sql_services),
         *build_diagnosis_tools(diagnosis_services),
         *build_preview_tools(preview_services),
-    ])
+    ]
+    if upload_services is not None:
+        tools.extend(build_upload_tools(upload_services))
+    return ToolRegistry(tools)

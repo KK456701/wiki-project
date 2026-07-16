@@ -42,6 +42,11 @@ from .sql_tools import (
     trial_run_indicator_sql,
 )
 from .state_facts import has_active_sql, has_verified_rule, verified_rule_ids
+from .upload_tools import (
+    AnalyzeUploadedIndicatorsInput,
+    UploadToolServices,
+    build_upload_tools,
+)
 
 __all__ = [
     "AgentTool",
@@ -66,14 +71,15 @@ __all__ = [
     "ToolRegistryError",
     "ToolResult",
     "ToolRiskLevel",
-    "TrialRunIndicatorSqlInput",
-    "build_read_tool_registry",
+    "TrialRunIndicatorSqlInput",    "UploadToolServices",
+    "AnalyzeUploadedIndicatorsInput",    "build_read_tool_registry",
     "build_read_tools",
     "build_agent_tool_registry",
     "build_agent_shadow_tool_registry",
     "build_diagnosis_tools",
     "build_preview_tools",
     "build_sql_tools",
+    "build_upload_tools",
     "ensure_agent_sql_object_schema",
     "diagnose_indicator_issue",
     "create_indicator_draft",

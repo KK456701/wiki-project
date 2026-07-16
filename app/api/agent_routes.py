@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -108,6 +109,36 @@ def agent_chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+_UPLOAD_ROOT = Path(__file__).resolve().parents[2] / "runtime" / "uploads"
+_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+class UploadResponse(BaseModel):
+    file_key: str
+    file_name: str
+    size_bytes: int
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def agent_upload(
+    file: UploadFile,
+    principal: HospitalPrincipal = Depends(require_hospital_session),
+) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
+        raise HTTPException(status_code=400, detail="仅支持 .xlsx 或 .xls 格式的 Excel 文件。")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件大小不能超过 10MB。")
+    safe_name = f"{principal.hospital_id}_{uuid.uuid4().hex[:12]}_{file.filename}"
+    file_path = _UPLOAD_ROOT / safe_name
+    file_path.write_bytes(content)
+    return {
+        "file_key": safe_name,
+        "file_name": file.filename or "unknown",
+        "size_bytes": len(content),
+    }
 
 
 @router.get("/runs/{trace_id}")

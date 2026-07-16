@@ -637,6 +637,8 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
           <footer class="composer-wrapper assistant-composer-wrapper">
             <form id="chatForm" class="composer">
               <textarea id="queryInput" rows="1" placeholder="输入指标问题或任务，例如：生成急会诊及时到位率 SQL"></textarea>
+              <input type="file" id="fileUploadInput" accept=".xlsx,.xls" style="display:none" />
+              <button id="uploadButton" class="ghost" type="button" title="上传 Excel 指标明细">📎</button>
               <button id="sendButton" type="submit">发送</button>
             </form>
             <div class="composer-hint"><span>回答会优先使用本院生效口径。</span></div>
@@ -1145,6 +1147,8 @@ var messages = document.getElementById("messages");
 var sessionLabel = document.getElementById("sessionLabel");
 var reviewButton = document.getElementById("reviewButton");
 var newSessionButton = document.getElementById("newSessionButton");
+var uploadButton = document.getElementById("uploadButton");
+var fileUploadInput = document.getElementById("fileUploadInput");
 var selfCheckButton = document.getElementById("selfCheckButton");
 var selfCheckModal = document.getElementById("selfCheckModal");
 var selfCheckMeta = document.getElementById("selfCheckMeta");
@@ -2332,6 +2336,47 @@ async function streamChat(query) {
   }
   return streamLegacyChat(query);
 }
+
+// ===== 文件上传 =====
+uploadButton.addEventListener("click", function() {
+  fileUploadInput.click();
+});
+
+fileUploadInput.addEventListener("change", async function() {
+  var file = fileUploadInput.files && fileUploadInput.files[0];
+  if (!file) return;
+  if (!hospitalAuthToken) {
+    alert("请先登录医院账号。");
+    return;
+  }
+  uploadButton.disabled = true;
+  uploadButton.textContent = "⏳";
+  try {
+    var formData = new FormData();
+    formData.append("file", file);
+    var resp = await fetch("/api/agent/upload", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + hospitalAuthToken },
+      body: formData,
+    });
+    if (!resp.ok) {
+      var err = await resp.json();
+      throw new Error(err.detail || "上传失败");
+    }
+    var result = await resp.json();
+    var fileKey = result.file_key;
+    createMessage("user", "已上传: " + (result.file_name || file.name) + " (" + (result.size_bytes / 1024).toFixed(1) + " KB)" + "\n文件编号: " + fileKey);
+    queryInput.value = "帮我分析一下刚上传的指标文件";
+    autoResizeTextarea();
+    queryInput.focus();
+  } catch (err) {
+    alert("上传失败: " + (err.message || "未知错误"));
+  } finally {
+    uploadButton.disabled = false;
+    uploadButton.textContent = "📎";
+    fileUploadInput.value = "";
+  }
+});
 
 chatForm.addEventListener("submit", async function(e) {
   e.preventDefault();

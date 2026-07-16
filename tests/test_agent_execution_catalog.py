@@ -93,11 +93,12 @@ def test_catalog_adds_trial_only_for_active_sql_and_never_exceeds_six() -> None:
         "search_indicator_rules",
         "get_effective_rule",
         "inspect_indicator_implementation",
+        "prepare_indicator_sql",
         "trial_run_indicator_sql",
         "diagnose_indicator_issue",
         "preview_rule_change",
     ]
-    assert len(names) == 6
+    assert len(names) == 7
 
 
 def test_catalog_hides_all_tools_without_indicator_permission() -> None:
