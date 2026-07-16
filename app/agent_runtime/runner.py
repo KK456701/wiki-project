@@ -27,6 +27,45 @@ def _contains_chinese(text: str) -> bool:
     return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
+_DIAGNOSIS_TERMS = (
+    "异常",
+    "诊断",
+    "排查",
+    "算不对",
+    "算错",
+    "不准确",
+    "不准",
+    "有问题",
+    "问题在哪",
+)
+
+_TRIAL_RUN_TERMS = (
+    "多少",
+    "是多少",
+    "统计",
+    "统计时间",
+    "统计周期",
+    "试运行",
+    "结果",
+    "今年",
+    "本月",
+    "上月",
+    "到现在",
+    "从",
+    "开始怎么算",
+    "算一下",
+)
+
+
+def _classify_request_kind(user_message: str) -> str | None:
+    compact = re.sub(r"\s+", "", user_message)
+    if any(term in compact for term in _DIAGNOSIS_TERMS):
+        return "diagnosis"
+    if any(term in compact for term in _TRIAL_RUN_TERMS):
+        return "trial_run"
+    return None
+
+
 class AgentRunner:
     def __init__(
         self,
@@ -110,6 +149,7 @@ class AgentRunner:
     ) -> AgentRunResult:
         if not run_state.messages:
             run_state.messages.append({"role": "system", "content": AGENT_SYSTEM_PROMPT})
+        run_state.current_request_kind = _classify_request_kind(user_message)
         run_state.messages.append({"role": "user", "content": user_message})
         model_name: str | None = None
         for _ in range(self.max_steps):

@@ -172,7 +172,10 @@ def _state_has_verified_rule(
     state: AgentRunState,
 ) -> bool:
     del context
-    return has_verified_rule(state)
+    return (
+        has_verified_rule(state)
+        and state.current_request_kind in {None, "diagnosis"}
+    )
 
 
 def build_diagnosis_tools(services: DiagnosisToolServices) -> list[AgentTool]:
