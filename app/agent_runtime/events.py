@@ -63,7 +63,7 @@ def public_agent_event(
             payload["message"] = str(
                 event.get("message")
                 or event.get("answer")
-                or "Agent 运行未完成，请稍后重试或使用旧聊天入口。"
+                or "Agent 运行未完成，请稍后重试或联系系统管理员。"
             )
     return payload
 

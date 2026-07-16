@@ -11,26 +11,6 @@
   font-weight: 800;
 }
 
-.agent-runtime-mode {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 3px 9px;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  color: var(--ink-soft);
-  background: #fff;
-  font: 750 11px/1.2 var(--mono);
-  letter-spacing: .02em;
-}
-
-.agent-runtime-mode[data-mode="tool_calling"] {
-  color: var(--teal-deep);
-  border-color: #7dbbb3;
-  background: var(--teal-soft);
-  box-shadow: inset 3px 0 0 var(--teal);
-}
-
 .agent-model-select {
   min-height: 28px;
   max-width: 220px;
@@ -42,7 +22,6 @@
   font: 750 12px/1.2 var(--sans);
 }
 
-.agent-runtime-mode:focus-visible,
 .agent-model-select:focus-visible,
 .agent-evidence-track:focus-visible {
   outline: 2px solid var(--teal);
@@ -97,7 +76,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-runtime-mode,
   .agent-model-select,
   .agent-evidence-track li { transition: none !important; }
 }

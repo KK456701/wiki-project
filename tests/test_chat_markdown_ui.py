@@ -34,8 +34,9 @@ process.stdout.write(renderer.renderAssistantMarkdown('上文\\n\\n---\\n\\n下�
         self.assertIn("return renderAssistantMarkdown(text || \"\")", html)
         self.assertIn(".message-table", html)
         self.assertIn(".message-code", html)
-        self.assertIn('fetch("/api/chat/stream"', html)
-        self.assertIn("streamLegacyChat", html)
+        self.assertIn('fetch("/api/agent/chat/stream"', (ROOT / "web" / "agent-runtime.js").read_text(encoding="utf-8"))
+        self.assertNotIn('fetch("/api/chat/stream"', html)
+        self.assertNotIn("streamLegacyChat", html)
 
     def test_renderer_builds_tables_and_code_while_escaping_html(self) -> None:
         markdown = (

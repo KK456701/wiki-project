@@ -76,10 +76,9 @@ ollama_history_turns: 8
 ollama_prompt_budget_tokens: 12000
 ollama_output_reserve_tokens: 1200
 
-# 工具调用型 Agent（默认关闭，不影响旧聊天）
+# 工具调用型 Agent。关闭时对话入口明确不可用，不会回退到其他流程。
 agent_enabled: false
 agent_planning_enabled: true
-agent_mode: "legacy"
 agent_model: "qwen3:4B-instruct"
 default_model: "ollama-qwen3"
 agent_max_steps: 8
@@ -95,6 +94,12 @@ models:
     provider: "ollama"
     model: "qwen3:4B-instruct"
     base_url: "http://127.0.0.1:11434"
+  - id: "ollama-qwen3-8b-thinking"
+    name: "Qwen3 8B 思考模式（本地 Ollama）"
+    provider: "ollama"
+    model: "qwen3:8b"
+    base_url: "http://127.0.0.1:11434"
+    thinking: true
   - id: "deepseek-v4-flash"
     name: "DeepSeek V4 Flash（API）"
     provider: "openai"

@@ -31,27 +31,19 @@ def test_page_loads_runtime_assets_before_inline_chat_code() -> None:
     assert css in html
     assert script in html
     assert html.index(script) < html.index("<script>")
-    assert 'id="agentRuntimeMode"' in html
+    assert 'id="agentRuntimeMode"' not in html
     assert 'id="modelSelector"' in html
 
 
-def test_mode_selection_requires_implementation_permission_and_capability() -> None:
+def test_runtime_exports_only_the_agent_chat_mode() -> None:
     expression = """[
-      runtime.selectMode(
-        {enabled:true, mode:'tool_calling'},
-        {role:'hospital', permissions:['indicator_detail_view','indicator_detail_export']}
-      ),
-      runtime.selectMode(
-        {enabled:true, mode:'tool_calling'},
-        {role:'hospital', permissions:['indicator_detail_view']}
-      ),
-      runtime.selectMode(
-        {enabled:false, mode:'legacy'},
-        {role:'hospital', permissions:['indicator_detail_export']}
-      )
+      typeof runtime.streamAgent,
+      typeof runtime.isAvailable,
+      typeof runtime.selectMode,
+      typeof runtime.canFallbackToLegacy
     ]"""
 
-    assert _run_node(expression) == ["tool_calling", "legacy", "legacy"]
+    assert _run_node(expression) == ["function", "function", "undefined", "undefined"]
 
 
 def test_model_selector_payload_uses_selected_model() -> None:
@@ -96,12 +88,6 @@ def test_public_event_projection_never_renders_arguments_or_result_data() -> Non
     assert "SELECT" not in json.dumps(event, ensure_ascii=False)
 
 
-def test_legacy_fallback_is_allowed_only_before_agent_start() -> None:
-    assert _run_node("runtime.canFallbackToLegacy(503, false)") is True
-    assert _run_node("runtime.canFallbackToLegacy(503, true)") is False
-    assert _run_node("runtime.canFallbackToLegacy(500, false)") is False
-
-
 def test_public_event_projection_keeps_fallback_classification() -> None:
     event = _run_node("""runtime.projectEvent({
       event:'agent_done', trace_id:'TRACE_2', stop_reason:'need_clarification',
@@ -116,16 +102,16 @@ def test_evidence_track_css_supports_mobile_focus_and_reduced_motion() -> None:
     css = (ROOT / "web" / "agent-runtime.css").read_text(encoding="utf-8")
 
     assert ".agent-evidence-track" in css
-    assert ".agent-runtime-mode" in css
+    assert ".agent-runtime-mode" not in css
     assert ":focus-visible" in css
     assert "@media (max-width: 720px)" in css
     assert "prefers-reduced-motion: reduce" in css
 
 
-def test_agent_trace_uses_authenticated_run_endpoint_and_legacy_is_retained() -> None:
+def test_agent_trace_uses_only_the_authenticated_run_endpoint() -> None:
     html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
-    assert "attachTraceButton(ass, ass.traceId || latestTraceId, {agentRun: true})" in html
+    assert "attachTraceButton(ass, ass.traceId || latestTraceId)" in html
     assert '"/api/agent/runs/" + encodeURIComponent(traceId)' in html
     assert 'Authorization: "Bearer " + hospitalAuthToken' in html
-    assert '"/api/traces/" + encodeURIComponent(traceId)' in html
+    assert '"/api/traces/" + encodeURIComponent(traceId)' not in html

@@ -232,7 +232,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.json()["change_id"], "CR_MYSQL")
         self.assertEqual(len(repository.submitted), 1)
 
-    def test_health_reports_workflow_engine(self) -> None:
+    def test_health_reports_agent_orchestration(self) -> None:
         client = TestClient(app)
 
         response = client.get("/api/health")
@@ -241,8 +241,9 @@ class ApiTest(unittest.TestCase):
         self.assertTrue(response.headers.get("X-Request-ID"))
         data = response.json()
         self.assertEqual(data["status"], "ok")
-        self.assertIn(data["workflow_engine"], {"langgraph", "deterministic_fallback"})
-        self.assertIn("langgraph_installed", data)
+        self.assertEqual(data["agent_orchestration"], "plan_compile_control")
+        self.assertNotIn("workflow_engine", data)
+        self.assertNotIn("langgraph_installed", data)
 
     def test_change_request_default_change_type_is_readable(self) -> None:
         request = api_main.ChangeRequestCreate(
@@ -252,52 +253,6 @@ class ApiTest(unittest.TestCase):
         )
 
         self.assertEqual(request.change_type, "本院口径反馈")
-
-    def test_chat_endpoint_returns_answer(self) -> None:
-        client = TestClient(app)
-
-        response = client.post(
-            "/api/chat",
-            json={"query": "急会诊及时到位率怎么算？", "hospital_id": "hospital_001", "use_llm": False},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["rule_id"], "MQSI2025_005")
-        self.assertIn("急会诊及时到位率", data["answer"])
-        self.assertIn("SQL 状态：可用", data["answer"])
-        self.assertIn("生成 SQL", data["answer"])
-
-    def test_chat_endpoint_uses_session_memory_for_follow_up_feedback(self) -> None:
-        with temp_kb_dir() as tmp:
-            root = Path(tmp)
-            make_minimal_kb(root, with_hospital=False)
-            client = TestClient(app)
-
-            with patch.object(api_main, "DEFAULT_KB_ROOT", root):
-                first = client.post(
-                    "/api/chat",
-                    json={
-                        "query": "\u6025\u4f1a\u8bca\u53ca\u65f6\u5230\u4f4d\u7387\u600e\u4e48\u7b97\uff1f",
-                        "hospital_id": "hospital_001",
-                        "use_llm": False,
-                    },
-                ).json()
-                second = client.post(
-                    "/api/chat",
-                    json={
-                        "query": "\u6211\u4eec\u533b\u9662\u662f\u6309\u716730\u5206\u949f\u6765\u7684",
-                        "hospital_id": "hospital_001",
-                        "use_llm": False,
-                        "session_id": first["session_id"],
-                    },
-                ).json()
-
-            self.assertEqual(second["session_id"], first["session_id"])
-            self.assertEqual(second["intent"], "feedback")
-            self.assertEqual(second["rule_id"], "R001")
-            self.assertEqual(second["feedback_preview"]["target_level"], "hospital")
-            self.assertNotIn("change_request", second)
 
     def test_metadata_sync_dbhub_uses_mcp_client(self) -> None:
         class FakeDBHubClient:
@@ -683,31 +638,6 @@ class ApiTest(unittest.TestCase):
         response = client.get("/api/review/pending")
 
         self.assertEqual(response.status_code, 401)
-
-    def test_chat_stream_greeting_returns_chat_intent(self) -> None:
-        client = TestClient(app)
-        response = client.post(
-            "/api/chat/stream",
-            json={"query": "\u4f60\u597d", "hospital_id": "hospital_001", "use_llm": False},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        body = response.text
-        self.assertIn('"intent": "chat"', body)
-        self.assertIn('"rule_id": null', body)
-        self.assertIn("\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent", body)
-
-    def test_chat_stream_returns_sse_events(self) -> None:
-        client = TestClient(app)
-        response = client.post(
-            "/api/chat/stream",
-            json={"query": "????????????", "hospital_id": "hospital_001", "use_llm": False},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        body = response.text
-        self.assertIn("event: token", body)
-        self.assertIn("event: done", body)
 
     def test_health_dependencies_reports_dbhub_and_runtime(self) -> None:
         class FakeBusinessDB:

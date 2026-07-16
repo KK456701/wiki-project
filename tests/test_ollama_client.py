@@ -121,3 +121,26 @@ def test_chat_rejects_response_without_message() -> None:
     ):
         with pytest.raises(OllamaError, match="missing ollama chat message"):
             client.chat(messages=[], tools=[])
+
+
+@pytest.mark.parametrize(
+    ("thinking", "expected"),
+    [(True, True), (False, None)],
+)
+def test_chat_only_sends_think_for_thinking_models(thinking, expected) -> None:
+    client = OllamaClient(
+        model="qwen3:8b" if thinking else "qwen3:4b-instruct",
+        base_url="http://ollama.local",
+        thinking=thinking,
+    )
+    response = _Response(body=b'{"message":{"role":"assistant","content":"ok"}}')
+
+    with patch(
+        "app.llm.ollama.urllib.request.urlopen",
+        return_value=response,
+    ) as urlopen:
+        client.chat(messages=[{"role": "user", "content": "hello"}], tools=[])
+
+    payload = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+    assert payload.get("think") is expected
+    assert "thinking" not in payload

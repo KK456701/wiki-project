@@ -4,7 +4,6 @@ from unittest.mock import patch
 
 import yaml
 
-from app.agent.graph import detect_intent
 from app.db_access.query_result import QueryResult
 from app.sqlgen.runner import run_sql_trial
 from app.sqlgen.agent import SQLGenerationAgent
@@ -422,11 +421,6 @@ class SqlGenerationSafetyTest(unittest.TestCase):
 
         self.assertNotIn("COUNT(DISTINCT)", sql)
         self.assertIn("COUNT(DISTINCT inpatient_transfer_record.admission_id)", sql)
-
-    def test_hospital_query_about_current_rule_is_not_feedback(self) -> None:
-        query = "\u6211\u4eec\u533b\u9662\u5f53\u524d\u91c7\u7528\u54ea\u4e2a\u53e3\u5f84\uff1f"
-
-        self.assertEqual(detect_intent(query), "query")
 
     def test_run_sql_trial_uses_business_db_mcp_and_binds_params(self) -> None:
         class FakeBusinessDB:

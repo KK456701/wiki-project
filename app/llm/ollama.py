@@ -19,11 +19,13 @@ class OllamaClient:
         base_url: str | None = None,
         timeout_seconds: float | None = None,
         num_ctx: int | None = None,
+        thinking: bool = False,
     ) -> None:
         self.model = model or get("ollama_model", "qwen3:4B-instruct")
         self.base_url = (base_url or get("ollama_base_url", "http://127.0.0.1:11434")).rstrip("/")
         self.timeout_seconds = float(timeout_seconds or get_int("ollama_timeout_seconds", 60))
         self.num_ctx = int(num_ctx or get_int("ollama_num_ctx", 16384))
+        self.thinking = bool(thinking)
 
     def _options(self) -> dict[str, int | float]:
         return {
@@ -71,6 +73,8 @@ class OllamaClient:
             "stream": False,
             "options": options,
         }
+        if self.thinking:
+            payload["think"] = True
         request = urllib.request.Request(
             f"{self.base_url}/api/chat",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),

@@ -5,18 +5,7 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
 
-  var capabilities = {enabled: false, mode: "legacy"};
-
-  function hasPermission(user, permission) {
-    return !!(user && (user.permissions || []).indexOf(permission) >= 0);
-  }
-
-  function selectMode(caps, user) {
-    return caps && caps.enabled === true && caps.mode === "tool_calling" &&
-      user && user.role === "hospital" &&
-      hasPermission(user, "indicator_detail_export")
-      ? "tool_calling" : "legacy";
-  }
+  var capabilities = {enabled: false};
 
   function projectEvent(source) {
     var event = {
@@ -30,16 +19,6 @@
     if (source && source.step_count !== undefined) event.step_count = Number(source.step_count || 0);
     if (source && source.reused !== undefined) event.reused = source.reused === true;
     return event;
-  }
-
-  function canFallbackToLegacy(status, agentStarted) {
-    return Number(status) === 503 && agentStarted !== true;
-  }
-
-  function modeText(mode) {
-    if (mode === "tool_calling") return "工具协作模式";
-    if (capabilities.mode === "shadow") return "旧流程 · 只读评估中";
-    return "稳定流程";
   }
 
   function modelSelectorOptions(caps) {
@@ -80,22 +59,12 @@
     return payload;
   }
 
-  function renderModeBadge(element, user) {
-    if (!element) return;
-    var mode = selectMode(capabilities, user);
-    element.textContent = modeText(mode);
-    element.dataset.mode = mode;
-    element.title = mode === "tool_calling"
-      ? "模型会按问题选择受控工具，正式审批和发布仍需人工完成。"
-      : "当前继续使用原有稳定流程。";
-  }
-
   async function refreshCapabilities(options) {
     var token = options && options.token || "";
     var user = options && options.user || null;
     if (!token || !user || user.role !== "hospital") {
-      capabilities = {enabled: false, mode: "legacy"};
-      renderModeBadge(options && options.element, user);
+      capabilities = {enabled: false};
+      renderModelSelector(options && options.modelSelector, capabilities);
       return capabilities;
     }
     try {
@@ -105,15 +74,14 @@
       if (!response.ok) throw new Error("capabilities unavailable");
       capabilities = await response.json();
     } catch (_) {
-      capabilities = {enabled: false, mode: "legacy"};
+      capabilities = {enabled: false};
     }
-    renderModeBadge(options && options.element, user);
     renderModelSelector(options && options.modelSelector, capabilities);
     return capabilities;
   }
 
-  function currentMode(user) {
-    return selectMode(capabilities, user);
+  function isAvailable() {
+    return capabilities.enabled === true;
   }
 
   function parseBlock(block) {
@@ -134,6 +102,8 @@
   }
 
   async function streamAgent(options) {
+    if (!options.token) throw new Error("请先登录医院账号。");
+    if (!isAvailable()) throw new Error("Agent 当前不可用，请联系系统管理员。");
     var started = false;
     var response = await fetch("/api/agent/chat/stream", {
       method: "POST",
@@ -148,7 +118,7 @@
       ))
     });
     if (!response.ok) {
-      var error = new Error("工具协作模式暂不可用，请切回稳定流程后重试。");
+      var error = new Error("Agent 请求失败，请稍后重试或联系系统管理员。");
       error.status = response.status;
       error.agentStarted = false;
       throw error;
@@ -218,13 +188,11 @@
   }
 
   return {
-    selectMode: selectMode,
     modelSelectorOptions: modelSelectorOptions,
     buildChatPayload: buildChatPayload,
     projectEvent: projectEvent,
-    canFallbackToLegacy: canFallbackToLegacy,
     refreshCapabilities: refreshCapabilities,
-    currentMode: currentMode,
+    isAvailable: isAvailable,
     streamAgent: streamAgent,
     createEvidenceTrack: createEvidenceTrack,
     appendEvidenceEvent: appendEvidenceEvent

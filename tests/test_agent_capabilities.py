@@ -49,18 +49,17 @@ def test_export_account_maps_to_implementation_role() -> None:
 def test_capabilities_publish_plan_compile_control_orchestration() -> None:
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         runner_factory=lambda *_: None,
     )
 
     assert service.capabilities()["orchestration"] == "plan_compile_control"
+    assert "mode" not in service.capabilities()
 
 
 def test_capabilities_publish_react_when_planning_is_disabled() -> None:
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         planning_enabled=False,
         runner_factory=lambda *_: None,
@@ -90,7 +89,6 @@ class FakeTraceRecorder:
 def test_run_lookup_enforces_hospital_scope() -> None:
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         runner_factory=lambda *_: None,
         trace_recorder_factory=lambda: FakeTraceRecorder({"hospital_id": "h2"}),
@@ -173,7 +171,6 @@ def test_chat_loads_and_completes_agent_conversation_memory() -> None:
 
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         runner_factory=runner_factory,
         trace_recorder_factory=lambda: FakeTraceRecorder({"hospital_id": "h1"}),
@@ -214,7 +211,6 @@ def test_memory_save_failure_is_recorded_once_without_retrying_completion() -> N
     recorder = FakeTraceRecorder({"hospital_id": "h1"})
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         runner_factory=FakeRunner,
         trace_recorder_factory=lambda: recorder,

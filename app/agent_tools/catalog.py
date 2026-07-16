@@ -10,13 +10,6 @@ from app.agent_tools.sql_tools import SqlToolServices, build_sql_tools
 from app.agent_tools.upload_tools import UploadToolServices, build_upload_tools
 
 
-def build_agent_shadow_tool_registry(
-    read_services: ReadToolServices,
-) -> ToolRegistry:
-    """Shadow 只允许低成本制度规则读取，不注册执行或预览工具。"""
-    return ToolRegistry(build_read_tools(read_services))
-
-
 def build_agent_tool_registry(
     *,
     read_services: ReadToolServices,

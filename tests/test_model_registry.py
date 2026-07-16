@@ -2,7 +2,7 @@ from app.agent_runtime.model_adapter import AgentModelError
 from app.llm.model_registry import ModelRegistry
 
 
-def test_registry_falls_back_to_legacy_ollama_config() -> None:
+def test_registry_falls_back_to_single_ollama_config() -> None:
     registry = ModelRegistry({
         "agent_model": "qwen3:4B-instruct",
         "ollama_base_url": "http://ollama.local",
@@ -80,3 +80,39 @@ def test_registry_rejects_unknown_model_id() -> None:
         assert "未知模型" in str(exc)
     else:
         raise AssertionError("expected unknown model to fail")
+
+
+def test_registry_passes_thinking_flag_to_local_ollama_adapter() -> None:
+    registry = ModelRegistry({
+        "models": [{
+            "id": "ollama-qwen3-8b-thinking",
+            "name": "Qwen3 8B 思考模式",
+            "provider": "ollama",
+            "model": "qwen3:8b",
+            "base_url": "http://127.0.0.1:11434",
+            "thinking": True,
+        }],
+    })
+
+    info = registry.get_model("ollama-qwen3-8b-thinking")
+    adapter = registry.build_adapter("ollama-qwen3-8b-thinking")
+
+    assert info.thinking is True
+    assert adapter.client.thinking is True
+
+
+def test_public_model_metadata_does_not_expose_internal_thinking_details() -> None:
+    registry = ModelRegistry({
+        "models": [{
+            "id": "ollama-qwen3-8b-thinking",
+            "provider": "ollama",
+            "model": "qwen3:8b",
+            "thinking": True,
+        }],
+    })
+
+    assert registry.list_models()[0].model_dump_public() == {
+        "id": "ollama-qwen3-8b-thinking",
+        "name": "ollama-qwen3-8b-thinking",
+        "provider": "ollama",
+    }

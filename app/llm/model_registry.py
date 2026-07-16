@@ -28,6 +28,7 @@ class ModelInfo:
     model: str
     base_url: str
     api_key: str | None = None
+    thinking: bool = False
 
     def model_dump_public(self) -> dict[str, str]:
         return {
@@ -58,20 +59,21 @@ class ModelRegistry:
             ]
             if models:
                 return models
-        legacy_model = str(
+        fallback_model = str(
             self.raw_config.get("agent_model")
             or self.raw_config.get("ollama_model")
             or "qwen3:4B-instruct"
         )
         return [ModelInfo(
-            id=legacy_model,
-            name=f"{legacy_model}（本地 Ollama）",
+            id=fallback_model,
+            name=f"{fallback_model}（本地 Ollama）",
             provider="ollama",
-            model=legacy_model,
+            model=fallback_model,
             base_url=str(
                 self.raw_config.get("ollama_base_url")
                 or "http://127.0.0.1:11434"
             ),
+            thinking=False,
         )]
 
     def _parse_model(self, item: dict[str, Any]) -> ModelInfo:
@@ -95,6 +97,7 @@ class ModelRegistry:
             model=model,
             base_url=base_url,
             api_key=api_key,
+            thinking=bool(item.get("thinking", False)),
         )
 
     @staticmethod
@@ -124,6 +127,7 @@ class ModelRegistry:
             return OllamaToolCallingAdapter(OllamaClient(
                 model=info.model,
                 base_url=info.base_url,
+                thinking=info.thinking,
             ))
         if not info.api_key or _ENV_REF.match(info.api_key):
             missing = info.api_key or "API Key"

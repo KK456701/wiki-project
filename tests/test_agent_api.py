@@ -29,7 +29,6 @@ class FakeAgentService:
     def capabilities(self):
         return {
             "enabled": True,
-            "mode": "tool_calling",
             "model": "fake",
             "models": [{"id": "fake", "name": "Fake", "provider": "ollama"}],
             "streaming": True,
@@ -155,7 +154,6 @@ def test_real_agent_trace_returns_200_and_rejects_other_hospital(tmp_path) -> No
     bridge.handle({"event": "agent_done", "stop_reason": "final_answer"})
     service = AgentRuntimeService(
         enabled=True,
-        mode="tool_calling",
         model="fake",
         runner_factory=lambda *_: None,
         trace_recorder_factory=lambda: TraceRecorder(engine, jsonl_path),

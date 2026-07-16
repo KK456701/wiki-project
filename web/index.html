@@ -625,7 +625,6 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
           <header class="assistant-workspace-header">
             <div>
               <strong>当前会话</strong>
-              <span id="agentRuntimeMode" class="agent-runtime-mode" data-mode="legacy" tabindex="0">稳定流程</span>
               <select id="modelSelector" class="agent-model-select" hidden aria-label="选择 Agent 模型"></select>
               <span id="sessionLabel"></span>
             </div>
@@ -1195,7 +1194,6 @@ var mergeReportDetail = document.getElementById("mergeReportDetail");
 var traceModal = document.getElementById("traceModal");
 var traceMeta = document.getElementById("traceMeta");
 var traceNodeList = document.getElementById("traceNodeList");
-var agentRuntimeMode = document.getElementById("agentRuntimeMode");
 var modelSelector = document.getElementById("modelSelector");
 
 sessionLabel.textContent = "session: " + currentSessionId;
@@ -1225,7 +1223,6 @@ async function refreshAgentRuntimeMode() {
   await window.AgentRuntimeUI.refreshCapabilities({
     token: hospitalAuthToken,
     user: currentUser,
-    element: agentRuntimeMode,
     modelSelector: modelSelector
   });
 }
@@ -1625,7 +1622,7 @@ function createMessage(role, text) {
   return { container: container, bubble: bubble, meta: meta, body: body };
 }
 
-function attachTraceButton(message, traceId, options) {
+function attachTraceButton(message, traceId) {
   if (!traceId || !message || message.traceButtonAttached) return;
   var wrap = document.createElement("div");
   wrap.className = "review-actions";
@@ -1635,7 +1632,7 @@ function attachTraceButton(message, traceId, options) {
   btn.type = "button";
   btn.className = "ghost";
   btn.textContent = "查看链路";
-  btn.addEventListener("click", function() { showTrace(traceId, options); });
+  btn.addEventListener("click", function() { showTrace(traceId); });
   wrap.appendChild(btn);
   message.body.appendChild(wrap);
   message.traceButtonAttached = true;
@@ -2029,18 +2026,13 @@ function renderTraceTimeline(nodes, totalDurationMs) {
   return timeline;
 }
 
-async function showTrace(traceId, options) {
+async function showTrace(traceId) {
   traceModal.hidden = false;
   traceMeta.textContent = traceId;
   traceNodeList.innerHTML = "正在加载链路...";
   try {
-    var agentRun = options && options.agentRun;
-    var traceUrl = agentRun
-      ? "/api/agent/runs/" + encodeURIComponent(traceId)
-      : "/api/traces/" + encodeURIComponent(traceId);
-    var fetchOptions = agentRun
-      ? {headers: {Authorization: "Bearer " + hospitalAuthToken}}
-      : undefined;
+    var traceUrl = "/api/agent/runs/" + encodeURIComponent(traceId);
+    var fetchOptions = {headers: {Authorization: "Bearer " + hospitalAuthToken}};
     var resp = await fetch(traceUrl, fetchOptions);
     var data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || "链路加载失败");
@@ -2213,70 +2205,6 @@ function addWelcomeMessage() {
 }
 
 // ===== 流式对话 =====
-async function streamLegacyChat(query) {
-  var hospitalId = hospitalIdInput.value.trim() || "hospital_001";
-  createMessage("user", query);
-  var ass = createMessage("agent", "");
-  sendButton.disabled = true;
-  queryInput.disabled = true;
-  try {
-    var legacyHeaders = {"Content-Type":"application/json"};
-    if (hospitalAuthToken) legacyHeaders.Authorization = "Bearer " + hospitalAuthToken;
-    var resp = await fetch("/api/chat/stream", {
-      method:"POST", headers:legacyHeaders,
-      body:JSON.stringify({ query: query, hospital_id: hospitalId, session_id: currentSessionId, use_llm: true }),
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    if (!resp.body) throw new Error("浏览器不支持流式读取");
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder("utf-8");
-    var buffer = "";
-    while (true) {
-      var chunk = await reader.read();
-      if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      var blocks = buffer.split("\n\n");
-      buffer = blocks.pop() || "";
-      for (var i = 0; i < blocks.length; i++) {
-        var parsed = parseSseEvent(blocks[i]);
-        if (!parsed) continue;
-        if (parsed.event === "meta" && parsed.data.session_id) {
-          currentSessionId = parsed.data.session_id;
-          sessionLabel.textContent = "session: " + currentSessionId;
-          if (parsed.data.trace_id) {
-            latestTraceId = parsed.data.trace_id;
-            ass.traceId = parsed.data.trace_id;
-          }
-        }
-        if (parsed.event === "progress") {
-          var progressText = parsed.data.message || "\u6b63\u5728\u5904\u7406";
-          ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - " + progressText;
-          if (!(ass._raw || "")) {
-            ass.body.innerHTML = "<span style='color:#6b7f99'>" + _renderAssHtml(progressText) + "...</span>";
-          }
-          scrollToBottom();
-        }
-        if (parsed.event === "token") {
-          ass._raw = (ass._raw || "") + (parsed.data.text || "");
-          ass.body.innerHTML = _renderAssHtml(ass._raw);
-          scrollToBottom();
-        }
-        if (parsed.event === "feedback_preview") { latestFeedbackPreview = parsed.data; showFeedbackPreview(parsed.data); }
-        if (parsed.event === "error") { ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u8bf7\u6c42\u5931\u8d25"; ass.body.textContent += "\n\n[\u9519\u8bef] " + (parsed.data.message||"\u8bf7\u6c42\u5931\u8d25"); scrollToBottom(); }
-        if (parsed.event === "done") {
-          if (parsed.data.trace_id) {
-            latestTraceId = parsed.data.trace_id;
-            ass.traceId = parsed.data.trace_id;
-          }
-          ass.meta.textContent = "\u6838\u5fc3\u5236\u5ea6\u6307\u6807 Agent - \u5df2\u5b8c\u6210";
-          attachTraceButton(ass, ass.traceId || latestTraceId);
-        }
-      }
-    }
-  } catch(e) { ass.body.textContent = "[请求失败] " + (e.message||e); }
-  finally { sendButton.disabled = false; queryInput.disabled = false; queryInput.focus(); scrollToBottom(); }
-}
-
 async function streamToolCallingChat(query) {
   createMessage("user", query);
   var ass = createMessage("agent", "");
@@ -2307,18 +2235,18 @@ async function streamToolCallingChat(query) {
         }
         if (event.event === "agent_error") {
           ass.meta.textContent = "核心制度指标 Agent - 未完成";
-          ass.body.textContent = event.message || "工具协作模式未完成，请切回稳定流程后重试。";
+          ass.body.textContent = event.message || "Agent 未完成本次请求，请稍后重试或联系系统管理员。";
         }
         if (event.event === "agent_done") {
           ass.meta.textContent = "核心制度指标 Agent - 已完成";
-          attachTraceButton(ass, ass.traceId || latestTraceId, {agentRun: true});
+          attachTraceButton(ass, ass.traceId || latestTraceId);
         }
         scrollToBottom();
       }
     });
   } catch (error) {
     ass.meta.textContent = "核心制度指标 Agent - 未启动";
-    ass.body.textContent = error.message || "工具协作模式暂不可用，请切回稳定流程后重试。";
+    ass.body.textContent = error.message || "Agent 当前不可用，请稍后重试或联系系统管理员。";
   } finally {
     sendButton.disabled = false;
     queryInput.disabled = false;
@@ -2328,13 +2256,7 @@ async function streamToolCallingChat(query) {
 }
 
 async function streamChat(query) {
-  if (
-    window.AgentRuntimeUI &&
-    window.AgentRuntimeUI.currentMode(currentUser) === "tool_calling"
-  ) {
-    return streamToolCallingChat(query);
-  }
-  return streamLegacyChat(query);
+  return streamToolCallingChat(query);
 }
 
 // ===== 文件上传 =====

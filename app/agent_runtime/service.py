@@ -13,7 +13,7 @@ from app.agent_runtime.memory import AgentConversationMemory
 from app.agent_runtime.events import public_agent_event
 from app.agent_runtime.model_adapter import AgentModelError
 from app.agent_runtime.tracing import AgentTraceBridge
-from app.config import get, get_bool, get_int
+from app.config import get_bool, get_int
 from app.hospital_auth.models import (
     DETAIL_EXPORT_PERMISSION,
     DETAIL_VIEW_PERMISSION,
@@ -61,7 +61,6 @@ class AgentRuntimeService:
         self,
         *,
         enabled: bool,
-        mode: str,
         model: str,
         runner_factory: Callable[..., Any] | None = None,
         trace_recorder_factory: Callable[[], Any] | None = None,
@@ -71,7 +70,6 @@ class AgentRuntimeService:
         planning_enabled: bool = True,
     ) -> None:
         self.enabled = enabled
-        self.mode = mode
         self.model = model
         self.max_steps = max_steps
         self.request_timeout_seconds = request_timeout_seconds
@@ -87,7 +85,6 @@ class AgentRuntimeService:
         registry = get_model_registry()
         return cls(
             enabled=get_bool("agent_enabled", False),
-            mode=get("agent_mode", "legacy").strip().lower(),
             model=registry.default_model_id,
             max_steps=max(1, get_int("agent_max_steps", 8)),
             request_timeout_seconds=max(1, get_int("agent_request_timeout_seconds", 120)),
@@ -99,8 +96,7 @@ class AgentRuntimeService:
 
         registry = get_model_registry()
         return {
-            "enabled": self.enabled and self.mode == "tool_calling",
-            "mode": self.mode,
+            "enabled": self.enabled,
             "model": self.model,
             "models": [
                 model.model_dump_public()
@@ -115,10 +111,8 @@ class AgentRuntimeService:
         }
 
     def ensure_available(self) -> None:
-        if not self.enabled or self.mode != "tool_calling":
-            raise AgentRuntimeUnavailable(
-                "工具调用型 Agent 当前未启用，旧聊天入口仍可使用。"
-            )
+        if not self.enabled:
+            raise AgentRuntimeUnavailable("Agent 当前未启用，请联系系统管理员。")
 
     async def chat(
         self,

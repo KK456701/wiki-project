@@ -82,7 +82,7 @@ class AgentTraceBridge:
                 "evidence_source": evidence_sources,
             },
             config_data={
-                "agent_mode": "tool_calling",
+                "orchestration": "plan_compile_control",
                 "agent_step": step,
                 "model_name": safe.get("model_name"),
                 "risk_level": safe.get("risk_level"),
@@ -100,7 +100,7 @@ class AgentTraceBridge:
             error_code="AGENT_MEMORY_SAVE_FAILED",
             error_message="会话记忆保存失败，回答未受影响。",
             output_data={"problem_code": "AGENT_MEMORY_SAVE_FAILED"},
-            config_data={"agent_mode": "tool_calling", "operation": "save"},
+            config_data={"orchestration": "plan_compile_control", "operation": "save"},
         )
 
     def _finish(self, event: dict[str, Any]) -> None:
