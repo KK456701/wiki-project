@@ -336,10 +336,11 @@ def test_trial_maps_expired_object_to_safe_unavailable_result() -> None:
         db_source_id="hospital_db",
     ))
 
+    state = AgentRunState(validated_sql_ids=["SQL_EXPIRED"])
     result = trial_run_indicator_sql(
         TrialRunIndicatorSqlInput(sql_id="SQL_EXPIRED"),
         _context(),
-        AgentRunState(validated_sql_ids=["SQL_EXPIRED"]),
+        state,
         services=services,
     )
 
@@ -347,6 +348,12 @@ def test_trial_maps_expired_object_to_safe_unavailable_result() -> None:
     assert result.status == "unavailable"
     assert result.code == "SQL_OBJECT_EXPIRED"
     assert "SELECT" not in result.summary
+    assert state.validated_sql_ids == []
+    prepare_tool = build_sql_tools(services)[0]
+    assert prepare_tool.availability(_context(), state) is False
+
+    state.evidence.extend(_rule_state().evidence)
+    assert prepare_tool.availability(_context(), state) is True
 
 
 def test_trial_stops_when_rule_or_mapping_context_changes() -> None:
@@ -441,6 +448,9 @@ def test_sql_tool_visibility_depends_on_verified_rule_and_active_sql() -> None:
 
     assert prepare_tool.availability(_context(), AgentRunState()) is False
     assert prepare_tool.availability(_context(), _rule_state()) is True
+    active_state = _rule_state()
+    active_state.validated_sql_ids.append("SQL_001")
+    assert prepare_tool.availability(_context(), active_state) is False
     assert trial_tool.availability(_context(), AgentRunState()) is False
     assert trial_tool.availability(
         _context(), AgentRunState(validated_sql_ids=["SQL_001"])

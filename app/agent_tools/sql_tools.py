@@ -348,6 +348,17 @@ def trial_run_indicator_sql(
     try:
         sql_object = services.store.load_for_execution(arguments.sql_id, context)
     except SqlObjectAccessError as exc:
+        if exc.code in {
+            "SQL_OBJECT_NOT_FOUND",
+            "SQL_OBJECT_EXPIRED",
+            "SQL_OBJECT_NOT_VALIDATED",
+            "SQL_OBJECT_CORRUPTED",
+        }:
+            state.validated_sql_ids = [
+                sql_id
+                for sql_id in state.validated_sql_ids
+                if sql_id != arguments.sql_id
+            ]
         return _load_failure(exc)
 
     prepared = services.orchestrator.prepare_rule_request(
@@ -475,7 +486,7 @@ def _state_has_verified_rule(
     state: AgentRunState,
 ) -> bool:
     del context
-    return has_verified_rule(state)
+    return has_verified_rule(state) and not has_active_sql(state)
 
 
 def _state_has_active_sql(

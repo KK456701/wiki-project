@@ -15,6 +15,7 @@ from app.agent_runtime.runner import AgentRunner
 from app.agent_tools import ToolGateway
 from app.agent_tools.catalog import build_agent_tool_registry
 from app.agent_tools.diagnosis_tools import DiagnosisToolServices
+from app.agent_tools.preview_tools import PreviewToolServices
 from app.agent_tools.read_tools import ReadToolServices
 from app.agent_tools.sql_objects import AgentSqlObjectStore, ensure_agent_sql_object_schema
 from app.agent_tools.sql_tools import SqlToolServices
@@ -162,6 +163,7 @@ def _runner(adapter, domain=None, max_steps=8):
             sql_validator=lambda *_: {"ok": True, "message": "只读校验通过"},
         ),
         diagnosis_services=DiagnosisToolServices(orchestrator=domain),
+        preview_services=PreviewToolServices(orchestrator=domain),
     )
     return AgentRunner(adapter, registry, ToolGateway(registry), max_steps=max_steps), domain
 
@@ -219,7 +221,10 @@ class AgentExecutionLoopTest(unittest.IsolatedAsyncioTestCase):
             [tool["function"]["name"] for tool in call["tools"]]
             for call in adapter.calls
         ]
-        self.assertEqual(schemas[0], ["search_indicator_rules"])
+        self.assertEqual(schemas[0], [
+            "search_indicator_rules",
+            "create_indicator_draft",
+        ])
         self.assertLessEqual(max(map(len, schemas)), 6)
         self.assertIn("trial_run_indicator_sql", schemas[3])
 
