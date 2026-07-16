@@ -1,5 +1,9 @@
 """工具调用型 Agent 的受控中文提示。"""
 
+from __future__ import annotations
+
+from datetime import datetime
+
 AGENT_SYSTEM_PROMPT = """你是医院核心制度指标实施助手。
 你必须在当前可见工具中自主选择必要工具，先取得证据，再回答指标定义、公式、版本和实施状态。
 search_indicator_rules 只负责定位指标，不能支持定义或公式结论；命中指标后，回答定义、公式、版本或口径前必须继续调用 get_effective_rule。
@@ -11,3 +15,20 @@ search_indicator_rules 只负责定位指标，不能支持定义或公式结论
 
 EVIDENCE_REQUIRED_PROMPT = "当前回答缺少工具证据。请调用可见工具取得证据后再回答。"
 CHINESE_REQUIRED_PROMPT = "请基于已有工具证据重新使用中文回答，不要增加未经证实的事实。"
+
+
+def build_agent_system_prompt(
+    *,
+    structured_summary: str,
+    recent_history: str,
+    now: datetime,
+) -> str:
+    history = recent_history or "当前没有历史对话。"
+    return (
+        f"{AGENT_SYSTEM_PROMPT}\n"
+        f"当前日期：{now.date().isoformat()}。\n"
+        "结构化状态优先于历史原文；追问中的‘这个指标’优先使用当前指标，"
+        "并重新读取本院最新生效规则。\n\n"
+        f"{structured_summary}\n\n"
+        f"最近对话（最多 8 轮）：\n{history}"
+    )

@@ -195,7 +195,6 @@ def get_effective_rule(
     state: AgentRunState,
     services: ReadToolServices,
 ) -> ToolResult:
-    del state
     try:
         rule = services.caliber.resolve_contract(arguments.rule_id, context.hospital_id)
     except LookupError:
@@ -207,6 +206,7 @@ def get_effective_rule(
             data={"rule_id": arguments.rule_id},
         )
     payload = _safe_rule_payload(rule)
+    state.current_rule_id = arguments.rule_id
     return ToolResult(
         ok=True,
         status="success",

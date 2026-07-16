@@ -9,6 +9,7 @@ from datetime import timedelta
 from typing import Any
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
+from app.agent_runtime.memory import AgentConversationMemory
 from app.agent_runtime.events import public_agent_event
 from app.agent_runtime.tracing import AgentTraceBridge
 from app.config import get, get_bool, get_int
@@ -17,6 +18,7 @@ from app.hospital_auth.models import (
     DETAIL_VIEW_PERMISSION,
     HospitalPrincipal,
 )
+from app.memory.contracts import ContextStorageError, ContextVersionConflict
 
 
 class AgentRuntimeUnavailable(RuntimeError):
@@ -62,6 +64,7 @@ class AgentRuntimeService:
         model: str,
         runner_factory: Callable[..., Any] | None = None,
         trace_recorder_factory: Callable[[], Any] | None = None,
+        memory_factory: Callable[[], AgentConversationMemory] | None = None,
         max_steps: int = 8,
         request_timeout_seconds: int = 120,
     ) -> None:
@@ -72,6 +75,7 @@ class AgentRuntimeService:
         self.request_timeout_seconds = request_timeout_seconds
         self.runner_factory = runner_factory or self._build_runner
         self.trace_recorder_factory = trace_recorder_factory or self._build_trace_recorder
+        self.memory_factory = memory_factory or self._build_memory
 
     @classmethod
     def from_config(cls) -> "AgentRuntimeService":
@@ -122,7 +126,29 @@ class AgentRuntimeService:
             hospital_id=context.hospital_id,
             user_query=query,
         )
-        result = await self.runner_factory(bridge.handle).run(query, context)
+        memory_session = self._open_memory(context)
+        memory_session.append_user(query)
+        memory_completed = False
+
+        def handle(event: dict[str, Any]) -> None:
+            nonlocal memory_completed
+            if event.get("event") in {"agent_done", "agent_error"}:
+                memory_completed = self._complete_memory(
+                    memory_session,
+                    query,
+                    str(event.get("answer") or ""),
+                    memory_session.state,
+                    bridge,
+                ) or memory_completed
+            bridge.handle(event)
+
+        result = await self.runner_factory(handle).run(
+            query, context, memory_session.state
+        )
+        if not memory_completed:
+            self._complete_memory(
+                memory_session, query, result.answer, result.state, bridge
+            )
         return {
             "answer": result.answer,
             "stop_reason": result.stop_reason,
@@ -154,13 +180,25 @@ class AgentRuntimeService:
             hospital_id=context.hospital_id,
             user_query=query,
         )
+        memory_session = self._open_memory(context)
+        memory_session.append_user(query)
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        memory_completed = False
 
         def handle(event: dict[str, Any]) -> None:
+            nonlocal memory_completed
+            if event.get("event") in {"agent_done", "agent_error"}:
+                memory_completed = self._complete_memory(
+                    memory_session,
+                    query,
+                    str(event.get("answer") or ""),
+                    memory_session.state,
+                    bridge,
+                ) or memory_completed
             bridge.handle(event)
             queue.put_nowait(public_agent_event(event, trace_id=trace_id))
 
-        state = AgentRunState()
+        state = memory_session.state
         runner = self.runner_factory(handle)
 
         async def execute() -> None:
@@ -196,6 +234,30 @@ class AgentRuntimeService:
                     "stop_reason": "cancelled",
                     "step_count": state.step_count,
                 })
+
+    def _open_memory(self, context: AgentRuntimeContext):
+        try:
+            return self.memory_factory().open(context)
+        except ContextStorageError as exc:
+            raise AgentRuntimeUnavailable(
+                "会话状态暂不可用，请稍后重试。"
+            ) from exc
+
+    @staticmethod
+    def _complete_memory(
+        memory_session,
+        query: str,
+        answer: str,
+        state: AgentRunState,
+        bridge: AgentTraceBridge,
+    ) -> bool:
+        try:
+            memory_session.complete(query, answer, state)
+            return True
+        except (ContextStorageError, ContextVersionConflict) as exc:
+            if hasattr(bridge, "record_memory_failure"):
+                bridge.record_memory_failure(str(exc))
+            return False
 
     def get_run(self, trace_id: str, principal: HospitalPrincipal) -> dict[str, Any]:
         trace = self.trace_recorder_factory().get_trace(trace_id)
@@ -261,6 +323,13 @@ class AgentRuntimeService:
         from app.observability.trace import TraceRecorder
 
         return TraceRecorder(create_runtime_engine())
+
+    @staticmethod
+    def _build_memory() -> AgentConversationMemory:
+        return AgentConversationMemory(
+            max_turns=max(1, get_int("ollama_history_turns", 8)),
+            token_budget=max(1, get_int("ollama_prompt_budget_tokens", 12000)),
+        )
 
     @staticmethod
     def _db_source_id() -> str | None:
