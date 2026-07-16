@@ -17,6 +17,8 @@ class ChatMarkdownUiTest(unittest.TestCase):
         self.assertIn("return renderAssistantMarkdown(text || \"\")", html)
         self.assertIn(".message-table", html)
         self.assertIn(".message-code", html)
+        self.assertIn('fetch("/api/chat/stream"', html)
+        self.assertIn("streamLegacyChat", html)
 
     def test_renderer_builds_tables_and_code_while_escaping_html(self) -> None:
         markdown = (

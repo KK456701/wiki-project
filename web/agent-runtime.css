@@ -1,0 +1,89 @@
+.agent-runtime-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.agent-runtime-status > span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.agent-runtime-mode {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink-soft);
+  background: #fff;
+  font: 750 11px/1.2 var(--mono);
+  letter-spacing: .02em;
+}
+
+.agent-runtime-mode[data-mode="tool_calling"] {
+  color: var(--teal-deep);
+  border-color: #7dbbb3;
+  background: var(--teal-soft);
+  box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.agent-runtime-mode:focus-visible,
+.agent-evidence-track:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+.agent-evidence-track {
+  position: relative;
+  display: grid;
+  gap: 0;
+  margin: 4px 0 14px;
+  padding: 5px 0 5px 22px;
+  list-style: none;
+  color: var(--ink-soft);
+  border-left: 1px solid var(--line-strong);
+  white-space: normal;
+}
+
+.agent-evidence-track:empty { display: none; }
+
+.agent-evidence-track li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(150px, .8fr) minmax(180px, 1.2fr);
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.agent-evidence-track li::before {
+  content: "";
+  position: absolute;
+  left: -27px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--line-strong);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
+.agent-evidence-track li.is-done::before { background: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
+.agent-evidence-track li.is-warning::before { background: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.agent-evidence-track li span { font-weight: 800; }
+.agent-evidence-track li small { color: var(--muted); line-height: 1.45; }
+
+@media (max-width: 720px) {
+  .agent-runtime-status { align-items: flex-start; flex-direction: column; }
+  .agent-evidence-track li { grid-template-columns: 1fr; gap: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-runtime-mode,
+  .agent-evidence-track li { transition: none !important; }
+}

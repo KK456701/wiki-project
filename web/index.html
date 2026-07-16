@@ -545,6 +545,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/indicator-console.css?v=20260714-implementation-console" />
 <link rel="stylesheet" href="/static/indicator-details.css" />
 <link rel="stylesheet" href="/static/diagnosis-details.css" />
+<link rel="stylesheet" href="/static/agent-runtime.css?v=20260716-agent-runtime" />
 </head>
 <body>
 
@@ -613,14 +614,20 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
   <main id="workbenchContent" class="workbench-content" aria-live="polite">
     <section id="assistantPage" class="workbench-page assistant-page" data-route="assistant" aria-labelledby="assistantPageTitle">
       <header class="assistant-page-heading">
-        <span>AI 指标助手</span>
+        <div class="agent-runtime-status">
+          <span>AI 指标助手</span>
+        </div>
         <h1 id="assistantPageTitle">今天需要处理哪个指标？</h1>
         <p>问口径、生成 SQL、试运行或诊断异常，结果可以继续进入对应业务页面处理。</p>
       </header>
       <div id="assistantHomeMount" class="assistant-home-mount">
         <div id="assistantWorkspace" class="assistant-workspace">
           <header class="assistant-workspace-header">
-            <div><strong>当前会话</strong><span id="sessionLabel"></span></div>
+            <div>
+              <strong>当前会话</strong>
+              <span id="agentRuntimeMode" class="agent-runtime-mode" data-mode="legacy" tabindex="0">稳定流程</span>
+              <span id="sessionLabel"></span>
+            </div>
             <button id="newSessionButton" class="ghost" type="button">新会话</button>
           </header>
           <div class="chat-layout assistant-chat-layout">
@@ -1101,6 +1108,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <script src="/static/chat-markdown.js"></script>
 <script src="/static/indicator-details.js"></script>
 <script src="/static/diagnosis-details.js"></script>
+<script src="/static/agent-runtime.js?v=20260716-agent-runtime"></script>
 <script>
 // ===== 状态 =====
 var currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
@@ -1182,6 +1190,7 @@ var mergeReportDetail = document.getElementById("mergeReportDetail");
 var traceModal = document.getElementById("traceModal");
 var traceMeta = document.getElementById("traceMeta");
 var traceNodeList = document.getElementById("traceNodeList");
+var agentRuntimeMode = document.getElementById("agentRuntimeMode");
 
 sessionLabel.textContent = "session: " + currentSessionId;
 updateUserUI();
@@ -1202,7 +1211,18 @@ function enterLoggedInWorkspace() {
   } else if (window.initializeWorkbench) {
     window.initializeWorkbench();
   }
+  refreshAgentRuntimeMode();
 }
+
+async function refreshAgentRuntimeMode() {
+  if (!window.AgentRuntimeUI) return;
+  await window.AgentRuntimeUI.refreshCapabilities({
+    token: hospitalAuthToken,
+    user: currentUser,
+    element: agentRuntimeMode
+  });
+}
+refreshAgentRuntimeMode();
 
 function loginResponseMessage(data) {
   if (data && data.detail && typeof data.detail === "object") return data.detail.message || "登录失败";
@@ -1273,6 +1293,7 @@ logoutButton.addEventListener("click", async function() {
   loginScreen.hidden = false;
   loginError2.hidden = true;
   updateUserUI();
+  refreshAgentRuntimeMode();
   loginAccount.focus();
 });
 
@@ -1284,6 +1305,7 @@ window.addEventListener("hospital-auth-required", function() {
   loginError2.textContent = "登录已过期，请重新登录后继续查看。";
   loginError2.hidden = false;
   updateUserUI();
+  refreshAgentRuntimeMode();
 });
 
 // ===== 管理员登录状态 =====
@@ -2177,15 +2199,17 @@ function addWelcomeMessage() {
 }
 
 // ===== 流式对话 =====
-async function streamChat(query) {
+async function streamLegacyChat(query) {
   var hospitalId = hospitalIdInput.value.trim() || "hospital_001";
   createMessage("user", query);
   var ass = createMessage("agent", "");
   sendButton.disabled = true;
   queryInput.disabled = true;
   try {
+    var legacyHeaders = {"Content-Type":"application/json"};
+    if (hospitalAuthToken) legacyHeaders.Authorization = "Bearer " + hospitalAuthToken;
     var resp = await fetch("/api/chat/stream", {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:legacyHeaders,
       body:JSON.stringify({ query: query, hospital_id: hospitalId, session_id: currentSessionId, use_llm: true }),
     });
     if (!resp.ok) throw new Error(await resp.text());
@@ -2237,6 +2261,66 @@ async function streamChat(query) {
     }
   } catch(e) { ass.body.textContent = "[请求失败] " + (e.message||e); }
   finally { sendButton.disabled = false; queryInput.disabled = false; queryInput.focus(); scrollToBottom(); }
+}
+
+async function streamToolCallingChat(query) {
+  createMessage("user", query);
+  var ass = createMessage("agent", "");
+  var evidenceTrack = window.AgentRuntimeUI.createEvidenceTrack(ass.bubble);
+  sendButton.disabled = true;
+  queryInput.disabled = true;
+  try {
+    await window.AgentRuntimeUI.streamAgent({
+      query: query,
+      sessionId: currentSessionId,
+      token: hospitalAuthToken,
+      onEvent: function(event) {
+        if (event.trace_id) {
+          latestTraceId = event.trace_id;
+          ass.traceId = event.trace_id;
+        }
+        window.AgentRuntimeUI.appendEvidenceEvent(evidenceTrack, event);
+        if (event.event === "model_start") {
+          ass.meta.textContent = "核心制度指标 Agent - 正在分析下一步";
+        }
+        if (event.event === "assistant_message") {
+          ass._raw = event.message || "";
+          ass.body.innerHTML = _renderAssHtml(ass._raw);
+        }
+        if (event.event === "clarification_required") {
+          ass.body.innerHTML = _renderAssHtml(event.message || "请补充需要查询的具体指标。 ");
+        }
+        if (event.event === "agent_error") {
+          ass.meta.textContent = "核心制度指标 Agent - 未完成";
+          ass.body.textContent = event.message || "工具协作模式未完成，请切回稳定流程后重试。";
+        }
+        if (event.event === "agent_done") {
+          ass.meta.textContent = "核心制度指标 Agent - 已完成";
+          attachTraceButton(ass, ass.traceId || latestTraceId);
+        }
+        scrollToBottom();
+      }
+    });
+  } catch (error) {
+    ass.meta.textContent = "核心制度指标 Agent - 未启动";
+    ass.body.textContent = error.message || "工具协作模式暂不可用，请切回稳定流程后重试。";
+  } finally {
+    sendButton.disabled = false;
+    queryInput.disabled = false;
+    queryInput.focus();
+    scrollToBottom();
+  }
+}
+
+async function streamChat(query) {
+  await refreshAgentRuntimeMode();
+  if (
+    window.AgentRuntimeUI &&
+    window.AgentRuntimeUI.currentMode(currentUser) === "tool_calling"
+  ) {
+    return streamToolCallingChat(query);
+  }
+  return streamLegacyChat(query);
 }
 
 chatForm.addEventListener("submit", async function(e) {
