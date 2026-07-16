@@ -331,6 +331,7 @@ from app.api.diagnosis_details import (
     get_diagnosis_comparison_store,
     router as diagnosis_details_router,
 )
+from app.api.agent_routes import router as agent_router
 
 app.include_router(indicator_draft_router)
 app.include_router(hospital_defined_router)
@@ -339,6 +340,7 @@ app.include_router(terminology_router)
 app.include_router(hospital_auth_router)
 app.include_router(indicator_details_router)
 app.include_router(diagnosis_details_router)
+app.include_router(agent_router)
 
 
 def start_monitoring_scheduler() -> None:

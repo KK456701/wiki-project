@@ -75,3 +75,13 @@ ollama_num_ctx: 16384
 ollama_history_turns: 8
 ollama_prompt_budget_tokens: 12000
 ollama_output_reserve_tokens: 1200
+
+# 工具调用型 Agent（默认关闭，不影响旧聊天）
+agent_enabled: false
+agent_mode: "legacy"
+agent_model: "qwen3:4B-instruct"
+agent_max_steps: 8
+agent_request_timeout_seconds: 120
+agent_default_tool_timeout_seconds: 30
+agent_max_tool_result_chars: 12000
+agent_sql_ttl_minutes: 30
