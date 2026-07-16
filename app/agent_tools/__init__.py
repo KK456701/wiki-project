@@ -1,5 +1,5 @@
 from .contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
-from .catalog import build_agent_tool_registry
+from .catalog import build_agent_shadow_tool_registry, build_agent_tool_registry
 from .diagnosis_tools import (
     DiagnoseIndicatorIssueInput,
     DiagnosisToolServices,
@@ -70,6 +70,7 @@ __all__ = [
     "build_read_tool_registry",
     "build_read_tools",
     "build_agent_tool_registry",
+    "build_agent_shadow_tool_registry",
     "build_diagnosis_tools",
     "build_preview_tools",
     "build_sql_tools",

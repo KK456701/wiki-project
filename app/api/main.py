@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from fastapi import Body, FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, Body, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ from sqlalchemy import text
 
 from app.agent.graph import langgraph_installed, run_chat, run_chat_stream, workflow_engine_name
 from app.business_source import current_business_source
-from app.config import get
+from app.config import get, get_bool
 from app.db_access.business_db import BusinessDBClient
 from app.db_access.dbhub_mcp import DBHubMCPClient, DBHubMCPError, dbhub_sources
 from app.db_access.metadata_provider import DBHubMetadataProvider
@@ -45,6 +45,8 @@ from app.observability.workflow_nodes import (
     record_review_trace_node,
 )
 from app.tasks.scheduler import MonitoringScheduler
+from app.hospital_auth.dependencies import get_hospital_auth_service
+from app.hospital_auth.models import DETAIL_EXPORT_PERMISSION, HospitalPrincipal
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -248,6 +250,59 @@ def _hospital_release_repository():
 
 def _sse_event(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _run_agent_shadow_task(
+    *,
+    query: str,
+    principal: HospitalPrincipal,
+    request_id: str,
+    legacy_result: dict[str, Any],
+) -> None:
+    import asyncio
+
+    from app.agent_runtime.shadow import AgentShadowService, run_shadow_safely
+
+    asyncio.run(run_shadow_safely(
+        AgentShadowService(),
+        query=query,
+        principal=principal,
+        request_id=request_id,
+        legacy_result=legacy_result,
+    ))
+
+
+def _schedule_agent_shadow(
+    background_tasks: BackgroundTasks,
+    request: ChatRequest,
+    authorization: str | None,
+    legacy_result: dict[str, Any],
+    request_id: str,
+) -> None:
+    if not get_bool("agent_enabled", False):
+        return
+    if get("agent_mode", "legacy").strip().lower() != "shadow":
+        return
+    if not authorization or not authorization.startswith("Bearer "):
+        return
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        return
+    try:
+        principal = get_hospital_auth_service().authenticate(token)
+    except Exception:
+        return
+    if DETAIL_EXPORT_PERMISSION not in principal.permissions:
+        return
+    if request.hospital_id and request.hospital_id != principal.hospital_id:
+        return
+    background_tasks.add_task(
+        _run_agent_shadow_task,
+        query=request.query,
+        principal=principal,
+        request_id=request_id,
+        legacy_result=legacy_result,
+    )
 
 
 def _config_suffix(value: str) -> str:
@@ -752,8 +807,12 @@ def index() -> FileResponse:
 
 
 @app.post("/api/chat")
-def chat(request: ChatRequest) -> dict[str, Any]:
-    return run_chat(
+def chat(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(None),
+) -> dict[str, Any]:
+    result = run_chat(
         request.query,
         hospital_id=request.hospital_id,
         kb_root=DEFAULT_KB_ROOT,
@@ -761,10 +820,22 @@ def chat(request: ChatRequest) -> dict[str, Any]:
         session_id=request.session_id,
         rule_repository=_create_rule_repository(),
     )
+    _schedule_agent_shadow(
+        background_tasks,
+        request,
+        authorization,
+        result,
+        f"REQ_{uuid.uuid4().hex[:12]}",
+    )
+    return result
 
 
 @app.post("/api/chat/stream")
-def chat_stream(request: ChatRequest) -> StreamingResponse:
+def chat_stream(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    authorization: str | None = Header(None),
+) -> StreamingResponse:
     """Ollama 逐 token 生成，FastAPI 通过 SSE 流式返回。"""
 
     def generate() -> Iterable[str]:
@@ -781,6 +852,13 @@ def chat_stream(request: ChatRequest) -> StreamingResponse:
         except Exception as exc:
             yield _sse_event("error", {"message": str(exc)})
 
+    _schedule_agent_shadow(
+        background_tasks,
+        request,
+        authorization,
+        {},
+        f"REQ_{uuid.uuid4().hex[:12]}",
+    )
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
