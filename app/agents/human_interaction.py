@@ -1,17 +1,11 @@
-"""Intent understanding and user-facing answer generation."""
+"""Deterministic intent rules and user-facing answer generation."""
 
 from __future__ import annotations
 
-import json
 import re
-from typing import Any, Protocol
+from typing import Any
 
 from app.agents.contracts import IntentResult
-from app.prompts import answer_prompt_template, intent_prompt_system
-
-
-class LLMClient(Protocol):
-    def generate(self, prompt: str) -> str: ...
 
 
 FOLLOW_UP_MARKERS = ["这个", "那个", "它", "上面", "刚才", "之前", "这个指标", "那个指标", "当前", "现在"]
@@ -98,25 +92,8 @@ def detect_intent_by_rule(query: str) -> str:
     return "query"
 
 
-def _extract_json_object(value: str) -> dict[str, Any]:
-    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", value or "").strip()
-    cleaned = re.sub(r"^```json", "", cleaned).strip()
-    cleaned = re.sub(r"^```", "", cleaned).strip()
-    cleaned = re.sub(r"```$", "", cleaned).strip()
-    match = re.search(r"\{[\s\S]*\}", cleaned)
-    if not match:
-        return {}
-    try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return {}
-
-
 class HumanInteractionAgent:
     agent_id = "human_interaction"
-
-    def __init__(self, llm_client: LLMClient | None = None):
-        self.llm_client = llm_client
 
     def understand(
         self,
@@ -124,7 +101,6 @@ class HumanInteractionAgent:
         memory_context: dict[str, Any] | None = None,
         errors: list[str] | None = None,
     ) -> dict[str, Any]:
-        error_list = errors if errors is not None else []
         result: dict[str, Any] = {
             "intent": detect_intent_by_rule(query),
             "retrieval_query": query,
@@ -134,39 +110,6 @@ class HumanInteractionAgent:
             "context_updates": [],
             "clear_working_caliber": False,
         }
-        if self.llm_client is not None:
-            try:
-                data = _extract_json_object(
-                    self.llm_client.generate(self._intent_prompt(query, memory_context))
-                )
-                intent = str(data.get("intent", "")).strip().lower()
-                valid = {"query", "feedback", "chat", "generate_sql", "diagnose", "metadata_sync", "trial_run", "create_indicator"}
-                if intent in valid:
-                    if _is_stat_period_request(query) and intent == "feedback":
-                        pass
-                    elif result["intent"] != "create_indicator" or intent == "create_indicator":
-                        result["intent"] = intent
-                else:
-                    error_list.append("LLM_INTENT_INVALID_JSON")
-                retrieval = str(data.get("retrieval_query", "")).strip()
-                if result["intent"] == "chat":
-                    result["retrieval_query"] = ""
-                elif retrieval:
-                    result["retrieval_query"] = retrieval
-                indicator = str(data.get("indicator_name", "")).strip()
-                if indicator:
-                    result["indicator_name"] = indicator
-                filters = data.get("custom_filters")
-                if isinstance(filters, list):
-                    result["custom_filters"] = filters
-                context_updates = data.get("context_updates")
-                if isinstance(context_updates, list):
-                    result["context_updates"] = context_updates
-                result["clear_working_caliber"] = bool(
-                    data.get("clear_working_caliber", False)
-                )
-            except Exception as exc:
-                error_list.append(str(exc))
         self._rewrite_contextual_action(result, query, memory_context)
         return result
 
@@ -214,21 +157,7 @@ class HumanInteractionAgent:
         effective_rule: dict[str, Any],
         errors: list[str] | None = None,
     ) -> tuple[str, str]:
-        error_list = errors if errors is not None else []
-        fallback = self.answer_from_rule(effective_rule)
-        if self.llm_client is None:
-            return fallback, "tool"
-        try:
-            answer = self.llm_client.generate(
-                self.build_answer_prompt(query, effective_rule)
-            ).strip()
-            if answer and self.answer_passes_guard(answer, effective_rule):
-                return answer, "llm"
-            error_list.append("LLM_ANSWER_FAILED_FACT_GUARD")
-            return fallback, "llm_guarded_fallback"
-        except Exception as exc:
-            error_list.append(str(exc))
-            return fallback, "tool_fallback"
+        return self.answer_from_rule(effective_rule), "tool"
 
     @staticmethod
     def chat_answer() -> str:
@@ -259,38 +188,6 @@ class HumanInteractionAgent:
         return "\n".join(lines)
 
     @staticmethod
-    def answer_passes_guard(answer: str, rule: dict[str, Any]) -> bool:
-        normalize = lambda text: "".join(str(text).split()).replace("（", "(").replace("）", ")")
-        formula = str(rule.get("formula") or "").strip()
-        if formula and normalize(formula) not in normalize(answer):
-            return False
-        return rule.get("sql_status") == "available" or "SQL" in answer
-
-    def build_answer_prompt(self, query: str, rule: dict[str, Any]) -> str:
-        steps = [
-            f"识别并命中规则：{rule.get('rule_name', '')}（{rule.get('rule_id', '')}）",
-            "以国标为基础合成本院生效口径，必要时只读回退 Wiki",
-            f"当前采用层级：{rule.get('effective_level', '')}",
-        ]
-        if rule.get("sql_status") != "available":
-            steps.append("字段映射或 SQL 未审核，禁止生成可执行 SQL")
-        else:
-            steps.append("字段映射已确认，可生成 SQL")
-        return answer_prompt_template().format(
-            query=query,
-            steps="\n".join(f"{index}. {step}" for index, step in enumerate(steps, 1)),
-            rule_name=rule.get("rule_name", ""),
-            rule_id=rule.get("rule_id", ""),
-            effective_level=rule.get("effective_level", ""),
-            definition=rule.get("definition", ""),
-            formula=rule.get("formula", ""),
-            implementation_status=rule.get("implementation_status", ""),
-            field_status=rule.get("field_status", ""),
-            sql_status=rule.get("sql_status", ""),
-            warnings=", ".join(rule.get("warnings", [])),
-        )
-
-    @staticmethod
     def can_reuse_memory(query: str, intent: str) -> bool:
         if intent == "query" and _is_stat_period_request(query):
             return True
@@ -302,26 +199,3 @@ class HumanInteractionAgent:
             return True
         compact = re.sub(r"[\s，。！？、,.!?]+", "", query or "").lower()
         return compact in CONTEXT_ONLY_ACTIONS.get(intent, set())
-
-    @staticmethod
-    def _intent_prompt(
-        query: str, memory_context: dict[str, Any] | None = None
-    ) -> str:
-        history_block = ""
-        context = memory_context or {}
-        structured_summary = str(context.get("structured_summary") or "").strip()
-        recent_history = str(context.get("recent_history") or "").strip()
-        if structured_summary or recent_history:
-            history_block = "\n会话上下文：\n"
-            if structured_summary:
-                history_block += structured_summary + "\n"
-            if recent_history:
-                history_block += "最近原始对话（仅辅助理解）：\n" + recent_history + "\n"
-            history_block += "若历史原文与结构化状态冲突，以结构化状态为准。\n"
-        elif context.get("rule_name"):
-            history_block = (
-                "\n上一轮对话上下文：\n"
-                f"- 上一轮用户查询的指标是：「{context['rule_name']}」\n"
-                "- 如果当前问题是追问，请结合上一轮指标，并明确指标名。\n"
-            )
-        return intent_prompt_system().format(history_block=history_block, query=query)

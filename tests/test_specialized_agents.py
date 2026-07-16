@@ -266,16 +266,9 @@ class SpecializedAgentTest(unittest.TestCase):
             detect_intent_by_rule,
         )
 
-        class FeedbackLLM:
-            def generate(self, prompt):
-                return (
-                    '{"intent":"feedback","indicator_name":"",'
-                    '"retrieval_query":"修改统计时间"}'
-                )
-
         query = "如果把统计时间起始时间改成2026-05-01怎么算？"
         intent = detect_intent_by_rule(query)
-        understood = HumanInteractionAgent(FeedbackLLM()).understand(
+        understood = HumanInteractionAgent().understand(
             query,
             {"rule_id": "MQSI2025_005", "rule_name": "急会诊及时到位率"},
         )

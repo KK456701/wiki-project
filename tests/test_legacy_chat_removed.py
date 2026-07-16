@@ -1,5 +1,8 @@
 from pathlib import Path
+import inspect
 
+import app.prompts as prompts
+from app.agents.human_interaction import HumanInteractionAgent
 from app.api.main import app
 
 
@@ -27,3 +30,16 @@ def test_frontend_contains_only_the_agent_chat_path() -> None:
 def test_obsolete_legacy_runtime_files_are_deleted() -> None:
     assert not (ROOT / "app" / "agent" / "graph.py").exists()
     assert not (ROOT / "app" / "agent_runtime" / "shadow.py").exists()
+
+
+def test_obsolete_legacy_chat_prompts_and_llm_hooks_are_deleted() -> None:
+    prompt_dir = ROOT / "app" / "prompts"
+
+    assert not (prompt_dir / "legacy_chat_intent.txt").exists()
+    assert not (prompt_dir / "legacy_chat_answer.txt").exists()
+    assert not hasattr(prompts, "intent_prompt_system")
+    assert not hasattr(prompts, "answer_prompt_template")
+    assert list(inspect.signature(HumanInteractionAgent).parameters) == []
+    assert not hasattr(HumanInteractionAgent, "_intent_prompt")
+    assert not hasattr(HumanInteractionAgent, "build_answer_prompt")
+    assert not hasattr(HumanInteractionAgent, "answer_passes_guard")

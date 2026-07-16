@@ -1,6 +1,6 @@
 # 提示词目录
 
-这里集中保存项目中所有生产 LLM 提示词。文件名按“业务模块 + 模型角色 + 用途”命名；当前工具调用型 Agent 与旧聊天流程严格区分。
+这里集中保存项目中所有仍在使用的生产 LLM 提示词。文件名按“业务模块 + 模型角色 + 用途”命名；已退出生产链路的旧聊天提示词不再保留。
 
 ## 当前 Agent Runtime
 
@@ -14,13 +14,6 @@
 | `agent_executor_context.txt` | Executor / 会话上下文包装器 | `AgentConversationMemory` | 注入当前日期、结构化状态和最多 8 轮最近对话 |
 | `agent_executor_step.txt` | Executor / 当前步骤约束 | `AgentPlanningRuntime.instruction` | 每一步声明当前业务能力、可见工具、指标和统计周期 |
 | `agent_executor_corrections.txt` | Executor / 行为纠错器 | `AgentRunner` | 模型提前回答、调用计划外工具或缺少证据时追加一次纠错 |
-
-## 旧聊天流程（非当前 Agent Runtime）
-
-| 文件 | 模型角色 | 调用者 | 使用时机 |
-|---|---|---|---|
-| `legacy_chat_intent.txt` | Legacy Intent Classifier | `app.agents.human_interaction` | 旧聊天入口识别固定意图；当前 `/api/agent/*` 不使用 |
-| `legacy_chat_answer.txt` | Legacy Answer Composer | `app.agents.human_interaction` | 旧聊天入口根据固定流程结果组织回答；当前 `/api/agent/*` 不使用 |
 
 ## 指标实施草稿
 
@@ -40,6 +33,6 @@
 
 1. 新提示词必须放在本目录，并在本文件登记角色、调用者和触发时机。
 2. 当前 Agent Runtime 文件统一以 `agent_planner_`、`agent_executor_` 或 `agent_replanner` 开头。
-3. 旧流程提示词统一以 `legacy_chat_` 开头，避免误认为属于当前 Agent。
+3. 旧聊天流程提示词不得重新放回生产目录；兼容逻辑应使用确定性代码或迁移到当前 Agent Runtime。
 4. 提示词不得包含密钥、数据库连接串、患者明细或隐藏思维链要求。
 5. 修改提示词后必须运行 `pytest -q tests/test_prompt_registry.py`，并同步 README 与架构文档。

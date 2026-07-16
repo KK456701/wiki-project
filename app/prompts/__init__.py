@@ -33,17 +33,3 @@ def format_prompt(name: str, **values: object) -> str:
 
 def prompt_version(name: str) -> str:
     return hashlib.sha256(load_prompt(name).encode("utf-8")).hexdigest()[:12]
-
-
-def intent_prompt_system() -> str:
-    """旧聊天流程的意图识别模板；当前 Agent Runtime 不使用。"""
-    return load_prompt("legacy_chat_intent")
-
-
-def answer_prompt_template() -> str:
-    """旧聊天流程的答案生成模板；当前 Agent Runtime 不使用。
-
-    可用占位符: {query}, {steps}, {rule_name}, {rule_id}, {effective_level},
-    {definition}, {formula}, {implementation_status}, {field_status}, {sql_status}, {warnings}
-    """
-    return load_prompt("legacy_chat_answer")

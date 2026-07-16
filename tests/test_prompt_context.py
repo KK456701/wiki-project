@@ -6,7 +6,6 @@ from app.memory.contracts import (
     WorkingCaliberContext,
 )
 from app.memory.prompt_context import build_prompt_context
-from app.agents.human_interaction import HumanInteractionAgent
 
 
 def _context() -> ConversationContext:
@@ -81,17 +80,3 @@ def test_prompt_context_compacts_large_sql_and_respects_budget() -> None:
     assert "内容过长，已压缩" in result.recent_history
     assert "48小时从入区时间开始算" in result.recent_history
     assert result.estimated_tokens <= 900
-
-
-def test_intent_prompt_includes_structured_summary_and_recent_history() -> None:
-    prompt = HumanInteractionAgent._intent_prompt(
-        "生成 SQL",
-        {
-            "rule_name": "患者入院48小时内转科的比例",
-            "structured_summary": "48小时起点：入区时间",
-            "recent_history": "用户：48小时从入区时间开始算",
-        },
-    )
-
-    assert "48小时起点：入区时间" in prompt
-    assert "用户：48小时从入区时间开始算" in prompt

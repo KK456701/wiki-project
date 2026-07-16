@@ -227,12 +227,6 @@ class CoreIndicatorOrchestrator:
     def answer_from_rule(self, effective_rule: Any) -> str:
         return self.interaction.answer_from_rule(effective_rule)
 
-    def build_answer_prompt(self, query: str, effective_rule: Any) -> str:
-        return self.interaction.build_answer_prompt(query, effective_rule)
-
-    def answer_passes_guard(self, answer: str, effective_rule: Any) -> bool:
-        return self.interaction.answer_passes_guard(answer, effective_rule)
-
     def preview_feedback(self, prepared: PreparedRequest) -> dict[str, Any]:
         self._require_rule(prepared)
         return self.caliber.preview_feedback(
