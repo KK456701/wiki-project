@@ -57,4 +57,4 @@
 - [x] **Step 1: 更新模型超时和提示词目录说明。**
 - [x] **Step 2: 运行专项测试、全量 `pytest -q`、Ruff 和 `git diff --check`。**
 - [x] **Step 3: 使用 Qwen3 8B 做真实 Agent 回归并检查 Trace。**
-- [ ] **Step 4: 提交、推送 `main`，重启 8765 并检查健康状态。**
+- [x] **Step 4: 提交、推送 `main`，重启 8765 并检查健康状态。**
