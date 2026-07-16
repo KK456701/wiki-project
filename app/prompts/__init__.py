@@ -36,14 +36,14 @@ def prompt_version(name: str) -> str:
 
 
 def intent_prompt_system() -> str:
-    """意图识别 prompt 模板（不含 history_block/query，由调用方拼接）。"""
-    return load_prompt("intent")
+    """旧聊天流程的意图识别模板；当前 Agent Runtime 不使用。"""
+    return load_prompt("legacy_chat_intent")
 
 
 def answer_prompt_template() -> str:
-    """答案生成 prompt 模板。
+    """旧聊天流程的答案生成模板；当前 Agent Runtime 不使用。
 
     可用占位符: {query}, {steps}, {rule_name}, {rule_id}, {effective_level},
     {definition}, {formula}, {implementation_status}, {field_status}, {sql_status}, {warnings}
     """
-    return load_prompt("answer")
+    return load_prompt("legacy_chat_answer")

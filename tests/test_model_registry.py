@@ -101,6 +101,34 @@ def test_registry_passes_thinking_flag_to_local_ollama_adapter() -> None:
     assert adapter.client.thinking is True
 
 
+def test_registry_builds_role_specific_qwen8b_adapters_and_timeouts() -> None:
+    registry = ModelRegistry({
+        "models": [{
+            "id": "ollama-qwen3-8b-thinking",
+            "provider": "ollama",
+            "model": "qwen3:8b",
+            "thinking": True,
+            "planner_thinking": False,
+            "call_timeout_seconds": 120,
+            "request_timeout_seconds": 300,
+        }],
+    })
+
+    info = registry.get_model("ollama-qwen3-8b-thinking")
+    planner = registry.build_adapter(
+        "ollama-qwen3-8b-thinking", role="planner"
+    )
+    executor = registry.build_adapter(
+        "ollama-qwen3-8b-thinking", role="executor"
+    )
+
+    assert info.request_timeout_seconds == 300
+    assert planner.client.thinking is False
+    assert executor.client.thinking is True
+    assert planner.client.timeout_seconds == 120
+    assert executor.client.timeout_seconds == 120
+
+
 def test_public_model_metadata_does_not_expose_internal_thinking_details() -> None:
     registry = ModelRegistry({
         "models": [{

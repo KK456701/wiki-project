@@ -125,11 +125,11 @@ def test_chat_rejects_response_without_message() -> None:
 
 @pytest.mark.parametrize(
     ("thinking", "expected"),
-    [(True, True), (False, None)],
+    [(True, True), (False, False), (None, None)],
 )
 def test_chat_only_sends_think_for_thinking_models(thinking, expected) -> None:
     client = OllamaClient(
-        model="qwen3:8b" if thinking else "qwen3:4b-instruct",
+        model="qwen3:8b" if thinking is not None else "qwen3:4b-instruct",
         base_url="http://ollama.local",
         thinking=thinking,
     )

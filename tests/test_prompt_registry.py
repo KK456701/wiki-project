@@ -20,8 +20,8 @@ def test_all_production_llm_prompts_are_loadable_from_one_directory() -> None:
         "indicator_draft_repair",
         "diagnosis_evidence",
         "diagnosis_compose",
-        "intent",
-        "answer",
+        "legacy_chat_intent",
+        "legacy_chat_answer",
     }
 
     assert callable(getattr(prompts, "load_prompt", None))
@@ -31,6 +31,14 @@ def test_all_production_llm_prompts_are_loadable_from_one_directory() -> None:
         assert path.is_file(), name
         assert prompts.load_prompt(name).strip(), name
         assert len(prompts.prompt_version(name)) == 12
+
+    prompt_dir = ROOT / "app" / "prompts"
+    catalog = (prompt_dir / "README.md").read_text(encoding="utf-8")
+    assert "Planner" in catalog
+    assert "Executor" in catalog
+    assert "旧聊天流程" in catalog
+    assert not (prompt_dir / "intent.txt").exists()
+    assert not (prompt_dir / "answer.txt").exists()
 
 
 def test_prompt_formatter_preserves_json_braces_and_replaces_named_values() -> None:

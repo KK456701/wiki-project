@@ -100,6 +100,9 @@ models:
     model: "qwen3:8b"
     base_url: "http://127.0.0.1:11434"
     thinking: true
+    planner_thinking: false
+    call_timeout_seconds: 120
+    request_timeout_seconds: 300
   - id: "deepseek-v4-flash"
     name: "DeepSeek V4 Flash（API）"
     provider: "openai"

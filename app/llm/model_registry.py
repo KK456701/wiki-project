@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from app import config
 from app.agent_runtime.model_adapter import AgentModelAdapter, AgentModelError
@@ -28,7 +28,10 @@ class ModelInfo:
     model: str
     base_url: str
     api_key: str | None = None
-    thinking: bool = False
+    thinking: bool | None = None
+    planner_thinking: bool | None = None
+    call_timeout_seconds: float | None = None
+    request_timeout_seconds: int | None = None
 
     def model_dump_public(self) -> dict[str, str]:
         return {
@@ -73,7 +76,7 @@ class ModelRegistry:
                 self.raw_config.get("ollama_base_url")
                 or "http://127.0.0.1:11434"
             ),
-            thinking=False,
+            thinking=None,
         )]
 
     def _parse_model(self, item: dict[str, Any]) -> ModelInfo:
@@ -97,7 +100,24 @@ class ModelRegistry:
             model=model,
             base_url=base_url,
             api_key=api_key,
-            thinking=bool(item.get("thinking", False)),
+            thinking=(
+                bool(item.get("thinking")) if "thinking" in item else None
+            ),
+            planner_thinking=(
+                bool(item.get("planner_thinking"))
+                if "planner_thinking" in item
+                else None
+            ),
+            call_timeout_seconds=(
+                float(item["call_timeout_seconds"])
+                if item.get("call_timeout_seconds") is not None
+                else None
+            ),
+            request_timeout_seconds=(
+                int(item["request_timeout_seconds"])
+                if item.get("request_timeout_seconds") is not None
+                else None
+            ),
         )
 
     @staticmethod
@@ -121,13 +141,22 @@ class ModelRegistry:
                 return model
         raise AgentModelError(f"未知模型：{target}")
 
-    def build_adapter(self, model_id: str | None = None) -> AgentModelAdapter:
+    def build_adapter(
+        self,
+        model_id: str | None = None,
+        *,
+        role: Literal["planner", "executor"] = "executor",
+    ) -> AgentModelAdapter:
         info = self.get_model(model_id)
         if info.provider == "ollama":
+            thinking = (
+                info.planner_thinking if role == "planner" else info.thinking
+            )
             return OllamaToolCallingAdapter(OllamaClient(
                 model=info.model,
                 base_url=info.base_url,
-                thinking=info.thinking,
+                timeout_seconds=info.call_timeout_seconds,
+                thinking=thinking,
             ))
         if not info.api_key or _ENV_REF.match(info.api_key):
             missing = info.api_key or "API Key"
@@ -136,6 +165,7 @@ class ModelRegistry:
             model=info.model,
             base_url=info.base_url,
             api_key=info.api_key,
+            timeout_seconds=info.call_timeout_seconds,
         ))
 
 

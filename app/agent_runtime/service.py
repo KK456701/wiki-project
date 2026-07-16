@@ -27,6 +27,11 @@ class AgentRuntimeUnavailable(RuntimeError):
     pass
 
 
+def model_request_timeout(model_info: Any, default_timeout: int) -> int:
+    override = getattr(model_info, "request_timeout_seconds", None)
+    return max(1, int(override if override is not None else default_timeout))
+
+
 class AgentRunAccessError(RuntimeError):
     def __init__(self, message: str, status_code: int) -> None:
         super().__init__(message)
@@ -382,10 +387,20 @@ class AgentRuntimeService:
             upload_services=UploadToolServices(),
         )
         gateway = ToolGateway(registry, trace_callback=event_callback)
-        adapter = get_model_registry().build_adapter(model_id or self.model)
+        model_registry = get_model_registry()
+        selected_model_id = model_id or self.model
+        model_info = model_registry.get_model(selected_model_id)
+        adapter = model_registry.build_adapter(
+            selected_model_id, role="executor"
+        )
+        planner_adapter = model_registry.build_adapter(
+            selected_model_id, role="planner"
+        )
         planning_runtime = (
             AgentPlanningRuntime(
-                planner=ModelRequestPlanner(adapter, trace_callback=event_callback),
+                planner=ModelRequestPlanner(
+                    planner_adapter, trace_callback=event_callback
+                ),
                 event_callback=event_callback,
             )
             if self.planning_enabled
@@ -396,7 +411,9 @@ class AgentRuntimeService:
             registry,
             gateway,
             max_steps=self.max_steps,
-            request_timeout_seconds=self.request_timeout_seconds,
+            request_timeout_seconds=model_request_timeout(
+                model_info, self.request_timeout_seconds
+            ),
             event_callback=event_callback,
             trace_callback=event_callback,
             planning_runtime=planning_runtime,

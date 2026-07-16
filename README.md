@@ -21,7 +21,7 @@
 - **公司业务库真实取数**：`hospital_001` 默认连接 `WIN60_QA_991827`；已核验的急会诊指标从 `WINDBA.INPATIENT_CONSULT_APPLY` 与 `WINDBA.INP_CONSULT_INVITATION` 取数，入院 48 小时转科指标从 `WINDBA.INPATIENT_ENCOUNTER` 与 `WINDBA.INPAT_TRANSFER` 取数。两个指标的分子、分母、明细预览和 Excel 导出都共用各自同一份统计范围与字段映射。
 - **计划编译与确定性状态控制**：当前生产链路为 `Planner → PlanCompiler/PlanValidator → StateController → Executor → PlanVerifier`；默认最多重规划一次，不让 4B 模型自由编排整条工具链。
 - **全阶段运行 Trace**：成功和失败消息都可打开“查看链路”；认证后的 `/api/agent/runs/{trace_id}` 返回会话读取、Planner、计划编译校验、状态控制、Executor、工具、Verifier、回答守卫和会话保存节点，并展示完整安全输入输出、数据处理、节点配置与耗时。用户澄清显示为“待确认”而不是失败，工具网关接受节点显示成功，工具结果节点保留对应的完整安全参数；冗余“开发与排障”区块已经删除。密码、令牌、连接串、患者行级明细和隐藏思维过程始终不记录。
-- **提示词集中管理**：所有生产 LLM 提示词统一位于 `app/prompts/`；Planner、Executor、纠正提示、指标草稿解析和诊断提示均从文件加载，Trace 配置显示使用的提示词文件和短版本号。
+- **提示词集中管理**：所有生产 LLM 提示词统一位于 `app/prompts/`；[`app/prompts/README.md`](app/prompts/README.md) 按 Planner、Executor、旧聊天流程、指标草稿和诊断列明每个文件的角色、调用者和触发时机。旧流程文件统一使用 `legacy_chat_` 前缀，Trace 配置显示当前 Agent 实际使用的提示词文件和短版本号。
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
 - **指标监控工作台**：管理员可在前端新建、编辑、启停运行计划，手工运算指标，查看聚合结果和执行链路，并确认、关闭或重新诊断预警。
 - **数据库与元数据工作台**：医院人员可在前端同步业务库结构，查看最近同步、表字段数量、结构变化和受影响指标；连接与只读工具信息集中在折叠详情中。
@@ -181,6 +181,9 @@ models:
     model: "qwen3:8b"
     base_url: "http://127.0.0.1:11434"
     thinking: true
+    planner_thinking: false
+    call_timeout_seconds: 120
+    request_timeout_seconds: 300
   - id: "deepseek-v4-flash"
     name: "DeepSeek V4 Flash（API）"
     provider: "openai"
