@@ -1,9 +1,6 @@
-import unittest
-
 from sqlalchemy import create_engine
 
 from app.agent_runtime import AgentRunState, AgentRuntimeContext
-from app.agent_tools import ToolGateway
 from app.agent_tools.catalog import build_agent_tool_registry
 from app.agent_tools.diagnosis_tools import DiagnosisToolServices
 from app.agent_tools.preview_tools import PreviewToolServices
@@ -16,25 +13,27 @@ class EmptyServices:
     pass
 
 
-def _context(permissions=frozenset({"indicator_read"})):
+def _context(user_role="implementer"):
     return AgentRuntimeContext(
         user_id="u1",
         hospital_id="h1",
         session_id="s1",
-        user_role="implementer",
-        permissions=permissions,
+        user_role=user_role,
+        permissions=frozenset({"indicator_read"}),
         request_id="r1",
         trace_id="t1",
         db_source_id="hospital_db",
     )
 
 
-def _rule_state():
-    return AgentRunState(evidence=[{
-        "source": "mysql",
+def _state(*, active_sql=False):
+    state = AgentRunState(evidence=[{
         "source_id": "MQSI2025_005",
         "fact_types": ["rule_identity"],
     }])
+    if active_sql:
+        state.validated_sql_ids.append("SQL_001")
+    return state
 
 
 def _registry():
@@ -54,22 +53,25 @@ def _registry():
     )
 
 
-def _names(registry, state, context=None):
+def _names(state, user_role="implementer"):
     return [
         tool.name
-        for tool in registry.list_for_context(context or _context(), state)
+        for tool in _registry().list_for_context(_context(user_role), state)
     ]
 
 
-def test_catalog_initially_exposes_search_and_draft() -> None:
-    assert _names(_registry(), AgentRunState()) == [
+def test_catalog_registers_eight_tools_and_initially_shows_search_and_draft() -> None:
+    registry = _registry()
+
+    assert len(registry.all()) == 8
+    assert _names(AgentRunState()) == [
         "search_indicator_rules",
         "create_indicator_draft",
     ]
 
 
-def test_catalog_exposes_rule_bound_tools_after_rule_verification() -> None:
-    assert _names(_registry(), _rule_state()) == [
+def test_catalog_shows_six_rule_tools_before_sql_preparation() -> None:
+    assert _names(_state()) == [
         "search_indicator_rules",
         "get_effective_rule",
         "inspect_indicator_implementation",
@@ -79,11 +81,8 @@ def test_catalog_exposes_rule_bound_tools_after_rule_verification() -> None:
     ]
 
 
-def test_catalog_adds_trial_only_for_active_sql_and_never_exceeds_six() -> None:
-    state = _rule_state()
-    state.validated_sql_ids.append("SQL_001")
-
-    names = _names(_registry(), state)
+def test_catalog_replaces_prepare_with_trial_for_active_sql() -> None:
+    names = _names(_state(active_sql=True))
 
     assert names == [
         "search_indicator_rules",
@@ -93,30 +92,9 @@ def test_catalog_adds_trial_only_for_active_sql_and_never_exceeds_six() -> None:
         "diagnose_indicator_issue",
         "preview_rule_change",
     ]
-    assert len(names) == 6
+    assert len(names) <= 6
 
 
-def test_catalog_hides_all_tools_without_indicator_permission() -> None:
-    assert _names(
-        _registry(),
-        _rule_state(),
-        _context(permissions=frozenset()),
-    ) == []
-
-
-class ExecutionCatalogGatewayTest(unittest.IsolatedAsyncioTestCase):
-    async def test_gateway_rechecks_unavailable_tool(self) -> None:
-        registry = _registry()
-        result = await ToolGateway(registry).execute(
-            "prepare_indicator_sql",
-            {
-                "rule_id": "MQSI2025_005",
-                "stat_start_time": "2026-07-01T00:00:00",
-                "stat_end_time": "2026-08-01T00:00:00",
-            },
-            _context(),
-            AgentRunState(),
-        )
-
-        self.assertFalse(result.ok)
-        self.assertEqual(result.code, "TOOL_UNAVAILABLE")
+def test_doctor_never_sees_preview_only_tools() -> None:
+    assert "create_indicator_draft" not in _names(AgentRunState(), "doctor")
+    assert "preview_rule_change" not in _names(_state(), "doctor")

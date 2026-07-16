@@ -29,6 +29,23 @@ CLAIM_RULES = (
         "diagnosis",
         (r"(?:诊断|排查).{0,30}(?:发现|结论|根因|异常原因)",),
     ),
+    ClaimRule(
+        "indicator_draft",
+        (
+            r"(?:已创建|创建了).{0,16}(?:指标)?草稿",
+            r"草稿.{0,12}(?:已创建|创建成功)",
+        ),
+    ),
+    ClaimRule(
+        "rule_change_preview",
+        (r"(?:已生成|生成了).{0,20}(?:口径|规则)?.{0,10}(?:变更|差异)?预览",),
+    ),
+    ClaimRule(
+        "formal_change",
+        (
+            r"(?:已提交|提交成功|已审批|审批通过|已发布|发布成功|已回退|回退成功)",
+        ),
+    ),
 )
 
 
@@ -36,6 +53,9 @@ _FACT_LABELS = {
     "sql_validation": "SQL 安全校验",
     "trial_run": "试运行聚合结果",
     "diagnosis": "诊断报告",
+    "indicator_draft": "指标工作草稿",
+    "rule_change_preview": "口径变更预览",
+    "formal_change": "正式提交、审批、发布或回退授权",
 }
 
 
@@ -64,7 +84,10 @@ def missing_fact_types(
             for pattern in rule.patterns
         )
     }
-    return required - available
+    missing = required - available
+    if "formal_change" in required:
+        missing.add("formal_change")
+    return missing
 
 
 def evidence_correction_prompt(missing: set[str]) -> str:
