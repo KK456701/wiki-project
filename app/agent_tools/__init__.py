@@ -10,9 +10,11 @@ from .gateway import ToolGateway
 from .policy import RepeatDecision, ToolExecutionPolicy, redact_payload, tool_call_fingerprint
 from .preview_tools import (
     CreateIndicatorDraftInput,
+    PreviewRuleChangeInput,
     PreviewToolServices,
     build_preview_tools,
     create_indicator_draft,
+    preview_rule_change,
 )
 from .read_tools import (
     ReadToolServices,
@@ -49,6 +51,7 @@ __all__ = [
     "CreateIndicatorDraftInput",
     "PreparedSqlObject",
     "PrepareIndicatorSqlInput",
+    "PreviewRuleChangeInput",
     "PreviewToolServices",
     "RepeatDecision",
     "ReadToolServices",
@@ -78,6 +81,7 @@ __all__ = [
     "has_verified_rule",
     "inspect_indicator_implementation",
     "prepare_indicator_sql",
+    "preview_rule_change",
     "redact_payload",
     "search_indicator_rules",
     "tool_call_fingerprint",

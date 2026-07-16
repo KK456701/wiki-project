@@ -5,8 +5,10 @@ from app.agent_runtime import AgentRunState, AgentRuntimeContext
 from app.agent_tools.preview_tools import (
     CreateIndicatorDraftInput,
     PreviewToolServices,
+    PreviewRuleChangeInput,
     build_preview_tools,
     create_indicator_draft,
+    preview_rule_change,
 )
 
 
@@ -26,6 +28,9 @@ class FakePreviewOrchestrator:
     def __init__(self, *, error=None) -> None:
         self.error = error
         self.draft_calls = []
+        self.prepare_calls = []
+        self.preview_calls = []
+        self.submit_calls = []
 
     def create_indicator_draft(self, description, hospital_id, actor_id):
         self.draft_calls.append((description, hospital_id, actor_id))
@@ -49,6 +54,58 @@ class FakePreviewOrchestrator:
             "sql_params": {"password": "secret"},
             "trial_result": {"rows": [{"patient_name": "不应返回"}]},
         }
+
+    def prepare_rule_request(self, **kwargs):
+        self.prepare_calls.append(kwargs)
+        return {"prepared": kwargs}
+
+    def preview_feedback(self, prepared):
+        self.preview_calls.append(prepared)
+        if self.error:
+            raise self.error
+        return {
+            "rule_id": "MQSI2025_005",
+            "rule_name": "急会诊及时到位率",
+            "hospital_id": "h1",
+            "target_level": "hospital",
+            "current_effective_level": "national",
+            "requested": {
+                "level": "hospital",
+                "status": "requested",
+                "definition": "急会诊在15分钟内到位的比例。",
+                "formula": "15分钟内到位例数 / 急会诊总例数 × 100%",
+                "source_text": "用户完整原文不应重复返回",
+            },
+            "current_effective": {
+                "level": "national",
+                "status": "effective",
+                "definition": "急会诊在规定时间内到位的比例。",
+                "formula": "10分钟内到位例数 / 急会诊总例数 × 100%",
+            },
+            "field_changes": [
+                {
+                    "field": "指标定义",
+                    "requested": "急会诊在15分钟内到位的比例。",
+                    "current": "急会诊在规定时间内到位的比例。",
+                    "changed": False,
+                    "internal": "drop-me",
+                },
+                {
+                    "field": "计算公式",
+                    "requested": "15分钟内到位例数 / 急会诊总例数 × 100%",
+                    "current": "10分钟内到位例数 / 急会诊总例数 × 100%",
+                    "changed": True,
+                },
+            ],
+            "message": "检测到本院口径反馈，请确认差异。",
+            "change_id": "CR_MUST_NOT_RETURN",
+            "status": "pending",
+            "approval": {"approver": "admin"},
+        }
+
+    def submit_change(self, payload):
+        self.submit_calls.append(payload)
+        raise AssertionError("预览工具不得提交变更")
 
 
 def test_create_draft_injects_context_and_returns_safe_projection() -> None:
@@ -157,3 +214,100 @@ def test_draft_tool_visibility_requires_implementation_role_and_no_rule() -> Non
     assert tool.availability(_context(), AgentRunState()) is True
     assert tool.availability(_context("doctor"), AgentRunState()) is False
     assert tool.availability(_context(), rule_state) is False
+
+
+def _rule_state():
+    return AgentRunState(evidence=[{
+        "source_id": "MQSI2025_005",
+        "fact_types": ["rule_identity"],
+    }])
+
+
+def test_preview_rule_change_returns_safe_diff_without_submission() -> None:
+    orchestrator = FakePreviewOrchestrator()
+    result = preview_rule_change(
+        PreviewRuleChangeInput(
+            rule_id="MQSI2025_005",
+            change_description="本院急会诊按15分钟内到位计算",
+        ),
+        _context(),
+        _rule_state(),
+        services=PreviewToolServices(orchestrator=orchestrator),
+    )
+
+    assert result.ok
+    assert result.code == "RULE_CHANGE_PREVIEWED"
+    assert orchestrator.prepare_calls[0] == {
+        "query": "本院急会诊按15分钟内到位计算",
+        "hospital_id": "h1",
+        "intent": "feedback",
+        "rule_id": "MQSI2025_005",
+    }
+    assert len(orchestrator.preview_calls) == 1
+    assert orchestrator.submit_calls == []
+    assert result.data["impact"] == {
+        "changed_fields": ["计算公式"],
+        "affects_definition": False,
+        "affects_formula": True,
+        "requires_field_review": False,
+        "requires_sql_regeneration": True,
+        "requires_version_increment": True,
+    }
+    assert result.data["requested"] == {
+        "level": "hospital",
+        "status": "requested",
+        "definition": "急会诊在15分钟内到位的比例。",
+        "formula": "15分钟内到位例数 / 急会诊总例数 × 100%",
+    }
+    assert "change_id" not in result.data
+    assert "approval" not in result.data
+    assert result.evidence[0].fact_types == ["rule_change_preview"]
+
+
+def test_preview_rule_change_requires_matching_verified_rule() -> None:
+    result = preview_rule_change(
+        PreviewRuleChangeInput(
+            rule_id="MQSI2025_005",
+            change_description="本院按15分钟计算",
+        ),
+        _context(),
+        AgentRunState(),
+        services=PreviewToolServices(orchestrator=FakePreviewOrchestrator()),
+    )
+
+    assert not result.ok
+    assert result.code == "RULE_NOT_VERIFIED"
+
+
+def test_preview_rule_change_input_forbids_write_and_tenant_fields() -> None:
+    for extra in (
+        {"hospital_id": "other"},
+        {"approver_id": "admin"},
+        {"submit": True},
+        {"version": 3},
+    ):
+        with pytest.raises(ValidationError):
+            PreviewRuleChangeInput(
+                rule_id="MQSI2025_005",
+                change_description="本院按15分钟计算",
+                **extra,
+            )
+
+
+def test_preview_rule_change_failure_is_standardized() -> None:
+    result = preview_rule_change(
+        PreviewRuleChangeInput(
+            rule_id="MQSI2025_005",
+            change_description="本院按15分钟计算",
+        ),
+        _context(),
+        _rule_state(),
+        services=PreviewToolServices(orchestrator=FakePreviewOrchestrator(
+            error=RuntimeError("password=secret internal")
+        )),
+    )
+
+    assert not result.ok
+    assert result.code == "RULE_CHANGE_PREVIEW_FAILED"
+    assert "secret" not in result.summary
+    assert result.evidence == []
