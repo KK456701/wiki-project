@@ -116,4 +116,4 @@
 - [x] **Step 1: 更新 README 的链路节点、完整参数安全边界和提示词目录。**
 - [x] **Step 2: 更新架构文档中的 LLM 节点与提示词文件映射。**
 - [x] **Step 3: 运行 `pytest -q` 与 `git diff --check`。**
-- [ ] **Step 4: 提交、推送 `main`，重启 8765 并检查 `/api/health`。**
+- [x] **Step 4: 提交、推送 `main`，重启 8765 并检查 `/api/health`。**
