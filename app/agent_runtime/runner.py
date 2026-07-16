@@ -7,6 +7,7 @@ import json
 import re
 
 from app.agent_runtime.contracts import AgentRunResult, AgentRunState, AgentRuntimeContext
+from app.agent_runtime.events import AgentEventCallback, emit_agent_event
 from app.agent_runtime.model_adapter import AgentModelAdapter, AgentModelError
 from app.agent_runtime.prompts import (
     AGENT_SYSTEM_PROMPT,
@@ -35,6 +36,7 @@ class AgentRunner:
         max_steps: int = 8,
         max_tool_calls_per_step: int = 3,
         request_timeout_seconds: float = 120.0,
+        event_callback: AgentEventCallback | None = None,
     ) -> None:
         self.adapter = adapter
         self.registry = registry
@@ -42,6 +44,7 @@ class AgentRunner:
         self.max_steps = max_steps
         self.max_tool_calls_per_step = max_tool_calls_per_step
         self.request_timeout_seconds = request_timeout_seconds
+        self.event_callback = event_callback
 
     async def run(
         self,
@@ -50,25 +53,53 @@ class AgentRunner:
         state: AgentRunState | None = None,
     ) -> AgentRunResult:
         run_state = state or AgentRunState()
+        emit_agent_event(self.event_callback, "agent_start", step=0)
         if run_state.cancelled:
             run_state.stop_reason = "cancelled"
-            return AgentRunResult(
+            result = AgentRunResult(
                 answer="本次运行已取消。",
                 stop_reason="cancelled",
                 state=run_state,
             )
+            self._emit_terminal(result)
+            return result
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 self._run(user_message, context, run_state),
                 timeout=self.request_timeout_seconds,
             )
         except TimeoutError:
             run_state.stop_reason = "request_timeout"
-            return AgentRunResult(
+            result = AgentRunResult(
                 answer="本次请求处理超时，请稍后重试。",
                 stop_reason="request_timeout",
                 state=run_state,
             )
+        self._emit_terminal(result)
+        return result
+
+    def _emit_terminal(self, result: AgentRunResult) -> None:
+        if result.answer:
+            emit_agent_event(
+                self.event_callback,
+                "assistant_message",
+                step=result.state.step_count,
+                message=result.answer,
+            )
+        event = (
+            "agent_error"
+            if result.stop_reason
+            in {"tool_error", "request_timeout", "context_conflict"}
+            else "agent_done"
+        )
+        emit_agent_event(
+            self.event_callback,
+            event,
+            stop_reason=result.stop_reason,
+            step_count=result.state.step_count,
+            model_name=result.model,
+            answer=result.answer,
+        )
 
     async def _run(
         self,
@@ -91,6 +122,13 @@ class AgentRunner:
                 )
             run_state.step_count += 1
             available = self.registry.list_for_context(context, run_state)
+            emit_agent_event(
+                self.event_callback,
+                "model_start",
+                step=run_state.step_count,
+                model_name=model_name,
+                tool_count=len(available),
+            )
             try:
                 response = await self.adapter.chat(
                     messages=run_state.messages,
@@ -170,6 +208,12 @@ class AgentRunner:
                     "content": json.dumps(dumped, ensure_ascii=False),
                 })
                 if result.status == "need_clarification":
+                    emit_agent_event(
+                        self.event_callback,
+                        "clarification_required",
+                        step=run_state.step_count,
+                        message=result.summary,
+                    )
                     run_state.stop_reason = "need_clarification"
                     return AgentRunResult(
                         answer=result.summary,
