@@ -196,6 +196,7 @@ class AgentConversationMemory:
                     now=self.now_provider(),
                 ),
             }],
+            recent_history=prompt.recent_history,
             current_rule_id=current_rule_id or None,
             current_stat_start=(
                 structured.stat_period.start_time

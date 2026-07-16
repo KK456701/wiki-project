@@ -123,3 +123,20 @@ def test_restored_rule_identity_opens_rule_tool_without_restoring_rule_facts(tmp
         "source_id": "MQSI2025_005",
         "fact_types": ["rule_identity"],
     }]
+
+
+def test_memory_exposes_bounded_recent_history_to_planner(tmp_path):
+    memory = AgentConversationMemory(store=ConversationMemory(tmp_path))
+    context = _context()
+    first = memory.open(context)
+    first.append_user("患者入院 48 小时内转科的比例怎么算")
+    first.complete(
+        "患者入院 48 小时内转科的比例怎么算",
+        "可以查询从6月1日至今的结果。",
+        _completed_state("MQSI2025_001"),
+    )
+
+    restored = memory.open(context)
+
+    assert "患者入院 48 小时内转科" in restored.state.recent_history
+    assert "从6月1日至今" in restored.state.recent_history

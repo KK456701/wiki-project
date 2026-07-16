@@ -35,8 +35,32 @@ intent、goal、target_indicator、time_expression、requested_outputs、constra
 intent 只能是 general_chat、rule_explanation、indicator_trial_run、indicator_diagnosis、rule_change_preview、upload_analysis、unknown。
 requested_outputs 只能使用 definition、formula、implementation_status、prepared_sql_handle、trial_result、diagnosis、change_preview、file_analysis、explanation。
 target_indicator 包含 raw_name 和可选 rule_id。time_expression 保留 raw_text；只有用户明确给出绝对日期时才填写 start_time/end_time。
+semantic_ambiguities 中每一项必须是 {"field":"字段名","description":"歧义说明"} 对象，不得直接输出字符串。
 用户索要某时间段实际数值时使用 indicator_trial_run；普通公式解释使用 rule_explanation；明确排查异常时使用 indicator_diagnosis。
 不要把 SQL 文本作为输出，受控 SQL 只能表示为 prepared_sql_handle。"""
+
+
+_FOLLOWUP_SELECTION_SUFFIX = re.compile(
+    r"[”\"’']?(?:就)?(?:这个|后者|第二个)\s*[。！？]?$"
+)
+
+
+def _normalize_followup_query(query: str) -> str:
+    """Resolve an explicit final-option selection without asking a small model to guess."""
+    text = str(query or "").strip()
+    if not _FOLLOWUP_SELECTION_SUFFIX.search(text):
+        return text
+    options = re.split(r"(?:或者|或)", text)
+    if len(options) < 2:
+        return text
+    candidate = _FOLLOWUP_SELECTION_SUFFIX.sub("", options[-1]).strip()
+    candidate = candidate.strip(" \t\r\n“”\"'‘’")
+    if not re.search(
+        r"(?:(?:\d{2}|\d{4})年)?(?:1[0-2]|[1-9])月|本月|上月|今年|至今|到现在",
+        candidate,
+    ):
+        return text
+    return f"{candidate}的结果"
 
 
 def _json_object(content: str) -> dict:
@@ -73,6 +97,14 @@ def _normalize_container_shapes(value: dict) -> dict:
     ambiguities = normalized.get("semantic_ambiguities")
     if ambiguities == "":
         normalized["semantic_ambiguities"] = []
+    elif isinstance(ambiguities, list):
+        normalized["semantic_ambiguities"] = [
+            {"field": "unspecified", "description": item.strip()}
+            if isinstance(item, str) and item.strip()
+            else item
+            for item in ambiguities
+            if not isinstance(item, str) or item.strip()
+        ]
     return normalized
 
 
@@ -90,6 +122,7 @@ class ModelRequestPlanner:
     ) -> RequestPlan:
         del context
         state_context = "当前没有已确认指标或统计周期。"
+        history_context = ""
         if state is not None:
             values = []
             if state.current_rule_id:
@@ -101,15 +134,21 @@ class ModelRequestPlanner:
                 )
             if values:
                 state_context = "；".join(values) + "。追问中的这个指标或直接给结果优先复用该状态。"
+            if state.recent_history:
+                history_context = (
+                    "\n最近对话只用于理解本轮指代，不得覆盖上述结构化状态：\n"
+                    f"{state.recent_history}"
+                )
+        normalized_query = _normalize_followup_query(query)
         messages = [
             {
                 "role": "system",
                 "content": (
                     f"{_PLANNER_PROMPT}\n当前日期：{now.date().isoformat()}。\n"
-                    f"{state_context}"
+                    f"{state_context}{history_context}"
                 ),
             },
-            {"role": "user", "content": query},
+            {"role": "user", "content": normalized_query},
         ]
         last_error = ""
         for attempt in range(2):
@@ -129,7 +168,8 @@ class ModelRequestPlanner:
                         "role": "system",
                         "content": (
                             "上一个计划不符合严格 JSON 合约。请重新输出完整 JSON；"
-                            "不得包含步骤、工具名或额外字段。"
+                            "不得包含步骤、工具名或额外字段；semantic_ambiguities "
+                            "中的每一项必须是包含 field 和 description 的对象。"
                         ),
                     })
         raise AgentPlanningError(

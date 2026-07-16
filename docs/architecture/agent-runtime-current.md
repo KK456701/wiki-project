@@ -58,11 +58,14 @@ intent、goal、target_indicator、time_expression、requested_outputs、constra
 intent 只能是 general_chat、rule_explanation、indicator_trial_run、indicator_diagnosis、rule_change_preview、upload_analysis、unknown。
 requested_outputs 只能使用 definition、formula、implementation_status、prepared_sql_handle、trial_result、diagnosis、change_preview、file_analysis、explanation。
 target_indicator 包含 raw_name 和可选 rule_id。time_expression 保留 raw_text；只有用户明确给出绝对日期时才填写 start_time/end_time。
+semantic_ambiguities 中每一项必须是 {"field":"字段名","description":"歧义说明"} 对象，不得直接输出字符串。
 用户索要某时间段实际数值时使用 indicator_trial_run；普通公式解释使用 rule_explanation；明确排查异常时使用 indicator_diagnosis。
 不要把 SQL 文本作为输出，受控 SQL 只能表示为 prepared_sql_handle。
 ```
 
-运行时还会附加当前日期、已确认 `rule_id`、统计周期。JSON 校验失败时只补充一次纠正提示：“上一个计划不符合严格 JSON 合约……不得包含步骤、工具名或额外字段。”
+运行时还会附加当前日期、已确认 `rule_id`、统计周期，以及经过压缩的最近 8 轮对话；历史仅用于理解“这个、后者、按你说的算”等指代，不能覆盖结构化状态。出现“选项 A 或选项 B 这个/后者/第二个”且 B 是明确时间表达时，服务端会先把 Planner 输入归一化为 B 的结果查询。JSON 校验失败时只补充一次纠正提示：“上一个计划不符合严格 JSON 合约……不得包含步骤、工具名或额外字段。”
+
+为兼容本地 4B 模型，Planner 边界会修复少量不改变语义的容器形状，例如把字符串 `semantic_ambiguities` 转成包含 `field` 和 `description` 的对象；它不会修补或猜测指标、日期和 SQL 事实。
 
 ### 2. 对话 Executor 与最终回答
 

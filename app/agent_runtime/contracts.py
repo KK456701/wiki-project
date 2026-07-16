@@ -43,6 +43,7 @@ class AgentRuntimeContext(RuntimeContract):
 
 class AgentRunState(RuntimeContract):
     messages: list[dict[str, Any]] = Field(default_factory=list)
+    recent_history: str = ""
     step_count: int = 0
     tool_call_counts: dict[str, int] = Field(default_factory=dict)
     tool_result_cache: dict[str, dict[str, Any]] = Field(default_factory=dict)

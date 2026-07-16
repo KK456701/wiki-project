@@ -191,6 +191,55 @@ def test_model_planner_normalizes_safe_scalar_container_shapes_for_4b():
     assert len(adapter.calls) == 1
 
 
+def test_model_planner_normalizes_string_semantic_ambiguities_for_4b():
+    adapter = SequenceAdapter([AgentModelResponse(content='''{
+      "intent":"indicator_trial_run",
+      "goal":"查询指标实际结果",
+      "target_indicator":{},
+      "time_expression":{"raw_text":"从6月1日至今"},
+      "requested_outputs":["trial_result"],
+      "constraints":[],
+      "semantic_ambiguities":["需要确认统计时间"]
+    }''')])
+
+    plan = asyncio.run(ModelRequestPlanner(adapter).plan(
+        query="从6月1日至今",
+        context=_context(),
+        state=AgentRunState(current_rule_id="RULE_1"),
+        now=NOW,
+    ))
+
+    assert plan.semantic_ambiguities[0].field == "unspecified"
+    assert plan.semantic_ambiguities[0].description == "需要确认统计时间"
+
+
+def test_model_planner_uses_recent_history_and_last_selected_time_option():
+    adapter = SequenceAdapter([AgentModelResponse(content=(
+        '{"intent":"indicator_trial_run","goal":"查询指标实际结果",'
+        '"target_indicator":{},'
+        '"time_expression":{"raw_text":"从6月1日至今"},'
+        '"requested_outputs":["trial_result"]}'
+    ))])
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        recent_history=(
+            "用户：患者入院 48 小时内转科的比例怎么算\n"
+            "助手：可查询‘2026年1月到3月’或‘从6月1日至今’。"
+        ),
+    )
+
+    asyncio.run(ModelRequestPlanner(adapter).plan(
+        query='2026年1月到3月”或“从6月1日至今”这个',
+        context=_context(),
+        state=state,
+        now=NOW,
+    ))
+
+    assert "最近对话" in adapter.calls[0]["messages"][0]["content"]
+    assert "患者入院 48 小时内转科" in adapter.calls[0]["messages"][0]["content"]
+    assert adapter.calls[0]["messages"][1]["content"] == "从6月1日至今的结果"
+
+
 def test_model_planner_rejects_repeated_invalid_plan():
     invalid = AgentModelResponse(content='{"intent":"rule_explanation","goal":"解释公式","proposed_steps":[]}')
     adapter = SequenceAdapter([invalid, invalid])
