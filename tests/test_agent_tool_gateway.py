@@ -19,7 +19,15 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
             request_id="REQ_001", trace_id="TRACE_001",
         )
 
-    def _gateway(self, handler, *, timeout=1.0, permissions=frozenset({"indicator_read"}), trace_events=None):
+    def _gateway(
+        self,
+        handler,
+        *,
+        timeout=1.0,
+        permissions=frozenset({"indicator_read"}),
+        trace_events=None,
+        availability=None,
+    ):
         from app.agent_tools.contracts import AgentTool, ToolRiskLevel
         from app.agent_tools.gateway import ToolGateway
         from app.agent_tools.registry import ToolRegistry
@@ -32,6 +40,7 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
             risk_level=ToolRiskLevel.READ,
             timeout_seconds=timeout,
             required_permissions=permissions,
+            availability=availability,
         )
         return ToolGateway(
             ToolRegistry([tool]),
@@ -79,6 +88,49 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(result.code, "PERMISSION_DENIED")
+
+    async def test_unavailable_tool_is_rejected_before_handler(self) -> None:
+        from app.agent_runtime.contracts import AgentRunState
+
+        called = False
+
+        def handler(arguments, context, state):
+            nonlocal called
+            called = True
+            return {"ok": True, "status": "success", "code": "OK", "summary": "ok"}
+
+        result = await self._gateway(
+            handler,
+            availability=lambda _context, _state: False,
+        ).execute(
+            "search_indicator_rules",
+            {"query": "急会诊"},
+            self._context(),
+            AgentRunState(),
+        )
+
+        self.assertFalse(called)
+        self.assertEqual(result.status, "unavailable")
+        self.assertEqual(result.code, "TOOL_UNAVAILABLE")
+
+    async def test_availability_exception_fails_closed(self) -> None:
+        from app.agent_runtime.contracts import AgentRunState
+
+        def unavailable(_context, _state):
+            raise RuntimeError("internal state error")
+
+        result = await self._gateway(
+            lambda *_: None,
+            availability=unavailable,
+        ).execute(
+            "search_indicator_rules",
+            {"query": "急会诊"},
+            self._context(),
+            AgentRunState(),
+        )
+
+        self.assertEqual(result.code, "TOOL_UNAVAILABLE")
+        self.assertNotIn("internal state error", result.summary)
 
     async def test_sync_handler_runs_and_receives_server_context(self) -> None:
         from app.agent_runtime.contracts import AgentRunState

@@ -55,6 +55,19 @@ class ToolGateway:
                 summary="当前用户没有执行该工具所需的权限。",
             )
 
+        if tool.availability is not None:
+            try:
+                available = bool(tool.availability(context, state))
+            except Exception:
+                available = False
+            if not available:
+                return ToolResult(
+                    ok=False,
+                    status="unavailable",
+                    code="TOOL_UNAVAILABLE",
+                    summary="当前运行状态不允许执行该工具。",
+                )
+
         try:
             arguments = tool.input_model.model_validate(raw_arguments)
         except ValidationError as exc:
