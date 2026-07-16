@@ -59,6 +59,11 @@
     return payload;
   }
 
+  function agentRequestErrorMessage(status) {
+    if (Number(status) === 401) return "登录状态已失效，请重新登录。";
+    return "Agent 请求失败，请稍后重试或联系系统管理员。";
+  }
+
   async function refreshCapabilities(options) {
     var token = options && options.token || "";
     var user = options && options.user || null;
@@ -118,7 +123,7 @@
       ))
     });
     if (!response.ok) {
-      var error = new Error("Agent 请求失败，请稍后重试或联系系统管理员。");
+      var error = new Error(agentRequestErrorMessage(response.status));
       error.status = response.status;
       error.agentStarted = false;
       throw error;
@@ -190,6 +195,7 @@
   return {
     modelSelectorOptions: modelSelectorOptions,
     buildChatPayload: buildChatPayload,
+    agentRequestErrorMessage: agentRequestErrorMessage,
     projectEvent: projectEvent,
     refreshCapabilities: refreshCapabilities,
     isAvailable: isAvailable,

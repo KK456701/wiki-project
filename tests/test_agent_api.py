@@ -121,11 +121,15 @@ def test_chat_rejects_tenant_identity_and_authority_fields() -> None:
     assert service.calls == []
 
 
-def test_all_agent_endpoints_require_login() -> None:
+def test_chat_and_run_require_login_but_capabilities_are_public() -> None:
     client, service = _client(authenticated=False)
 
     assert client.post("/api/agent/chat", json={"query": "查询指标"}).status_code == 401
-    assert client.get("/api/agent/capabilities").status_code == 401
+    capabilities = client.get("/api/agent/capabilities")
+    assert capabilities.status_code == 200
+    assert capabilities.json()["models"] == [
+        {"id": "fake", "name": "Fake", "provider": "ollama"}
+    ]
     assert client.get("/api/agent/runs/TRACE_001").status_code == 401
     assert service.calls == []
 

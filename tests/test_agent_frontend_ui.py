@@ -67,6 +67,10 @@ def test_model_selector_payload_uses_selected_model() -> None:
     ]
 
 
+def test_expired_login_has_a_specific_agent_error_message() -> None:
+    assert _run_node("runtime.agentRequestErrorMessage(401)") == "登录状态已失效，请重新登录。"
+
+
 def test_public_event_projection_never_renders_arguments_or_result_data() -> None:
     event = _run_node("""runtime.projectEvent({
       event:'tool_result', trace_id:'TRACE_1', tool_name:'trial_run_indicator_sql',

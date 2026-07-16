@@ -65,10 +65,8 @@ async def agent_chat(
 
 @router.get("/capabilities")
 def agent_capabilities(
-    principal: HospitalPrincipal = Depends(require_hospital_session),
     service: AgentRuntimeService = Depends(get_agent_runtime_service),
 ) -> dict[str, Any]:
-    del principal
     return service.capabilities()
 
 
