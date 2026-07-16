@@ -27,7 +27,7 @@ class ControllerDecision(BaseModel):
     fallback_category: FallbackCategory | None = None
 
 
-_CAPABILITY_TOOLS: dict[PlanCapability, tuple[str, ...]] = {
+CAPABILITY_TOOLS: dict[PlanCapability, tuple[str, ...]] = {
     PlanCapability.RESOLVE_INDICATOR: ("search_indicator_rules",),
     PlanCapability.RESOLVE_EFFECTIVE_RULE: ("get_effective_rule",),
     PlanCapability.INSPECT_IMPLEMENTATION: ("inspect_indicator_implementation",),
@@ -112,7 +112,7 @@ class AgentStateController:
             return ControllerDecision(
                 action=ControllerAction.EXECUTE_TOOL,
                 capability=capability,
-                tool_names=list(_CAPABILITY_TOOLS.get(capability, ()))[:2],
+                tool_names=list(CAPABILITY_TOOLS.get(capability, ()))[:2],
                 code="NEXT_CAPABILITY",
             )
         return ControllerDecision(

@@ -13,6 +13,7 @@ _CORRECTIONS = json.loads(load_prompt("agent_executor_corrections"))
 EVIDENCE_REQUIRED_PROMPT = _CORRECTIONS["evidence_required"]
 CHINESE_REQUIRED_PROMPT = _CORRECTIONS["chinese_required"]
 TRIAL_RUN_REQUIRED_PROMPT = _CORRECTIONS["trial_run_required"]
+EMPTY_ANSWER_PROMPT = _CORRECTIONS["empty_answer"]
 
 
 def executor_correction(name: str, **values: object) -> str:

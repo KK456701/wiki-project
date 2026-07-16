@@ -10,7 +10,7 @@
 
 - **MySQL 规则主存储**：四个首批指标的国标口径、医院定制口径、SQL 模板、字段映射和版本历史统一存入运行数据库；审批后的结构化规则可以立即生效、查询和回退，不依赖本地模型实时生成或重建 Wiki。
 - **Wiki 导入与故障兜底**：`core-rules-wiki/` 保留原始规则、SQL 规格和字段映射；MySQL 暂时不可用或指标尚未迁移时只读回退，不接受兜底写入。
-- **工具调用型 Agent 对话**：Planner 先生成不含工具名的业务语义计划，服务端再编译并校验计划、按状态只开放当前允许的工具；Executor 调用工具取得证据，Verifier 校验规则、SQL、统计周期和数值链路后组织最终回答。
+- **确定性工具直调 Agent 对话**：Planner 只生成不含工具名的业务语义计划，服务端编译并校验计划，由 StateController 与确定性参数编译器直接调用当前能力对应的受控工具；Verifier 校验规则、SQL、统计周期和数值链路后，最终回答模型只负责组织中文答案。
 - **合成本院生效口径**：以国标为基础，查询时只合入本院已审批且处于生效期的差异项，不修改国标原始记录；没有有效本院差异时直接使用国标。
 - **反馈与审批**：医院用户反馈口径不一致时先生成差异预览，用户确认后进入 Pending，管理员审批通过后才生效。
 - **版本化医院口径**：医院 override 采用追加版本方式保存，支持历史口径对比和一键恢复历史版本。
@@ -19,15 +19,15 @@
 - **三层异常诊断**：支持直接粘贴用户 SQL、参数和聚合结果；系统先做只读安全检查，再核对表字段，对比用户 SQL、国标与本院生效口径，并检查数据质量，输出医生可读结论和实施排障依据。
 - **DBHub MCP 数据库接入**：通过本地 DBHub sidecar 读取业务库元数据、同步字段快照，并执行只读 SQL 试运行。
 - **公司业务库真实取数**：`hospital_001` 默认连接 `WIN60_QA_991827`；已核验的急会诊指标从 `WINDBA.INPATIENT_CONSULT_APPLY` 与 `WINDBA.INP_CONSULT_INVITATION` 取数，入院 48 小时转科指标从 `WINDBA.INPATIENT_ENCOUNTER` 与 `WINDBA.INPAT_TRANSFER` 取数。两个指标的分子、分母、明细预览和 Excel 导出都共用各自同一份统计范围与字段映射。
-- **计划编译与确定性状态控制**：当前生产链路为 `Planner → PlanCompiler/PlanValidator → StateController → Executor → PlanVerifier`；默认最多重规划一次，不让 4B 模型自由编排整条工具链。
-- **全阶段运行 Trace**：成功和失败消息都可打开“查看链路”；认证后的 `/api/agent/runs/{trace_id}` 返回会话读取、Planner、计划编译校验、状态控制、Executor、工具、Verifier、回答守卫和会话保存节点，并展示完整安全输入输出、数据处理、节点配置与耗时。用户澄清显示为“待确认”而不是失败，工具网关接受节点显示成功，工具结果节点保留对应的完整安全参数；冗余“开发与排障”区块已经删除。密码、令牌、连接串、患者行级明细和隐藏思维过程始终不记录。
+- **计划编译与确定性状态控制**：当前生产链路为 `Planner → PlanCompiler/PlanValidator → StateController → DeterministicDispatch → ToolGateway → PlanVerifier → FinalAnswerLLM`；默认最多重规划一次，工具选择和参数组装不再消耗本地模型推理。
+- **全阶段运行 Trace**：成功和失败消息都可打开“查看链路”；认证后的 `/api/agent/runs/{trace_id}` 返回会话读取、Planner、计划编译校验、状态控制、确定性工具参数编译、工具网关与结果、Verifier、最终回答模型、回答守卫和会话保存节点，并展示完整安全输入输出、数据处理、节点配置与耗时。用户澄清显示为“待确认”而不是失败，工具网关接受节点显示成功，工具结果节点保留对应的完整安全参数；冗余“开发与排障”区块已经删除。密码、令牌、连接串、患者行级明细和隐藏思维过程始终不记录。
 - **提示词集中管理**：所有仍在使用的生产 LLM 提示词统一位于 `app/prompts/`；[`app/prompts/README.md`](app/prompts/README.md) 按 Planner、Executor、指标草稿和诊断列明每个文件的角色、调用者和触发时机。旧聊天意图识别与答案生成提示词及其加载分支已删除，Trace 配置显示当前 Agent 实际使用的提示词文件和短版本号。
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
 - **指标监控工作台**：管理员可在前端新建、编辑、启停运行计划，手工运算指标，查看聚合结果和执行链路，并确认、关闭或重新诊断预警。
 - **数据库与元数据工作台**：医院人员可在前端同步业务库结构，查看最近同步、表字段数量、结构变化和受影响指标；连接与只读工具信息集中在折叠详情中。
 - **医学术语工作台**：维护 35 个核心制度指标涉及的标准概念、同义词、本院编码映射、审核状态和术语版本，并明确区分“可检索”和“可进 SQL”。
 - **签名离线包交换**：医院按字段白名单生成 Ed25519 签名反馈包，公司验签后回收为候选；公司发布包在医院端先验签并进入隔离区，不会绕过本院适配、试运行和审批直接生效。
-- **会话记忆**：用户问题和系统回答完整写入 SQLite 与 JSONL；结构化状态保存当前指标、医院和统计区间并保持最高优先级。最近 8 轮经过压缩后用于 Planner 理解“这个、后者、按你说的算”等指代，也用于 Executor 组织连续对话，不会无限扩张上下文。
+- **会话记忆**：用户问题和系统回答完整写入 SQLite 与 JSONL；结构化状态保存当前指标、医院和统计区间并保持最高优先级。最近 8 轮经过压缩后用于 Planner 理解“这个、后者、按你说的算”等指代，也用于最终回答模型组织连续对话，不会无限扩张上下文。
 - **业务服务复用**：元数据解析、指标生成、口径适配和诊断等既有领域服务继续被工具及业务 API 复用；生产对话不再经过旧 `CoreIndicatorOrchestrator` 聊天流程。
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
 - **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
@@ -52,9 +52,9 @@
 ```text
 浏览器模型选择器 -> POST /api/agent/chat/stream -> 登录与医院权限
        -> AgentRuntimeService -> LLM Planner（语义计划 JSON）
-       -> PlanCompiler + PlanValidator -> StateController（只开放当前工具）
-       -> LLM Executor -> ToolGateway -> 规则 / SQL / 诊断 / 文件工具
-       -> PlanVerifier + ResponseGuard -> 中文回答 + Trace + 会话记忆
+       -> PlanCompiler + PlanValidator -> StateController（确定下一业务能力）
+       -> DeterministicDispatch（编译工具与参数）-> ToolGateway -> 规则 / SQL / 诊断 / 文件工具
+       -> PlanVerifier -> Final Answer LLM -> ResponseGuard -> 中文回答 + Trace + 会话记忆
 ```
 
 | 数据或组件 | 当前职责 | 边界 |
@@ -440,7 +440,7 @@ python scripts\import_core_indicator_terms.py --apply
 1. 从结构化状态与最近 8 轮对话理解指标指代和统计时间。
 2. Planner 输出不含工具名的严格业务计划 JSON。
 3. 服务端编译、校验计划并确定下一项业务能力。
-4. StateController 每步只向 Executor 展示当前允许的 1 至 2 个工具。
+4. StateController 确定下一项能力，确定性参数编译器根据计划、状态和已验证证据生成唯一受控工具调用，不再请求模型选择工具。
 5. 工具从 MySQL 读取本院生效口径，必要时经 DBHub 准备并试运行只读 SQL。
 6. Verifier 校验 `rule_id`、规则版本、统计区间、`sql_id`、结果 ID 和分子分母一致性。
 7. 模型只根据当前证据组织中文回答，并通过 SSE 输出工具摘要、答案和 Trace ID；完整安全参数只通过登录后的“查看链路”读取。
@@ -536,7 +536,8 @@ Agent 对话的典型阶段包括：
 
 ```text
 memory_load -> planner -> plan_compile_and_validate -> state_controller
--> executor_tool_step -> plan_verify -> final_response -> memory_save
+-> deterministic_tool_dispatch -> tool_gateway -> tool_result -> plan_verify
+-> final_answer_llm -> response_guard -> memory_save
 ```
 
 查询实际指标结果时，受控能力链会继续展开：

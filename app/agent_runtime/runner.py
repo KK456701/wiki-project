@@ -8,12 +8,18 @@ import logging
 import re
 import time
 
-from app.agent_runtime.contracts import AgentRunResult, AgentRunState, AgentRuntimeContext
+from app.agent_runtime.contracts import (
+    AgentModelResponse,
+    AgentRunResult,
+    AgentRunState,
+    AgentRuntimeContext,
+)
 from app.agent_runtime.events import AgentEventCallback, emit_agent_event
 from app.agent_runtime.model_adapter import AgentModelAdapter, AgentModelError
 from app.agent_runtime.prompts import (
     AGENT_SYSTEM_PROMPT,
     CHINESE_REQUIRED_PROMPT,
+    EMPTY_ANSWER_PROMPT,
     EVIDENCE_REQUIRED_PROMPT,
     TRIAL_RUN_REQUIRED_PROMPT,
     executor_correction,
@@ -22,6 +28,10 @@ from app.agent_runtime.response_guard import (
     evidence_correction_prompt,
     missing_fact_types,
     normalize_agent_answer,
+)
+from app.agent_planning.dispatch import (
+    DeterministicDispatchError,
+    build_deterministic_tool_call,
 )
 from app.agent_planning.runtime import AgentPlanningRuntime
 from app.agent_planning.planner import AgentPlanningError
@@ -262,6 +272,7 @@ class AgentRunner:
         trial_run_corrections = 0
         fact_corrections = 0
         planned_tool_corrections = 0
+        empty_answer_corrections = 0
         for _ in range(self.max_steps):
             replanned = False
             plan_corrected = False
@@ -406,99 +417,219 @@ class AgentRunner:
                             state=run_state,
                             model=model_name,
                         )
-                    available = self.registry.list_for_names(
-                        decision.tool_names, context, run_state
-                    )
-                    run_state.messages.append({
-                        "role": "system",
-                        "content": self.planning_runtime.instruction(
-                            planning_execution, decision, run_state
-                        ),
-                    })
+                    direct_response = None
+                    if decision.action.value == "execute_tool":
+                        dispatch_started = time.perf_counter()
+                        try:
+                            direct_call = build_deterministic_tool_call(
+                                planning_execution,
+                                decision,
+                                run_state,
+                                user_message=user_message,
+                            )
+                        except DeterministicDispatchError as exc:
+                            self._trace(
+                                node_name="deterministic_tool_dispatch",
+                                node_type="code",
+                                status=(
+                                    "warning" if exc.needs_clarification else "failed"
+                                ),
+                                duration_ms=max(
+                                    1,
+                                    int(
+                                        (time.perf_counter() - dispatch_started)
+                                        * 1000
+                                    ),
+                                ),
+                                input_data={
+                                    "request_plan": planning_execution.request_plan.model_dump(mode="json"),
+                                    "decision": decision.model_dump(mode="json"),
+                                    "state": run_state.model_dump(mode="json"),
+                                    "user_message": user_message,
+                                },
+                                output_data={
+                                    "code": exc.code,
+                                    "message": str(exc),
+                                },
+                                processing_data={
+                                    "description": "根据已校验计划和结构化状态编译唯一工具及参数。"
+                                },
+                                config_data={
+                                    "dispatcher": "build_deterministic_tool_call"
+                                },
+                                error_code=exc.code,
+                                error_message=str(exc),
+                            )
+                            stop_reason = (
+                                "need_clarification"
+                                if exc.needs_clarification
+                                else "tool_error"
+                            )
+                            run_state.stop_reason = stop_reason
+                            return AgentRunResult(
+                                answer=str(exc),
+                                stop_reason=stop_reason,
+                                state=run_state,
+                                model=model_name,
+                            )
+                        self._trace(
+                            node_name="deterministic_tool_dispatch",
+                            node_type="code",
+                            status="success",
+                            duration_ms=max(
+                                1,
+                                int(
+                                    (time.perf_counter() - dispatch_started) * 1000
+                                ),
+                            ),
+                            input_data={
+                                "request_plan": planning_execution.request_plan.model_dump(mode="json"),
+                                "decision": decision.model_dump(mode="json"),
+                                "state": run_state.model_dump(mode="json"),
+                                "user_message": user_message,
+                            },
+                            output_data={
+                                "tool_call": direct_call.model_dump(mode="json")
+                            },
+                            processing_data={
+                                "description": "根据已校验计划和结构化状态编译唯一工具及参数。"
+                            },
+                            config_data={
+                                "dispatcher": "build_deterministic_tool_call"
+                            },
+                        )
+                        direct_response = AgentModelResponse(
+                            tool_calls=[direct_call]
+                        )
+                    else:
+                        available = self.registry.list_for_names(
+                            decision.tool_names, context, run_state
+                        )
+                        run_state.messages.append({
+                            "role": "system",
+                            "content": self.planning_runtime.instruction(
+                                planning_execution, decision, run_state
+                            ),
+                        })
                 else:
+                    direct_response = None
                     available = self.registry.list_for_context(context, run_state)
-                emit_agent_event(
-                    self.event_callback,
-                    "model_start",
-                    step=run_state.step_count,
-                    model_name=model_name,
-                    tool_count=len(available),
-                )
-                tool_schemas = self.registry.to_ollama_schema(available)
-                model_input = {
-                    "messages": list(run_state.messages),
-                    "tools": tool_schemas,
-                    "temperature": 0.0,
-                }
-                model_started = time.perf_counter()
-                try:
-                    response = await self.adapter.chat(
-                        messages=run_state.messages,
-                        tools=tool_schemas,
-                        temperature=0.0,
+                if direct_response is not None:
+                    response = direct_response
+                    empty_model_action = False
+                else:
+                    emit_agent_event(
+                        self.event_callback,
+                        "model_start",
+                        step=run_state.step_count,
+                        model_name=model_name,
+                        tool_count=len(available),
                     )
-                except AgentModelError as exc:
+                    tool_schemas = self.registry.to_ollama_schema(available)
+                    model_input = {
+                        "messages": list(run_state.messages),
+                        "tools": tool_schemas,
+                        "temperature": 0.0,
+                    }
+                    model_started = time.perf_counter()
+                    try:
+                        response = await self.adapter.chat(
+                            messages=run_state.messages,
+                            tools=tool_schemas,
+                            temperature=0.0,
+                        )
+                    except AgentModelError as exc:
+                        self._trace(
+                            node_name="executor_llm",
+                            node_type="llm",
+                            status="failed",
+                            duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
+                            input_data=model_input,
+                            output_data={"error": str(exc)},
+                            processing_data={"description": "根据本轮已验证证据生成最终回答。"},
+                            config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
+                            error_message=str(exc),
+                        )
+                        run_state.stop_reason = "tool_error"
+                        return AgentRunResult(
+                            answer=str(exc) or "模型服务暂时不可用，请稍后重试。",
+                            stop_reason="tool_error",
+                            state=run_state,
+                        )
+                    except Exception:
+                        self._trace(
+                            node_name="executor_llm",
+                            node_type="llm",
+                            status="failed",
+                            duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
+                            input_data=model_input,
+                            output_data={"error": "模型调用异常"},
+                            processing_data={"description": "根据本轮已验证证据生成最终回答。"},
+                            config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
+                            error_message="模型调用异常",
+                        )
+                        run_state.stop_reason = "tool_error"
+                        return AgentRunResult(
+                            answer="模型调用异常，请稍后重试。",
+                            stop_reason="tool_error",
+                            state=run_state,
+                        )
+                    model_name = response.model or model_name
+                    empty_model_action = (
+                        not response.content.strip() and not response.tool_calls
+                    )
                     self._trace(
                         node_name="executor_llm",
                         node_type="llm",
-                        status="failed",
+                        status="warning" if empty_model_action else "success",
                         duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
                         input_data=model_input,
-                        output_data={"error": str(exc)},
-                        processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
-                        config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
-                        error_message=str(exc),
+                        output_data={
+                            "model": response.model,
+                            "content": response.content,
+                            "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
+                            "usage": response.usage,
+                        },
+                        processing_data={"description": "根据本轮已验证证据生成最终回答。"},
+                        config_data={
+                            "adapter": type(self.adapter).__name__,
+                            "step": run_state.step_count,
+                            "prompt_file": "agent_executor.txt",
+                            "prompt_version": prompt_version("agent_executor"),
+                        },
+                        error_code=(
+                            "MODEL_EMPTY_ACTION" if empty_model_action else ""
+                        ),
+                        error_message=(
+                            "模型未生成回答或工具调用。"
+                            if empty_model_action
+                            else ""
+                        ),
                     )
-                    run_state.stop_reason = "tool_error"
-                    return AgentRunResult(
-                        answer=str(exc) or "模型服务暂时不可用，请稍后重试。",
-                        stop_reason="tool_error",
-                        state=run_state,
-                    )
-                except Exception:
-                    self._trace(
-                        node_name="executor_llm",
-                        node_type="llm",
-                        status="failed",
-                        duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
-                        input_data=model_input,
-                        output_data={"error": "模型调用异常"},
-                        processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
-                        config_data={"adapter": type(self.adapter).__name__, "step": run_state.step_count},
-                        error_message="模型调用异常",
-                    )
-                    run_state.stop_reason = "tool_error"
-                    return AgentRunResult(
-                        answer="模型调用异常，请稍后重试。",
-                        stop_reason="tool_error",
-                        state=run_state,
-                    )
-                model_name = response.model or model_name
-                self._trace(
-                    node_name="executor_llm",
-                    node_type="llm",
-                    status="success",
-                    duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
-                    input_data=model_input,
-                    output_data={
-                        "model": response.model,
-                        "content": response.content,
-                        "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
-                    },
-                    processing_data={"description": "根据当前计划和可见工具生成下一动作或最终回答。"},
-                    config_data={
-                        "adapter": type(self.adapter).__name__,
-                        "step": run_state.step_count,
-                        "prompt_file": "agent_executor.txt",
-                        "prompt_version": prompt_version("agent_executor"),
-                    },
-                )
                 assistant_message = {
                     "role": "assistant",
                     "content": response.content,
                     "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
                 }
                 run_state.messages.append(assistant_message)
+                if empty_model_action:
+                    empty_answer_corrections += 1
+                    if (
+                        empty_answer_corrections <= 1
+                        and run_state.step_count < self.max_steps
+                    ):
+                        run_state.messages.append({
+                            "role": "system",
+                            "content": EMPTY_ANSWER_PROMPT,
+                        })
+                        continue
+                    run_state.stop_reason = "tool_error"
+                    return AgentRunResult(
+                        answer="模型未生成有效回答，请稍后重试。",
+                        stop_reason="tool_error",
+                        state=run_state,
+                        model=model_name,
+                    )
                 if not response.tool_calls:
                     guard_started = time.perf_counter()
                     answer = normalize_agent_answer(response.content)

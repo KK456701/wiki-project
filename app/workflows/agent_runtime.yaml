@@ -63,29 +63,43 @@ nodes:
     agent_owner: human_interaction
     title: 选择下一业务能力
     type: code
-    description: 根据已取得事实决定下一能力，并只向模型开放当前允许的一至两个工具。
+    description: 根据已取得事实决定下一能力；工具步骤交给服务端编译，证据齐全后进入最终回答。
     inputs: [compiled_plan, validation, state]
     outputs: [decision]
     required: true
     on_failure: stop
     required_inputs: [compiled_plan, validation, state]
     required_outputs: [decision]
-    config: {implementation: AgentStateController, max_visible_tools: 2}
+    config: {implementation: AgentStateController, max_tools_per_capability: 1}
     failure_hint: 检查计划事实、工具结果码和 fallback_category。
+
+  - id: deterministic_tool_dispatch
+    agent_owner: human_interaction
+    title: 编译工具调用
+    type: code
+    description: 根据已校验业务计划、结构化状态和用户原文确定唯一工具及参数，不经过模型路由。
+    inputs: [request_plan, decision, state, user_message]
+    outputs: [tool_call]
+    required: false
+    on_failure: stop
+    required_inputs: [request_plan, decision, state, user_message]
+    required_outputs: [tool_call]
+    config: {implementation: build_deterministic_tool_call, llm_calls: 0}
+    failure_hint: 检查 rule_id、统计区间、sql_id 或上传文件编号是否已进入结构化状态。
 
   - id: executor_llm
     agent_owner: human_interaction
-    title: 调用执行模型
+    title: 生成最终回答
     type: llm
-    description: 使用完整上下文与当前可见工具 schema 生成一个工具调用或最终回答。
-    inputs: [messages, tools, temperature]
-    outputs: [content, tool_calls]
+    description: 在业务工具和证据校验完成后，根据完整安全上下文生成最终中文回答，不参与工具选择。
+    inputs: [messages, temperature]
+    outputs: [content, usage]
     required: true
     on_failure: stop
-    required_inputs: [messages, tools]
-    required_outputs: []
-    config: {prompt_file: agent_executor.txt, temperature: 0, chain_of_thought: not_recorded}
-    failure_hint: 检查完整 messages、可见工具和模型原始响应。
+    required_inputs: [messages]
+    required_outputs: [content]
+    config: {prompt_file: agent_executor.txt, temperature: 0, tools: none, chain_of_thought: metadata_only}
+    failure_hint: 检查完整 messages、证据、MODEL_EMPTY_ACTION 和模型安全元数据。
 
   - id: tool_gateway
     agent_owner: human_interaction
@@ -105,7 +119,7 @@ nodes:
     agent_owner: human_interaction
     title: 观察工具结果
     type: tool
-    description: 保存工具完整安全结果、证据来源和耗时，供控制器与模型继续处理。
+    description: 保存工具完整安全结果、证据来源和耗时，供控制器继续推进并供最终回答模型引用。
     inputs: [tool_name]
     outputs: [result, tool_result_code, evidence_source]
     required: false

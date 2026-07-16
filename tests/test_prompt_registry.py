@@ -52,3 +52,13 @@ def test_prompt_formatter_preserves_json_braces_and_replaces_named_values() -> N
 
     assert "字段错误" in rendered
     assert "field" in rendered
+
+
+def test_executor_prompt_is_final_answer_only() -> None:
+    executor = prompts.load_prompt("agent_executor")
+    step = prompts.load_prompt("agent_executor_step")
+
+    assert "自主选择必要工具" not in executor
+    assert "服务端已经完成工具调用" in executor
+    assert "不要调用工具" in executor
+    assert "当前阶段只负责生成最终回答" in step

@@ -14,7 +14,6 @@ from app.agent_runtime.contracts import (
     AgentModelResponse,
     AgentRunState,
     AgentRuntimeContext,
-    AgentToolCall,
 )
 from app.agent_runtime.runner import AgentRunner
 from app.agent_tools.contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
@@ -345,18 +344,11 @@ def test_planning_runtime_reuses_structured_rule_and_period_context():
     assert execution.validation.resolved_time.start_time.isoformat() == "2026-06-01T00:00:00+08:00"
 
 
-def test_planned_runner_exposes_only_next_capability_tool():
+def test_planned_runner_dispatches_tools_without_model_routing():
     adapter = SequenceAdapter([
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="search_indicator_rules",
-            arguments={"query": "急会诊及时到位率"},
-        )]),
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="get_effective_rule",
-            arguments={"rule_id": "RULE_1"},
-        )]),
         AgentModelResponse(content="指标率 = 分子 ÷ 分母 × 100%"),
     ])
+    trace_events = []
     registry = _registry()
     planning = AgentPlanningRuntime(
         planner=StaticPlanner(_rule_plan()),
@@ -366,109 +358,23 @@ def test_planned_runner_exposes_only_next_capability_tool():
         adapter,
         registry,
         ToolGateway(registry),
+        trace_callback=trace_events.append,
         planning_runtime=planning,
     )
 
     result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
 
     assert result.stop_reason == "final_answer", result.answer
-    assert [
-        [item["function"]["name"] for item in call["tools"]]
-        for call in adapter.calls
-    ] == [
-        ["search_indicator_rules"],
-        ["get_effective_rule"],
-        [],
+    assert len(adapter.calls) == 1
+    assert adapter.calls[0]["tools"] == []
+    dispatches = [
+        event for event in trace_events
+        if event.get("node_name") == "deterministic_tool_dispatch"
     ]
-
-
-def test_planned_runner_rejects_tool_outside_current_capability():
-    adapter = SequenceAdapter([AgentModelResponse(tool_calls=[AgentToolCall(
-        name="diagnose_indicator_issue",
-        arguments={"rule_id": "RULE_1"},
-    )])])
-    registry = _registry()
-    runner = AgentRunner(
-        adapter,
-        registry,
-        ToolGateway(registry),
-        planning_runtime=AgentPlanningRuntime(
-            planner=StaticPlanner(_rule_plan()),
-            now_provider=lambda: NOW,
-        ),
-        max_steps=1,
-    )
-
-    result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
-
-    assert result.stop_reason == "tool_error"
-    assert "当前计划" in result.answer
-
-
-def test_planned_runner_reflects_once_after_wrong_tool_choice():
-    adapter = SequenceAdapter([
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="diagnose_indicator_issue",
-            arguments={"rule_id": "RULE_1"},
-        )]),
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="search_indicator_rules",
-            arguments={"query": "急会诊及时到位率"},
-        )]),
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="get_effective_rule",
-            arguments={"rule_id": "RULE_1"},
-        )]),
-        AgentModelResponse(content="指标率 = 分子 ÷ 分母 × 100%"),
-    ])
-    registry = _registry()
-    runner = AgentRunner(
-        adapter,
-        registry,
-        ToolGateway(registry),
-        planning_runtime=AgentPlanningRuntime(
-            planner=StaticPlanner(_rule_plan()),
-            now_provider=lambda: NOW,
-        ),
-    )
-
-    result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
-
-    assert result.stop_reason == "final_answer"
-    assert any(
-        "未允许" in message["content"]
-        for message in result.state.messages
-        if message["role"] == "system"
-    )
-
-
-def test_planned_runner_reflects_once_after_premature_answer():
-    adapter = SequenceAdapter([
-        AgentModelResponse(content="指标率 = 分子 ÷ 分母 × 100%"),
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="search_indicator_rules",
-            arguments={"query": "急会诊及时到位率"},
-        )]),
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="get_effective_rule",
-            arguments={"rule_id": "RULE_1"},
-        )]),
-        AgentModelResponse(content="指标率 = 分子 ÷ 分母 × 100%"),
-    ])
-    registry = _registry()
-    runner = AgentRunner(
-        adapter,
-        registry,
-        ToolGateway(registry),
-        planning_runtime=AgentPlanningRuntime(
-            planner=StaticPlanner(_rule_plan()),
-            now_provider=lambda: NOW,
-        ),
-    )
-
-    result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
-
-    assert result.stop_reason == "final_answer"
+    assert [event["output_data"]["tool_call"]["name"] for event in dispatches] == [
+        "search_indicator_rules",
+        "get_effective_rule",
+    ]
 
 
 def test_general_chat_plan_calls_no_tools():
@@ -493,6 +399,40 @@ def test_general_chat_plan_calls_no_tools():
 
     assert result.stop_reason == "final_answer"
     assert adapter.calls[0]["tools"] == []
+
+
+def test_empty_final_model_action_is_warning_and_retried_once():
+    adapter = SequenceAdapter([
+        AgentModelResponse(content="", tool_calls=[], model="qwen3:8b"),
+        AgentModelResponse(
+            content="指标率 = 分子 ÷ 分母 × 100%",
+            model="qwen3:8b",
+        ),
+    ])
+    trace_events = []
+    registry = _registry()
+    runner = AgentRunner(
+        adapter,
+        registry,
+        ToolGateway(registry),
+        trace_callback=trace_events.append,
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+
+    result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
+
+    assert result.stop_reason == "final_answer"
+    assert len(adapter.calls) == 2
+    executor_nodes = [
+        event for event in trace_events
+        if event.get("node_name") == "executor_llm"
+    ]
+    assert executor_nodes[0]["status"] == "warning"
+    assert executor_nodes[0]["error_code"] == "MODEL_EMPTY_ACTION"
+    assert executor_nodes[1]["status"] == "success"
 
 
 def test_time_clarification_trace_is_warning_not_failure():
@@ -629,10 +569,6 @@ def test_plan_direction_failure_replans_once_with_failure_context():
         required_permissions=frozenset({"indicator_read"}),
     )
     adapter = SequenceAdapter([
-        AgentModelResponse(tool_calls=[AgentToolCall(
-            name="search_indicator_rules",
-            arguments={"query": "问题"},
-        )]),
         AgentModelResponse(content="当前问题无法按指标规则查询，请补充具体指标。"),
     ])
     runner = AgentRunner(
@@ -649,5 +585,6 @@ def test_plan_direction_failure_replans_once_with_failure_context():
 
     assert result.stop_reason == "final_answer"
     assert result.state.replan_count == 1
+    assert len(adapter.calls) == 1
     assert len(planner.replan_calls) == 1
     assert planner.replan_calls[0]["failure_code"] == "PLAN_INTENT_MISMATCH"

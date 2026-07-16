@@ -120,6 +120,35 @@ class OllamaToolCallingAdapterTest(unittest.IsolatedAsyncioTestCase):
             await adapter.chat(messages=[], tools=[])
         self.assertNotIn("secret", str(raised.exception))
 
+    async def test_adapter_records_thinking_metadata_without_thinking_text(self) -> None:
+        from app.llm.ollama_tools import OllamaToolCallingAdapter
+
+        client = FakeOllamaClient({
+            "model": "qwen3:8b",
+            "prompt_eval_count": 100,
+            "eval_count": 50,
+            "done_reason": "stop",
+            "message": {
+                "role": "assistant",
+                "content": "最终回答",
+                "thinking": "绝不能进入 Trace 的隐藏思考",
+                "tool_calls": [],
+            },
+        })
+
+        response = await OllamaToolCallingAdapter(client).chat(
+            messages=[{"role": "user", "content": "怎么算"}],
+            tools=[],
+        )
+
+        self.assertEqual(response.usage["thinking_present"], True)
+        self.assertEqual(
+            response.usage["thinking_chars"],
+            len("绝不能进入 Trace 的隐藏思考"),
+        )
+        self.assertEqual(response.usage["done_reason"], "stop")
+        self.assertNotIn("绝不能进入", response.model_dump_json())
+
 
 if __name__ == "__main__":
     unittest.main()

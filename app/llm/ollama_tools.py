@@ -86,12 +86,19 @@ class OllamaToolCallingAdapter:
                 name=name,
                 arguments=_tool_arguments(function.get("arguments") or {}),
             ))
+        usage: dict[str, Any] = {
+            "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+            "completion_tokens": int(data.get("eval_count") or 0),
+        }
+        if "thinking" in message:
+            thinking = str(message.get("thinking") or "")
+            usage["thinking_present"] = bool(thinking)
+            usage["thinking_chars"] = len(thinking)
+        if data.get("done_reason") is not None:
+            usage["done_reason"] = str(data.get("done_reason") or "")
         return AgentModelResponse(
             content=str(message.get("content") or "").strip(),
             tool_calls=calls,
             model=str(data.get("model") or "") or None,
-            usage={
-                "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                "completion_tokens": int(data.get("eval_count") or 0),
-            },
+            usage=usage,
         )

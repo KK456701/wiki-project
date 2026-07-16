@@ -27,9 +27,9 @@
 - Consumes: `PlanningExecution`, `ControllerDecision`, `AgentRunState`, user query.
 - Produces: `build_deterministic_tool_call(...) -> AgentToolCall` or `DeterministicDispatchError`.
 
-- [ ] Write failing tests for search, effective rule, SQL preparation, trial run, diagnosis, change preview and upload arguments.
-- [ ] Run the focused test and confirm the dispatch module is missing.
-- [ ] Implement the minimal pure argument compiler and make the focused test pass.
+- [x] Write failing tests for search, effective rule, SQL preparation, trial run, diagnosis, change preview and upload arguments.
+- [x] Run the focused test and confirm the dispatch module is missing.
+- [x] Implement the minimal pure argument compiler and make the focused test pass.
 
 ### Task 2: Bypass Executor for planned tool steps
 
@@ -42,10 +42,10 @@
 - Consumes: `ControllerAction.EXECUTE_TOOL` and the dispatch compiler.
 - Produces: direct Gateway calls plus `deterministic_tool_dispatch` Trace nodes; one answer-model call after facts are complete.
 
-- [ ] Replace model-tool-call expectations with failing one-answer-call expectations.
-- [ ] Run focused Runner tests and confirm the existing loop still invokes the model for tools.
-- [ ] Add direct dispatch branching while reusing the current Gateway/result handling path.
-- [ ] Run focused Runner and controller tests to green.
+- [x] Replace model-tool-call expectations with failing one-answer-call expectations.
+- [x] Run focused Runner tests and confirm the existing loop still invokes the model for tools.
+- [x] Add direct dispatch branching while reusing the current Gateway/result handling path.
+- [x] Run focused Runner and controller tests to green.
 
 ### Task 3: Mark empty model actions and expose safe thinking metadata
 
@@ -59,9 +59,9 @@
 - Consumes: `AgentModelResponse.content`, `tool_calls`, Ollama `message.thinking` and response counters.
 - Produces: `MODEL_EMPTY_ACTION` warning Trace and safe usage metadata without thinking text.
 
-- [ ] Write failing tests for empty-action warning and thinking metadata projection.
-- [ ] Implement one guarded retry for empty final answers and metadata-only thinking recording.
-- [ ] Run focused tests to green.
+- [x] Write failing tests for empty-action warning and thinking metadata projection.
+- [x] Implement one guarded retry for empty final answers and metadata-only thinking recording.
+- [x] Run focused tests to green.
 
 ### Task 4: Align prompts, Trace manifest and documentation
 
@@ -78,8 +78,8 @@
 - Consumes: final runtime behavior.
 - Produces: an accurate prompt catalog and bilingual Trace node definition.
 
-- [ ] Remove tool-routing instructions from Executor prompts.
-- [ ] Add the dispatch node and redefine Executor as final-answer-only in the workflow manifest.
-- [ ] Update README, architecture and change log.
-- [ ] Run prompt/manifest tests, Ruff, compileall and the complete pytest suite.
+- [x] Remove tool-routing instructions from Executor prompts.
+- [x] Add the dispatch node and redefine Executor as final-answer-only in the workflow manifest.
+- [x] Update README, architecture and change log.
+- [x] Run prompt/manifest tests, Ruff, compileall and the complete pytest suite.
 - [ ] Commit and push `main`; if GitHub remains unreachable, preserve the local commits without changing remote history.
