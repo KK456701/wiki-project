@@ -57,6 +57,7 @@ def test_public_event_projection_never_renders_arguments_or_result_data() -> Non
     event = _run_node("""runtime.projectEvent({
       event:'tool_result', trace_id:'TRACE_1', tool_name:'trial_run_indicator_sql',
       status:'success', code:'TRIAL_RUN_COMPLETED', message:'试运行完成',
+      reused:true,
       arguments:{sql_text:'SELECT patient_name'},
       result:{data:{patient_name:'不应返回'}}
     })""")
@@ -68,6 +69,7 @@ def test_public_event_projection_never_renders_arguments_or_result_data() -> Non
         "status": "success",
         "code": "TRIAL_RUN_COMPLETED",
         "message": "试运行完成",
+        "reused": True,
     }
     assert "SELECT" not in json.dumps(event, ensure_ascii=False)
 
@@ -86,3 +88,12 @@ def test_evidence_track_css_supports_mobile_focus_and_reduced_motion() -> None:
     assert ":focus-visible" in css
     assert "@media (max-width: 720px)" in css
     assert "prefers-reduced-motion: reduce" in css
+
+
+def test_agent_trace_uses_authenticated_run_endpoint_and_legacy_is_retained() -> None:
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+    assert "attachTraceButton(ass, ass.traceId || latestTraceId, {agentRun: true})" in html
+    assert '"/api/agent/runs/" + encodeURIComponent(traceId)' in html
+    assert 'Authorization: "Bearer " + hospitalAuthToken' in html
+    assert '"/api/traces/" + encodeURIComponent(traceId)' in html

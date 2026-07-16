@@ -15,6 +15,10 @@ from app.agent_runtime.response_guard import (
         ("分子：37，分母：40。", {"trial_run"}),
         ("诊断发现根因是字段映射缺失。", {"diagnosis"}),
         ("排查结论为到位时间字段异常。", {"diagnosis"}),
+        (
+            "本院采用 20 分钟会导致国标考核结果显著偏低。",
+            {"rule_change_preview"},
+        ),
     ],
 )
 def test_claims_require_matching_fact_types(answer, required) -> None:

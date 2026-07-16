@@ -8,6 +8,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ChatMarkdownUiTest(unittest.TestCase):
+    def test_renderer_builds_horizontal_rule_instead_of_paragraph(self) -> None:
+        script = """
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown('上文\\n\\n---\\n\\n下文'));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertEqual(result.stdout, "<p>上文</p><hr><p>下文</p>")
+
     def test_page_loads_renderer_before_inline_chat_script(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 

@@ -53,5 +53,23 @@ def test_trace_bridge_records_redacted_agent_nodes_and_finish_status() -> None:
     assert "secret" not in serialized
     assert "SELECT" not in serialized
     assert any(kwargs["tool_name"] == "search_indicator_rules" for _, kwargs in recorder.nodes)
+    assert [kwargs["node_name"] for _, kwargs in recorder.nodes] == [
+        "agent_model",
+        "agent_tool_call",
+        "agent_tool_result",
+    ]
     assert recorder.finished[0][1]["intent"] == "agent_tool_calling"
     assert recorder.finished[0][1]["final_status"] == "success"
+
+
+def test_trace_bridge_records_memory_failure_without_sensitive_details() -> None:
+    recorder = FakeRecorder()
+    bridge = AgentTraceBridge(recorder, "TRACE_002")
+
+    bridge.record_memory_failure("database_password=secret")
+
+    node = recorder.nodes[0][1]
+    assert node["node_name"] == "agent_memory"
+    assert node["status"] == "failed"
+    assert node["error_code"] == "AGENT_MEMORY_SAVE_FAILED"
+    assert "secret" not in str(node)

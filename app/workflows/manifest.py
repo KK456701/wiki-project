@@ -42,7 +42,11 @@ def _with_contract_defaults(node: dict[str, Any]) -> dict[str, Any]:
 def load_workflow_manifest(workflow_id: str = "core_indicator_chat") -> dict[str, Any]:
     if workflow_id not in _CACHE:
         path = WORKFLOW_ROOT / f"{workflow_id}.yaml"
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = (
+            yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            if path.is_file()
+            else {}
+        )
         data.setdefault("workflow_id", workflow_id)
         data.setdefault("nodes", [])
         data.setdefault("edges", [])

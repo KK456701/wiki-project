@@ -12,6 +12,7 @@ from app.agent_runtime import (
     AgentToolCall,
 )
 from app.agent_runtime.runner import AgentRunner
+from app.agent_runtime.response_guard import normalize_agent_answer
 from app.agent_tools import ToolGateway
 from app.agent_tools.catalog import build_agent_tool_registry
 from app.agent_tools.diagnosis_tools import DiagnosisToolServices
@@ -169,6 +170,39 @@ def _runner(adapter, domain=None, max_steps=8):
 
 
 class AgentExecutionLoopTest(unittest.IsolatedAsyncioTestCase):
+    def test_normalize_agent_answer_converts_common_latex_ratio(self) -> None:
+        answer = """计算公式：
+$$
+\\frac{\\text{及时次数}}{\\text{总次数}} \\times 100\\%
+$$"""
+
+        self.assertEqual(
+            normalize_agent_answer(answer),
+            "计算公式：\n及时次数 ÷ 总次数 × 100%",
+        )
+
+    def test_normalize_agent_answer_keeps_plain_markdown(self) -> None:
+        answer = "### 计算口径\n及时次数 ÷ 总次数 × 100%"
+
+        self.assertEqual(normalize_agent_answer(answer), answer)
+
+    async def test_final_answer_is_normalized_before_returning(self) -> None:
+        adapter = SequenceAdapter([AgentModelResponse(
+            content="$$\\frac{\\text{及时次数}}{\\text{总次数}} \\times 100\\%$$",
+        )])
+        runner, _ = _runner(adapter, max_steps=1)
+        state = AgentRunState(evidence=[{
+            "source": "mysql",
+            "source_id": "MQSI2025_005",
+            "fact_types": ["rule_identity", "formula"],
+        }])
+
+        result = await runner.run("怎么算？", _context(), state)
+
+        self.assertEqual(result.stop_reason, "final_answer")
+        self.assertEqual(result.answer, "及时次数 ÷ 总次数 × 100%")
+        self.assertEqual(result.state.messages[-1]["content"], result.answer)
+
     async def test_search_prepare_trial_and_answer_closed_loop(self) -> None:
         adapter = SequenceAdapter([
             AgentModelResponse(tool_calls=[AgentToolCall(

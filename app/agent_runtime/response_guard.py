@@ -38,7 +38,10 @@ CLAIM_RULES = (
     ),
     ClaimRule(
         "rule_change_preview",
-        (r"(?:已生成|生成了).{0,20}(?:口径|规则)?.{0,10}(?:变更|差异)?预览",),
+        (
+            r"(?:已生成|生成了).{0,20}(?:口径|规则)?.{0,10}(?:变更|差异)?预览",
+            r"(?:导致|因此|所以|将使|会使).{0,30}(?:偏高|偏低|更高|更低|上升|下降|增加|减少)",
+        ),
     ),
     ClaimRule(
         "formal_change",
@@ -57,6 +60,28 @@ _FACT_LABELS = {
     "rule_change_preview": "口径变更预览",
     "formal_change": "正式提交、审批、发布或回退授权",
 }
+
+
+def normalize_agent_answer(answer: str) -> str:
+    """把常见模型 LaTeX 公式收敛为当前聊天界面可读的纯文本。"""
+    if not answer:
+        return answer
+
+    normalized = answer.replace("\\[", "").replace("\\]", "")
+    normalized = re.sub(r"(?m)^[ \t]*\$\$[ \t]*\n?", "", normalized)
+    normalized = normalized.replace("$$", "")
+    normalized = re.sub(r"\\text\{([^{}]*)\}", r"\1", normalized)
+    normalized = re.sub(
+        r"\\frac\{([^{}]*)\}\{([^{}]*)\}",
+        lambda match: f"{match.group(1).strip()} ÷ {match.group(2).strip()}",
+        normalized,
+    )
+    normalized = normalized.replace("\\times", "×").replace("\\%", "%")
+    normalized = normalized.replace("\\left", "").replace("\\right", "")
+    normalized = re.sub(r"[ \t]+", " ", normalized)
+    normalized = re.sub(r" *\n *", "\n", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
 
 
 def _available_fact_types(evidence: list[dict[str, Any]]) -> set[str]:

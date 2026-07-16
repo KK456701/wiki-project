@@ -28,6 +28,7 @@
     });
     if (source && source.step !== undefined) event.step = Number(source.step || 0);
     if (source && source.step_count !== undefined) event.step_count = Number(source.step_count || 0);
+    if (source && source.reused !== undefined) event.reused = source.reused === true;
     return event;
   }
 
@@ -166,7 +167,9 @@
     }
     if (event.event === "tool_result") {
       item.classList.add(event.status === "success" || event.status === "preview_ready" ? "is-done" : "is-warning");
-      item.querySelector("small").textContent = event.message || event.code || "已完成";
+      item.querySelector("small").textContent = event.reused
+        ? "复用本轮已有结果"
+        : event.message || event.code || "已完成";
     }
   }
 

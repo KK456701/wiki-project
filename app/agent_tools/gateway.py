@@ -12,7 +12,12 @@ from pydantic import ValidationError
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
 from app.agent_tools.contracts import ToolResult
-from app.agent_tools.policy import RepeatDecision, ToolExecutionPolicy, redact_payload
+from app.agent_tools.policy import (
+    RepeatDecision,
+    ToolExecutionPolicy,
+    redact_payload,
+    tool_call_fingerprint,
+)
 from app.agent_tools.registry import ToolRegistry, ToolRegistryError
 
 
@@ -80,23 +85,51 @@ class ToolGateway:
                 data={"errors": exc.errors(include_url=False, include_input=False)},
             )
 
+        fingerprint = tool_call_fingerprint(tool_name, raw_arguments)
         decision = self.policy.note_call(state, tool_name, raw_arguments)
         if decision is RepeatDecision.DUPLICATE:
-            return ToolResult(
+            cached = state.tool_result_cache.get(fingerprint)
+            if cached is not None:
+                result = ToolResult.model_validate(cached)
+                self._emit({
+                    "event": "tool_result",
+                    "tool_name": tool.name,
+                    "duration_ms": 0,
+                    "reused": True,
+                    "result": redact_payload(result.model_dump(mode="json")),
+                })
+                return result
+            result = ToolResult(
                 ok=False,
                 status="validation_failed",
                 code="AGENT_REPEATED_TOOL_CALL",
                 summary="该工具已使用相同参数调用过，请根据已有结果选择下一步。",
                 retryable=True,
             )
+            self._emit({
+                "event": "tool_result",
+                "tool_name": tool.name,
+                "duration_ms": 0,
+                "reused": False,
+                "result": redact_payload(result.model_dump(mode="json")),
+            })
+            return result
         if decision is RepeatDecision.STOP:
-            return ToolResult(
+            result = ToolResult(
                 ok=False,
                 status="validation_failed",
                 code="AGENT_REPEATED_TOOL_CALL",
                 summary="工具被重复调用，已停止本次 Agent 循环。",
                 retryable=False,
             )
+            self._emit({
+                "event": "tool_result",
+                "tool_name": tool.name,
+                "duration_ms": 0,
+                "reused": False,
+                "result": redact_payload(result.model_dump(mode="json")),
+            })
+            return result
 
         self._emit(
             {
@@ -138,9 +171,11 @@ class ToolGateway:
                     0,
                     int((time.perf_counter() - started_at) * 1000),
                 ),
+                "reused": False,
                 "result": redact_payload(result.model_dump(mode="json")),
             }
         )
+        state.tool_result_cache[fingerprint] = result.model_dump(mode="json")
         return result
 
     @staticmethod

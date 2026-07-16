@@ -176,6 +176,11 @@
         index += 1;
         continue;
       }
+      if (/^-{3,}$/.test(line.trim())) {
+        output.push("<hr>");
+        index += 1;
+        continue;
+      }
       if (!line.trim()) {
         index += 1;
         continue;

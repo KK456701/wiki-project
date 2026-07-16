@@ -15,7 +15,11 @@ from .events import (
     emit_agent_event,
     public_agent_event,
 )
-from .response_guard import evidence_correction_prompt, missing_fact_types
+from .response_guard import (
+    evidence_correction_prompt,
+    missing_fact_types,
+    normalize_agent_answer,
+)
 
 if TYPE_CHECKING:
     from .runner import AgentRunner
@@ -44,4 +48,5 @@ __all__ = [
     "emit_agent_event",
     "public_agent_event",
     "missing_fact_types",
+    "normalize_agent_answer",
 ]
