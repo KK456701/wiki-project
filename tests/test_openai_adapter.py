@@ -1,5 +1,6 @@
 import asyncio
 import json
+import urllib.error
 from unittest.mock import patch
 
 import pytest
@@ -20,6 +21,9 @@ class _Response:
 
     def read(self):
         return self.body
+
+    def close(self):
+        return None
 
 
 def test_openai_client_posts_chat_completion_with_tools_and_auth() -> None:
@@ -138,3 +142,36 @@ def test_openai_adapter_hides_internal_error() -> None:
                 OpenAICompatibleToolCallingAdapter(client).chat(messages=[], tools=[])
             )
     assert "secret-key" not in str(raised.value)
+
+
+def test_openai_adapter_surfaces_sanitized_http_error_body() -> None:
+    client = OpenAICompatibleClient(
+        model="deepseek-v4-pro",
+        base_url="https://api.deepseek.com",
+        api_key="secret-key",
+    )
+    http_error = urllib.error.HTTPError(
+        "https://api.deepseek.com/chat/completions",
+        400,
+        "Bad Request",
+        {},
+        _Response({
+            "error": {
+                "message": "invalid tool_call_id, Authorization: Bearer secret-key"
+            }
+        }),
+    )
+
+    with patch(
+        "app.llm.openai_adapter.urllib.request.urlopen",
+        side_effect=http_error,
+    ):
+        with pytest.raises(AgentModelError) as raised:
+            asyncio.run(
+                OpenAICompatibleToolCallingAdapter(client).chat(messages=[], tools=[])
+            )
+
+    message = str(raised.value)
+    assert "HTTP 400" in message
+    assert "invalid tool_call_id" in message
+    assert "secret-key" not in message

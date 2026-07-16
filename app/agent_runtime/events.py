@@ -56,7 +56,11 @@ def public_agent_event(
         if event.get("step_count") is not None:
             payload["step_count"] = int(event.get("step_count") or 0)
         if event_name == "agent_error":
-            payload["message"] = "Agent 运行未完成，请稍后重试或使用旧聊天入口。"
+            payload["message"] = str(
+                event.get("message")
+                or event.get("answer")
+                or "Agent 运行未完成，请稍后重试或使用旧聊天入口。"
+            )
     return payload
 
 

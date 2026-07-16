@@ -78,8 +78,11 @@ def _has_fact_type(state: AgentRunState, fact_type: str) -> bool:
 def _asks_for_period_clarification(answer: str) -> bool:
     return bool(
         re.search(
-            r"(?:请|需要|先).{0,12}(?:提供|明确|选择).{0,12}"
-            r"(?:统计周期|统计时间|时间范围|起止时间|开始时间|结束时间)",
+            r"(?:请|需要|先|可以|能否).{0,20}"
+            r"(?:提供|明确|选择|告诉|告知|指定|确认).{0,20}"
+            r"(?:统计周期|统计时间|时间范围|起止时间|开始时间|结束时间"
+            r"|时间段|起止日期|日期范围|哪个.{0,4}(?:时间|日期|段)"
+            r"|查询.{0,4}(?:时间|日期|段))",
             answer,
         )
     )
@@ -171,80 +174,108 @@ class AgentRunner:
         run_state.current_request_kind = _classify_request_kind(user_message)
         run_state.messages.append({"role": "user", "content": user_message})
         model_name: str | None = None
+        evidence_corrections = 0
+        chinese_corrections = 0
+        trial_run_corrections = 0
+        fact_corrections = 0
         for _ in range(self.max_steps):
-            if run_state.cancelled:
-                run_state.stop_reason = "cancelled"
-                return AgentRunResult(
-                    answer="本次运行已取消。",
-                    stop_reason="cancelled",
-                    state=run_state,
-                    model=model_name,
-                )
-            run_state.step_count += 1
-            available = self.registry.list_for_context(context, run_state)
-            emit_agent_event(
-                self.event_callback,
-                "model_start",
-                step=run_state.step_count,
-                model_name=model_name,
-                tool_count=len(available),
-            )
             try:
-                response = await self.adapter.chat(
-                    messages=run_state.messages,
-                    tools=self.registry.to_ollama_schema(available),
-                    temperature=0.0,
+                if run_state.cancelled:
+                    run_state.stop_reason = "cancelled"
+                    return AgentRunResult(
+                        answer="本次运行已取消。",
+                        stop_reason="cancelled",
+                        state=run_state,
+                        model=model_name,
+                    )
+                run_state.step_count += 1
+                available = self.registry.list_for_context(context, run_state)
+                emit_agent_event(
+                    self.event_callback,
+                    "model_start",
+                    step=run_state.step_count,
+                    model_name=model_name,
+                    tool_count=len(available),
                 )
-            except AgentModelError:
+                try:
+                    response = await self.adapter.chat(
+                        messages=run_state.messages,
+                        tools=self.registry.to_ollama_schema(available),
+                        temperature=0.0,
+                    )
+                except AgentModelError as exc:
+                    run_state.stop_reason = "tool_error"
+                    return AgentRunResult(
+                        answer=str(exc) or "模型服务暂时不可用，请稍后重试。",
+                        stop_reason="tool_error",
+                        state=run_state,
+                    )
+                except Exception:
+                    run_state.stop_reason = "tool_error"
+                    return AgentRunResult(
+                        answer="模型调用异常，请稍后重试。",
+                        stop_reason="tool_error",
+                        state=run_state,
+                    )
+                model_name = response.model or model_name
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response.content,
+                    "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
+                }
+                run_state.messages.append(assistant_message)
+                if not response.tool_calls:
+                    answer = normalize_agent_answer(response.content)
+                    assistant_message["content"] = answer
+                    if not run_state.evidence:
+                        evidence_corrections += 1
+                        if evidence_corrections <= 1:
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": EVIDENCE_REQUIRED_PROMPT,
+                            })
+                            continue
+                    if not _contains_chinese(answer):
+                        chinese_corrections += 1
+                        if chinese_corrections <= 1:
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": CHINESE_REQUIRED_PROMPT,
+                            })
+                            continue
+                    if (
+                        run_state.current_request_kind == "trial_run"
+                        and not _has_fact_type(run_state, "trial_run")
+                        and not _asks_for_period_clarification(answer)
+                    ):
+                        trial_run_corrections += 1
+                        if trial_run_corrections <= 1:
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": TRIAL_RUN_REQUIRED_PROMPT,
+                            })
+                            continue
+                    missing = missing_fact_types(answer, run_state.evidence)
+                    if missing:
+                        fact_corrections += 1
+                        if fact_corrections <= 1:
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": evidence_correction_prompt(missing),
+                            })
+                            continue
+                    run_state.stop_reason = "final_answer"
+                    return AgentRunResult(
+                        answer=answer,
+                        stop_reason="final_answer",
+                        state=run_state,
+                        model=model_name,
+                    )
+            except Exception:
                 run_state.stop_reason = "tool_error"
                 return AgentRunResult(
-                    answer="模型服务暂时不可用，请稍后重试。",
+                    answer="处理请求时发生内部错误，请稍后重试。",
                     stop_reason="tool_error",
-                    state=run_state,
-                )
-            model_name = response.model or model_name
-            assistant_message = {
-                "role": "assistant",
-                "content": response.content,
-                "tool_calls": [call.model_dump(mode="json") for call in response.tool_calls],
-            }
-            run_state.messages.append(assistant_message)
-            if not response.tool_calls:
-                answer = normalize_agent_answer(response.content)
-                assistant_message["content"] = answer
-                if not run_state.evidence:
-                    run_state.messages.append({
-                        "role": "system",
-                        "content": EVIDENCE_REQUIRED_PROMPT,
-                    })
-                    continue
-                if not _contains_chinese(answer):
-                    run_state.messages.append({
-                        "role": "system",
-                        "content": CHINESE_REQUIRED_PROMPT,
-                    })
-                    continue
-                if (
-                    run_state.current_request_kind == "trial_run"
-                    and not _has_fact_type(run_state, "trial_run")
-                    and not _asks_for_period_clarification(answer)
-                ):
-                    run_state.messages.append({
-                        "role": "system",
-                        "content": TRIAL_RUN_REQUIRED_PROMPT,
-                    })
-                    continue
-                missing = missing_fact_types(answer, run_state.evidence)
-                if missing:
-                    run_state.messages.append({
-                        "role": "system",
-                        "content": evidence_correction_prompt(missing),
-                    })
-                    continue
-                run_state.stop_reason = "final_answer"
-                return AgentRunResult(
-                    answer=answer,
-                    stop_reason="final_answer",
                     state=run_state,
                     model=model_name,
                 )
@@ -257,68 +288,77 @@ class AgentRunner:
                     model=model_name,
                 )
             for call in response.tool_calls:
-                if run_state.cancelled:
-                    run_state.stop_reason = "cancelled"
+                try:
+                    if run_state.cancelled:
+                        run_state.stop_reason = "cancelled"
+                        return AgentRunResult(
+                            answer="本次运行已取消。",
+                            stop_reason="cancelled",
+                            state=run_state,
+                            model=model_name,
+                        )
+                    result = await self.gateway.execute(
+                        call.name, call.arguments, context, run_state
+                    )
+                    dumped = result.model_dump(mode="json")
+                    run_state.last_tool_results.append(dumped)
+                    if result.ok:
+                        run_state.evidence.extend(
+                            evidence.model_dump(mode="json") for evidence in result.evidence
+                        )
+                    run_state.messages.append({
+                        "role": "tool",
+                        "tool_name": call.name,
+                        "content": json.dumps(dumped, ensure_ascii=False),
+                    })
+                    if result.status == "need_clarification":
+                        emit_agent_event(
+                            self.event_callback,
+                            "clarification_required",
+                            step=run_state.step_count,
+                            message=result.summary,
+                        )
+                        run_state.stop_reason = "need_clarification"
+                        return AgentRunResult(
+                            answer=result.summary,
+                            stop_reason="need_clarification",
+                            state=run_state,
+                            model=model_name,
+                        )
+                    if run_state.stop_reason == "context_conflict":
+                        return AgentRunResult(
+                            answer=result.summary,
+                            stop_reason="context_conflict",
+                            state=run_state,
+                            model=model_name,
+                        )
+                    if (
+                        result.code == "TOOL_NOT_FOUND"
+                        or result.status
+                        in {"forbidden", "unavailable", "cancelled", "error"}
+                    ) and not result.retryable:
+                        stop_reason = (
+                            "cancelled" if result.status == "cancelled" else "tool_error"
+                        )
+                        run_state.stop_reason = stop_reason
+                        return AgentRunResult(
+                            answer=result.summary,
+                            stop_reason=stop_reason,
+                            state=run_state,
+                            model=model_name,
+                        )
+                    if run_state.stop_reason == "repeated_tool_call":
+                        return AgentRunResult(
+                            answer="检测到重复工具调用，本次运行已停止。",
+                            stop_reason="repeated_tool_call",
+                            state=run_state,
+                            model=model_name,
+                        )
+                except Exception:
+                    run_state.stop_reason = "tool_error"
                     return AgentRunResult(
-                        answer="本次运行已取消。",
-                        stop_reason="cancelled",
-                        state=run_state,
-                        model=model_name,
-                    )
-                result = await self.gateway.execute(
-                    call.name, call.arguments, context, run_state
-                )
-                dumped = result.model_dump(mode="json")
-                run_state.last_tool_results.append(dumped)
-                if result.ok:
-                    run_state.evidence.extend(
-                        evidence.model_dump(mode="json") for evidence in result.evidence
-                    )
-                run_state.messages.append({
-                    "role": "tool",
-                    "tool_name": call.name,
-                    "content": json.dumps(dumped, ensure_ascii=False),
-                })
-                if result.status == "need_clarification":
-                    emit_agent_event(
-                        self.event_callback,
-                        "clarification_required",
-                        step=run_state.step_count,
-                        message=result.summary,
-                    )
-                    run_state.stop_reason = "need_clarification"
-                    return AgentRunResult(
-                        answer=result.summary,
-                        stop_reason="need_clarification",
-                        state=run_state,
-                        model=model_name,
-                    )
-                if run_state.stop_reason == "context_conflict":
-                    return AgentRunResult(
-                        answer=result.summary,
-                        stop_reason="context_conflict",
-                        state=run_state,
-                        model=model_name,
-                    )
-                if (
-                    result.code == "TOOL_NOT_FOUND"
-                    or result.status
-                    in {"forbidden", "unavailable", "cancelled", "error"}
-                ) and not result.retryable:
-                    stop_reason = (
-                        "cancelled" if result.status == "cancelled" else "tool_error"
-                    )
-                    run_state.stop_reason = stop_reason
-                    return AgentRunResult(
-                        answer=result.summary,
-                        stop_reason=stop_reason,
-                        state=run_state,
-                        model=model_name,
-                    )
-                if run_state.stop_reason == "repeated_tool_call":
-                    return AgentRunResult(
-                        answer="检测到重复工具调用，本次运行已停止。",
-                        stop_reason="repeated_tool_call",
+                        answer="工具执行异常，请稍后重试。",
+                        stop_reason="tool_error",
                         state=run_state,
                         model=model_name,
                     )

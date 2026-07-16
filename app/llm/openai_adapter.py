@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import urllib.error
 import urllib.request
 from collections import defaultdict, deque
@@ -16,6 +17,15 @@ from app.config import get_int
 
 class OpenAICompatibleError(RuntimeError):
     """Raised when an OpenAI-compatible endpoint cannot produce a response."""
+
+
+def _safe_error_detail(value: str, *, limit: int = 240) -> str:
+    detail = re.sub(r"\s+", " ", value or "").strip()
+    detail = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._\-]+", r"\1***", detail)
+    detail = re.sub(r"sk-[A-Za-z0-9._\-]+", "sk-***", detail)
+    if len(detail) > limit:
+        detail = f"{detail[:limit].rstrip()}..."
+    return detail
 
 
 def _tool_arguments(value: Any) -> dict[str, Any]:
@@ -125,8 +135,24 @@ class OpenAICompatibleClient:
                 timeout=self.timeout_seconds,
             ) as response:
                 data = json.loads(response.read().decode("utf-8"))
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-            raise OpenAICompatibleError(str(exc)) from exc
+        except urllib.error.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            except Exception:
+                body = ""
+            status = getattr(exc, "code", None)
+            message = f"HTTP {status}" if status else "HTTP error"
+            detail = _safe_error_detail(body or str(exc))
+            if detail:
+                message = f"{message}: {detail}"
+            raise OpenAICompatibleError(message) from exc
+        except TimeoutError as exc:
+            raise OpenAICompatibleError("请求超时") from exc
+        except urllib.error.URLError as exc:
+            raise OpenAICompatibleError("网络连接失败") from exc
+        except json.JSONDecodeError as exc:
+            raise OpenAICompatibleError("响应解析失败") from exc
         if not isinstance(data, dict) or not isinstance(data.get("choices"), list):
             raise OpenAICompatibleError("missing chat completion choices")
         return data
@@ -151,7 +177,11 @@ class OpenAICompatibleToolCallingAdapter:
                 temperature=temperature,
             )
         except OpenAICompatibleError as exc:
-            raise AgentModelError("模型服务暂时不可用。") from exc
+            detail = _safe_error_detail(str(exc))
+            message = "模型服务暂时不可用。"
+            if detail:
+                message = f"{message}（{detail}）"
+            raise AgentModelError(message) from exc
         choice = (data.get("choices") or [{}])[0]
         message = choice.get("message") or {}
         calls: list[AgentToolCall] = []

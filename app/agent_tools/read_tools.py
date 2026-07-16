@@ -181,6 +181,7 @@ def _rule_evidence(
         source_id=str(payload.get("rule_id") or "") or None,
         version=str(version) if version is not None and str(version) else None,
         fact_types=fact_types or [
+            "rule_identity",
             "definition",
             "formula",
             "effective_level",

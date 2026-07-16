@@ -2324,7 +2324,6 @@ async function streamToolCallingChat(query) {
 }
 
 async function streamChat(query) {
-  await refreshAgentRuntimeMode();
   if (
     window.AgentRuntimeUI &&
     window.AgentRuntimeUI.currentMode(currentUser) === "tool_calling"

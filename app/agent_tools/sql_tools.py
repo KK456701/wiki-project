@@ -486,7 +486,7 @@ def _state_has_verified_rule(
     state: AgentRunState,
 ) -> bool:
     del context
-    return has_verified_rule(state) and not has_active_sql(state)
+    return has_verified_rule(state)
 
 
 def _state_has_active_sql(

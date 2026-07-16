@@ -5,7 +5,7 @@ from app.agent_runtime import (
     AgentRunState,
     AgentRuntimeContext,
 )
-from app.agent_runtime.events import AGENT_EVENT_NAMES
+from app.agent_runtime.events import AGENT_EVENT_NAMES, public_agent_event
 from app.agent_runtime.runner import AgentRunner
 from app.agent_tools import ToolGateway, ToolRegistry
 
@@ -66,3 +66,18 @@ class AgentRuntimeEventsTest(unittest.IsolatedAsyncioTestCase):
             "agent_done",
             "agent_error",
         }))
+
+    def test_public_agent_error_keeps_sanitized_message(self) -> None:
+        event = public_agent_event(
+            {
+                "event": "agent_error",
+                "stop_reason": "tool_error",
+                "answer": "模型服务暂时不可用。（HTTP 400: invalid tool_call_id）",
+            },
+            trace_id="TRACE_1",
+        )
+
+        self.assertEqual(
+            event["message"],
+            "模型服务暂时不可用。（HTTP 400: invalid tool_call_id）",
+        )

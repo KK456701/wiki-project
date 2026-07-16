@@ -63,11 +63,14 @@ _FACT_LABELS = {
 
 
 def normalize_agent_answer(answer: str) -> str:
-    """把常见模型 LaTeX 公式收敛为当前聊天界面可读的纯文本。"""
+    """把常见模型 LaTeX 公式和对话格式前缀收敛为可读纯文本。"""
     if not answer:
         return answer
 
-    normalized = answer.replace("\\[", "").replace("\\]", "")
+    # 去除模型模仿的对话格式前缀
+    normalized = re.sub(r"^\s*(?:助手|用户|AI|Human|Assistant|User)\s*[:：]\s*", "", answer, flags=re.IGNORECASE)
+
+    normalized = normalized.replace("\\[", "").replace("\\]", "")
     normalized = re.sub(r"(?m)^[ \t]*\$\$[ \t]*\n?", "", normalized)
     normalized = normalized.replace("$$", "")
     normalized = re.sub(r"\\text\{([^{}]*)\}", r"\1", normalized)

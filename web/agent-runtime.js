@@ -57,6 +57,7 @@
 
   function renderModelSelector(element, caps) {
     if (!element) return;
+    var currentValue = element.value;
     var options = modelSelectorOptions(caps);
     element.innerHTML = "";
     if (!options.length) {
@@ -67,7 +68,7 @@
       var option = document.createElement("option");
       option.value = item.value;
       option.textContent = item.label;
-      option.selected = item.selected;
+      option.selected = currentValue ? item.value === currentValue : item.selected;
       element.appendChild(option);
     });
     element.hidden = false;
