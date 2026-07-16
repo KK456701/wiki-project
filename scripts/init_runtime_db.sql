@@ -370,6 +370,28 @@ CREATE TABLE IF NOT EXISTS med_generated_sql (
   generated_at DATETIME NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS med_agent_sql_object (
+  sql_id VARCHAR(80) PRIMARY KEY,
+  hospital_id VARCHAR(128) NOT NULL,
+  user_id VARCHAR(128) NOT NULL,
+  session_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128) NOT NULL,
+  dialect VARCHAR(32) NOT NULL,
+  sql_text MEDIUMTEXT NOT NULL,
+  params_json JSON NOT NULL,
+  stat_start VARCHAR(32) NOT NULL,
+  stat_end VARCHAR(32) NOT NULL,
+  context_snapshot_json JSON NOT NULL,
+  context_digest VARCHAR(64) NOT NULL,
+  validation_status VARCHAR(32) NOT NULL,
+  validation_message TEXT NOT NULL,
+  created_at VARCHAR(40) NOT NULL,
+  expires_at VARCHAR(40) NOT NULL,
+  db_source_id VARCHAR(128),
+  KEY ix_agent_sql_hospital_expiry (hospital_id, expires_at),
+  KEY ix_agent_sql_session_status (session_id, validation_status)
+);
+
 CREATE TABLE IF NOT EXISTS med_sql_run_log (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   run_id VARCHAR(64) NOT NULL UNIQUE,
