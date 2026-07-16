@@ -55,6 +55,37 @@ class OllamaClient:
             raise OllamaError("empty ollama response")
         return text
 
+    def chat(
+        self,
+        *,
+        messages: list[dict],
+        tools: list[dict],
+        temperature: float = 0.0,
+    ) -> dict:
+        options = self._options()
+        options["temperature"] = float(temperature)
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "tools": tools,
+            "stream": False,
+            "options": options,
+        }
+        request = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise OllamaError(str(exc)) from exc
+        if not isinstance(data, dict) or not isinstance(data.get("message"), dict):
+            raise OllamaError("missing ollama chat message")
+        return data
+
     def generate_stream(self, prompt: str) -> Iterator[str]:
         """Stream tokens from Ollama one by one. 真正的逐 token 流式输出."""
         payload = {

@@ -171,7 +171,7 @@ def chat(
 
 Run: `python -m pytest tests/test_ollama_client.py -q`
 
-Expected: `5 passed`。
+Expected: `4 passed`。
 
 - [ ] **Step 5: 检查并提交**
 
@@ -464,7 +464,7 @@ class OllamaToolCallingAdapter:
 
 Run: `python -m pytest tests/test_ollama_client.py tests/test_ollama_tool_adapter.py -q`
 
-Expected: `10 passed`。
+Expected: `9 passed`。
 
 - [ ] **Step 6: 检查并提交**
 
