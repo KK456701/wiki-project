@@ -130,3 +130,186 @@ def search_indicator_rules(
         evidence=evidence,
         warnings=list(payload.get("warnings") or []),
     )
+
+
+_RULE_RESULT_FIELDS = (
+    "rule_id",
+    "rule_name",
+    "category",
+    "effective_level",
+    "definition",
+    "formula",
+    "numerator_rule",
+    "denominator_rule",
+    "filter_rule",
+    "exclude_rule",
+    "calculation_definition",
+    "field_contract",
+    "field_status",
+    "sql_status",
+    "national_version",
+    "hospital_version",
+    "overridden_fields",
+    "fallback_chain",
+    "rule_source",
+    "warnings",
+)
+
+
+def _safe_rule_payload(rule: Any) -> dict[str, Any]:
+    raw = rule.model_dump(mode="json")
+    return {key: raw[key] for key in _RULE_RESULT_FIELDS if key in raw}
+
+
+def _rule_evidence(payload: dict[str, Any]) -> list[ToolEvidence]:
+    version = payload.get("hospital_version")
+    if version is None:
+        version = payload.get("national_version")
+    return [ToolEvidence(
+        source=str(payload.get("rule_source") or "rule_repository"),
+        source_id=str(payload.get("rule_id") or "") or None,
+        version=str(version) if version is not None and str(version) else None,
+        fact_types=["definition", "formula", "effective_level", "implementation_status"],
+    )]
+
+
+def get_effective_rule(
+    arguments: RuleReferenceInput,
+    context: AgentRuntimeContext,
+    state: AgentRunState,
+    services: ReadToolServices,
+) -> ToolResult:
+    del state
+    try:
+        rule = services.caliber.resolve_contract(arguments.rule_id, context.hospital_id)
+    except LookupError:
+        return ToolResult(
+            ok=False,
+            status="not_found",
+            code="RULE_NOT_FOUND",
+            summary="当前医院未找到该指标的生效规则。",
+            data={"rule_id": arguments.rule_id},
+        )
+    payload = _safe_rule_payload(rule)
+    return ToolResult(
+        ok=True,
+        status="success",
+        code="EFFECTIVE_RULE_FOUND",
+        summary=f"已读取 {payload.get('rule_name') or arguments.rule_id} 的生效规则。",
+        data=payload,
+        evidence=_rule_evidence(payload),
+        warnings=list(payload.get("warnings") or []),
+    )
+
+
+def _required_business_fields(payload: dict[str, Any]) -> list[str]:
+    contract = payload.get("field_contract") or {}
+    if not isinstance(contract, dict):
+        return []
+    fields = contract.get("business_fields") or {}
+    if isinstance(fields, dict):
+        return sorted(str(key) for key in fields)
+    return []
+
+
+def _safe_mapping_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = (
+        "business_field",
+        "table_name",
+        "column_name",
+        "data_type",
+        "status",
+    )
+    return [
+        {key: item[key] for key in allowed if key in item}
+        for item in items
+    ]
+
+
+def _safe_relations(relations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    allowed = (
+        "left_table",
+        "left_column",
+        "right_table",
+        "right_column",
+        "join_type",
+        "relation_source",
+        "status",
+    )
+    return [
+        {key: item[key] for key in allowed if key in item}
+        for item in relations
+    ]
+
+
+def inspect_indicator_implementation(
+    arguments: RuleReferenceInput,
+    context: AgentRuntimeContext,
+    state: AgentRunState,
+    services: ReadToolServices,
+) -> ToolResult:
+    del state
+    try:
+        rule = services.caliber.resolve_contract(arguments.rule_id, context.hospital_id)
+    except LookupError:
+        return ToolResult(
+            ok=False,
+            status="not_found",
+            code="RULE_NOT_FOUND",
+            summary="当前医院未找到该指标，无法检查实施状态。",
+            data={"rule_id": arguments.rule_id},
+        )
+    mapping = services.caliber.field_mapping_contract(
+        arguments.rule_id,
+        context.hospital_id,
+    )
+    rule_payload = _safe_rule_payload(rule)
+    required = _required_business_fields(rule_payload)
+    mapped = sorted(str(key) for key in mapping.fields)
+    missing = sorted(set(required) - set(mapped))
+    raw_items = [dict(item) for item in mapping.mapping_items]
+    unconfirmed = sorted({
+        str(item.get("business_field") or "")
+        for item in raw_items
+        if str(item.get("status") or "") != "confirmed"
+        and str(item.get("business_field") or "")
+    })
+    payload = {
+        "rule_id": arguments.rule_id,
+        "hospital_id": context.hospital_id,
+        "status": mapping.status,
+        "dialect": mapping.dialect,
+        "main_table": mapping.main_table,
+        "mapped_fields": mapped,
+        "required_business_fields": required,
+        "missing_mappings": missing,
+        "unconfirmed_mappings": unconfirmed,
+        "mapping_items": _safe_mapping_items(raw_items),
+        "relations": _safe_relations([dict(item) for item in mapping.relations]),
+        "query_profile": mapping.query_profile,
+        "sql_status": rule_payload.get("sql_status", "unavailable"),
+    }
+    return ToolResult(
+        ok=True,
+        status="success",
+        code="IMPLEMENTATION_INSPECTED",
+        summary=(
+            "指标实施映射已确认。"
+            if not missing and not unconfirmed and mapping.status == "confirmed"
+            else "指标实施仍有缺失或未确认映射。"
+        ),
+        data=payload,
+        evidence=[ToolEvidence(
+            source=str(rule_payload.get("rule_source") or "rule_repository"),
+            source_id=arguments.rule_id,
+            fact_types=["field_mapping", "implementation_status"],
+        )],
+        warnings=[
+            message
+            for message, present in (
+                ("存在缺失字段映射。", bool(missing)),
+                ("存在未确认字段映射。", bool(unconfirmed)),
+            )
+            if present
+        ],
+    )
