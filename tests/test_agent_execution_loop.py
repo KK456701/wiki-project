@@ -271,7 +271,8 @@ $$"""
         ]
         self.assertEqual(called_arguments, [{"sql_id": "SQL_001"}])
         observations = json.dumps(result.state.messages, ensure_ascii=False)
-        self.assertNotIn("SELECT 92.5", observations)
+        self.assertIn("SELECT 92.5 AS index_value", observations)
+        self.assertNotIn("patient_name", observations)
         self.assertNotIn("protected_template", observations)
 
     async def test_period_followup_hides_diagnosis_tool(self) -> None:

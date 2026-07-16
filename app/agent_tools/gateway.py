@@ -93,6 +93,7 @@ class ToolGateway:
                 self._emit({
                     "event": "tool_result",
                     "tool_name": tool.name,
+                    "arguments": raw_arguments,
                     "duration_ms": 0,
                     "reused": True,
                     "result": result.model_dump(mode="json"),
@@ -108,6 +109,7 @@ class ToolGateway:
             self._emit({
                 "event": "tool_result",
                 "tool_name": tool.name,
+                "arguments": raw_arguments,
                 "duration_ms": 0,
                 "reused": False,
                 "result": result.model_dump(mode="json"),
@@ -124,6 +126,7 @@ class ToolGateway:
             self._emit({
                 "event": "tool_result",
                 "tool_name": tool.name,
+                "arguments": raw_arguments,
                 "duration_ms": 0,
                 "reused": False,
                 "result": result.model_dump(mode="json"),
@@ -166,6 +169,7 @@ class ToolGateway:
             {
                 "event": "tool_result",
                 "tool_name": tool.name,
+                "arguments": raw_arguments,
                 "duration_ms": max(
                     0,
                     int((time.perf_counter() - started_at) * 1000),

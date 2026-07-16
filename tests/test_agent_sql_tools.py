@@ -184,7 +184,7 @@ def _prepare(services, state=None):
     return state, result
 
 
-def test_prepare_sql_persists_private_object_without_returning_sql_text() -> None:
+def test_prepare_sql_returns_validated_preview_and_persists_private_object() -> None:
     services = _services()
     state, result = _prepare(services)
 
@@ -194,7 +194,8 @@ def test_prepare_sql_persists_private_object_without_returning_sql_text() -> Non
     assert result.data["hospital_id"] == "h1"
     assert result.data["db_source_id"] == "hospital_db"
     assert result.data["context_digest"] == result.evidence[0].version
-    assert "sql_text" not in result.data
+    assert result.data["sql_preview"] == "SELECT 92.5 AS index_value"
+    assert result.data["parameters"] == {"threshold_minutes": 10}
     assert "SQL_001" in state.validated_sql_ids
     assert state.current_rule_id == "MQSI2025_005"
     assert any("sql_validation" in item.fact_types for item in result.evidence)
@@ -447,6 +448,84 @@ def test_trial_failure_hides_internal_error_and_has_no_evidence() -> None:
     assert "secret" not in result.summary
     assert "internal" not in result.summary
     assert result.evidence == []
+
+
+def test_trial_retries_transient_dbhub_disconnect_once() -> None:
+    results = [
+        {
+            "run_id": "RUN_FAILED",
+            "status": "failed",
+            "error_message": "DBHub MCP 执行失败: Connection lost - socket hang up",
+            "source": "hospital_db",
+        },
+        {
+            "sql_id": "SQL_001",
+            "run_id": "RUN_RETRIED",
+            "status": "success",
+            "result_value": 25.0,
+            "numerator_count": 1,
+            "denominator_count": 4,
+            "no_sample": False,
+            "duration_ms": 9,
+            "source": "hospital_db",
+            "stat_start": "2026-07-01 00:00:00",
+            "stat_end": "2026-08-01 00:00:00",
+        },
+    ]
+    calls = []
+
+    def trial(**kwargs):
+        calls.append(kwargs)
+        return results.pop(0)
+
+    services = _services(trial=trial)
+    state, prepared = _prepare(services)
+    assert prepared.ok
+
+    result = trial_run_indicator_sql(
+        TrialRunIndicatorSqlInput(sql_id="SQL_001"),
+        _context(),
+        state,
+        services=services,
+    )
+
+    assert result.ok is True
+    assert result.data["run_id"] == "RUN_RETRIED"
+    assert len(calls) == 2
+
+
+def test_trial_reports_safe_connection_failure_after_single_retry() -> None:
+    calls = []
+
+    def trial(**kwargs):
+        calls.append(kwargs)
+        return {
+            "run_id": f"RUN_FAILED_{len(calls)}",
+            "status": "failed",
+            "error_message": "DBHub MCP 执行失败: Connection lost - socket hang up",
+            "source": "hospital_db",
+        }
+
+    services = _services(trial=trial)
+    state, prepared = _prepare(services)
+    assert prepared.ok
+
+    result = trial_run_indicator_sql(
+        TrialRunIndicatorSqlInput(sql_id="SQL_001"),
+        _context(),
+        state,
+        services=services,
+    )
+
+    assert result.ok is False
+    assert len(calls) == 2
+    assert result.summary == "医院业务数据源连接中断，自动重试后仍未恢复。"
+    assert result.data == {
+        "failure_kind": "data_source_connection_lost",
+        "run_id": "RUN_FAILED_2",
+        "sql_id": "SQL_001",
+        "db_source_id": "hospital_db",
+    }
 
 
 def test_sql_tool_visibility_depends_on_verified_rule_and_active_sql() -> None:

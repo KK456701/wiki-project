@@ -77,9 +77,7 @@ class AgentTraceBridge:
         step = int(safe.get("step") or 0)
         status = "success"
         result = safe.get("result") or {}
-        if event_name == "tool_call":
-            status = "running"
-        elif isinstance(result, dict) and result.get("ok") is not True:
+        if event_name == "tool_result" and isinstance(result, dict) and result.get("ok") is not True:
             status = "failed"
 
         evidence_sources = []
@@ -98,8 +96,10 @@ class AgentTraceBridge:
             node_name=node_names[event_name],
             node_type="tool",
             status=status,
-            output_summary=str(
-                result.get("code") if isinstance(result, dict) else ""
+            output_summary=(
+                "TOOL_CALL_ACCEPTED"
+                if event_name == "tool_call"
+                else str(result.get("code") if isinstance(result, dict) else "")
             ),
             tool_name=tool_name,
             duration_ms=(
@@ -113,7 +113,10 @@ class AgentTraceBridge:
                     "arguments": safe.get("arguments") or {},
                 }
                 if event_name == "tool_call"
-                else {"tool_name": tool_name}
+                else {
+                    "tool_name": tool_name,
+                    "arguments": safe.get("arguments") or {},
+                }
             ),
             output_data=(
                 {

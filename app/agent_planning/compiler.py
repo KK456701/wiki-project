@@ -113,10 +113,7 @@ class PlanCompiler:
             PlanCapability.RESOLVE_INDICATOR,
             PlanCapability.RESOLVE_EFFECTIVE_RULE,
         ]
-        if (
-            plan.intent is PlanIntent.INDICATOR_TRIAL_RUN
-            or RequestedOutput.TRIAL_RESULT in outputs
-        ):
+        if RequestedOutput.TRIAL_RESULT in outputs:
             return [
                 *base,
                 PlanCapability.RESOLVE_TIME_RANGE,
@@ -124,7 +121,10 @@ class PlanCompiler:
                 PlanCapability.EXECUTE_TRIAL_RUN,
                 PlanCapability.COMPOSE_ANSWER,
             ]
-        if RequestedOutput.PREPARED_SQL_HANDLE in outputs:
+        if (
+            plan.intent is PlanIntent.INDICATOR_SQL_PREPARE
+            or RequestedOutput.PREPARED_SQL_HANDLE in outputs
+        ):
             return [
                 *base,
                 PlanCapability.RESOLVE_TIME_RANGE,

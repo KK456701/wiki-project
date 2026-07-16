@@ -867,11 +867,9 @@ class ApiTest(unittest.TestCase):
         self.assertIn("执行耗时", html)
         self.assertIn("已记录阶段耗时", html)
         self.assertIn("最慢节点", html)
-        self.assertIn("输入输出检查", html)
-        self.assertIn("必要输入", html)
-        self.assertIn("出错处理", html)
-        self.assertIn("问题码", html)
-        self.assertIn("负责 Agent", html)
+        self.assertNotIn("开发与排障", html)
+        self.assertNotIn("输入输出检查", html)
+        self.assertNotIn("负责 Agent", html)
         self.assertNotIn("契约状态", html)
 
     def test_workflow_manifest_validate_api(self) -> None:

@@ -394,8 +394,6 @@ body::before {
   overflow-wrap: anywhere;
   font: 12px/1.5 var(--mono);
 }
-.trace-field-list { color: var(--ink-soft); font-size: 13px; }
-.trace-hint { color: #6a5a20; background: #fff8dc; border: 1px solid #eadb93; border-radius: 8px; padding: 9px 10px; font-size: 13px; }
 .review-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .version-item.active { border-color: var(--teal); background: var(--teal-soft); }
 .version-meta, .review-meta { color: var(--muted); font-size: 12px; }
@@ -1645,16 +1643,6 @@ function formatTraceDuration(ms) {
   return value + "ms";
 }
 
-function agentOwnerName(value) {
-  return ({
-    metadata_parsing: "元数据解析 Agent",
-    indicator_generation: "指标生成 Agent",
-    caliber_adaptation: "口径适配 Agent",
-    root_cause_diagnosis: "故障根因排查 Agent",
-    human_interaction: "人机交互 Agent",
-  })[value] || value || "未指定";
-}
-
 function traceStatusText(value) {
   return ({
     success: "成功",
@@ -2115,65 +2103,12 @@ async function showTrace(traceId) {
       toggle.textContent = nodeHealthy ? "详情" : "收起";
       actions.append(typeBadge, duration, status, toggle);
       titleRow.append(titleWrap, actions);
-      var ioCheckText = node.contract_status === "ok" ? "正常" : "需要查看";
       box.appendChild(titleRow);
       var detail = document.createElement("div");
       detail.className = "trace-detail";
       detail.hidden = nodeHealthy;
       appendTraceBusinessResult(detail, node);
       appendTraceJsonDisclosure(detail, node);
-      var developerBlock = document.createElement("div");
-      developerBlock.className = "trace-detail-block";
-      var developerHeading = document.createElement("div");
-      developerHeading.className = "trace-detail-heading";
-      developerHeading.textContent = "开发与排障";
-      developerBlock.appendChild(developerHeading);
-      var identity = document.createElement("div");
-      identity.className = "trace-field-list";
-      identity.textContent = "节点：" + (node.node_name || "unknown")
-        + "  |  类型：" + (node.manifest_type || node.node_type || "未记录")
-        + (node.tool_name ? "  |  工具：" + node.tool_name : "")
-        + (node.db_source ? "  |  数据源：" + node.db_source : "");
-      developerBlock.appendChild(identity);
-      var owner = document.createElement("div");
-      owner.className = "trace-field-list";
-      owner.textContent = "负责 Agent：" + agentOwnerName(node.agent_owner);
-      developerBlock.appendChild(owner);
-      var fields = document.createElement("div");
-      fields.className = "trace-field-list";
-      fields.textContent = "期望输入：" + ((node.expected_inputs || []).join(", ") || "无") + "  |  期望输出：" + ((node.expected_outputs || []).join(", ") || "无");
-      developerBlock.appendChild(fields);
-      var contract = document.createElement("div");
-      contract.className = "trace-field-list";
-      contract.textContent = "输入输出检查：" + ioCheckText
-        + "  |  必要输入：" + ((node.required_inputs || []).join(", ") || "无")
-        + "  |  必要输出：" + ((node.required_outputs || []).join(", ") || "无");
-      developerBlock.appendChild(contract);
-      if ((node.missing_inputs || []).length || (node.missing_outputs || []).length) {
-        var missing = document.createElement("div");
-        missing.className = "trace-hint";
-        missing.textContent = "缺少内容：输入 " + ((node.missing_inputs || []).join(", ") || "无")
-          + "；输出 " + ((node.missing_outputs || []).join(", ") || "无");
-        developerBlock.appendChild(missing);
-      }
-      var failurePolicy = document.createElement("div");
-      failurePolicy.className = "trace-field-list";
-      failurePolicy.textContent = "出错处理：" + (node.on_failure || "continue")
-        + "  |  问题码：" + (node.error_code || node.failure_code || "无");
-      developerBlock.appendChild(failurePolicy);
-      if (!nodeHealthy && node.failure_hint) {
-        var hint = document.createElement("div");
-        hint.className = "trace-hint";
-        hint.textContent = "定位建议：" + node.failure_hint;
-        developerBlock.appendChild(hint);
-      }
-      if (node.error_message) {
-        var err = document.createElement("div");
-        err.style.color = "#a64536";
-        err.textContent = "错误：" + node.error_message;
-        developerBlock.appendChild(err);
-      }
-      detail.appendChild(developerBlock);
       toggle.addEventListener("click", function() {
         detail.hidden = !detail.hidden;
         toggle.textContent = detail.hidden ? "详情" : "收起";

@@ -32,6 +32,7 @@ def test_trace_bridge_records_full_safe_agent_nodes_and_finish_status() -> None:
     bridge.handle({
         "event": "tool_result",
         "tool_name": "search_indicator_rules",
+        "arguments": {"query": "急会诊", "authorization": "Bearer secret"},
         "duration_ms": 12,
         "result": {
             "ok": True,
@@ -53,10 +54,18 @@ def test_trace_bridge_records_full_safe_agent_nodes_and_finish_status() -> None:
     assert "secret" not in serialized
     assert "SELECT aggregate_count" in serialized
     assert any(kwargs["tool_name"] == "search_indicator_rules" for _, kwargs in recorder.nodes)
+    result_node = recorder.nodes[1][1]
+    assert result_node["input_data"] == {
+        "tool_name": "search_indicator_rules",
+        "arguments": {"query": "急会诊", "authorization": "[REDACTED]"},
+    }
     assert [kwargs["node_name"] for _, kwargs in recorder.nodes] == [
         "tool_gateway",
         "tool_result",
     ]
+    gateway_node = recorder.nodes[0][1]
+    assert gateway_node["status"] == "success"
+    assert gateway_node["output_summary"] == "TOOL_CALL_ACCEPTED"
     assert recorder.finished[0][1]["intent"] == "agent_tool_calling"
     assert recorder.finished[0][1]["final_status"] == "success"
 

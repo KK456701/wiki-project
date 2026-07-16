@@ -495,6 +495,112 @@ def test_general_chat_plan_calls_no_tools():
     assert adapter.calls[0]["tools"] == []
 
 
+def test_time_clarification_trace_is_warning_not_failure():
+    plan = RequestPlan.model_validate({
+        "intent": "rule_explanation",
+        "goal": "只生成 SQL",
+        "target_indicator": {"raw_name": "急会诊及时到位率", "rule_id": "RULE_1"},
+        "requested_outputs": ["prepared_sql_handle"],
+    })
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        evidence=[{
+            "source": "rules",
+            "source_id": "RULE_1",
+            "fact_types": ["rule_identity", "definition", "formula"],
+        }],
+    )
+    trace_events = []
+    registry = _registry()
+    runner = AgentRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        trace_callback=trace_events.append,
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(plan),
+            now_provider=lambda: NOW,
+        ),
+    )
+
+    result = asyncio.run(runner.run("SQL 怎么写", _context(), state))
+
+    assert result.stop_reason == "need_clarification"
+    controller_node = next(
+        event for event in trace_events
+        if event.get("node_name") == "state_controller"
+    )
+    assert controller_node["status"] == "warning"
+
+
+def test_prepared_sql_plan_composes_validated_sql_without_another_model_call():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_sql_prepare",
+        "goal": "只生成患者入院 48 小时内转科比例的 SQL，不执行数据库",
+        "target_indicator": {
+            "raw_name": "患者入院 48 小时内转科的比例",
+            "rule_id": "RULE_1",
+        },
+        "time_expression": {
+            "raw_text": "从1月到现在",
+            "start_time": "2026-01-01 00:00:00",
+            "end_time": "2026-07-17 00:00:00",
+        },
+        "requested_outputs": ["prepared_sql_handle"],
+        "constraints": ["仅输出 SQL，不执行数据库"],
+    })
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        evidence=[{
+            "source": "rules",
+            "source_id": "RULE_1",
+            "fact_types": [
+                "rule_identity",
+                "definition",
+                "formula",
+                "effective_rule",
+                "implementation_status",
+                "sql_validation",
+            ],
+        }],
+        last_tool_results=[{
+            "ok": True,
+            "status": "success",
+            "code": "SQL_OBJECT_PREPARED",
+            "summary": "SQL 已完成确定性生成和只读安全校验。",
+            "data": {
+                "sql_id": "SQL_1",
+                "sql_preview": "SELECT COUNT(*) AS denominator FROM admissions WHERE admit_time >= :stat_start AND admit_time < :stat_end",
+                "parameters": {
+                    "stat_start": "2026-01-01 00:00:00",
+                    "stat_end": "2026-07-17 00:00:00",
+                },
+            },
+            "evidence": [],
+            "retryable": False,
+        }],
+    )
+    adapter = SequenceAdapter([])
+    runner = AgentRunner(
+        adapter,
+        _registry(),
+        ToolGateway(_registry()),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(plan),
+            now_provider=lambda: NOW,
+        ),
+    )
+
+    result = asyncio.run(runner.run("从1月到现在", _context(), state))
+
+    assert result.stop_reason == "final_answer"
+    assert "```sql" in result.answer
+    assert "SELECT COUNT(*)" in result.answer
+    assert "2026-01-01 00:00:00" in result.answer
+    assert "不会执行数据库" in result.answer
+    assert adapter.calls == []
+
+
 def test_plan_direction_failure_replans_once_with_failure_context():
     initial = _rule_plan()
     replanned = RequestPlan.model_validate({

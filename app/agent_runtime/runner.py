@@ -84,6 +84,44 @@ def _has_fact_type(state: AgentRunState, fact_type: str) -> bool:
     )
 
 
+def _compose_prepared_sql_answer(planning_execution, state: AgentRunState) -> str | None:
+    outputs = {
+        item.value if hasattr(item, "value") else str(item)
+        for item in planning_execution.compiled_plan.requested_outputs
+    }
+    if "prepared_sql_handle" not in outputs or "trial_result" in outputs:
+        return None
+    prepared = next(
+        (
+            item
+            for item in reversed(state.last_tool_results)
+            if isinstance(item, dict)
+            and item.get("ok") is True
+            and item.get("code") == "SQL_OBJECT_PREPARED"
+        ),
+        None,
+    )
+    if prepared is None:
+        return None
+    data = prepared.get("data") or {}
+    sql_preview = str(data.get("sql_preview") or "").strip()
+    if not sql_preview:
+        return None
+    parameters = data.get("parameters") or {}
+    parameter_lines = "\n".join(
+        f"- `{key}`：`{value}`" for key, value in parameters.items()
+    )
+    sql_id = str(data.get("sql_id") or "").strip()
+    sql_id_line = f"\n- SQL 对象：`{sql_id}`" if sql_id else ""
+    target = planning_execution.request_plan.target_indicator.raw_name.strip()
+    title = f"下面是“{target}”的已校验 SQL：" if target else "下面是已校验 SQL："
+    return (
+        f"{title}\n\n```sql\n{sql_preview}\n```\n\n"
+        f"统计参数：\n{parameter_lines or '- 无额外参数'}"
+        f"{sql_id_line}\n\n该请求只生成并校验 SQL，不会执行数据库。"
+    )
+
+
 def _asks_for_period_clarification(answer: str) -> bool:
     return bool(
         re.search(
@@ -243,10 +281,22 @@ class AgentRunner:
                     decision = self.planning_runtime.next_decision(
                         planning_execution, run_state
                     )
+                    decision_is_clarification = (
+                        decision.action.value == "fallback"
+                        and decision.fallback_category is not None
+                        and decision.fallback_category.value
+                        in {"USER_CLARIFICATION", "BUSINESS_CONFIRMATION"}
+                    )
                     self._trace(
                         node_name="state_controller",
                         node_type="code",
-                        status=("failed" if decision.action.value == "fallback" else "success"),
+                        status=(
+                            "warning"
+                            if decision_is_clarification
+                            else "failed"
+                            if decision.action.value == "fallback"
+                            else "success"
+                        ),
                         duration_ms=max(1, int((time.perf_counter() - controller_started) * 1000)),
                         input_data={
                             "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
@@ -264,11 +314,7 @@ class AgentRunner:
                         },
                     )
                     if decision.action.value == "fallback":
-                        clarification = (
-                            decision.fallback_category is not None
-                            and decision.fallback_category.value
-                            in {"USER_CLARIFICATION", "BUSINESS_CONFIRMATION"}
-                        )
+                        clarification = decision_is_clarification
                         stop_reason = "need_clarification" if clarification else "tool_error"
                         run_state.stop_reason = stop_reason
                         run_state.fallback_category = (
@@ -289,6 +335,74 @@ class AgentRunner:
                         return AgentRunResult(
                             answer=decision.message or "当前计划无法继续执行。",
                             stop_reason=stop_reason,
+                            state=run_state,
+                            model=model_name,
+                        )
+                    deterministic_answer = _compose_prepared_sql_answer(
+                        planning_execution, run_state
+                    )
+                    if (
+                        decision.action.value == "compose_answer"
+                        and deterministic_answer is not None
+                    ):
+                        verify_started = time.perf_counter()
+                        verification = self.planning_runtime.verify(
+                            planning_execution, run_state, context
+                        )
+                        self._trace(
+                            node_name="plan_verify",
+                            node_type="code",
+                            status="success" if verification.ok else "failed",
+                            duration_ms=max(
+                                1,
+                                int((time.perf_counter() - verify_started) * 1000),
+                            ),
+                            input_data={
+                                "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
+                                "state": run_state.model_dump(mode="json"),
+                                "context": context.model_dump(mode="json"),
+                            },
+                            output_data={
+                                "verification": verification.model_dump(mode="json")
+                            },
+                            processing_data={
+                                "description": "校验规则、医院、统计时间和 SQL 证据链一致性。"
+                            },
+                            config_data={
+                                "verifier": type(self.planning_runtime.verifier).__name__
+                            },
+                        )
+                        if not verification.ok:
+                            run_state.stop_reason = "tool_error"
+                            return AgentRunResult(
+                                answer=verification.message,
+                                stop_reason="tool_error",
+                                state=run_state,
+                                model=model_name,
+                            )
+                        self._trace(
+                            node_name="response_guard",
+                            node_type="code",
+                            status="success",
+                            duration_ms=1,
+                            input_data={
+                                "prepared_sql_result": next(
+                                    item
+                                    for item in reversed(run_state.last_tool_results)
+                                    if isinstance(item, dict)
+                                    and item.get("code") == "SQL_OBJECT_PREPARED"
+                                )
+                            },
+                            output_data={"answer": deterministic_answer},
+                            processing_data={
+                                "description": "使用已校验 SQL 证据确定性生成回答，不再交由模型补充工具调用。"
+                            },
+                            config_data={"guard": "deterministic_sql_response"},
+                        )
+                        run_state.stop_reason = "final_answer"
+                        return AgentRunResult(
+                            answer=deterministic_answer,
+                            stop_reason="final_answer",
                             state=run_state,
                             model=model_name,
                         )

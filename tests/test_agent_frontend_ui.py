@@ -144,3 +144,4 @@ def test_agent_trace_ui_distinguishes_node_types_and_full_detail_sections() -> N
         assert title in html
     assert "node.node_name" in html
     assert "processing_data" in html
+    assert "开发与排障" not in html

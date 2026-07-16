@@ -93,6 +93,17 @@ def test_prepared_sql_output_never_means_sql_text():
     assert "sql_text" not in compiled.required_facts
 
 
+def test_prepared_sql_output_never_compiles_trial_run_when_intent_is_imprecise():
+    compiled = PlanCompiler().compile(_trial_plan(
+        requested_outputs=["prepared_sql_handle"],
+        time_expression={"raw_text": "从1月到现在"},
+    ))
+
+    capabilities = [node.capability for node in compiled.nodes]
+    assert PlanCapability.PREPARE_VERIFIED_SQL in capabilities
+    assert PlanCapability.EXECUTE_TRIAL_RUN not in capabilities
+
+
 def test_requested_trial_output_compiles_required_chain_even_if_intent_is_imprecise():
     plan = RequestPlan.model_validate({
         "intent": "rule_explanation",

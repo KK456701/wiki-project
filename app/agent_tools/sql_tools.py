@@ -258,6 +258,8 @@ def prepare_indicator_sql(
             "context_digest": digest,
             "dialect": sql_object.dialect,
             "validation_status": sql_object.validation_status,
+            "sql_preview": sql_text,
+            "parameters": params,
             "stat_start": stat_start,
             "stat_end": stat_end,
             "expires_at": sql_object.expires_at.isoformat(),
@@ -333,6 +335,18 @@ def _current_metadata_precheck(
         field_mapping=_model_payload(prepared.field_mapping),
     )
     return _model_payload(result)
+
+
+def _is_transient_connection_failure(message: Any) -> bool:
+    normalized = str(message or "").lower()
+    return any(marker in normalized for marker in (
+        "socket hang up",
+        "connection lost",
+        "connection reset",
+        "connection aborted",
+        "连接中断",
+        "连接已断开",
+    ))
 
 
 def trial_run_indicator_sql(
@@ -416,7 +430,7 @@ def trial_run_indicator_sql(
             summary="SQL 在试运行前未通过二次只读安全校验。",
         )
 
-    result = services.trial_executor(
+    trial_arguments = dict(
         runtime_engine=services.runtime_engine,
         business_db=services.business_db,
         sql_id=sql_object.sql_id,
@@ -429,6 +443,12 @@ def trial_run_indicator_sql(
         run_by=context.user_id,
         run_context=sql_object.context_snapshot,
     )
+    result = services.trial_executor(**trial_arguments)
+    if (
+        result.get("status") not in {"success", "empty"}
+        and _is_transient_connection_failure(result.get("error_message"))
+    ):
+        result = services.trial_executor(**trial_arguments)
     result_source = str(result.get("source") or "")
     if (
         sql_object.db_source_id
@@ -442,6 +462,20 @@ def trial_run_indicator_sql(
             summary="试运行返回的数据源与 SQL 对象不一致，结果已拒绝。",
         )
     if result.get("status") not in {"success", "empty"}:
+        if _is_transient_connection_failure(result.get("error_message")):
+            return ToolResult(
+                ok=False,
+                status="error",
+                code="TRIAL_RUN_FAILED",
+                summary="医院业务数据源连接中断，自动重试后仍未恢复。",
+                data={
+                    "failure_kind": "data_source_connection_lost",
+                    "run_id": str(result.get("run_id") or ""),
+                    "sql_id": sql_object.sql_id,
+                    "db_source_id": sql_object.db_source_id,
+                },
+                retryable=True,
+            )
         return ToolResult(
             ok=False,
             status="error",

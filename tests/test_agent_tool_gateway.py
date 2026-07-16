@@ -244,6 +244,7 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(events[0]["event"], "tool_call")
         self.assertEqual(events[-1]["event"], "tool_result")
+        self.assertEqual(events[-1]["arguments"], {"query": "急会诊"})
         self.assertEqual(
             events[-1]["result"]["data"]["sql_text"],
             "SELECT patient_name FROM patient",

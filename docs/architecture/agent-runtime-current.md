@@ -49,6 +49,16 @@ flowchart TD
 
 公开 SSE 仍只投影业务摘要。完整节点只通过同医院登录态校验后的 `/api/agent/runs/{trace_id}` 返回。
 
+用户澄清和业务确认属于正常暂停，`state_controller` 节点记录为 `warning`，不会显示成执行失败。`tool_gateway` 表示参数、权限和风险校验已经接受，记录为成功；后续 `tool_result` 节点同时保存该次调用的完整安全参数和实际结果，便于将结果与入参对应。前端只保留“处理结果”和“完整节点数据”，不再重复展示“开发与排障”字段。
+
+## SQL 准备与试运行边界
+
+- “SQL 怎么写”“生成 SQL”“不用运行先写出来”解析为 `indicator_sql_prepare`，请求输出为 `prepared_sql_handle`。
+- `SQL_OBJECT_PREPARED` 到达后，服务端直接从已校验 `sql_preview` 和参数生成最终 Markdown，不再调用 Executor 组织答案或允许其追加工具调用。
+- SQL 准备仍要求明确统计区间，并执行字段预检、确定性生成和只读安全校验；成功后返回 `sql_id`、`sql_preview` 和命名参数，但不访问医院业务数据。
+- 只有 `requested_outputs` 包含 `trial_result` 时，`PlanCompiler` 才编译 `execute_trial_run`。即使模型误写 `intent=indicator_trial_run`，也不能越过这条确定性边界。
+- DBHub 连接中断类错误自动重试一次；仍失败时只返回安全分类、`run_id`、`sql_id` 和数据源编号，不返回连接串或底层堆栈。
+
 ## 生产环境中的 LLM 调用点
 
 ### 1. 对话 Planner
@@ -64,11 +74,11 @@ flowchart TD
 仅返回一个 JSON 对象，不要 Markdown。字段必须严格为：
 intent、goal、target_indicator、time_expression、requested_outputs、constraints、semantic_ambiguities。
 禁止输出 steps、proposed_steps、tool 或任何工具名称。
-intent 只能是 general_chat、rule_explanation、indicator_trial_run、indicator_diagnosis、rule_change_preview、upload_analysis、unknown。
+intent 只能是 general_chat、rule_explanation、indicator_sql_prepare、indicator_trial_run、indicator_diagnosis、rule_change_preview、upload_analysis、unknown。
 requested_outputs 只能使用 definition、formula、implementation_status、prepared_sql_handle、trial_result、diagnosis、change_preview、file_analysis、explanation。
 target_indicator 包含 raw_name 和可选 rule_id。time_expression 保留 raw_text；只有用户明确给出绝对日期时才填写 start_time/end_time。
 semantic_ambiguities 中每一项必须是 {"field":"字段名","description":"歧义说明"} 对象，不得直接输出字符串。
-用户索要某时间段实际数值时使用 indicator_trial_run；普通公式解释使用 rule_explanation；明确排查异常时使用 indicator_diagnosis。
+用户要求“SQL 怎么写”“生成 SQL”“先写出来但不要运行”时使用 indicator_sql_prepare，并且只请求 prepared_sql_handle。用户索要某时间段实际数值时使用 indicator_trial_run，并请求 trial_result；普通公式解释使用 rule_explanation；明确排查异常时使用 indicator_diagnosis。
 不要把 SQL 文本作为输出，受控 SQL 只能表示为 prepared_sql_handle。
 ```
 
@@ -92,6 +102,7 @@ search_indicator_rules 只负责定位；定义和公式必须继续读取 get_e
 结构化状态中的统计时间和当前指标是权威数据。
 实际数值必须来自当前工具结果，不能从历史对话回忆。
 诊断工具只用于明确异常诊断；统计周期结果应走受控 SQL 准备和试运行。
+prepare_indicator_sql 返回 sql_preview 时，用户要求查看 SQL 就逐字输出该已验证预览；计划未要求 trial_result 时不得继续试运行。
 ```
 
 每一步再动态注入：当前业务能力、允许调用的工具名、目标指标、`rule_id`、统计区间，以及“不得调用未展示工具，不得自行增加或跳过业务步骤”。

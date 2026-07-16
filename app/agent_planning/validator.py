@@ -41,10 +41,15 @@ class PlanValidator:
                 message="当前 Agent 不允许访问或返回患者明细。",
                 fallback_category=FallbackCategory.SECURITY_DENIAL,
             )
-        needs_database = (
-            plan.intent is PlanIntent.INDICATOR_TRIAL_RUN
-            or RequestedOutput.TRIAL_RESULT in plan.requested_outputs
-        )
+        outputs = set(plan.requested_outputs)
+        needs_database = RequestedOutput.TRIAL_RESULT in outputs
+        needs_time_range = bool(outputs & {
+            RequestedOutput.PREPARED_SQL_HANDLE,
+            RequestedOutput.TRIAL_RESULT,
+        }) or plan.intent in {
+            PlanIntent.INDICATOR_SQL_PREPARE,
+            PlanIntent.INDICATOR_TRIAL_RUN,
+        }
         if needs_database and "no_database_access" in constraints:
             return PlanValidation(
                 ok=False,
@@ -53,7 +58,7 @@ class PlanValidator:
                 fallback_category=FallbackCategory.BUSINESS_CONFIRMATION,
             )
         resolved_time = None
-        if needs_database:
+        if needs_time_range:
             resolved_time = self.resolver.resolve(plan.time_expression, now=now)
             if resolved_time is None:
                 return PlanValidation(

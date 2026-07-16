@@ -26,17 +26,16 @@ class TraceUiTest(unittest.TestCase):
             "function traceBusinessFields",
             "处理结果",
             "完整节点数据",
-            "开发与排障",
             "trace-json-disclosure",
             "trace-node-summary",
             "trace-step-index",
         ):
             self.assertIn(marker, html)
+        self.assertNotIn("开发与排障", html)
         self.assertIn(
             'visualStatus === "success" && node.contract_status === "ok"', html
         )
         self.assertIn('status.textContent = traceNodeStatus(node)', html)
-        self.assertIn("if (!nodeHealthy && node.failure_hint)", html)
 
     def test_trace_timeline_shows_duration_share_and_bottleneck(self) -> None:
         html = WEB_INDEX.read_text(encoding="utf-8")

@@ -94,6 +94,23 @@ def test_no_database_constraint_conflicts_with_trial_result():
     assert result.code == "DATABASE_ACCESS_CONFLICT"
 
 
+def test_prepared_sql_without_trial_still_resolves_time_and_allows_no_database_constraint():
+    plan = RequestPlan.model_validate({
+        "intent": "rule_explanation",
+        "goal": "只生成 SQL，不执行",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "time_expression": {"raw_text": "从1月到现在"},
+        "requested_outputs": ["prepared_sql_handle"],
+        "constraints": ["no_database_access"],
+    })
+
+    result = PlanValidator().validate(plan, now=NOW)
+
+    assert result.ok is True
+    assert result.resolved_time.start_time.isoformat() == "2026-01-01T00:00:00+08:00"
+    assert result.resolved_time.end_time.isoformat() == NOW.isoformat()
+
+
 def test_patient_detail_request_is_security_denial():
     plan = RequestPlan.model_validate({
         "intent": "indicator_trial_run",
