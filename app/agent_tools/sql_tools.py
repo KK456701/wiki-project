@@ -503,6 +503,8 @@ def build_sql_tools(services: SqlToolServices) -> list[AgentTool]:
         AgentTool(
             name="prepare_indicator_sql",
             description=(
+                "当用户询问某指标在某统计周期的结果、多少、从某日期到某日期怎么算时调用；"
+                "调用前必须已确认指标规则。"
                 "为已确认指标和统计区间执行字段预检、确定性 SQL 生成与只读安全校验；"
                 "只返回服务端 sql_id，不返回 SQL 文本。"
             ),

@@ -61,6 +61,10 @@ def _names(registry, state, context=None):
     ]
 
 
+def _tool_description(name: str) -> str:
+    return _registry().get(name).description
+
+
 def test_catalog_initially_exposes_search_and_draft() -> None:
     assert _names(_registry(), AgentRunState()) == [
         "search_indicator_rules",
@@ -102,6 +106,17 @@ def test_catalog_hides_all_tools_without_indicator_permission() -> None:
         _rule_state(),
         _context(permissions=frozenset()),
     ) == []
+
+
+def test_tool_descriptions_explain_call_and_do_not_call_boundaries() -> None:
+    diagnosis = _tool_description("diagnose_indicator_issue")
+    assert "仅当用户明确要求排查异常、诊断原因、解释结果不一致或算不对时调用" in diagnosis
+    assert "不要用于普通公式解释、统计周期变更、结果试运行、SQL 生成" in diagnosis
+    assert "从某日期开始怎么算" in diagnosis
+
+    prepare_sql = _tool_description("prepare_indicator_sql")
+    assert "当用户询问某指标在某统计周期的结果、多少、从某日期到某日期怎么算时调用" in prepare_sql
+    assert "调用前必须已确认指标规则" in prepare_sql
 
 
 class ExecutionCatalogGatewayTest(unittest.IsolatedAsyncioTestCase):

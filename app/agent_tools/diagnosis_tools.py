@@ -182,6 +182,8 @@ def build_diagnosis_tools(services: DiagnosisToolServices) -> list[AgentTool]:
     return [AgentTool(
         name="diagnose_indicator_issue",
         description=(
+            "仅当用户明确要求排查异常、诊断原因、解释结果不一致或算不对时调用；"
+            "不要用于普通公式解释、统计周期变更、结果试运行、SQL 生成或“从某日期开始怎么算”。"
             "对已确认指标执行结构、口径和数据质量诊断；可接收用户明确粘贴的只读 SQL，"
             "所有 SQL 仍经过现有安全诊断链，不返回患者明细。"
         ),
