@@ -13,6 +13,7 @@ from app.agent_runtime.prompts import (
     AGENT_SYSTEM_PROMPT,
     CHINESE_REQUIRED_PROMPT,
     EVIDENCE_REQUIRED_PROMPT,
+    TRIAL_RUN_REQUIRED_PROMPT,
 )
 from app.agent_runtime.response_guard import (
     evidence_correction_prompt,
@@ -64,6 +65,24 @@ def _classify_request_kind(user_message: str) -> str | None:
     if any(term in compact for term in _TRIAL_RUN_TERMS):
         return "trial_run"
     return None
+
+
+def _has_fact_type(state: AgentRunState, fact_type: str) -> bool:
+    return any(
+        fact_type in (item.get("fact_types") or [])
+        for item in state.evidence
+        if isinstance(item, dict)
+    )
+
+
+def _asks_for_period_clarification(answer: str) -> bool:
+    return bool(
+        re.search(
+            r"(?:请|需要|先).{0,12}(?:提供|明确|选择).{0,12}"
+            r"(?:统计周期|统计时间|时间范围|起止时间|开始时间|结束时间)",
+            answer,
+        )
+    )
 
 
 class AgentRunner:
@@ -203,6 +222,16 @@ class AgentRunner:
                     run_state.messages.append({
                         "role": "system",
                         "content": CHINESE_REQUIRED_PROMPT,
+                    })
+                    continue
+                if (
+                    run_state.current_request_kind == "trial_run"
+                    and not _has_fact_type(run_state, "trial_run")
+                    and not _asks_for_period_clarification(answer)
+                ):
+                    run_state.messages.append({
+                        "role": "system",
+                        "content": TRIAL_RUN_REQUIRED_PROMPT,
                     })
                     continue
                 missing = missing_fact_types(answer, run_state.evidence)
