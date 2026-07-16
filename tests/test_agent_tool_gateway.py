@@ -199,13 +199,14 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
         from app.agent_runtime.contracts import AgentRunState
 
         calls = 0
+        events = []
 
         def handler(arguments, context, state):
             nonlocal calls
             calls += 1
             return {"ok": True, "status": "success", "code": "OK", "summary": "ok"}
 
-        gateway = self._gateway(handler)
+        gateway = self._gateway(handler, trace_events=events)
         state = AgentRunState()
         arguments = {"query": "急会诊"}
 
@@ -214,10 +215,16 @@ class AgentToolGatewayTest(unittest.IsolatedAsyncioTestCase):
         third = await gateway.execute("search_indicator_rules", arguments, self._context(), state)
 
         self.assertTrue(first.ok)
-        self.assertTrue(second.retryable)
+        self.assertEqual(second.model_dump(), first.model_dump())
         self.assertFalse(third.retryable)
         self.assertEqual(calls, 1)
         self.assertEqual(state.stop_reason, "repeated_tool_call")
+        result_events = [event for event in events if event["event"] == "tool_result"]
+        self.assertEqual(len(result_events), 3)
+        self.assertFalse(result_events[0].get("reused", False))
+        self.assertTrue(result_events[1]["reused"])
+        self.assertFalse(result_events[2]["reused"])
+        self.assertEqual(result_events[2]["result"]["code"], "AGENT_REPEATED_TOOL_CALL")
 
     async def test_trace_callback_receives_redacted_arguments_and_results(self) -> None:
         from app.agent_runtime.contracts import AgentRunState

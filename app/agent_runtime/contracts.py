@@ -40,6 +40,7 @@ class AgentRunState(RuntimeContract):
     messages: list[dict[str, Any]] = Field(default_factory=list)
     step_count: int = 0
     tool_call_counts: dict[str, int] = Field(default_factory=dict)
+    tool_result_cache: dict[str, dict[str, Any]] = Field(default_factory=dict)
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
     current_rule_id: str | None = None

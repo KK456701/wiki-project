@@ -47,6 +47,7 @@ def public_agent_event(
             "message": str(result.get("summary") or "工具执行已结束。"),
             "retryable": bool(result.get("retryable")),
             "duration_ms": max(0, int(event.get("duration_ms") or 0)),
+            "reused": bool(event.get("reused")),
         })
     elif event_name in {"clarification_required", "assistant_message"}:
         payload["message"] = str(event.get("message") or "")

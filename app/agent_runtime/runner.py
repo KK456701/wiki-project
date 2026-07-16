@@ -17,6 +17,7 @@ from app.agent_runtime.prompts import (
 from app.agent_runtime.response_guard import (
     evidence_correction_prompt,
     missing_fact_types,
+    normalize_agent_answer,
 )
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
@@ -150,19 +151,21 @@ class AgentRunner:
             }
             run_state.messages.append(assistant_message)
             if not response.tool_calls:
+                answer = normalize_agent_answer(response.content)
+                assistant_message["content"] = answer
                 if not run_state.evidence:
                     run_state.messages.append({
                         "role": "system",
                         "content": EVIDENCE_REQUIRED_PROMPT,
                     })
                     continue
-                if not _contains_chinese(response.content):
+                if not _contains_chinese(answer):
                     run_state.messages.append({
                         "role": "system",
                         "content": CHINESE_REQUIRED_PROMPT,
                     })
                     continue
-                missing = missing_fact_types(response.content, run_state.evidence)
+                missing = missing_fact_types(answer, run_state.evidence)
                 if missing:
                     run_state.messages.append({
                         "role": "system",
@@ -171,7 +174,7 @@ class AgentRunner:
                     continue
                 run_state.stop_reason = "final_answer"
                 return AgentRunResult(
-                    answer=response.content,
+                    answer=answer,
                     stop_reason="final_answer",
                     state=run_state,
                     model=model_name,
