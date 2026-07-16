@@ -23,7 +23,7 @@
       event: String(source && source.event || "agent_error"),
       trace_id: String(source && source.trace_id || "")
     };
-    ["tool_name", "status", "code", "message", "stop_reason"].forEach(function (key) {
+    ["tool_name", "status", "code", "message", "stop_reason", "fallback_category", "failure_code"].forEach(function (key) {
       if (source && source[key] !== undefined) event[key] = String(source[key]);
     });
     if (source && source.step !== undefined) event.step = Number(source.step || 0);
@@ -181,7 +181,8 @@
     trial_run_indicator_sql: "执行只读试运行",
     diagnose_indicator_issue: "分析指标异常",
     create_indicator_draft: "生成指标工作草稿",
-    preview_rule_change: "预览本院口径变化"
+    preview_rule_change: "预览本院口径变化",
+    analyze_uploaded_indicators: "分析上传的指标文件"
   };
 
   function createEvidenceTrack(bubble) {

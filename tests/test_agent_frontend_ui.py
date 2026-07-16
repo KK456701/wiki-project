@@ -102,6 +102,16 @@ def test_legacy_fallback_is_allowed_only_before_agent_start() -> None:
     assert _run_node("runtime.canFallbackToLegacy(500, false)") is False
 
 
+def test_public_event_projection_keeps_fallback_classification() -> None:
+    event = _run_node("""runtime.projectEvent({
+      event:'agent_done', trace_id:'TRACE_2', stop_reason:'need_clarification',
+      fallback_category:'USER_CLARIFICATION', failure_code:'INDICATOR_AMBIGUOUS'
+    })""")
+
+    assert event["fallback_category"] == "USER_CLARIFICATION"
+    assert event["failure_code"] == "INDICATOR_AMBIGUOUS"
+
+
 def test_evidence_track_css_supports_mobile_focus_and_reduced_motion() -> None:
     css = (ROOT / "web" / "agent-runtime.css").read_text(encoding="utf-8")
 

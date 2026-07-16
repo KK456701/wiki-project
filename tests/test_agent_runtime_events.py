@@ -81,3 +81,17 @@ class AgentRuntimeEventsTest(unittest.IsolatedAsyncioTestCase):
             event["message"],
             "模型服务暂时不可用。（HTTP 400: invalid tool_call_id）",
         )
+
+    def test_public_terminal_event_keeps_fallback_classification(self) -> None:
+        event = public_agent_event(
+            {
+                "event": "agent_done",
+                "stop_reason": "need_clarification",
+                "fallback_category": "USER_CLARIFICATION",
+                "failure_code": "INDICATOR_AMBIGUOUS",
+            },
+            trace_id="TRACE_2",
+        )
+
+        self.assertEqual(event["fallback_category"], "USER_CLARIFICATION")
+        self.assertEqual(event["failure_code"], "INDICATOR_AMBIGUOUS")

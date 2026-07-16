@@ -46,6 +46,19 @@ class ToolRegistry:
             result.append(tool)
         return result
 
+    def list_for_names(
+        self,
+        names: Iterable[str],
+        context: AgentRuntimeContext,
+        state: AgentRunState,
+    ) -> list[AgentTool]:
+        allowed = set(names)
+        return [
+            tool
+            for tool in self.list_for_context(context, state)
+            if tool.name in allowed
+        ]
+
     @staticmethod
     def to_ollama_schema(tools: Iterable[AgentTool]) -> list[dict]:
         return [

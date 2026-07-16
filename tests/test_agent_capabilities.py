@@ -46,6 +46,29 @@ def test_export_account_maps_to_implementation_role() -> None:
     assert context.user_role == "implementer"
 
 
+def test_capabilities_publish_plan_compile_control_orchestration() -> None:
+    service = AgentRuntimeService(
+        enabled=True,
+        mode="tool_calling",
+        model="fake",
+        runner_factory=lambda *_: None,
+    )
+
+    assert service.capabilities()["orchestration"] == "plan_compile_control"
+
+
+def test_capabilities_publish_react_when_planning_is_disabled() -> None:
+    service = AgentRuntimeService(
+        enabled=True,
+        mode="tool_calling",
+        model="fake",
+        planning_enabled=False,
+        runner_factory=lambda *_: None,
+    )
+
+    assert service.capabilities()["orchestration"] == "react"
+
+
 class FakeTraceRecorder:
     def __init__(self, trace):
         self.trace = trace

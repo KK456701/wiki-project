@@ -74,6 +74,8 @@ def _latest_period(state: AgentRunState) -> tuple[str, str] | None:
 def _safe_state_metadata(state: AgentRunState) -> dict[str, Any]:
     return {
         "current_rule_id": state.current_rule_id or "",
+        "current_stat_start": state.current_stat_start,
+        "current_stat_end": state.current_stat_end,
         "validated_sql_ids": _safe_object_ids(
             state.validated_sql_ids, "SQL_"
         ),
@@ -195,6 +197,16 @@ class AgentConversationMemory:
                 ),
             }],
             current_rule_id=current_rule_id or None,
+            current_stat_start=(
+                structured.stat_period.start_time
+                or safe.get("current_stat_start")
+                or None
+            ),
+            current_stat_end=(
+                structured.stat_period.end_time
+                or safe.get("current_stat_end")
+                or None
+            ),
             validated_sql_ids=_safe_object_ids(
                 safe.get("validated_sql_ids"), "SQL_"
             ),

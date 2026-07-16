@@ -191,6 +191,9 @@ def test_prepare_sql_persists_private_object_without_returning_sql_text() -> Non
     assert result.ok
     assert result.code == "SQL_OBJECT_PREPARED"
     assert result.data["sql_id"] == "SQL_001"
+    assert result.data["hospital_id"] == "h1"
+    assert result.data["db_source_id"] == "hospital_db"
+    assert result.data["context_digest"] == result.evidence[0].version
     assert "sql_text" not in result.data
     assert "SQL_001" in state.validated_sql_ids
     assert state.current_rule_id == "MQSI2025_005"
@@ -291,6 +294,10 @@ def test_trial_reloads_server_snapshot_and_returns_aggregate_only() -> None:
         "no_sample": False,
         "duration_ms": 18,
         "source": "hospital_db",
+        "hospital_id": "h1",
+        "db_source_id": "hospital_db",
+        "rule_id": "MQSI2025_005",
+        "context_digest": prepared.evidence[0].version,
         "stat_start": "2026-07-01 00:00:00",
         "stat_end": "2026-08-01 00:00:00",
     }

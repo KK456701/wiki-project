@@ -253,6 +253,9 @@ def prepare_indicator_sql(
         data={
             "sql_id": sql_id,
             "rule_id": arguments.rule_id,
+            "hospital_id": context.hospital_id,
+            "db_source_id": context.db_source_id,
+            "context_digest": digest,
             "dialect": sql_object.dialect,
             "validation_status": sql_object.validation_status,
             "stat_start": stat_start,
@@ -457,6 +460,10 @@ def trial_run_indicator_sql(
         "no_sample": bool(result.get("no_sample")),
         "duration_ms": int(result.get("duration_ms") or 0),
         "source": result_source or sql_object.db_source_id,
+        "hospital_id": context.hospital_id,
+        "db_source_id": sql_object.db_source_id,
+        "rule_id": sql_object.rule_id,
+        "context_digest": sql_object.context_digest,
         "stat_start": sql_object.stat_start,
         "stat_end": sql_object.stat_end,
     }

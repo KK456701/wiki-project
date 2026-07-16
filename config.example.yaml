@@ -78,6 +78,7 @@ ollama_output_reserve_tokens: 1200
 
 # 工具调用型 Agent（默认关闭，不影响旧聊天）
 agent_enabled: false
+agent_planning_enabled: true
 agent_mode: "legacy"
 agent_model: "qwen3:4B-instruct"
 default_model: "ollama-qwen3"

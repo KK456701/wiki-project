@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 
 from app.agent_runtime.contracts import AgentRunResult, AgentRunState, AgentRuntimeContext
@@ -20,8 +21,13 @@ from app.agent_runtime.response_guard import (
     missing_fact_types,
     normalize_agent_answer,
 )
+from app.agent_planning.runtime import AgentPlanningRuntime
+from app.agent_planning.planner import AgentPlanningError
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
+
+
+logger = logging.getLogger("wiki_agent.agent_runtime")
 
 
 def _contains_chinese(text: str) -> bool:
@@ -99,6 +105,7 @@ class AgentRunner:
         max_tool_calls_per_step: int = 3,
         request_timeout_seconds: float = 120.0,
         event_callback: AgentEventCallback | None = None,
+        planning_runtime: AgentPlanningRuntime | None = None,
     ) -> None:
         self.adapter = adapter
         self.registry = registry
@@ -107,6 +114,7 @@ class AgentRunner:
         self.max_tool_calls_per_step = max_tool_calls_per_step
         self.request_timeout_seconds = request_timeout_seconds
         self.event_callback = event_callback
+        self.planning_runtime = planning_runtime
 
     async def run(
         self,
@@ -161,6 +169,8 @@ class AgentRunner:
             step_count=result.state.step_count,
             model_name=result.model,
             answer=result.answer,
+            fallback_category=result.state.fallback_category,
+            failure_code=result.state.failure_code,
         )
 
     async def _run(
@@ -169,6 +179,28 @@ class AgentRunner:
         context: AgentRuntimeContext,
         run_state: AgentRunState,
     ) -> AgentRunResult:
+        planning_execution = None
+        if self.planning_runtime is not None:
+            try:
+                planning_execution = await self.planning_runtime.prepare(
+                    user_message, context, run_state
+                )
+            except AgentPlanningError:
+                logger.warning("agent planner rejected model output", exc_info=True)
+                run_state.stop_reason = "tool_error"
+                return AgentRunResult(
+                    answer="无法生成有效业务计划，请重新描述目标。",
+                    stop_reason="tool_error",
+                    state=run_state,
+                )
+            except Exception:
+                logger.exception("agent planner failed")
+                run_state.stop_reason = "tool_error"
+                return AgentRunResult(
+                    answer="业务计划生成失败，请稍后重试。",
+                    stop_reason="tool_error",
+                    state=run_state,
+                )
         if not run_state.messages:
             run_state.messages.append({"role": "system", "content": AGENT_SYSTEM_PROMPT})
         run_state.current_request_kind = _classify_request_kind(user_message)
@@ -178,7 +210,10 @@ class AgentRunner:
         chinese_corrections = 0
         trial_run_corrections = 0
         fact_corrections = 0
+        planned_tool_corrections = 0
         for _ in range(self.max_steps):
+            replanned = False
+            plan_corrected = False
             try:
                 if run_state.cancelled:
                     run_state.stop_reason = "cancelled"
@@ -189,7 +224,51 @@ class AgentRunner:
                         model=model_name,
                     )
                 run_state.step_count += 1
-                available = self.registry.list_for_context(context, run_state)
+                decision = None
+                if planning_execution is not None:
+                    decision = self.planning_runtime.next_decision(
+                        planning_execution, run_state
+                    )
+                    if decision.action.value == "fallback":
+                        clarification = (
+                            decision.fallback_category is not None
+                            and decision.fallback_category.value
+                            in {"USER_CLARIFICATION", "BUSINESS_CONFIRMATION"}
+                        )
+                        stop_reason = "need_clarification" if clarification else "tool_error"
+                        run_state.stop_reason = stop_reason
+                        run_state.fallback_category = (
+                            decision.fallback_category.value
+                            if decision.fallback_category is not None
+                            else None
+                        )
+                        run_state.failure_code = decision.code or None
+                        if clarification:
+                            emit_agent_event(
+                                self.event_callback,
+                                "clarification_required",
+                                step=run_state.step_count,
+                                message=decision.message,
+                                fallback_category=run_state.fallback_category,
+                                failure_code=run_state.failure_code,
+                            )
+                        return AgentRunResult(
+                            answer=decision.message or "当前计划无法继续执行。",
+                            stop_reason=stop_reason,
+                            state=run_state,
+                            model=model_name,
+                        )
+                    available = self.registry.list_for_names(
+                        decision.tool_names, context, run_state
+                    )
+                    run_state.messages.append({
+                        "role": "system",
+                        "content": self.planning_runtime.instruction(
+                            planning_execution, decision, run_state
+                        ),
+                    })
+                else:
+                    available = self.registry.list_for_context(context, run_state)
                 emit_agent_event(
                     self.event_callback,
                     "model_start",
@@ -227,7 +306,38 @@ class AgentRunner:
                 if not response.tool_calls:
                     answer = normalize_agent_answer(response.content)
                     assistant_message["content"] = answer
-                    if not run_state.evidence:
+                    if (
+                        planning_execution is not None
+                        and decision is not None
+                        and decision.action.value == "execute_tool"
+                    ):
+                        if (
+                            planned_tool_corrections < 1
+                            and run_state.step_count < self.max_steps
+                        ):
+                            planned_tool_corrections += 1
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": (
+                                    "当前回答过早，计划要求先调用："
+                                    + "、".join(decision.tool_names)
+                                    + "。请完成该受控步骤后再回答。"
+                                ),
+                            })
+                            continue
+                        run_state.stop_reason = "tool_error"
+                        return AgentRunResult(
+                            answer="当前计划需要先完成受控工具步骤，模型未按计划执行。",
+                            stop_reason="tool_error",
+                            state=run_state,
+                            model=model_name,
+                        )
+                    requires_evidence = (
+                        bool(planning_execution.compiled_plan.required_facts)
+                        if planning_execution is not None
+                        else True
+                    )
+                    if requires_evidence and not run_state.evidence:
                         evidence_corrections += 1
                         if evidence_corrections <= 1:
                             run_state.messages.append({
@@ -264,6 +374,18 @@ class AgentRunner:
                                 "content": evidence_correction_prompt(missing),
                             })
                             continue
+                    if planning_execution is not None:
+                        verification = self.planning_runtime.verify(
+                            planning_execution, run_state, context
+                        )
+                        if not verification.ok:
+                            run_state.stop_reason = "tool_error"
+                            return AgentRunResult(
+                                answer=verification.message,
+                                stop_reason="tool_error",
+                                state=run_state,
+                                model=model_name,
+                            )
                     run_state.stop_reason = "final_answer"
                     return AgentRunResult(
                         answer=answer,
@@ -279,7 +401,8 @@ class AgentRunner:
                     state=run_state,
                     model=model_name,
                 )
-            if len(response.tool_calls) > self.max_tool_calls_per_step:
+            call_limit = 1 if planning_execution is not None else self.max_tool_calls_per_step
+            if len(response.tool_calls) > call_limit:
                 run_state.stop_reason = "tool_error"
                 return AgentRunResult(
                     answer="单步工具调用数量超过限制，本次运行已停止。",
@@ -289,6 +412,44 @@ class AgentRunner:
                 )
             for call in response.tool_calls:
                 try:
+                    if (
+                        planning_execution is not None
+                        and decision is not None
+                        and call.name not in decision.tool_names
+                    ):
+                        if (
+                            planned_tool_corrections < 1
+                            and run_state.step_count < self.max_steps
+                        ):
+                            planned_tool_corrections += 1
+                            correction = (
+                                "当前计划未允许该工具。请只调用本步展示的工具："
+                                + "、".join(decision.tool_names)
+                                + "。"
+                            )
+                            run_state.messages.append({
+                                "role": "tool",
+                                "tool_name": call.name,
+                                "content": json.dumps({
+                                    "ok": False,
+                                    "status": "unavailable",
+                                    "code": "TOOL_OUTSIDE_PLAN",
+                                    "summary": correction,
+                                }, ensure_ascii=False),
+                            })
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": correction,
+                            })
+                            plan_corrected = True
+                            break
+                        run_state.stop_reason = "tool_error"
+                        return AgentRunResult(
+                            answer="模型调用了当前计划未允许的工具，本次运行已停止。",
+                            stop_reason="tool_error",
+                            state=run_state,
+                            model=model_name,
+                        )
                     if run_state.cancelled:
                         run_state.stop_reason = "cancelled"
                         return AgentRunResult(
@@ -311,6 +472,19 @@ class AgentRunner:
                         "tool_name": call.name,
                         "content": json.dumps(dumped, ensure_ascii=False),
                     })
+                    if planning_execution is not None and not result.ok:
+                        replacement = await self.planning_runtime.try_replan(
+                            planning_execution,
+                            query=user_message,
+                            context=context,
+                            state=run_state,
+                            failure_code=result.code,
+                            failure_reason=result.summary,
+                        )
+                        if replacement is not None:
+                            planning_execution = replacement
+                            replanned = True
+                            break
                     if result.status == "need_clarification":
                         emit_agent_event(
                             self.event_callback,
@@ -362,6 +536,10 @@ class AgentRunner:
                         state=run_state,
                         model=model_name,
                     )
+            if replanned:
+                continue
+            if plan_corrected:
+                continue
         run_state.stop_reason = "max_steps"
         return AgentRunResult(
             answer="已达到最大处理步骤，请缩小问题范围后重试。",

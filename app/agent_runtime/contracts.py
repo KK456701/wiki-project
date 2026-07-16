@@ -49,6 +49,8 @@ class AgentRunState(RuntimeContract):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
     current_rule_id: str | None = None
+    current_stat_start: str | None = None
+    current_stat_end: str | None = None
     current_request_kind: AgentRequestKind | None = None
     validated_sql_ids: list[str] = Field(default_factory=list)
     last_run_id: str | None = None
@@ -56,6 +58,10 @@ class AgentRunState(RuntimeContract):
     last_draft_id: str | None = None
     stop_reason: AgentStopReason | None = None
     cancelled: bool = False
+    replan_count: int = Field(default=0, ge=0)
+    failed_plan_fingerprints: list[str] = Field(default_factory=list)
+    fallback_category: str | None = None
+    failure_code: str | None = None
 
 
 class AgentToolCall(RuntimeContract):

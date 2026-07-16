@@ -68,12 +68,14 @@ class AgentRuntimeService:
         memory_factory: Callable[[], AgentConversationMemory] | None = None,
         max_steps: int = 8,
         request_timeout_seconds: int = 120,
+        planning_enabled: bool = True,
     ) -> None:
         self.enabled = enabled
         self.mode = mode
         self.model = model
         self.max_steps = max_steps
         self.request_timeout_seconds = request_timeout_seconds
+        self.planning_enabled = planning_enabled
         self.runner_factory = runner_factory or self._build_runner
         self.trace_recorder_factory = trace_recorder_factory or self._build_trace_recorder
         self.memory_factory = memory_factory or self._build_memory
@@ -89,6 +91,7 @@ class AgentRuntimeService:
             model=registry.default_model_id,
             max_steps=max(1, get_int("agent_max_steps", 8)),
             request_timeout_seconds=max(1, get_int("agent_request_timeout_seconds", 120)),
+            planning_enabled=get_bool("agent_planning_enabled", True),
         )
 
     def capabilities(self) -> dict[str, Any]:
@@ -106,6 +109,9 @@ class AgentRuntimeService:
             "streaming": True,
             "max_steps": self.max_steps,
             "formal_writes": False,
+            "orchestration": (
+                "plan_compile_control" if self.planning_enabled else "react"
+            ),
         }
 
     def ensure_available(self) -> None:
@@ -314,6 +320,7 @@ class AgentRuntimeService:
         from app.api.main import _create_agent_orchestrator, create_business_db_client
         from app.db.engine import create_runtime_engine
         from app.llm.model_registry import get_model_registry
+        from app.agent_planning import AgentPlanningRuntime, ModelRequestPlanner
 
         engine = create_runtime_engine()
         ensure_agent_sql_object_schema(engine)
@@ -340,6 +347,11 @@ class AgentRuntimeService:
         )
         gateway = ToolGateway(registry, trace_callback=event_callback)
         adapter = get_model_registry().build_adapter(model_id or self.model)
+        planning_runtime = (
+            AgentPlanningRuntime(planner=ModelRequestPlanner(adapter))
+            if self.planning_enabled
+            else None
+        )
         return AgentRunner(
             adapter,
             registry,
@@ -347,6 +359,7 @@ class AgentRuntimeService:
             max_steps=self.max_steps,
             request_timeout_seconds=self.request_timeout_seconds,
             event_callback=event_callback,
+            planning_runtime=planning_runtime,
         )
 
     @staticmethod

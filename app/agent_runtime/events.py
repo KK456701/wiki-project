@@ -55,6 +55,10 @@ def public_agent_event(
         payload["stop_reason"] = str(event.get("stop_reason") or "tool_error")
         if event.get("step_count") is not None:
             payload["step_count"] = int(event.get("step_count") or 0)
+        if event.get("fallback_category"):
+            payload["fallback_category"] = str(event["fallback_category"])
+        if event.get("failure_code"):
+            payload["failure_code"] = str(event["failure_code"])
         if event_name == "agent_error":
             payload["message"] = str(
                 event.get("message")
