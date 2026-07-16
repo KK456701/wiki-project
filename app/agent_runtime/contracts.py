@@ -57,3 +57,10 @@ class AgentModelResponse(RuntimeContract):
     tool_calls: list[AgentToolCall] = Field(default_factory=list)
     model: str | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentRunResult(RuntimeContract):
+    answer: str = ""
+    stop_reason: AgentStopReason
+    state: AgentRunState
+    model: str | None = None
