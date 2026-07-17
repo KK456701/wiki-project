@@ -128,6 +128,7 @@ class AgentRuntimeService:
         request_id: str,
         session_id: str | None = None,
         model_id: str | None = None,
+        file_key: str | None = None,
     ) -> dict[str, Any]:
         self.ensure_available()
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
@@ -146,6 +147,8 @@ class AgentRuntimeService:
         )
         memory_started = time.perf_counter()
         memory_session = self._open_memory(context)
+        if file_key:
+            memory_session.state.current_upload_file_key = file_key
         bridge.handle({
             "event": "trace_node",
             "node_name": "memory_load",
@@ -200,6 +203,7 @@ class AgentRuntimeService:
         request_id: str,
         session_id: str | None = None,
         model_id: str | None = None,
+        file_key: str | None = None,
     ):
         self.ensure_available()
         trace_id = f"TRACE_{uuid.uuid4().hex[:12]}"
@@ -218,6 +222,8 @@ class AgentRuntimeService:
         )
         memory_started = time.perf_counter()
         memory_session = self._open_memory(context)
+        if file_key:
+            memory_session.state.current_upload_file_key = file_key
         bridge.handle({
             "event": "trace_node",
             "node_name": "memory_load",

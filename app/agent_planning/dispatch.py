@@ -55,6 +55,9 @@ def _rule_id(execution: PlanningExecution, state: AgentRunState) -> str:
 
 
 def _file_key(user_message: str, state: AgentRunState) -> str:
+    structured_file_key = str(state.current_upload_file_key or "").strip()
+    if structured_file_key:
+        return structured_file_key
     matches = _FILE_KEY_PATTERN.findall(
         "\n".join((state.recent_history, user_message))
     )

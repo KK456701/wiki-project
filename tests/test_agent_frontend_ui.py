@@ -67,6 +67,42 @@ def test_model_selector_payload_uses_selected_model() -> None:
     ]
 
 
+def test_chat_payload_carries_latest_uploaded_file_key() -> None:
+    expression = """[
+      runtime.buildChatPayload(
+        '分析刚上传的文件', 's1', 'ollama-qwen3',
+        'hospital_001_85a68d23d925_无标题.xlsx'
+      ),
+      runtime.buildChatPayload('查询指标', 's1', 'ollama-qwen3', '')
+    ]"""
+
+    assert _run_node(expression) == [
+        {
+            "query": "分析刚上传的文件",
+            "session_id": "s1",
+            "model_id": "ollama-qwen3",
+            "file_key": "hospital_001_85a68d23d925_无标题.xlsx",
+        },
+        {
+            "query": "查询指标",
+            "session_id": "s1",
+            "model_id": "ollama-qwen3",
+        },
+    ]
+
+
+def test_page_wires_latest_upload_to_chat_and_clears_it_for_new_session() -> None:
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+
+    assert 'var latestUploadedFileKey = "";' in html
+    assert "latestUploadedFileKey = fileKey;" in html
+    assert "fileKey: latestUploadedFileKey," in html
+    new_session_handler = html[html.index(
+        'newSessionButton.addEventListener("click", function() {'
+    ):]
+    assert 'latestUploadedFileKey = "";' in new_session_handler
+
+
 def test_expired_login_has_a_specific_agent_error_message() -> None:
     assert _run_node("runtime.agentRequestErrorMessage(401)") == "登录状态已失效，请重新登录。"
 

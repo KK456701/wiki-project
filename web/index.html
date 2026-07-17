@@ -1121,6 +1121,7 @@ if (currentUser && currentUser.role === "hospital" && !hospitalAuthToken) {
 }
 var latestFeedbackPreview = null;
 var latestTraceId = "";
+var latestUploadedFileKey = "";
 var pendingAdminAction = "";
 var currentIndicatorDraft = null;
 var currentIndicatorMetadata = null;
@@ -2198,6 +2199,7 @@ async function streamToolCallingChat(query) {
       sessionId: currentSessionId,
       token: hospitalAuthToken,
       modelId: modelSelector && modelSelector.value || "",
+      fileKey: latestUploadedFileKey,
       onEvent: function(event) {
         if (event.trace_id) {
           latestTraceId = event.trace_id;
@@ -2269,6 +2271,7 @@ fileUploadInput.addEventListener("change", async function() {
     }
     var result = await resp.json();
     var fileKey = result.file_key;
+    latestUploadedFileKey = fileKey;
     createMessage("user", "已上传: " + (result.file_name || file.name) + " (" + (result.size_bytes / 1024).toFixed(1) + " KB)" + "\n文件编号: " + fileKey);
     queryInput.value = "帮我分析一下刚上传的指标文件";
     autoResizeTextarea();
@@ -3110,6 +3113,7 @@ async function rejectMergeItem(reportId, itemId) {
 
 newSessionButton.addEventListener("click", function() {
   currentSessionId = crypto.randomUUID ? crypto.randomUUID().slice(0,8) : Math.random().toString(16).slice(2,10);
+  latestUploadedFileKey = "";
   sessionLabel.textContent = "session: " + currentSessionId;
   messages.innerHTML = "";
   addWelcomeMessage();

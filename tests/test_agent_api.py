@@ -15,15 +15,50 @@ from app.observability.trace import TraceRecorder
 class FakeAgentService:
     def __init__(self):
         self.calls = []
+        self.stream_calls = []
 
-    async def chat(self, *, query, principal, request_id, session_id=None, model_id=None):
-        self.calls.append((query, principal, request_id, session_id, model_id))
+    def ensure_available(self):
+        return None
+
+    async def chat(
+        self,
+        *,
+        query,
+        principal,
+        request_id,
+        session_id=None,
+        model_id=None,
+        file_key=None,
+    ):
+        self.calls.append(
+            (query, principal, request_id, session_id, model_id, file_key)
+        )
         return {
             "answer": "已完成指标说明。",
             "stop_reason": "final_answer",
             "trace_id": "TRACE_001",
             "session_id": session_id or principal.session_id,
             "step_count": 2,
+        }
+
+    async def stream(
+        self,
+        *,
+        query,
+        principal,
+        request_id,
+        session_id=None,
+        model_id=None,
+        file_key=None,
+    ):
+        self.stream_calls.append(
+            (query, principal, request_id, session_id, model_id, file_key)
+        )
+        yield {
+            "event": "agent_done",
+            "answer": "分析完成。",
+            "stop_reason": "final_answer",
+            "step_count": 1,
         }
 
     def capabilities(self):
@@ -101,6 +136,52 @@ def test_chat_accepts_optional_model_id() -> None:
 
     assert response.status_code == 200
     assert service.calls[0][4] == "deepseek-v4-pro"
+
+
+def test_chat_accepts_unicode_uploaded_file_key() -> None:
+    client, service = _client()
+
+    response = client.post(
+        "/api/agent/chat",
+        json={
+            "query": "帮我分析刚上传的指标文件",
+            "session_id": "chat-1",
+            "file_key": "hospital_001_85a68d23d925_无标题.xlsx",
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.calls[0][5] == "hospital_001_85a68d23d925_无标题.xlsx"
+
+
+def test_chat_rejects_file_key_with_path_separator() -> None:
+    client, service = _client()
+
+    for file_key in ("../other.xlsx", "..\\other.xlsx"):
+        response = client.post(
+            "/api/agent/chat",
+            json={"query": "分析文件", "file_key": file_key},
+        )
+        assert response.status_code == 422
+    assert service.calls == []
+
+
+def test_stream_chat_forwards_uploaded_file_key() -> None:
+    client, service = _client()
+
+    response = client.post(
+        "/api/agent/chat/stream",
+        json={
+            "query": "分析刚上传的文件",
+            "session_id": "chat-stream",
+            "file_key": "hospital_001_85a68d23d925_无标题.xlsx",
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.stream_calls[0][5] == (
+        "hospital_001_85a68d23d925_无标题.xlsx"
+    )
 
 
 def test_chat_rejects_tenant_identity_and_authority_fields() -> None:

@@ -25,6 +25,12 @@ class AgentChatRequest(BaseModel):
     query: str = Field(min_length=1, max_length=5000)
     session_id: str | None = Field(default=None, min_length=1, max_length=128)
     model_id: str | None = Field(default=None, min_length=1, max_length=128)
+    file_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^/\\]+$",
+    )
 
 
 class AgentChatResponse(BaseModel):
@@ -58,6 +64,7 @@ async def agent_chat(
             request_id=request_id or f"REQ_{uuid.uuid4().hex[:12]}",
             session_id=body.session_id,
             model_id=body.model_id,
+            file_key=body.file_key,
         )
     except AgentRuntimeUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -90,6 +97,7 @@ def agent_chat_stream(
                 request_id=request_id or f"REQ_{uuid.uuid4().hex[:12]}",
                 session_id=body.session_id,
                 model_id=body.model_id,
+                file_key=body.file_key,
             ):
                 yield _sse_event(event)
         except AgentRuntimeUnavailable as exc:

@@ -161,6 +161,35 @@ def test_builds_upload_call_from_recent_file_number() -> None:
     assert call.arguments == {"file_key": "hospital_001_report.xlsx"}
 
 
+def test_upload_call_prefers_structured_latest_file_key() -> None:
+    execution = _execution({
+        "intent": "upload_analysis",
+        "goal": "分析刚上传文件",
+        "requested_outputs": ["file_analysis"],
+    })
+    state = AgentRunState(
+        current_upload_file_key="hospital_001_85a68d23d925_无标题.xlsx",
+        recent_history=(
+            "用户：已上传旧文件\n"
+            "文件编号: hospital_001_old_report.xlsx"
+        ),
+    )
+
+    call = build_deterministic_tool_call(
+        execution,
+        _decision(
+            PlanCapability.ANALYZE_UPLOADED_FILE,
+            "analyze_uploaded_indicators",
+        ),
+        state,
+        user_message="帮我分析刚上传的文件",
+    )
+
+    assert call.arguments == {
+        "file_key": "hospital_001_85a68d23d925_无标题.xlsx"
+    }
+
+
 def test_missing_required_dispatch_value_returns_explicit_error() -> None:
     execution = _trial_execution()
 

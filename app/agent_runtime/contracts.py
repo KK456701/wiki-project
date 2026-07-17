@@ -57,6 +57,7 @@ class AgentRunState(RuntimeContract):
     last_run_id: str | None = None
     last_diagnosis_id: str | None = None
     last_draft_id: str | None = None
+    current_upload_file_key: str | None = None
     stop_reason: AgentStopReason | None = None
     cancelled: bool = False
     replan_count: int = Field(default=0, ge=0)

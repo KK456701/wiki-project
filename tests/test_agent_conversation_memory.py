@@ -140,3 +140,20 @@ def test_memory_exposes_bounded_recent_history_to_planner(tmp_path):
 
     assert "患者入院 48 小时内转科" in restored.state.recent_history
     assert "从6月1日至今" in restored.state.recent_history
+
+
+def test_memory_restores_latest_uploaded_file_key(tmp_path):
+    memory = AgentConversationMemory(store=ConversationMemory(tmp_path))
+    context = _context()
+    first = memory.open(context)
+    first.append_user("帮我分析刚上传的文件")
+    state = _completed_state()
+    state.current_upload_file_key = "h1_85a68d23d925_无标题.xlsx"
+
+    first.complete("帮我分析刚上传的文件", "分析完成。", state)
+
+    restored = memory.open(context)
+    assert (
+        restored.state.current_upload_file_key
+        == "h1_85a68d23d925_无标题.xlsx"
+    )

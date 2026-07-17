@@ -1,42 +1,42 @@
-# Upload File Session Binding Implementation Plan
+# Excel 上传文件会话关联实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行要求：** 使用 `executing-plans` 在当前会话逐项实施；按复选框跟踪完成情况，不启用子智能体或 worktree。
 
-**Goal:** Carry the latest uploaded Excel `file_key` through the chat API into persisted Agent state so natural-language follow-ups can deterministically analyze that file.
+**目标：** 将最近上传 Excel 的 `file_key` 通过聊天 API 写入持久化 Agent 状态，使自然语言追问能够确定性分析该文件。
 
-**Architecture:** The browser keeps the latest upload reference for the active chat session and sends it as an optional chat payload field. The API and service bind it to `AgentRunState.current_upload_file_key`; deterministic dispatch reads that structured state before its legacy text fallback. Existing hospital-prefix authorization in the upload tool remains the final tenant boundary.
+**架构：** 浏览器为当前聊天会话保存最近上传引用，并作为可选聊天字段发送。API 和服务层将其绑定到 `AgentRunState.current_upload_file_key`；确定性分发优先读取结构化状态，再回退到旧文本解析。上传工具现有的医院前缀校验继续作为最终租户边界。
 
-**Tech Stack:** Vanilla JavaScript, FastAPI, Pydantic, Agent conversation memory, pytest, Node-based frontend unit tests.
+**技术栈：** 原生 JavaScript、FastAPI、Pydantic、Agent 会话记忆、pytest、Node 前端单元测试。
 
-## Global Constraints
+## 全局约束
 
-- Work directly on current `main`; do not create a worktree or subagent.
-- Preserve Unicode filenames such as `无标题.xlsx` while rejecting path separators.
-- Do not expose Excel row-level patient data to the model or public SSE.
-- Update README and change documentation in the same batch.
-- The user performs browser validation; automated validation remains required.
+- 直接在当前 `main` 工作，不创建 worktree 或子智能体。
+- 保留 `无标题.xlsx` 等 Unicode 文件名，同时拒绝路径分隔符。
+- 不向模型或公开 SSE 暴露 Excel 患者行级数据。
+- 同批更新 README 和变更文档。
+- 浏览器验收由用户完成，自动化验证仍必须执行。
 
 ---
 
-### Task 1: Carry the upload reference in the browser payload
+### 任务 1：在浏览器聊天载荷中携带上传引用
 
-**Files:**
+**文件：**
 - Modify: `tests/test_agent_frontend_ui.py`
 - Modify: `web/agent-runtime.js`
 - Modify: `web/index.html`
 
-**Interfaces:**
-- Consumes: upload response `file_key`.
-- Produces: `buildChatPayload(query, sessionId, modelId, fileKey)` with optional `file_key`; `streamAgent({fileKey})` forwards it.
+**接口：**
+- 输入：上传响应中的 `file_key`。
+- 输出：`buildChatPayload(query, sessionId, modelId, fileKey)` 生成可选 `file_key`；`streamAgent({fileKey})` 负责转发。
 
-- [ ] Add a failing frontend test asserting the fourth payload argument becomes `file_key` and the field is omitted when empty.
-- [ ] Run `pytest -q tests/test_agent_frontend_ui.py::test_chat_payload_carries_latest_uploaded_file_key` and confirm the field is missing.
-- [ ] Extend `buildChatPayload` and `streamAgent`, keep `latestUploadedFileKey` in `index.html`, set it after upload, pass it to chat, and clear it on new session.
-- [ ] Run `pytest -q tests/test_agent_frontend_ui.py` and confirm all frontend runtime tests pass.
+- [x] 增加失败前端测试，验证第四个参数写入 `file_key`，空值时省略该字段。
+- [x] 运行定向测试并确认修改前缺少 `file_key`。
+- [x] 扩展 `buildChatPayload` 和 `streamAgent`；在页面保存、传递并于新会话清除 `latestUploadedFileKey`。
+- [x] 运行完整前端 Agent 测试并通过。
 
-### Task 2: Bind the reference to API and conversation state
+### 任务 2：将文件引用绑定到 API 与会话状态
 
-**Files:**
+**文件：**
 - Modify: `tests/test_agent_api.py`
 - Modify: `tests/test_agent_capabilities.py`
 - Modify: `app/api/agent_routes.py`
@@ -44,45 +44,45 @@
 - Modify: `app/agent_runtime/service.py`
 - Modify: `app/agent_runtime/memory.py`
 
-**Interfaces:**
-- Consumes: optional `AgentChatRequest.file_key`.
-- Produces: `AgentRunState.current_upload_file_key`, restored through `_safe_state_metadata` and `AgentConversationMemory.open`.
+**接口：**
+- 输入：可选 `AgentChatRequest.file_key`。
+- 输出：`AgentRunState.current_upload_file_key`，通过 `_safe_state_metadata` 与 `AgentConversationMemory.open` 保存和恢复。
 
-- [ ] Add failing API tests proving non-stream chat forwards a Unicode `file_key` and rejects values containing `/` or `\\`.
-- [ ] Add a failing service test proving `file_key` is assigned before the runner receives the state.
-- [ ] Add a failing memory round-trip test proving `current_upload_file_key` is included in safe state metadata and restored.
-- [ ] Run those focused tests and confirm the new field/signatures are absent.
-- [ ] Add the optional validated request field, forward it through both routes and service methods, update state before execution, and persist/restore it in safe metadata.
-- [ ] Run `pytest -q tests/test_agent_api.py tests/test_agent_capabilities.py tests/test_agent_conversation_memory.py` and confirm the new behavior passes.
+- [x] 增加失败 API 测试，验证 Unicode `file_key` 转发并拒绝 `/` 或 `\\`。
+- [x] 增加失败服务测试，验证 Runner 执行前状态已绑定 `file_key`。
+- [x] 增加失败记忆往返测试，验证安全元数据保存并恢复 `current_upload_file_key`。
+- [x] 运行定向测试并确认修改前字段和方法签名缺失。
+- [x] 增加受校验请求字段，经流式和非流式入口转发，在执行前更新状态，并通过安全元数据持久化。
+- [x] 运行 API、服务和会话记忆测试并通过。
 
-### Task 3: Prefer structured attachment state during deterministic dispatch
+### 任务 3：确定性分发优先使用结构化附件状态
 
-**Files:**
+**文件：**
 - Modify: `tests/test_agent_deterministic_dispatch.py`
 - Modify: `app/agent_planning/dispatch.py`
 
-**Interfaces:**
-- Consumes: `AgentRunState.current_upload_file_key`.
-- Produces: `AgentToolCall(name="analyze_uploaded_indicators", arguments={"file_key": ...})` without requiring the file number in user text.
+**接口：**
+- 输入：`AgentRunState.current_upload_file_key`。
+- 输出：无需用户文本包含文件编号即可生成 `analyze_uploaded_indicators` 工具调用。
 
-- [ ] Add a failing test where the user says only“帮我分析刚上传的文件” and state contains a Unicode upload key.
-- [ ] Add a precedence assertion showing a newly supplied structured key wins over an older file number in history.
-- [ ] Run the focused test and confirm dispatch reports `UPLOAD_FILE_KEY_MISSING` or selects the historical key.
-- [ ] Update `_file_key` to return the validated structured key first and keep text parsing as backward compatibility.
-- [ ] Run `pytest -q tests/test_agent_deterministic_dispatch.py` and confirm all dispatch cases pass.
+- [x] 增加失败测试：用户只说“帮我分析刚上传的文件”，状态包含 Unicode 上传编号。
+- [x] 验证新结构化编号优先于历史中的旧文件编号。
+- [x] 运行定向测试并确认修改前错误选择历史编号。
+- [x] 更新 `_file_key`，优先返回结构化编号并保留文本兼容解析。
+- [x] 运行确定性分发测试并通过。
 
-### Task 4: Documentation, full verification and delivery
+### 任务 4：文档、完整验证与交付
 
-**Files:**
+**文件：**
 - Modify: `README.md`
 - Modify: `docs/operations/2026-07-16-changes.md`
 - Modify: `docs/superpowers/plans/2026-07-17-upload-file-session-binding.md`
 
-**Interfaces:**
-- Consumes: final implementation and test evidence.
-- Produces: current operational documentation and a deliverable commit.
+**接口：**
+- 输入：最终实现与测试证据。
+- 输出：准确的运行文档和可交付提交。
 
-- [ ] Document explicit upload reference binding and the “new upload replaces old reference; new session clears it” behavior.
-- [ ] Run Ruff on changed Python files, `python -m compileall -q app`, the focused tests, then `pytest -q`.
-- [ ] Inspect `git diff --check` and scan the diff for credentials or patient row data.
-- [ ] Commit current changes, attempt `git push origin main` without force, and restart the 8765 service so it loads the new code.
+- [x] 记录显式上传引用绑定，以及“新上传替换旧引用、新会话清除引用”的行为。
+- [x] 对变更 Python 文件运行 Ruff，执行 `compileall`、定向测试和完整 `pytest -q`。
+- [x] 检查 `git diff --check`，扫描凭据和患者行级数据。
+- [ ] 提交当前变更，非强制推送 `main`，并重启 8765 服务加载新代码。

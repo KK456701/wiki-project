@@ -53,9 +53,10 @@
     element.hidden = false;
   }
 
-  function buildChatPayload(query, sessionId, modelId) {
+  function buildChatPayload(query, sessionId, modelId, fileKey) {
     var payload = {query: query, session_id: sessionId};
     if (modelId) payload.model_id = modelId;
+    if (fileKey) payload.file_key = fileKey;
     return payload;
   }
 
@@ -119,7 +120,8 @@
       body: JSON.stringify(buildChatPayload(
         options.query,
         options.sessionId,
-        options.modelId
+        options.modelId,
+        options.fileKey
       ))
     });
     if (!response.ok) {

@@ -196,6 +196,73 @@ def test_chat_loads_and_completes_agent_conversation_memory() -> None:
     )
 
 
+def test_chat_binds_uploaded_file_key_before_runner_executes() -> None:
+    memory = FakeMemory()
+    runners = []
+
+    def runner_factory(callback, model_id=None):
+        runner = FakeRunner(callback, model_id=model_id)
+        runners.append(runner)
+        return runner
+
+    service = AgentRuntimeService(
+        enabled=True,
+        model="fake",
+        runner_factory=runner_factory,
+        trace_recorder_factory=lambda: FakeTraceRecorder({"hospital_id": "h1"}),
+        memory_factory=lambda: memory,
+    )
+
+    asyncio.run(service.chat(
+        query="帮我分析刚上传的文件",
+        principal=_principal({"indicator_detail_view"}),
+        request_id="REQ_UPLOAD",
+        session_id="chat-upload",
+        file_key="h1_85a68d23d925_无标题.xlsx",
+    ))
+
+    assert runners[0].states[0].current_upload_file_key == (
+        "h1_85a68d23d925_无标题.xlsx"
+    )
+
+
+def test_stream_binds_uploaded_file_key_before_runner_executes() -> None:
+    memory = FakeMemory()
+    runners = []
+
+    def runner_factory(callback, model_id=None):
+        runner = FakeRunner(callback, model_id=model_id)
+        runners.append(runner)
+        return runner
+
+    service = AgentRuntimeService(
+        enabled=True,
+        model="fake",
+        runner_factory=runner_factory,
+        trace_recorder_factory=lambda: FakeTraceRecorder({"hospital_id": "h1"}),
+        memory_factory=lambda: memory,
+    )
+
+    async def consume_stream():
+        return [
+            event
+            async for event in service.stream(
+                query="帮我分析刚上传的文件",
+                principal=_principal({"indicator_detail_view"}),
+                request_id="REQ_UPLOAD_STREAM",
+                session_id="chat-upload",
+                file_key="h1_85a68d23d925_无标题.xlsx",
+            )
+        ]
+
+    events = asyncio.run(consume_stream())
+
+    assert events[-1]["event"] == "agent_done"
+    assert runners[0].states[0].current_upload_file_key == (
+        "h1_85a68d23d925_无标题.xlsx"
+    )
+
+
 def test_memory_save_failure_is_recorded_once_without_retrying_completion() -> None:
     class FailingMemorySession(FakeMemorySession):
         def __init__(self):

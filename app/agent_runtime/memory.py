@@ -29,6 +29,19 @@ def _safe_object_ids(values: Any, prefix: str, limit: int = 8) -> list[str]:
     ][-limit:]
 
 
+def _safe_upload_file_key(value: Any) -> str | None:
+    file_key = str(value or "").strip()
+    if (
+        not file_key
+        or len(file_key) > 255
+        or file_key in {".", ".."}
+        or "/" in file_key
+        or "\\" in file_key
+    ):
+        return None
+    return file_key
+
+
 def _latest_agent_state(messages: list[dict[str, Any]]) -> dict[str, Any]:
     for message in reversed(messages):
         if message.get("role") != "assistant":
@@ -91,6 +104,9 @@ def _safe_state_metadata(state: AgentRunState) -> dict[str, Any]:
             state.last_draft_id
             if str(state.last_draft_id or "").startswith("DRAFT_")
             else None
+        ),
+        "current_upload_file_key": _safe_upload_file_key(
+            state.current_upload_file_key
         ),
     }
 
@@ -225,6 +241,9 @@ class AgentConversationMemory:
                 str(safe.get("last_draft_id"))
                 if str(safe.get("last_draft_id") or "").startswith("DRAFT_")
                 else None
+            ),
+            current_upload_file_key=_safe_upload_file_key(
+                safe.get("current_upload_file_key")
             ),
         )
         if current_rule_id:

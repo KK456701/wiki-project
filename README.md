@@ -15,6 +15,7 @@
 - **反馈与审批**：医院用户反馈口径不一致时先生成差异预览，用户确认后进入 Pending，管理员审批通过后才生效。
 - **版本化医院口径**：医院 override 采用追加版本方式保存，支持历史口径对比和一键恢复历史版本。
 - **SQL 生成与试运行分离**：根据指标 SQL 规格、字段要求和医院字段映射生成只读 SQL；“SQL 怎么写/先写出来”只返回经过校验的 SQL 预览，不访问业务数据，只有明确索要实际结果时才进入 DBHub 只读试运行。SQL 准备完成后由服务端直接使用校验证据生成最终回答，不再让 Executor 补充工具调用；临时连接中断会自动重试一次，并返回安全、可追踪的失败原因。
+- **Excel 上传会话关联**：上传成功后，前端通过独立 `file_key` 字段把最近上传文件绑定到当前 Agent 会话，服务端保存安全文件引用；用户只说“分析刚上传的文件”也能确定性调用文件分析工具。上传新文件会替换当前引用，新建会话会清除前端引用，工具仍按 `hospital_id` 阻止跨院访问。
 - **指标实施控制台**：支持从自然语言创建“本院新增指标”，或把已有公司/国标指标适配到本院；实施任务依次完成取数要求确认、医院数据映射、确定性 SQL 生成、DBHub 试运行、审批和版本化发布，未发布任务不参与正式查询。
 - **三层异常诊断**：支持直接粘贴用户 SQL、参数和聚合结果；系统先做只读安全检查，再核对表字段，对比用户 SQL、国标与本院生效口径，并检查数据质量，输出医生可读结论和实施排障依据。
 - **DBHub MCP 数据库接入**：通过本地 DBHub sidecar 读取业务库元数据、同步字段快照，并执行只读 SQL 试运行。
@@ -843,8 +844,8 @@ Content-Type: application/json
 | `/api/health/summary` | GET | 系统自检摘要，返回中文状态、处理建议和问题码 |
 | `/api/health/dependencies` | GET | 依赖原始检查，返回 runtime DB、DBHub、业务库 MCP 等状态和问题码 |
 | `/api/agent/capabilities` | GET | 获取 Agent 状态和可选模型列表；不返回密钥或医院数据 |
-| `/api/agent/chat` | POST | 需要医院登录的非流式工具调用型 Agent 对话 |
-| `/api/agent/chat/stream` | POST | 需要医院登录的 SSE 流式工具调用型 Agent 对话，支持 `model_id` |
+| `/api/agent/chat` | POST | 需要医院登录的非流式工具调用型 Agent 对话，支持可选 `model_id` 和 `file_key` |
+| `/api/agent/chat/stream` | POST | 需要医院登录的 SSE 流式工具调用型 Agent 对话，支持可选 `model_id` 和 `file_key` |
 | `/api/agent/upload` | POST | 上传不超过 10MB 的 Excel，供受控文件分析工具使用 |
 | `/api/agent/runs/{trace_id}` | GET | 按当前医院权限查看 Agent 计划与工具证据链 |
 | `/api/traces/{trace_id}` | GET | 查看执行链路 Trace |
