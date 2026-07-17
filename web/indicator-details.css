@@ -14,6 +14,16 @@
   background: var(--teal-soft);
   outline: 2px solid transparent;
 }
+.indicator-detail-export-entry {
+  border-color: var(--teal);
+  color: #fff;
+  background: var(--teal);
+}
+.indicator-detail-export-entry:hover,
+.indicator-detail-export-entry:focus-visible {
+  color: #fff;
+  background: var(--teal-deep);
+}
 .indicator-detail-overlay,
 .hospital-password-overlay {
   position: fixed;

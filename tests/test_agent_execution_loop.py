@@ -235,6 +235,8 @@ $$"""
 
         self.assertEqual(result.stop_reason, "final_answer")
         self.assertEqual(result.state.last_run_id, "RUN_001")
+        self.assertIn("{{detail_export:RUN_001}}", result.answer)
+        self.assertIn("查看分子、分母明细并导出 Excel", result.answer)
         self.assertEqual(
             {fact for item in result.state.evidence for fact in item["fact_types"]},
             {
@@ -274,6 +276,25 @@ $$"""
         self.assertIn("SELECT 92.5 AS index_value", observations)
         self.assertNotIn("patient_name", observations)
         self.assertNotIn("protected_template", observations)
+
+    async def test_final_answer_without_current_trial_does_not_show_detail_export(self) -> None:
+        adapter = SequenceAdapter([AgentModelResponse(
+            content="这是指标公式说明。{{detail_export:RUN_OLD}}",
+        )])
+        runner, _ = _runner(adapter, max_steps=1)
+        state = AgentRunState(
+            last_run_id="RUN_OLD",
+            evidence=[{
+                "source": "mysql",
+                "source_id": "MQSI2025_005",
+                "fact_types": ["rule_identity", "formula"],
+            }],
+        )
+
+        result = await runner.run("这个指标怎么算？", _context(), state)
+
+        self.assertEqual(result.stop_reason, "final_answer")
+        self.assertNotIn("detail_export", result.answer)
 
     async def test_period_followup_hides_diagnosis_tool(self) -> None:
         adapter = SequenceAdapter([AgentModelResponse(content="需要重新试运行该统计区间。")])

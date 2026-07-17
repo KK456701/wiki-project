@@ -129,6 +129,33 @@ process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
         self.assertEqual(result.stdout.count("indicator-detail-trigger"), 1)
         self.assertNotIn("<script>", result.stdout)
 
+    def test_renderer_builds_strict_indicator_export_entry(self) -> None:
+        markdown = (
+            "{{detail_export:RUN_80}}\n\n"
+            "{{detail_export:<script>}}\n\n"
+            "{{detail_export:SQL_80}}"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('class="indicator-detail-trigger indicator-detail-export-entry"', result.stdout)
+        self.assertIn('data-run-id="RUN_80"', result.stdout)
+        self.assertIn('data-detail-group="denominator"', result.stdout)
+        self.assertIn('>查看明细并导出 Excel</button>', result.stdout)
+        self.assertEqual(result.stdout.count("indicator-detail-export-entry"), 1)
+        self.assertNotIn("<script>", result.stdout)
+
     def test_renderer_only_builds_strict_diagnosis_comparison_buttons(self) -> None:
         markdown = (
             "{{diagnosis_detail:CMP_a1B2_30}}\n\n"

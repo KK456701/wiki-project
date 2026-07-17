@@ -146,6 +146,40 @@ def _asks_for_period_clarification(answer: str) -> bool:
     )
 
 
+def _append_trial_detail_export(
+    answer: str,
+    tool_results: list[dict],
+) -> str:
+    """为本轮成功试运行追加受控明细入口，不依赖模型生成 UI 标记。"""
+    safe_answer = re.sub(
+        r"\{\{detail(?:_export)?:[^{}\r\n]*\}\}",
+        "",
+        answer,
+    ).rstrip()
+    for result in reversed(tool_results):
+        if (
+            not isinstance(result, dict)
+            or result.get("ok") is not True
+            or result.get("code") != "TRIAL_RUN_COMPLETED"
+        ):
+            continue
+        data = result.get("data") or {}
+        run_id = str(data.get("run_id") or "")
+        if (
+            data.get("status") != "success"
+            or re.fullmatch(r"RUN_[A-Za-z0-9_]+", run_id) is None
+        ):
+            return safe_answer
+        marker = f"{{{{detail_export:{run_id}}}}}"
+        return (
+            safe_answer
+            + "\n\n---\n\n"
+            + "本次统计支持查看分子、分母明细并导出 Excel：\n\n"
+            + marker
+        )
+    return safe_answer
+
+
 class AgentRunner:
     def __init__(
         self,
@@ -241,6 +275,7 @@ class AgentRunner:
         context: AgentRuntimeContext,
         run_state: AgentRunState,
     ) -> AgentRunResult:
+        turn_tool_results_start = len(run_state.last_tool_results)
         planning_execution = None
         if self.planning_runtime is not None:
             try:
@@ -676,6 +711,10 @@ class AgentRunner:
                             model=model_name,
                         )
                     answer = normalize_agent_answer(response.content)
+                    answer = _append_trial_detail_export(
+                        answer,
+                        run_state.last_tool_results[turn_tool_results_start:],
+                    )
                     assistant_message["content"] = answer
                     if (
                         planning_execution is not None

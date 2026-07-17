@@ -12,6 +12,14 @@
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(
+        /\{\{detail_export:(RUN_[A-Za-z0-9_]+)\}\}/g,
+        function (_, runId) {
+          return '<button type="button" class="indicator-detail-trigger indicator-detail-export-entry" ' +
+            'data-run-id="' + runId + '" data-detail-group="denominator" ' +
+            'aria-label="查看本次统计明细并导出 Excel">查看明细并导出 Excel</button>';
+        }
+      )
+      .replace(
         /\{\{detail:(RUN_[A-Za-z0-9_]+):(denominator|numerator|unmatched)\}\}/g,
         function (_, runId, group) {
           var labels = {
