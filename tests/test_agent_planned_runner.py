@@ -347,6 +347,73 @@ def test_planning_runtime_reuses_structured_rule_and_period_context():
     assert execution.validation.resolved_time.start_time.isoformat() == "2026-06-01T00:00:00+08:00"
 
 
+def test_runtime_reuses_confirmed_period_when_sql_followup_has_no_time_text():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_sql_prepare",
+        "goal": "生成当前指标 SQL",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "time_expression": {
+            "raw_text": "2026-01-01 00:00:00 至 2026-03-31 00:00:00",
+        },
+        "requested_outputs": ["prepared_sql_handle"],
+    })
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        current_stat_start="2026-01-01T00:00:00+08:00",
+        current_stat_end="2026-04-01T00:00:00+08:00",
+    )
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "把这个指标的 SQL 脚本生成出来",
+        _context(),
+        state,
+    ))
+
+    assert execution.validation.ok is True
+    assert execution.validation.resolved_time.start_time.isoformat() == (
+        "2026-01-01T00:00:00+08:00"
+    )
+    assert execution.validation.resolved_time.end_time.isoformat() == (
+        "2026-04-01T00:00:00+08:00"
+    )
+
+
+def test_runtime_overrides_model_dates_with_user_month_range():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_sql_prepare",
+        "goal": "生成当前指标 SQL",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "time_expression": {
+            "raw_text": "从一月份到三月份的",
+            "start_time": "2026-01-01 00:00:00",
+            "end_time": "2026-03-31 00:00:00",
+        },
+        "requested_outputs": ["prepared_sql_handle"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "从一月份到三月份的",
+        _context(),
+        AgentRunState(current_rule_id="RULE_1"),
+    ))
+
+    assert execution.validation.ok is True
+    assert execution.validation.resolved_time.start_time.isoformat() == (
+        "2026-01-01T00:00:00+08:00"
+    )
+    assert execution.validation.resolved_time.end_time.isoformat() == (
+        "2026-04-01T00:00:00+08:00"
+    )
+
+
 def test_planned_runner_dispatches_tools_without_model_routing():
     adapter = SequenceAdapter([
         AgentModelResponse(content="指标率 = 分子 ÷ 分母 × 100%"),

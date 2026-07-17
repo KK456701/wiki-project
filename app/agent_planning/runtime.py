@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import re
 import time
 from typing import Callable
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
 
 from .compiler import PlanCompiler
-from .contracts import CompiledPlan, RequestPlan
+from .contracts import (
+    CompiledPlan,
+    PlanIntent,
+    RequestPlan,
+    RequestedOutput,
+    TimeExpression,
+)
 from .controller import AgentStateController, ControllerDecision
 from .planner import RequestPlanner
 from .validator import PlanValidation, PlanValidator
@@ -53,6 +60,62 @@ class AgentPlanningRuntime:
         except Exception:
             return
 
+    @staticmethod
+    def _query_mentions_time(query: str) -> bool:
+        compact = re.sub(r"\s+", "", str(query or ""))
+        return bool(re.search(
+            r"(?:\d{4}[-年]\d{1,2}|\d{1,2}月|[一二三四五六七八九十]{1,3}月份?"
+            r"|本月|这个月|上月|上个月|今年|至今|到现在|开始时间|结束时间"
+            r"|统计时间|统计周期|时间范围)",
+            compact,
+        ))
+
+    def _normalize_time_expression(
+        self,
+        request_plan: RequestPlan,
+        *,
+        query: str,
+        state: AgentRunState,
+        now: datetime,
+    ) -> None:
+        outputs = set(request_plan.requested_outputs)
+        needs_time = bool(outputs & {
+            RequestedOutput.PREPARED_SQL_HANDLE,
+            RequestedOutput.TRIAL_RESULT,
+        }) or request_plan.intent in {
+            PlanIntent.INDICATOR_SQL_PREPARE,
+            PlanIntent.INDICATOR_TRIAL_RUN,
+        }
+        if not needs_time:
+            return
+
+        user_expression = TimeExpression(raw_text=query)
+        resolved_user_time = self.validator.resolver.resolve(
+            user_expression,
+            now=now,
+        )
+        if resolved_user_time is not None:
+            request_plan.time_expression = TimeExpression(
+                raw_text=query,
+                start_time=resolved_user_time.start_time.isoformat(),
+                end_time=resolved_user_time.end_time.isoformat(),
+            )
+            return
+
+        if (
+            state.current_stat_start
+            and state.current_stat_end
+            and not self._query_mentions_time(query)
+        ):
+            request_plan.time_expression = TimeExpression(
+                raw_text="复用当前已确认统计周期",
+                start_time=state.current_stat_start,
+                end_time=state.current_stat_end,
+            )
+            return
+
+        request_plan.time_expression = TimeExpression(raw_text=query)
+
     async def prepare(
         self,
         query: str,
@@ -69,15 +132,12 @@ class AgentPlanningRuntime:
         request_plan = request_plan.model_copy(deep=True)
         if not request_plan.target_indicator.rule_id and state.current_rule_id:
             request_plan.target_indicator.rule_id = state.current_rule_id
-        if (
-            not request_plan.time_expression.start_time
-            and not request_plan.time_expression.end_time
-            and state.current_stat_start
-            and state.current_stat_end
-            and not request_plan.time_expression.raw_text
-        ):
-            request_plan.time_expression.start_time = state.current_stat_start
-            request_plan.time_expression.end_time = state.current_stat_end
+        self._normalize_time_expression(
+            request_plan,
+            query=query,
+            state=state,
+            now=now,
+        )
         compile_started = time.perf_counter()
         compiled = self.compiler.compile(request_plan)
         self._trace(

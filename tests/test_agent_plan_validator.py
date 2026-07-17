@@ -75,6 +75,25 @@ def test_resolves_explicit_inclusive_date_range():
     assert result.resolved_time.end_time.isoformat() == "2026-07-01T00:00:00+08:00"
 
 
+def test_resolves_chinese_month_range_to_next_month_boundary():
+    result = PlanValidator().validate(_plan("从一月份到三月份的"), now=NOW)
+
+    assert result.ok is True
+    assert result.resolved_time.start_time.isoformat() == "2026-01-01T00:00:00+08:00"
+    assert result.resolved_time.end_time.isoformat() == "2026-04-01T00:00:00+08:00"
+
+
+def test_resolves_month_range_embedded_in_result_request():
+    result = PlanValidator().validate(
+        _plan("给我具体结果，从一月份到三月份的"),
+        now=NOW,
+    )
+
+    assert result.ok is True
+    assert result.resolved_time.start_time.isoformat() == "2026-01-01T00:00:00+08:00"
+    assert result.resolved_time.end_time.isoformat() == "2026-04-01T00:00:00+08:00"
+
+
 def test_missing_time_returns_user_clarification():
     result = PlanValidator().validate(_plan("尽快"), now=NOW)
 
