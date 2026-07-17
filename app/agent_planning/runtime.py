@@ -70,6 +70,62 @@ class AgentPlanningRuntime:
             compact,
         ))
 
+    @staticmethod
+    def _query_requests_upload_comparison(query: str) -> bool:
+        compact = re.sub(r"\s+", "", str(query or "")).lower()
+        comparison_terms = (
+            "不一样",
+            "不一致",
+            "不相同",
+            "有哪些不同",
+            "哪些不同",
+            "差异",
+            "对比",
+            "比较",
+            "为什么不同",
+        )
+        if not any(term in compact for term in comparison_terms):
+            return False
+        if any(term in compact for term in ("文件", "上传", "excel", "表格")):
+            return True
+        return any(term in compact for term in (
+            "我们的结果",
+            "两边结果",
+            "两个结果",
+            "结果不一样",
+            "结果不一致",
+            "结果不相同",
+            "哪些数据",
+            "怎么不一样",
+        ))
+
+    def _normalize_upload_comparison(
+        self,
+        request_plan: RequestPlan,
+        *,
+        query: str,
+        state: AgentRunState,
+    ) -> None:
+        """上传后询问结果差异时，优先执行文件与系统结果对比。"""
+        if (
+            not state.current_upload_file_key
+            or not self._query_requests_upload_comparison(query)
+        ):
+            return
+        request_plan.intent = PlanIntent.INDICATOR_TRIAL_RUN
+        request_plan.goal = "对比刚上传的指标文件与本院系统结果并解释差异"
+        request_plan.requested_outputs = [
+            output
+            for output in request_plan.requested_outputs
+            if output is not RequestedOutput.DIAGNOSIS
+        ]
+        for output in (
+            RequestedOutput.FILE_ANALYSIS,
+            RequestedOutput.TRIAL_RESULT,
+        ):
+            if output not in request_plan.requested_outputs:
+                request_plan.requested_outputs.append(output)
+
     def _normalize_time_expression(
         self,
         request_plan: RequestPlan,
@@ -132,6 +188,11 @@ class AgentPlanningRuntime:
         request_plan = request_plan.model_copy(deep=True)
         if not request_plan.target_indicator.rule_id and state.current_rule_id:
             request_plan.target_indicator.rule_id = state.current_rule_id
+        self._normalize_upload_comparison(
+            request_plan,
+            query=query,
+            state=state,
+        )
         self._normalize_time_expression(
             request_plan,
             query=query,

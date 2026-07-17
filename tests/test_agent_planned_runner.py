@@ -15,7 +15,7 @@ from app.agent_runtime.contracts import (
     AgentRunState,
     AgentRuntimeContext,
 )
-from app.agent_runtime.runner import AgentRunner
+from app.agent_runtime.runner import AgentRunner, _request_kind_from_plan
 from app.agent_tools.contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
@@ -345,6 +345,102 @@ def test_planning_runtime_reuses_structured_rule_and_period_context():
     assert execution.request_plan.target_indicator.rule_id == "RULE_1"
     assert execution.validation.ok is True
     assert execution.validation.resolved_time.start_time.isoformat() == "2026-06-01T00:00:00+08:00"
+
+
+def test_upload_difference_followup_overrides_misclassified_diagnosis_plan():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_diagnosis",
+        "goal": "分析指标计算结果差异的原因",
+        "target_indicator": {
+            "raw_name": "患者入院48小时内转科的比例",
+            "rule_id": "RULE_1",
+        },
+        "time_expression": {"raw_text": "从26年1月到现在"},
+        "requested_outputs": ["diagnosis"],
+    })
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        current_stat_start="2026-01-01T00:00:00+08:00",
+        current_stat_end="2026-07-17T12:29:58+08:00",
+        current_upload_file_key="h1_report.xlsx",
+    )
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "怎么我们的结果不一样，分析一下原因",
+        _context(),
+        state,
+    ))
+
+    assert execution.request_plan.intent.value == "indicator_trial_run"
+    assert {item.value for item in execution.request_plan.requested_outputs} == {
+        "file_analysis",
+        "trial_result",
+    }
+    assert [node.capability.value for node in execution.compiled_plan.nodes] == [
+        "resolve_indicator",
+        "resolve_effective_rule",
+        "resolve_time_range",
+        "prepare_verified_sql",
+        "execute_trial_run",
+        "analyze_uploaded_file",
+        "compose_answer",
+    ]
+    assert execution.validation.resolved_time.start_time.isoformat() == (
+        "2026-01-01T00:00:00+08:00"
+    )
+    assert _request_kind_from_plan("怎么我们的结果不一样", execution) == "trial_run"
+
+
+def test_diagnosis_request_kind_follows_validated_plan_instead_of_result_keyword():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_diagnosis",
+        "goal": "诊断两个系统结果不一样的原因",
+        "target_indicator": {"rule_id": "RULE_1"},
+        "requested_outputs": ["diagnosis"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+    execution = asyncio.run(runtime.prepare(
+        "两个系统结果不一样，排查原因",
+        _context(),
+        AgentRunState(current_rule_id="RULE_1"),
+    ))
+
+    assert _request_kind_from_plan("两个系统结果不一样，排查原因", execution) == (
+        "diagnosis"
+    )
+
+
+def test_rule_caliber_difference_is_not_hijacked_by_existing_upload():
+    plan = RequestPlan.model_validate({
+        "intent": "rule_explanation",
+        "goal": "解释国标与本院口径差异",
+        "target_indicator": {"rule_id": "RULE_1"},
+        "requested_outputs": ["explanation"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+    execution = asyncio.run(runtime.prepare(
+        "国标和本院口径有什么差异",
+        _context(),
+        AgentRunState(
+            current_rule_id="RULE_1",
+            current_upload_file_key="h1_report.xlsx",
+        ),
+    ))
+
+    assert execution.request_plan.intent.value == "rule_explanation"
+    assert {item.value for item in execution.request_plan.requested_outputs} == {
+        "explanation"
+    }
 
 
 def test_runtime_reuses_confirmed_period_when_sql_followup_has_no_time_text():

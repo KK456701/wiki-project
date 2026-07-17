@@ -88,6 +88,20 @@ def _classify_request_kind(user_message: str) -> str | None:
     return None
 
 
+def _request_kind_from_plan(user_message: str, planning_execution) -> str | None:
+    if planning_execution is None:
+        return _classify_request_kind(user_message)
+    outputs = {
+        item.value if hasattr(item, "value") else str(item)
+        for item in planning_execution.request_plan.requested_outputs
+    }
+    if "diagnosis" in outputs:
+        return "diagnosis"
+    if "trial_result" in outputs:
+        return "trial_run"
+    return _classify_request_kind(user_message)
+
+
 def _has_fact_type(state: AgentRunState, fact_type: str) -> bool:
     return any(
         fact_type in (item.get("fact_types") or [])
@@ -323,7 +337,10 @@ class AgentRunner:
                 )
         if not run_state.messages:
             run_state.messages.append({"role": "system", "content": AGENT_SYSTEM_PROMPT})
-        run_state.current_request_kind = _classify_request_kind(user_message)
+        run_state.current_request_kind = _request_kind_from_plan(
+            user_message,
+            planning_execution,
+        )
         run_state.messages.append({"role": "user", "content": user_message})
         model_name: str | None = None
         evidence_corrections = 0

@@ -60,6 +60,7 @@ flowchart TD
 ## 上传文件与本院指标对比
 
 - Planner 对“把刚上传的 Excel 与本院系统指标对比”请求同时输出 `file_analysis` 和 `trial_result`，后续只补充指标名称或统计时间时保留该跨轮目标。
+- `AgentPlanningRuntime` 在存在当前上传文件时确定性识别“不一样、不一致、差异、对比”等追问，将误判的普通诊断计划改写为 `file_analysis + trial_result`；Runner 的 `current_request_kind` 由这份已校验计划派生，不再用另一套关键词分类与计划互相冲突。
 - 缺少指标名称时 Validator 返回 `TARGET_INDICATOR_AMBIGUOUS`；缺少统计周期时返回 `TIME_RANGE_AMBIGUOUS`，两种情况都在访问业务库前暂停并向用户澄清。
 - 信息完整后，Compiler 按 `resolve_indicator → resolve_effective_rule → resolve_time_range → prepare_verified_sql → execute_trial_run → analyze_uploaded_file → compose_answer` 编译。Excel 分析位于试运行之后，因此工具能够直接核对文件与本院结果的分子、分母和指标率。
 - Verifier 同时要求 `trial_run` 与 `file_analysis` 证据，最终回答模型只能基于本轮两条证据链说明一致项和差异。
