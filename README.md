@@ -915,9 +915,11 @@ Content-Type: application/json
 | `/api/sql-runs/{run_id}/details` | POST | 生成或复用本次试运行的短期明细快照 |
 | `/api/sql-runs/{run_id}/details/{group}` | GET | 分页查看统计范围、达到要求或未达到要求的脱敏明细 |
 | `/api/sql-runs/{run_id}/exports` | POST | 二次确认后生成三工作表 Excel |
-| `/api/sql-runs/{run_id}/upload-comparison-exports` | POST | 生成上传文件汇总值与本次系统结果的一致项/不一致项差异表 |
+| `/api/sql-runs/{run_id}/upload-comparison-exports` | POST | 汇总文件生成一致项/不一致项；同指标明细文件生成双方都有、仅系统有、仅上传文件有的逐条差异表 |
 
 上传文件只有分子、分母、指标率等汇总值时，系统只报告可验证的数值差异，并明确标记无法诊断具体原因；不会把重复记录、统计周期、ICU 排除或字段映射写成推测性结论。若要定位具体差异记录，上传明细至少应包含 `admission_id`、`admit_time`、`transfer_time`、`from_dept_id`、`to_dept_id`。聊天中的“导出文件与系统差异表”按钮会直接生成受控汇总差异 Excel，仍受 `indicator_detail_export` 权限、医院隔离、审计与 24 小时清理约束。
+
+系统生成的指标明细 Excel 会在每个工作表头部写入指标编号。再次上传这类文件时，分析工具先校验指标编号与当前试运行 `rule_id`：不同指标直接拒绝比较，避免把其他指标的编号、科室代码或时间值误识别为指标率；同一指标则以患者/业务标识和关键事件时间组成匹配键，按重复次数执行多重集合核对。逐条差异 Excel 固定包含“对比摘要”“双方都有_N”“仅系统有_N”“仅上传文件有_N”，其中“双方都有”还会列出同一记录的字段差异。患者级原始值不进入模型上下文，模型只接收统计区间、三组计数、匹配字段和已确认差异证据。
 | `/api/indicator-exports` | GET | 查看当前医院仍有效的明细导出记录 |
 | `/api/indicator-exports/{export_id}/download` | GET | 下载经过权限、医院范围、期限和哈希校验的 Excel |
 | `/api/diagnose/run` | POST | 执行异常诊断 |

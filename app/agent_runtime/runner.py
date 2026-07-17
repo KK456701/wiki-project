@@ -156,7 +156,7 @@ def _display_number(value) -> str:
 
 
 def _compose_upload_comparison_answer(tool_results: list[dict]) -> str | None:
-    """基于汇总证据生成差异回答，避免模型把缺少明细时的猜测写成原因。"""
+    """基于汇总或逐条对比证据生成回答，避免模型补充无证据原因。"""
     analyzed = next(
         (
             result
@@ -164,13 +164,60 @@ def _compose_upload_comparison_answer(tool_results: list[dict]) -> str | None:
             if isinstance(result, dict)
             and result.get("ok") is True
             and result.get("code") == "UPLOAD_ANALYZED"
-            and isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+            and (
+                isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+                or isinstance((result.get("data") or {}).get("row_comparison"), dict)
+            )
         ),
         None,
     )
     if analyzed is None:
         return None
     data = analyzed.get("data") or {}
+    row_comparison = data.get("row_comparison") or {}
+    if row_comparison:
+        status = row_comparison.get("comparison_status")
+        if status != "row_level_compared":
+            message = str(row_comparison.get("message") or "当前文件不能进行逐条对比。")
+            details = []
+            if row_comparison.get("system_rule_id"):
+                details.append(
+                    f"- 当前系统指标：{row_comparison.get('system_rule_name') or '-'} "
+                    f"(`{row_comparison.get('system_rule_id')}`)"
+                )
+            if row_comparison.get("uploaded_rule_id"):
+                details.append(
+                    f"- 上传文件指标：{row_comparison.get('uploaded_rule_name') or '-'} "
+                    f"(`{row_comparison.get('uploaded_rule_id')}`)"
+                )
+            return "\n".join([message, "", *details]).rstrip()
+
+        lines = [
+            "已完成上传明细与系统明细的逐条核对：",
+            "",
+            "| 分类 | 记录数 |",
+            "|---|---:|",
+            f"| 双方都有 | {row_comparison.get('both_count', 0)} |",
+            f"| 仅系统有 | {row_comparison.get('system_only_count', 0)} |",
+            f"| 仅上传文件有 | {row_comparison.get('uploaded_only_count', 0)} |",
+            f"| 同一记录但字段值不同 | {row_comparison.get('field_difference_count', 0)} |",
+            "",
+            "逐条匹配字段："
+            + "、".join(
+                f"`{field}`" for field in row_comparison.get("matching_fields") or []
+            )
+            + "。",
+        ]
+        findings = row_comparison.get("confirmed_findings") or []
+        if findings:
+            lines.extend(["", "已确认的差异证据："])
+            lines.extend(f"- {finding}" for finding in findings)
+        lines.extend([
+            "",
+            "患者级原始值不会发送给模型；完整记录请通过下方受控差异 Excel 查看。",
+        ])
+        return "\n".join(lines)
+
     comparison = data.get("aggregate_comparison") or {}
     metrics = comparison.get("metrics") or []
     if not metrics:
@@ -250,10 +297,24 @@ def _append_trial_detail_export(
             if isinstance(result, dict)
             and result.get("ok") is True
             and result.get("code") == "UPLOAD_ANALYZED"
-            and isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+            and (
+                isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+                or (
+                    isinstance((result.get("data") or {}).get("row_comparison"), dict)
+                    and (result.get("data") or {}).get("row_comparison", {}).get(
+                        "comparison_status"
+                    ) == "row_level_compared"
+                )
+            )
             and (result.get("data") or {}).get("file_key")
         ),
         None,
+    )
+    has_upload_analysis = any(
+        isinstance(result, dict)
+        and result.get("ok") is True
+        and result.get("code") == "UPLOAD_ANALYZED"
+        for result in tool_results
     )
     for result in reversed(tool_results):
         if (
@@ -273,12 +334,24 @@ def _append_trial_detail_export(
             file_key = str((comparison.get("data") or {}).get("file_key") or "")
             file_token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
             marker = f"{{{{upload_comparison_export:{run_id}:{file_token}}}}}"
+            row_level = (
+                (comparison.get("data") or {}).get("row_comparison", {}).get(
+                    "comparison_status"
+                )
+                == "row_level_compared"
+            )
             return (
                 safe_answer
                 + "\n\n---\n\n"
-                + "本次对比支持导出文件与系统的汇总差异表：\n\n"
+                + (
+                    "本次对比支持导出双方都有、仅系统有、仅上传文件有的逐条差异表：\n\n"
+                    if row_level
+                    else "本次对比支持导出文件与系统的汇总差异表：\n\n"
+                )
                 + marker
             )
+        if has_upload_analysis:
+            return safe_answer
         marker = f"{{{{detail_export:{run_id}}}}}"
         return (
             safe_answer

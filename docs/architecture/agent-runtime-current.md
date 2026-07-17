@@ -64,8 +64,9 @@ flowchart TD
 - 缺少指标名称时 Validator 返回 `TARGET_INDICATOR_AMBIGUOUS`；缺少统计周期时返回 `TIME_RANGE_AMBIGUOUS`，两种情况都在访问业务库前暂停并向用户澄清。
 - 信息完整后，Compiler 按 `resolve_indicator → resolve_effective_rule → resolve_time_range → prepare_verified_sql → execute_trial_run → analyze_uploaded_file → compose_answer` 编译。Excel 分析位于试运行之后，因此工具能够直接核对文件与本院结果的分子、分母和指标率。
 - Verifier 同时要求 `trial_run` 与 `file_analysis` 证据，最终回答模型只能基于本轮两条证据链说明一致项和差异。
-- 上传分析工具同时生成确定性的 `aggregate_comparison`：逐项保存系统值、上传文件值、差异方向、单位和一致状态。Runner 检测到同轮存在成功试运行与上传对比时，优先追加绑定 `RUN_ID` 和上传文件令牌的 `upload_comparison_export` 标记，不再追加普通 `detail_export`。
-- 差异导出复用 `indicator_detail_export` 权限、医院范围校验、审计、文件哈希、下载接口和 24 小时清理。工作簿固定包含“对比摘要”“一致项_N”“不一致项_N”；当前文件只有汇总数据时明确标记 `row_level_comparison_available=false`，不能推断具体患者记录的交集或差集。
+- 上传分析先读取工作簿元数据并校验上传文件指标编号与当前 `rule_id`。指标不同直接返回 `indicator_mismatch`，禁止把另一指标的编号、科室代码或日期误识别为指标值，也不生成无意义的差异导出入口。
+- 普通汇总文件生成确定性的 `aggregate_comparison`；同指标的系统明细导出文件则加载当前试运行明细，以患者/业务标识和关键事件时间组成匹配键，按重复次数执行多重集合核对，生成 `row_comparison`。模型只能看到双方都有、仅系统有、仅上传文件有、字段差异和达标判定差异等脱敏证据，患者原始行不进入模型上下文。
+- 差异导出复用 `indicator_detail_export` 权限、医院范围校验、审计、文件哈希、下载接口和 24 小时清理。汇总文件包含“对比摘要”“一致项_N”“不一致项_N”；逐条文件包含“对比摘要”“双方都有_N”“仅系统有_N”“仅上传文件有_N”，其中双方都有页同时列出同一记录的字段差异。
 
 ## SQL 准备与试运行边界
 

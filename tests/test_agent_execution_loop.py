@@ -91,6 +91,39 @@ def test_upload_aggregate_comparison_does_not_guess_causes() -> None:
     assert "admission_id" in answer
 
 
+def test_upload_comparison_reports_indicator_mismatch_without_export_marker() -> None:
+    tool_results = [
+        {
+            "ok": True,
+            "code": "TRIAL_RUN_COMPLETED",
+            "data": {"run_id": "RUN_001", "status": "success"},
+        },
+        {
+            "ok": True,
+            "code": "UPLOAD_ANALYZED",
+            "data": {
+                "file_key": "hospital_001_MQSI2025_005_detail.xlsx",
+                "row_comparison": {
+                    "comparison_status": "indicator_mismatch",
+                    "system_rule_id": "MQSI2025_001",
+                    "system_rule_name": "患者入院48小时内转科的比例",
+                    "uploaded_rule_id": "MQSI2025_005",
+                    "uploaded_rule_name": "急会诊及时到位率",
+                    "message": "两个指标不能进行汇总或逐条差异比较。",
+                },
+            },
+        },
+    ]
+
+    answer = _compose_upload_comparison_answer(tool_results)
+    final_answer = _append_trial_detail_export(answer, tool_results)
+
+    assert "MQSI2025_001" in answer
+    assert "MQSI2025_005" in answer
+    assert "upload_comparison_export" not in final_answer
+    assert "detail_export" not in final_answer
+
+
 class FakeDomainServices:
     def __init__(self) -> None:
         self.definition = "急会诊在规定时间内到位的比例。"

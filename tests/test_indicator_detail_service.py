@@ -217,3 +217,60 @@ def test_service_creates_upload_comparison_export(tmp_path: Path) -> None:
     assert result["不一致项_3"]["A4"].value == "分母"
     assert record["row_count"] == 3
     assert audit.items[-1]["action"] == "UPLOAD_COMPARISON_EXPORT_CREATE"
+
+
+def _write_detail_upload(path: Path, rule_id: str, rule_name: str) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "统计范围_2"
+    for row in (
+        ["指标名称", rule_name],
+        ["指标编号", rule_id],
+        ["适用医院", "hospital_001"],
+        ["统计区间", "2026-07-01 00:00:00 至 2026-08-01 00:00:00"],
+        [],
+        ["患者标识", "是否达到要求"],
+        ["PATIENT001", "是"],
+        ["PATIENT004", "否"],
+    ):
+        sheet.append(row)
+    workbook.save(path)
+
+
+def test_service_rejects_detail_export_from_another_indicator(tmp_path: Path) -> None:
+    service, _, _, _ = _service(tmp_path)
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    file_key = "hospital_001_MQSI2025_001_detail.xlsx"
+    _write_detail_upload(upload_root / file_key, "MQSI2025_001", "患者入院48小时内转科的比例")
+    token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
+
+    with pytest.raises(IndicatorDetailError) as error:
+        service.create_upload_comparison_export(_principal(), "RUN_001", token, True)
+
+    assert error.value.code == "UPLOAD_COMPARISON_INDICATOR_MISMATCH"
+    assert "两个指标不能" in str(error.value)
+
+
+def test_service_creates_row_level_comparison_export_for_same_indicator(tmp_path: Path) -> None:
+    service, repository, _, _ = _service(tmp_path)
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    file_key = "hospital_001_MQSI2025_005_detail.xlsx"
+    _write_detail_upload(upload_root / file_key, "MQSI2025_005", "急会诊及时到位率")
+    token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
+
+    export = service.create_upload_comparison_export(
+        _principal(), "RUN_001", token, True
+    )
+    record = repository.get_export(export.export_id)
+    path = service._resolve_relative_path(record["relative_path"])
+    workbook = load_workbook(path, read_only=False, data_only=False)
+
+    assert workbook.sheetnames == [
+        "对比摘要",
+        "双方都有_1",
+        "仅系统有_2",
+        "仅上传文件有_1",
+    ]
+    assert record["row_count"] == 4

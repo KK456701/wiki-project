@@ -20,6 +20,8 @@ GROUPS = (
 def safe_excel_value(value: Any) -> Any:
     if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
         return "'" + value
+    if isinstance(value, int) and abs(value) >= 10**15:
+        return str(value)
     return value
 
 
@@ -66,6 +68,7 @@ def _write_sheet(
     sheet.title = f"{title}_{len(rows)}"
     metadata = (
         ("指标名称", summary.rule_name),
+        ("指标编号", summary.rule_id),
         ("适用医院", summary.hospital_id),
         ("口径来源与版本", _version_text(summary)),
         ("来源数据库", summary.source_database or "未记录"),
@@ -197,7 +200,14 @@ def create_upload_comparison_workbook(
     actor_id: str,
     created_at: datetime,
 ) -> Path:
-    """生成上传文件汇总值与系统试运行结果的差异工作簿。"""
+    """生成上传文件与系统试运行结果的汇总级或逐条差异工作簿。"""
+    if comparison.get("comparison_level") == "row":
+        return _create_row_comparison_workbook(
+            path,
+            comparison,
+            actor_id=actor_id,
+            created_at=created_at,
+        )
     metrics = list(comparison.get("metrics") or [])
     if not metrics:
         raise ValueError("未识别到可对比的分子、分母或指标率")
@@ -241,6 +251,128 @@ def create_upload_comparison_workbook(
         )
         sheet.cell(1, 2).alignment = Alignment(wrap_text=True)
         _write_comparison_table(sheet, rows, header_row=3)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(path)
+    return path
+
+
+def _write_record_table(
+    sheet,
+    headers: list[str],
+    rows: list[list[Any]],
+    *,
+    description: str,
+) -> None:
+    sheet.cell(1, 1, "说明").font = Font(bold=True)
+    sheet.cell(1, 2, description)
+    sheet.cell(1, 2).alignment = Alignment(wrap_text=True)
+    header_row = 3
+    for column_index, header in enumerate(headers, start=1):
+        cell = sheet.cell(header_row, column_index, header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="087F78")
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+    for row_index, values in enumerate(rows, start=header_row + 1):
+        for column_index, value in enumerate(values, start=1):
+            sheet.cell(row_index, column_index, safe_excel_value(value))
+    sheet.freeze_panes = "A4"
+    last_row = max(header_row, header_row + len(rows))
+    last_column = max(1, len(headers))
+    sheet.auto_filter.ref = (
+        f"A{header_row}:{sheet.cell(last_row, last_column).coordinate}"
+    )
+    for index, header in enumerate(headers, start=1):
+        width = 22 if header not in {"匹配键", "字段差异"} else 36
+        sheet.column_dimensions[sheet.cell(header_row, index).column_letter].width = width
+
+
+def _create_row_comparison_workbook(
+    path: Path,
+    comparison: dict[str, Any],
+    *,
+    actor_id: str,
+    created_at: datetime,
+) -> Path:
+    matched = list(comparison.get("matched_rows") or [])
+    system_only = list(comparison.get("system_only_rows") or [])
+    uploaded_only = list(comparison.get("uploaded_only_rows") or [])
+    common_fields = list(comparison.get("common_fields") or [])
+    system_fields = list(dict.fromkeys(
+        common_fields
+        + list(comparison.get("system_only_fields") or [])
+        + [key for row in system_only for key in row]
+    ))
+    uploaded_fields = list(dict.fromkeys(
+        common_fields
+        + list(comparison.get("uploaded_only_fields") or [])
+        + [key for row in uploaded_only for key in row]
+    ))
+
+    workbook = Workbook()
+    summary = workbook.active
+    summary.title = "对比摘要"
+    metadata = (
+        ("指标名称", comparison.get("rule_name") or comparison.get("rule_id") or "未记录"),
+        ("指标编号", comparison.get("rule_id") or "未记录"),
+        ("适用医院", comparison.get("hospital_id") or "未记录"),
+        ("系统统计区间", comparison.get("system_stat_period") or "未记录"),
+        ("上传文件统计区间", comparison.get("uploaded_stat_period") or "未记录"),
+        ("上传文件", comparison.get("file_name") or "未记录"),
+        ("对比层级", "逐条记录"),
+        ("逐条匹配字段", "、".join(comparison.get("matching_fields") or []) or "未记录"),
+        ("双方都有", len(matched)),
+        ("仅系统有", len(system_only)),
+        ("仅上传文件有", len(uploaded_only)),
+        ("同一记录但字段值不同", int(comparison.get("field_difference_count") or 0)),
+        ("系统达到要求记录", int(comparison.get("system_numerator_count") or 0)),
+        ("上传文件达到要求记录", int(comparison.get("uploaded_numerator_count") or 0)),
+        ("同一记录但达标判定不同", int(comparison.get("classification_difference_count") or 0)),
+        ("已确认差异", "\n".join(comparison.get("confirmed_findings") or []) or "无"),
+        ("导出人", actor_id),
+        ("导出时间", created_at.isoformat(sep=" ", timespec="seconds")),
+    )
+    for row_index, (label, value) in enumerate(metadata, start=1):
+        summary.cell(row_index, 1, label).font = Font(bold=True)
+        summary.cell(row_index, 2, safe_excel_value(value))
+        summary.cell(row_index, 2).alignment = Alignment(vertical="top", wrap_text=True)
+    summary.column_dimensions["A"].width = 24
+    summary.column_dimensions["B"].width = 72
+
+    matched_headers = (
+        ["匹配键", "字段差异"]
+        + [f"系统-{field}" for field in system_fields]
+        + [f"上传文件-{field}" for field in uploaded_fields]
+    )
+    matched_values = [
+        [item.get("key"), "、".join(item.get("different_fields") or []) or "无"]
+        + [item.get("system", {}).get(field) for field in system_fields]
+        + [item.get("uploaded", {}).get(field) for field in uploaded_fields]
+        for item in matched
+    ]
+    matched_sheet = workbook.create_sheet(f"双方都有_{len(matched)}")
+    _write_record_table(
+        matched_sheet,
+        matched_headers,
+        matched_values,
+        description="按匹配字段识别为同一业务记录；字段差异列会列出值不一致的字段。",
+    )
+
+    system_sheet = workbook.create_sheet(f"仅系统有_{len(system_only)}")
+    _write_record_table(
+        system_sheet,
+        system_fields,
+        [[row.get(field) for field in system_fields] for row in system_only],
+        description="当前系统试运行明细中存在、上传文件中未匹配到的记录。",
+    )
+
+    uploaded_sheet = workbook.create_sheet(f"仅上传文件有_{len(uploaded_only)}")
+    _write_record_table(
+        uploaded_sheet,
+        uploaded_fields,
+        [[row.get(field) for field in uploaded_fields] for row in uploaded_only],
+        description="上传文件中存在、当前系统试运行明细中未匹配到的记录。",
+    )
 
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(path)

@@ -20,7 +20,11 @@ from app.hospital_auth.models import (
 )
 from app.hospital_auth.repository import HospitalAuthRepository
 
-from app.agent_tools.upload_tools import build_aggregate_comparison, parse_excel_preview
+from app.agent_tools.upload_tools import (
+    build_aggregate_comparison,
+    build_row_level_comparison,
+    parse_excel_preview,
+)
 
 from .exporter import create_indicator_workbook, create_upload_comparison_workbook
 from .models import CleanupResult, DetailPage, DetailSnapshotSummary, ExportSummary
@@ -441,13 +445,6 @@ class IndicatorDetailService:
             "system_denominator": run.get("denominator_count"),
             "system_rate": run.get("result_value"),
         }
-        comparison = build_aggregate_comparison(preview, system_result)
-        if not comparison["metrics"]:
-            raise IndicatorDetailError(
-                "上传文件中未识别到可与系统核对的分子、分母或指标率",
-                code="UPLOAD_COMPARISON_VALUES_MISSING",
-                status_code=409,
-            )
         run_context = run.get("run_context_json") or {}
         effective_rule = (
             run_context.get("effective_rule") or {}
@@ -455,13 +452,66 @@ class IndicatorDetailService:
             else {}
         )
         rule_id = str(run.get("rule_id") or effective_rule.get("rule_id") or "")
+        rule_name = str(
+            effective_rule.get("rule_name")
+            or (run_context.get("rule_name") if isinstance(run_context, dict) else "")
+            or rule_id
+        )
+        detail_export = preview.get("detail_export") or {}
+        if detail_export:
+            uploaded_rule_id = str(detail_export.get("rule_id") or "")
+            if uploaded_rule_id != rule_id:
+                uploaded_rule_name = str(
+                    detail_export.get("rule_name") or uploaded_rule_id or "未知指标"
+                )
+                raise IndicatorDetailError(
+                    f"上传文件属于“{uploaded_rule_name}”({uploaded_rule_id or '未识别'})，"
+                    f"当前查询属于“{rule_name}”({rule_id})，两个指标不能生成逐条差异表。",
+                    code="UPLOAD_COMPARISON_INDICATOR_MISMATCH",
+                    status_code=409,
+                )
+            snapshot = self.ensure_snapshot(principal, run_id)
+            _, system_rows = self.snapshot_store.read_all_rows(
+                run_id, principal.hospital_id
+            )
+            comparison = build_row_level_comparison(
+                preview,
+                {
+                    "rule_id": snapshot.rule_id,
+                    "rule_name": snapshot.rule_name,
+                    "stat_period": f"{snapshot.stat_start} 至 {snapshot.stat_end}",
+                    "columns": [
+                        column.model_dump(mode="json") for column in snapshot.columns
+                    ],
+                    "rows": system_rows,
+                },
+                include_rows=True,
+            )
+            if not comparison.get("row_level_comparison_available"):
+                raise IndicatorDetailError(
+                    str(comparison.get("message") or "上传文件不能进行逐条对比"),
+                    code="UPLOAD_ROW_COMPARISON_UNAVAILABLE",
+                    status_code=409,
+                )
+            comparison_row_count = (
+                int(comparison.get("both_count") or 0)
+                + int(comparison.get("system_only_count") or 0)
+                + int(comparison.get("uploaded_only_count") or 0)
+            )
+            comparison_suffix = "逐条差异"
+        else:
+            comparison = build_aggregate_comparison(preview, system_result)
+            if not comparison["metrics"]:
+                raise IndicatorDetailError(
+                    "上传文件中未识别到可与系统核对的分子、分母或指标率",
+                    code="UPLOAD_COMPARISON_VALUES_MISSING",
+                    status_code=409,
+                )
+            comparison_row_count = len(comparison["metrics"])
+            comparison_suffix = "汇总差异"
         comparison.update({
             "rule_id": rule_id,
-            "rule_name": str(
-                effective_rule.get("rule_name")
-                or (run_context.get("rule_name") if isinstance(run_context, dict) else "")
-                or rule_id
-            ),
+            "rule_name": rule_name,
             "hospital_id": principal.hospital_id,
             "file_name": preview["file_name"],
         })
@@ -471,7 +521,7 @@ class IndicatorDetailService:
         safe_run = self._safe_segment(run_id)
         start_text = re.sub(r"[^0-9]", "", start)[:8]
         end_text = re.sub(r"[^0-9]", "", end)[:8]
-        file_name = f"{rule_id}_{start_text}_{end_text}_汇总差异_{export_id}.xlsx"
+        file_name = f"{rule_id}_{start_text}_{end_text}_{comparison_suffix}_{export_id}.xlsx"
         relative_path = f"{safe_hospital}/{safe_run}/{file_name}"
         now = self.now_provider()
         self.repository.create_export(
@@ -482,7 +532,7 @@ class IndicatorDetailService:
             rule_id=rule_id,
             relative_path=relative_path,
             file_name=file_name,
-            row_count=len(comparison["metrics"]),
+            row_count=comparison_row_count,
             created_by=principal.user_id,
             created_at=now,
             expires_at=now + self.export_ttl,
@@ -526,7 +576,7 @@ class IndicatorDetailService:
             rule_id=rule_id,
             run_id=run_id,
             export_id=export_id,
-            row_count=len(comparison["metrics"]),
+            row_count=comparison_row_count,
         )
         return self._summary(ready)
 

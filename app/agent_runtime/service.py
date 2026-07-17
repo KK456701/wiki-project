@@ -365,6 +365,7 @@ class AgentRuntimeService:
             ensure_agent_sql_object_schema,
         )
         from app.api.main import _create_agent_orchestrator, create_business_db_client
+        from app.api.indicator_details import get_indicator_detail_service
         from app.db.engine import create_runtime_engine
         from app.llm.model_registry import get_model_registry
         from app.agent_planning import AgentPlanningRuntime, ModelRequestPlanner
@@ -376,6 +377,25 @@ class AgentRuntimeService:
             runtime_engine=engine,
             business_db=business_db,
         )
+        detail_service = get_indicator_detail_service()
+
+        def load_system_details(
+            run_id: str, hospital_id: str, actor_id: str
+        ) -> dict[str, Any]:
+            detail_service.snapshot_store.create(run_id, hospital_id, actor_id)
+            summary, rows = detail_service.snapshot_store.read_all_rows(
+                run_id, hospital_id
+            )
+            return {
+                "rule_id": summary.rule_id,
+                "rule_name": summary.rule_name,
+                "stat_period": f"{summary.stat_start} 至 {summary.stat_end}",
+                "columns": [
+                    column.model_dump(mode="json") for column in summary.columns
+                ],
+                "rows": rows,
+            }
+
         registry = build_agent_tool_registry(
             read_services=ReadToolServices(
                 caliber=orchestrator.caliber,
@@ -390,7 +410,9 @@ class AgentRuntimeService:
             ),
             diagnosis_services=DiagnosisToolServices(orchestrator=orchestrator),
             preview_services=PreviewToolServices(orchestrator=orchestrator),
-            upload_services=UploadToolServices(),
+            upload_services=UploadToolServices(
+                detail_loader=load_system_details,
+            ),
         )
         gateway = ToolGateway(registry, trace_callback=event_callback)
         model_registry = get_model_registry()

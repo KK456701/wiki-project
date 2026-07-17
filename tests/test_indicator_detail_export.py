@@ -99,12 +99,14 @@ def test_excel_contains_three_counted_sheets_and_run_metadata(tmp_path: Path) ->
     scope = workbook["统计范围_3"]
     assert scope["A1"].value == "指标名称"
     assert scope["B1"].value == "急会诊及时到位率"
-    assert scope["A3"].value == "口径来源与版本"
-    assert "本院口径 v1" in scope["B3"].value
-    assert scope["A13"].value == "患者标识"
-    assert scope["A14"].value == "PATIENT001"
-    assert scope["A16"].value == "'=2+2"
-    assert scope.freeze_panes == "A14"
+    assert scope["A2"].value == "指标编号"
+    assert scope["B2"].value == "MQSI2025_005"
+    assert scope["A4"].value == "口径来源与版本"
+    assert "本院口径 v1" in scope["B4"].value
+    assert scope["A14"].value == "患者标识"
+    assert scope["A15"].value == "PATIENT001"
+    assert scope["A17"].value == "'=2+2"
+    assert scope.freeze_panes == "A15"
 
 
 def test_excel_rejects_count_mismatch_and_formula_values_are_escaped(tmp_path: Path) -> None:
@@ -163,3 +165,53 @@ def test_upload_comparison_excel_separates_matching_and_different_metrics(
     assert summary["D15"].value == 133
     assert workbook["一致项_1"]["A4"].value == "指标率"
     assert workbook["不一致项_2"]["A4"].value == "分母"
+
+
+def test_upload_comparison_excel_writes_three_row_level_sets(tmp_path: Path) -> None:
+    path = tmp_path / "row-comparison.xlsx"
+    comparison = {
+        "comparison_level": "row",
+        "rule_id": "MQSI2025_001",
+        "rule_name": "患者入院48小时内转科的比例",
+        "hospital_id": "hospital_001",
+        "system_stat_period": "2026-01-01 至 2026-03-31",
+        "uploaded_stat_period": "2026-01-01 至 2026-03-31",
+        "file_name": "detail.xlsx",
+        "matching_fields": ["患者标识", "入院时间"],
+        "common_fields": ["患者标识", "入院时间", "是否达到要求"],
+        "system_only_fields": [],
+        "uploaded_only_fields": [],
+        "field_difference_count": 1,
+        "confirmed_findings": ["有 1 条记录仅存在于系统结果。"],
+        "matched_rows": [{
+            "key": "P001 | 2026-01-01",
+            "different_fields": ["是否达到要求"],
+            "system": {"患者标识": "P001", "入院时间": "2026-01-01", "是否达到要求": "是"},
+            "uploaded": {"患者标识": "P001", "入院时间": "2026-01-01", "是否达到要求": "否"},
+        }],
+        "system_only_rows": [
+            {"患者标识": "P002", "入院时间": "2026-01-02", "是否达到要求": "否"}
+        ],
+        "uploaded_only_rows": [
+            {"患者标识": "P003", "入院时间": "2026-01-03", "是否达到要求": "否"}
+        ],
+    }
+
+    create_upload_comparison_workbook(
+        path,
+        comparison,
+        actor_id="user_001",
+        created_at=datetime(2026, 7, 17, 10, 0, 0),
+    )
+
+    workbook = openpyxl.load_workbook(path, read_only=False, data_only=False)
+    assert workbook.sheetnames == [
+        "对比摘要",
+        "双方都有_1",
+        "仅系统有_1",
+        "仅上传文件有_1",
+    ]
+    assert workbook["双方都有_1"]["A4"].value == "P001 | 2026-01-01"
+    assert workbook["双方都有_1"]["B4"].value == "是否达到要求"
+    assert workbook["仅系统有_1"]["A4"].value == "P002"
+    assert workbook["仅上传文件有_1"]["A4"].value == "P003"

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import partial
 from pathlib import Path
-from typing import Any
+import re
+from typing import Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,11 +26,46 @@ class AnalyzeUploadedIndicatorsInput(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class UploadToolServices:
-    pass
+    detail_loader: Callable[[str, str, str], dict[str, Any]] | None = None
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _cell_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _detail_header_index(rows: list[tuple[Any, ...]]) -> int | None:
+    for index, row in enumerate(rows):
+        headers = {_cell_text(value) for value in row if _cell_text(value)}
+        if "是否达到要求" in headers and len(headers) >= 2:
+            return index
+    return None
+
+
+def _sheet_metadata(
+    rows: list[tuple[Any, ...]], header_index: int | None
+) -> dict[str, Any]:
+    if header_index is None:
+        return {}
+    metadata: dict[str, Any] = {}
+    for row in rows[:header_index]:
+        if len(row) < 2:
+            continue
+        label = _cell_text(row[0])
+        if label:
+            metadata[label] = row[1]
+    return metadata
+
+
+def _rule_id_from_file(file_path: Path, metadata: dict[str, Any]) -> str:
+    configured = _cell_text(metadata.get("指标编号") or metadata.get("指标编码"))
+    if configured:
+        return configured
+    match = re.search(r"(?:^|_)([A-Za-z]+\d{4}_\d+)(?:_|\.)", file_path.name)
+    return match.group(1).upper() if match else ""
 
 
 def parse_excel_preview(file_path: Path) -> dict[str, Any]:
@@ -47,6 +83,7 @@ def parse_excel_preview(file_path: Path) -> dict[str, Any]:
     sheets_info: list[dict[str, Any]] = []
     total_rows = 0
     headers_sample: dict[str, list[str]] = {}
+    detail_datasets: list[dict[str, Any]] = []
 
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
@@ -54,8 +91,14 @@ def parse_excel_preview(file_path: Path) -> dict[str, Any]:
         if not rows:
             continue
 
-        headers = [str(cell) if cell is not None else "" for cell in rows[0]]
-        data_rows = rows[1:]
+        header_index = _detail_header_index(rows)
+        actual_header_index = header_index if header_index is not None else 0
+        headers = [_cell_text(cell) for cell in rows[actual_header_index]]
+        data_rows = [
+            row
+            for row in rows[actual_header_index + 1 :]
+            if any(value is not None and _cell_text(value) for value in row)
+        ]
         sheet_total = len(data_rows)
         total_rows += sheet_total
 
@@ -84,12 +127,47 @@ def parse_excel_preview(file_path: Path) -> dict[str, Any]:
             "headers": headers[:30],
             "row_count": sheet_total,
             "numeric_columns": numeric_stats,
+            "metadata": _sheet_metadata(rows, header_index),
         })
+        if header_index is not None:
+            detail_datasets.append({
+                "sheet_name": sheet_name,
+                "headers": headers,
+                "rows": [
+                    {
+                        header: row[column_index] if column_index < len(row) else None
+                        for column_index, header in enumerate(headers)
+                        if header
+                    }
+                    for row in data_rows
+                ],
+                "metadata": _sheet_metadata(rows, header_index),
+            })
         if headers and sheet_name not in headers_sample:
             headers_sample[sheet_name] = headers[:30]
 
     # 尝试检测指标结构
     indicator_hints = _detect_indicator_structure(headers_sample, sheets_info)
+
+    primary_detail = next(
+        (
+            dataset
+            for dataset in detail_datasets
+            if str(dataset["sheet_name"]).startswith("统计范围")
+        ),
+        detail_datasets[0] if detail_datasets else None,
+    )
+    export_metadata: dict[str, Any] | None = None
+    if primary_detail is not None:
+        metadata = dict(primary_detail.get("metadata") or {})
+        export_metadata = {
+            "rule_id": _rule_id_from_file(file_path, metadata),
+            "rule_name": _cell_text(metadata.get("指标名称")),
+            "hospital_id": _cell_text(metadata.get("适用医院")),
+            "stat_period": _cell_text(metadata.get("统计区间")),
+            "record_count": len(primary_detail.get("rows") or []),
+        }
+        total_rows = export_metadata["record_count"]
 
     result = {
         "file_name": file_path.name,
@@ -97,9 +175,20 @@ def parse_excel_preview(file_path: Path) -> dict[str, Any]:
         "total_rows": total_rows,
         "sheets": sheets_info,
         "indicator_hints": indicator_hints,
+        "detail_export": export_metadata,
+        "_detail_dataset": primary_detail,
     }
     wb.close()
     return result
+
+
+def public_excel_preview(preview: dict[str, Any]) -> dict[str, Any]:
+    """移除患者行，仅保留可发送给模型的工作簿结构和汇总信息。"""
+    return {
+        key: value
+        for key, value in preview.items()
+        if not key.startswith("_")
+    }
 
 
 def _detect_indicator_structure(
@@ -228,6 +317,234 @@ def build_aggregate_comparison(
     }
 
 
+def _canonical_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="milliseconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    text = str(value).strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}[ T].*", text):
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            return parsed.isoformat(timespec="milliseconds")
+        except ValueError:
+            pass
+    return text
+
+
+def _comparison_key_fields(common_headers: list[str]) -> list[str]:
+    identity_terms = (
+        "患者标识", "入院流水号", "admission_id", "申请编号", "记录编号",
+        "consult_id", "transfer_id", "request_id",
+    )
+    event_time_terms = (
+        "申请时间", "入院时间", "转科时间", "发生时间", "request_time",
+        "admit_time", "transfer_time",
+    )
+    identity = [
+        header for header in common_headers
+        if any(term.lower() in header.lower() for term in identity_terms)
+    ]
+    event_times = [
+        header for header in common_headers
+        if any(term.lower() in header.lower() for term in event_time_terms)
+    ]
+    selected = list(dict.fromkeys(identity + event_times))
+    if selected:
+        return selected
+    return [
+        header for header in common_headers
+        if header not in {"是否达到要求", "到位耗时（分钟）", "转科耗时（分钟）"}
+    ]
+
+
+def _row_key(row: dict[str, Any], fields: list[str]) -> tuple[str, ...]:
+    return tuple(_canonical_value(row.get(field)) for field in fields)
+
+
+def _meets_requirement(row: dict[str, Any]) -> bool:
+    return _canonical_value(row.get("是否达到要求")).lower() in {
+        "是", "1", "true", "yes", "y",
+    }
+
+
+def _system_label_rows(system_details: dict[str, Any]) -> list[dict[str, Any]]:
+    columns = list(system_details.get("columns") or [])
+    rows: list[dict[str, Any]] = []
+    for raw in system_details.get("rows") or []:
+        item = {
+            str(column.get("label") or column.get("field")): raw.get(column.get("field"))
+            for column in columns
+            if column.get("field")
+        }
+        item["是否达到要求"] = (
+            "是" if int(raw.get("__meets_numerator") or 0) == 1 else "否"
+        )
+        rows.append(item)
+    return rows
+
+
+def build_row_level_comparison(
+    preview: dict[str, Any],
+    system_details: dict[str, Any],
+    *,
+    include_rows: bool = False,
+) -> dict[str, Any]:
+    """按稳定业务键执行多重集合对比，重复记录不会被 set 静默去重。"""
+    uploaded = preview.get("detail_export") or {}
+    uploaded_rule_id = _cell_text(uploaded.get("rule_id"))
+    uploaded_rule_name = _cell_text(uploaded.get("rule_name"))
+    system_rule_id = _cell_text(system_details.get("rule_id"))
+    system_rule_name = _cell_text(system_details.get("rule_name"))
+    base = {
+        "system_rule_id": system_rule_id,
+        "system_rule_name": system_rule_name,
+        "uploaded_rule_id": uploaded_rule_id,
+        "uploaded_rule_name": uploaded_rule_name,
+        "system_stat_period": _cell_text(system_details.get("stat_period")),
+        "uploaded_stat_period": _cell_text(uploaded.get("stat_period")),
+    }
+    if not uploaded_rule_id or not system_rule_id:
+        return {
+            **base,
+            "comparison_status": "identity_missing",
+            "row_level_comparison_available": False,
+            "message": "上传文件或系统结果缺少指标编号，不能进行逐条对比。",
+        }
+    if uploaded_rule_id != system_rule_id:
+        return {
+            **base,
+            "comparison_status": "indicator_mismatch",
+            "row_level_comparison_available": False,
+            "message": (
+                f"上传文件属于“{uploaded_rule_name or uploaded_rule_id}”({uploaded_rule_id})，"
+                f"当前查询属于“{system_rule_name or system_rule_id}”({system_rule_id})，"
+                "两个指标不能进行汇总或逐条差异比较。"
+            ),
+        }
+
+    dataset = preview.get("_detail_dataset") or {}
+    uploaded_rows = list(dataset.get("rows") or [])
+    system_rows = _system_label_rows(system_details)
+    uploaded_headers = [str(value) for value in dataset.get("headers") or []]
+    system_headers = [
+        str(column.get("label") or column.get("field"))
+        for column in system_details.get("columns") or []
+    ] + ["是否达到要求"]
+    common_headers = [header for header in system_headers if header in uploaded_headers]
+    key_fields = _comparison_key_fields(common_headers)
+    if not key_fields:
+        return {
+            **base,
+            "comparison_status": "matching_fields_missing",
+            "row_level_comparison_available": False,
+            "message": "两个文件没有可用于识别同一业务记录的公共字段。",
+        }
+
+    uploaded_by_key: dict[tuple[str, ...], list[dict[str, Any]]] = {}
+    for row in uploaded_rows:
+        uploaded_by_key.setdefault(_row_key(row, key_fields), []).append(row)
+
+    matched: list[dict[str, Any]] = []
+    system_only: list[dict[str, Any]] = []
+    for system_row in system_rows:
+        key = _row_key(system_row, key_fields)
+        candidates = uploaded_by_key.get(key) or []
+        if not candidates:
+            system_only.append(system_row)
+            continue
+        uploaded_row = candidates.pop(0)
+        differences = [
+            header
+            for header in common_headers
+            if _canonical_value(system_row.get(header))
+            != _canonical_value(uploaded_row.get(header))
+        ]
+        matched.append({
+            "key": " | ".join(key),
+            "system": system_row,
+            "uploaded": uploaded_row,
+            "different_fields": differences,
+        })
+
+    uploaded_only = [
+        row
+        for candidates in uploaded_by_key.values()
+        for row in candidates
+    ]
+    system_period = _cell_text(system_details.get("stat_period"))
+    uploaded_period = _cell_text(uploaded.get("stat_period"))
+    confirmed_findings: list[str] = []
+    if system_period and uploaded_period and system_period != uploaded_period:
+        confirmed_findings.append(
+            f"统计区间不一致：系统为 {system_period}；上传文件为 {uploaded_period}。"
+        )
+    if system_only:
+        confirmed_findings.append(f"有 {len(system_only)} 条记录仅存在于系统结果。")
+    if uploaded_only:
+        confirmed_findings.append(f"有 {len(uploaded_only)} 条记录仅存在于上传文件。")
+    changed = sum(1 for item in matched if item["different_fields"])
+    system_numerator_count = sum(1 for row in system_rows if _meets_requirement(row))
+    uploaded_numerator_count = sum(1 for row in uploaded_rows if _meets_requirement(row))
+    system_only_numerator_count = sum(
+        1 for row in system_only if _meets_requirement(row)
+    )
+    uploaded_only_numerator_count = sum(
+        1 for row in uploaded_only if _meets_requirement(row)
+    )
+    classification_difference_count = sum(
+        1
+        for item in matched
+        if _meets_requirement(item["system"]) != _meets_requirement(item["uploaded"])
+    )
+    if changed:
+        confirmed_findings.append(f"双方匹配记录中有 {changed} 条存在字段值差异。")
+    confirmed_findings.append(
+        "分母记录差异已拆分为："
+        f"仅系统有 {len(system_only)} 条、仅上传文件有 {len(uploaded_only)} 条。"
+    )
+    confirmed_findings.append(
+        f"达到要求记录：系统 {system_numerator_count} 条、上传文件 {uploaded_numerator_count} 条；"
+        f"其中仅系统有 {system_only_numerator_count} 条、仅上传文件有 "
+        f"{uploaded_only_numerator_count} 条，双方同一记录但判定不同 "
+        f"{classification_difference_count} 条。"
+    )
+
+    result = {
+        **base,
+        "comparison_status": "row_level_compared",
+        "comparison_level": "row",
+        "row_level_comparison_available": True,
+        "matching_fields": key_fields,
+        "common_fields": common_headers,
+        "system_only_fields": [header for header in system_headers if header not in uploaded_headers],
+        "uploaded_only_fields": [header for header in uploaded_headers if header not in system_headers],
+        "system_count": len(system_rows),
+        "uploaded_count": len(uploaded_rows),
+        "both_count": len(matched),
+        "system_only_count": len(system_only),
+        "uploaded_only_count": len(uploaded_only),
+        "field_difference_count": changed,
+        "system_numerator_count": system_numerator_count,
+        "uploaded_numerator_count": uploaded_numerator_count,
+        "system_only_numerator_count": system_only_numerator_count,
+        "uploaded_only_numerator_count": uploaded_only_numerator_count,
+        "classification_difference_count": classification_difference_count,
+        "confirmed_findings": confirmed_findings,
+    }
+    if include_rows:
+        result.update({
+            "matched_rows": matched,
+            "system_only_rows": system_only,
+            "uploaded_only_rows": uploaded_only,
+        })
+    return result
+
+
 def _save_upload(file_content: bytes, filename: str, hospital_id: str) -> str:
     safe_name = f"{hospital_id}_{_utcnow().strftime('%Y%m%d%H%M%S')}_{filename}"
     file_path = _UPLOAD_ROOT / safe_name
@@ -241,7 +558,6 @@ def analyze_uploaded_indicators(
     state: AgentRunState,
     services: UploadToolServices,
 ) -> ToolResult:
-    del services
     file_path = _UPLOAD_ROOT / arguments.file_key
     if not file_path.exists() or not file_path.is_file():
         return ToolResult(
@@ -271,11 +587,15 @@ def analyze_uploaded_indicators(
 
     # 构造与当前试运行结果的对比
     comparison = {}
+    trial_run_id = ""
+    current_rule_id = ""
     for result in reversed(state.last_tool_results):
         if not isinstance(result, dict):
             continue
         data = result.get("data") or {}
         if isinstance(data, dict) and data.get("stat_start"):
+            trial_run_id = _cell_text(data.get("run_id"))
+            current_rule_id = _cell_text(data.get("rule_id"))
             comparison = {
                 "system_stat_period": f"{data.get('stat_start')} 至 {data.get('stat_end')}",
                 "system_numerator": data.get("numerator_count"),
@@ -285,9 +605,37 @@ def analyze_uploaded_indicators(
             break
 
     hints = preview.get("indicator_hints") or {}
-    aggregate_comparison = (
-        build_aggregate_comparison(preview, comparison) if comparison else None
-    )
+    current_rule_name = ""
+    for result in reversed(state.last_tool_results):
+        data = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(data, dict):
+            continue
+        if _cell_text(data.get("rule_id")) == current_rule_id:
+            current_rule_name = _cell_text(data.get("rule_name")) or current_rule_name
+
+    aggregate_comparison = None
+    row_comparison = None
+    if comparison and preview.get("detail_export"):
+        system_details = {
+            "rule_id": current_rule_id,
+            "rule_name": current_rule_name or current_rule_id,
+            "stat_period": comparison.get("system_stat_period"),
+            "columns": [],
+            "rows": [],
+        }
+        uploaded_rule_id = _cell_text((preview.get("detail_export") or {}).get("rule_id"))
+        if (
+            uploaded_rule_id == current_rule_id
+            and services.detail_loader is not None
+            and "indicator_detail_view" in context.permissions
+            and trial_run_id
+        ):
+            system_details = services.detail_loader(
+                trial_run_id, context.hospital_id, context.user_id
+            )
+        row_comparison = build_row_level_comparison(preview, system_details)
+    elif comparison:
+        aggregate_comparison = build_aggregate_comparison(preview, comparison)
     comparisons_detail = (
         [
             {
@@ -304,11 +652,16 @@ def analyze_uploaded_indicators(
         else []
     )
 
+    public_preview = public_excel_preview(preview)
+    analysis_summary = f"已解析 {preview['file_name']}，共 {preview['total_rows']} 行数据。"
+    if row_comparison and row_comparison.get("comparison_status") == "indicator_mismatch":
+        analysis_summary = str(row_comparison.get("message") or analysis_summary)
+
     return ToolResult(
         ok=True,
         status="success",
         code="UPLOAD_ANALYZED",
-        summary=f"已解析 {preview['file_name']}，共 {preview['total_rows']} 行数据。",
+        summary=analysis_summary,
         data={
             "file_name": preview["file_name"],
             "file_key": arguments.file_key,
@@ -320,11 +673,13 @@ def analyze_uploaded_indicators(
                     "headers": s["headers"],
                     "row_count": s["row_count"],
                 }
-                for s in preview["sheets"]
+                for s in public_preview["sheets"]
             ],
+            "detail_export": public_preview.get("detail_export"),
             "indicator_hints": hints,
             "comparison_with_system": comparison if comparison else None,
             "aggregate_comparison": aggregate_comparison,
+            "row_comparison": row_comparison,
             "comparisons_detail": comparisons_detail if comparisons_detail else None,
         },
         evidence=[ToolEvidence(
@@ -341,8 +696,9 @@ def build_upload_tools(services: UploadToolServices) -> list[AgentTool]:
             name="analyze_uploaded_indicators",
             description=(
                 "分析已上传的医院指标 Excel 文件，提取表头、行数、数值列统计（最小/最大/均值/总和），"
-                "自动检测指标相关列（分子/分母/指标率/统计周期），并与当前系统试运行结果对比，"
-                "输出差异分析而不暴露患者明细。需要先通过上传接口提交文件获得 file_key。"
+                "自动检测指标相关列（分子/分母/指标率/统计周期），先校验上传文件与当前结果的指标身份；"
+                "同一指标且上传的是系统明细导出时，按稳定业务键统计双方都有、仅系统有、仅上传文件有及字段差异，"
+                "只向模型输出脱敏汇总证据，不暴露患者明细。需要先通过上传接口提交文件获得 file_key。"
             ),
             input_model=AnalyzeUploadedIndicatorsInput,
             handler=partial(analyze_uploaded_indicators, services=services),
