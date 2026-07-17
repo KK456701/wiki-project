@@ -204,10 +204,23 @@ def build_aggregate_comparison(
         "comparison_level": "aggregate",
         "comparison_direction": "上传文件值 - 系统值",
         "row_level_comparison_available": False,
+        "cause_analysis_available": False,
+        "confirmed_causes": [],
         "row_level_note": (
             "上传文件仅包含汇总值，未提供入院流水号等逐条标识，"
             "因此只能核对分子、分母和指标率，不能判断具体记录的交集与差集。"
         ),
+        "cause_analysis_note": (
+            "当前文件没有逐条业务记录，无法确认差异是否由重复记录、统计周期、"
+            "ICU 排除、时间计算或字段映射造成；这些因素不能作为本次对比结论。"
+        ),
+        "required_fields_for_cause_analysis": [
+            "admission_id",
+            "admit_time",
+            "transfer_time",
+            "from_dept_id",
+            "to_dept_id",
+        ],
         "system_stat_period": system_result.get("system_stat_period"),
         "metrics": metrics,
         "matched_count": sum(1 for item in metrics if item["match"]),

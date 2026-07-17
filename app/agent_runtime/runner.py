@@ -148,6 +148,78 @@ def _compose_prepared_sql_answer(planning_execution, state: AgentRunState) -> st
     )
 
 
+def _display_number(value) -> str:
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:.4f}".rstrip("0").rstrip(".")
+
+
+def _compose_upload_comparison_answer(tool_results: list[dict]) -> str | None:
+    """基于汇总证据生成差异回答，避免模型把缺少明细时的猜测写成原因。"""
+    analyzed = next(
+        (
+            result
+            for result in reversed(tool_results)
+            if isinstance(result, dict)
+            and result.get("ok") is True
+            and result.get("code") == "UPLOAD_ANALYZED"
+            and isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+        ),
+        None,
+    )
+    if analyzed is None:
+        return None
+    data = analyzed.get("data") or {}
+    comparison = data.get("aggregate_comparison") or {}
+    metrics = comparison.get("metrics") or []
+    if not metrics:
+        return None
+
+    lines = [
+        "上传文件与系统结果存在以下汇总差异：",
+        "",
+        "| 项目 | 系统值 | 文件值 | 文件值 - 系统值 | 结论 |",
+        "|---|---:|---:|---:|---|",
+    ]
+    for item in metrics:
+        unit = str(item.get("unit") or "")
+        lines.append(
+            "| {metric} | {system}{unit} | {uploaded}{unit} | {difference}{unit} | {status} |".format(
+                metric=item.get("metric") or item.get("role") or "指标",
+                system=_display_number(item.get("system_value")),
+                uploaded=_display_number(item.get("uploaded_value")),
+                difference=_display_number(item.get("difference")),
+                unit=unit,
+                status="一致" if item.get("match") else "不一致",
+            )
+        )
+
+    headers = [
+        str(header)
+        for sheet in (data.get("sheets") or [])
+        for header in (sheet.get("headers") or [])
+        if str(header).strip()
+    ]
+    lines.extend([
+        "",
+        "目前只能确认以上数值不同，不能确认造成差异的具体原因。",
+        "",
+        comparison.get("cause_analysis_note")
+        or "上传文件没有逐条业务记录，因此不能判断重复、统计周期或 ICU 过滤等原因。",
+    ])
+    if headers:
+        lines.append(f"当前文件可见字段：{ '、'.join(dict.fromkeys(headers)) }。")
+    required = comparison.get("required_fields_for_cause_analysis") or []
+    if required:
+        lines.append(
+            "若要定位到具体差异记录，请提供至少包含以下字段的逐条明细："
+            + "、".join(f"`{field}`" for field in required)
+            + "。"
+        )
+    return "\n".join(lines)
+
+
 def _asks_for_period_clarification(answer: str) -> bool:
     return bool(
         re.search(
@@ -428,6 +500,8 @@ class AgentRunner:
                         )
                     deterministic_answer = _compose_prepared_sql_answer(
                         planning_execution, run_state
+                    ) or _compose_upload_comparison_answer(
+                        run_state.last_tool_results[turn_tool_results_start:]
                     )
                     if (
                         decision.action.value == "compose_answer"
@@ -474,18 +548,30 @@ class AgentRunner:
                             status="success",
                             duration_ms=1,
                             input_data={
-                                "prepared_sql_result": next(
-                                    item
-                                    for item in reversed(run_state.last_tool_results)
-                                    if isinstance(item, dict)
-                                    and item.get("code") == "SQL_OBJECT_PREPARED"
+                                "deterministic_evidence": next(
+                                    (
+                                        item
+                                        for item in reversed(
+                                            run_state.last_tool_results[
+                                                turn_tool_results_start:
+                                            ]
+                                        )
+                                        if isinstance(item, dict)
+                                        and item.get("code")
+                                        in {"UPLOAD_ANALYZED", "SQL_OBJECT_PREPARED"}
+                                    ),
+                                    {},
                                 )
                             },
                             output_data={"answer": deterministic_answer},
                             processing_data={
-                                "description": "使用已校验 SQL 证据确定性生成回答，不再交由模型补充工具调用。"
+                                "description": "使用已校验的 SQL 或上传对比证据确定性生成回答，不再交由模型补充无证据结论。"
                             },
-                            config_data={"guard": "deterministic_sql_response"},
+                            config_data={"guard": "deterministic_evidence_response"},
+                        )
+                        deterministic_answer = _append_trial_detail_export(
+                            deterministic_answer,
+                            run_state.last_tool_results[turn_tool_results_start:],
                         )
                         run_state.stop_reason = "final_answer"
                         return AgentRunResult(

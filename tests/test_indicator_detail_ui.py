@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_page_loads_indicator_detail_assets_before_inline_application() -> None:
     html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
-    stylesheet = '<link rel="stylesheet" href="/static/indicator-details.css" />'
-    script = '<script src="/static/indicator-details.js"></script>'
+    stylesheet = '<link rel="stylesheet" href="/static/indicator-details.css?v=20260717-upload-comparison" />'
+    script = '<script src="/static/indicator-details.js?v=20260717-upload-comparison"></script>'
     assert stylesheet in html
     assert script in html
     assert html.index(script) < html.index("<script>")
@@ -57,3 +57,15 @@ def test_detail_ui_never_uses_inner_html_for_patient_rows() -> None:
 
     assert "rowCell.textContent" in javascript
     assert "item.innerHTML" not in javascript
+
+
+def test_upload_comparison_button_posts_directly_without_second_confirmation() -> None:
+    javascript = (ROOT / "web" / "indicator-details.js").read_text(encoding="utf-8")
+    start = javascript.index("async function exportUploadComparison")
+    end = javascript.index("function completeHospitalLogin", start)
+    function_body = javascript[start:end]
+
+    assert "/upload-comparison-exports" in function_body
+    assert "confirmed: true" in function_body
+    assert "root.confirm" not in function_body
+    assert "event.preventDefault()" in javascript

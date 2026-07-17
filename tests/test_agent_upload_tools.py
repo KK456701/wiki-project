@@ -71,4 +71,13 @@ def test_successful_upload_analysis_emits_canonical_completion_fact(
     assert comparison["row_level_comparison_available"] is False
     assert comparison["matched_count"] == 0
     assert comparison["different_count"] == 3
+    assert comparison["cause_analysis_available"] is False
+    assert comparison["confirmed_causes"] == []
+    assert comparison["required_fields_for_cause_analysis"] == [
+        "admission_id",
+        "admit_time",
+        "transfer_time",
+        "from_dept_id",
+        "to_dept_id",
+    ]
     assert [item["difference"] for item in comparison["metrics"]] == [133.0, 19.0, 2.92]

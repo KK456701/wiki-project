@@ -349,7 +349,10 @@
   }
 
   async function exportUploadComparison(runId, fileToken, trigger) {
-    if (!/^RUN_[A-Za-z0-9_]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(fileToken)) return;
+    if (!/^RUN_[A-Za-z0-9_]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(fileToken)) {
+      root.alert("差异表参数无效，请重新发起对比。");
+      return;
+    }
     if (!state.token) {
       root.dispatchEvent(new CustomEvent("hospital-auth-required"));
       return;
@@ -358,10 +361,6 @@
       root.alert("当前账号没有指标明细导出权限，请联系管理员。");
       return;
     }
-    var confirmed = root.confirm(
-      "将导出上传文件与本次系统试运行的汇总差异。\n\n当前上传文件只有汇总值，文件会列出分子、分母和指标率的一致项与不一致项，不代表患者级记录交集。确认继续吗？"
-    );
-    if (!confirmed) return;
     var originalText = trigger.textContent;
     trigger.disabled = true;
     trigger.textContent = "正在生成差异表...";
@@ -457,7 +456,8 @@
   document.addEventListener("click", function (event) {
     var comparisonTrigger = event.target.closest(".upload-comparison-export-trigger");
     if (comparisonTrigger) {
-      exportUploadComparison(
+      event.preventDefault();
+      void exportUploadComparison(
         comparisonTrigger.dataset.runId || "",
         comparisonTrigger.dataset.fileToken || "",
         comparisonTrigger

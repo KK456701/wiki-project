@@ -28,7 +28,7 @@ process.stdout.write(renderer.renderAssistantMarkdown('上文\\n\\n---\\n\\n下�
     def test_page_loads_renderer_before_inline_chat_script(self) -> None:
         html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
-        renderer = '<script src="/static/chat-markdown.js"></script>'
+        renderer = '<script src="/static/chat-markdown.js?v=20260717-upload-comparison"></script>'
         self.assertIn(renderer, html)
         self.assertLess(html.index(renderer), html.index("<script>"))
         self.assertIn("return renderAssistantMarkdown(text || \"\")", html)
