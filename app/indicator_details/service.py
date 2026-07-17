@@ -9,6 +9,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
 from app.hospital_auth.models import (
     DETAIL_EXPORT_PERMISSION,
     DETAIL_VIEW_PERMISSION,
@@ -179,6 +181,20 @@ class IndicatorDetailService:
             summary = self.snapshot_store.create(
                 run_id, principal.hospital_id, principal.user_id
             )
+        except ValidationError as exc:
+            self._audit(
+                principal,
+                "DETAIL_PREVIEW",
+                "failed",
+                rule_id=str(run.get("rule_id") or ""),
+                run_id=run_id,
+                reason="DETAIL_CONTEXT_INVALID",
+            )
+            raise IndicatorDetailError(
+                "本次试运行的明细上下文不完整，请重新试运行后再查看明细。",
+                code="DETAIL_CONTEXT_INVALID",
+                status_code=409,
+            ) from exc
         except (LookupError, ValueError) as exc:
             reason = (
                 "DETAIL_COUNT_MISMATCH"
@@ -265,7 +281,7 @@ class IndicatorDetailService:
                 status_code=400,
             )
         self.cleanup_expired()
-        run = self._run_in_scope(principal, run_id)
+        self._run_in_scope(principal, run_id)
         snapshot = self.ensure_snapshot(principal, run_id)
         try:
             _, rows = self.snapshot_store.read_all_rows(run_id, principal.hospital_id)
@@ -282,7 +298,7 @@ class IndicatorDetailService:
         file_name = f"{snapshot.rule_id}_{start}_{end}_{export_id}.xlsx"
         relative_path = f"{safe_hospital}/{safe_run}/{file_name}"
         now = self.now_provider()
-        export = self.repository.create_export(
+        self.repository.create_export(
             export_id=export_id,
             snapshot_id=snapshot.snapshot_id,
             run_id=run_id,

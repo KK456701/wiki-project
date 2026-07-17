@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class RunContext(BaseModel):
@@ -27,6 +27,51 @@ class RunContext(BaseModel):
     dialect: str = "mysql"
     query_profile: str = ""
     execution_context: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_agent_sql_snapshot(cls, value: Any) -> Any:
+        """兼容 Agent SQL 对象保存的嵌套上下文快照。"""
+        if not isinstance(value, dict) or "effective_rule" not in value:
+            return value
+        effective_rule = dict(value.get("effective_rule") or {})
+        field_mapping = dict(value.get("field_mapping") or {})
+        stat_start = str(value.get("stat_start") or "")
+        stat_end = str(value.get("stat_end") or "")
+        params = dict(value.get("params") or {})
+        params.setdefault("start_time", stat_start)
+        params.setdefault("end_time", stat_end)
+        hospital_id = str(field_mapping.get("hospital_id") or "")
+        if hospital_id:
+            params.setdefault("hospital_id", hospital_id)
+        return {
+            "schema_version": 1,
+            "rule_id": str(effective_rule.get("rule_id") or ""),
+            "rule_name": str(effective_rule.get("rule_name") or ""),
+            "effective_level": str(
+                effective_rule.get("effective_level") or "national"
+            ),
+            "national_version": effective_rule.get("national_version"),
+            "hospital_version": effective_rule.get("hospital_version"),
+            "calculation_definition": dict(
+                effective_rule.get("calculation_definition")
+                or effective_rule.get("national_calculation_definition")
+                or {}
+            ),
+            "field_mapping": field_mapping,
+            "params": params,
+            "stat_start": stat_start,
+            "stat_end": stat_end,
+            "db_source": str(
+                field_mapping.get("db_name")
+                or value.get("db_source_id")
+                or ""
+            ),
+            "main_table": str(field_mapping.get("main_table") or ""),
+            "dialect": str(field_mapping.get("dialect") or "mysql"),
+            "query_profile": str(field_mapping.get("query_profile") or ""),
+            "execution_context": dict(value.get("execution_context") or {}),
+        }
 
 
 class DetailColumn(BaseModel):

@@ -124,6 +124,44 @@ def _context(*, execution_context: dict | None = None) -> RunContext:
     )
 
 
+def test_agent_sql_snapshot_restores_detail_run_context() -> None:
+    original = _context(execution_context=_ward_entry_execution_context())
+    snapshot = {
+        "effective_rule": {
+            "rule_id": original.rule_id,
+            "rule_name": original.rule_name,
+            "effective_level": original.effective_level,
+            "national_version": original.national_version,
+            "hospital_version": original.hospital_version,
+            "calculation_definition": original.calculation_definition,
+        },
+        "field_mapping": {
+            **original.field_mapping,
+            "dialect": original.dialect,
+            "query_profile": original.query_profile,
+        },
+        "params": {
+            key: value
+            for key, value in original.params.items()
+            if key not in {"start_time", "end_time"}
+        },
+        "stat_start": original.stat_start,
+        "stat_end": original.stat_end,
+        "db_source_id": "WIN60_QA_991827",
+        "execution_context": original.execution_context,
+    }
+
+    restored = RunContext.model_validate(snapshot)
+    query = build_detail_query(restored)
+
+    assert restored.rule_name == "患者入院48小时内转科的比例"
+    assert restored.main_table == "INPATIENT_ENCOUNTER"
+    assert restored.query_profile == "inpatient_transfer_48h_sqlserver"
+    assert restored.params["start_time"] == original.stat_start
+    assert restored.params["end_time"] == original.stat_end
+    assert "WITH eligible_encounter AS" in query.sql
+
+
 def test_sqlserver_template_encodes_the_approved_caliber() -> None:
     template = load_template(
         Path("core-rules-wiki"), "MQSI2025_001", "sqlserver"

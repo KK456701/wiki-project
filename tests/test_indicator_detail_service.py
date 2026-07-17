@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 from sqlalchemy import create_engine, text
 
 from app.hospital_auth.models import HospitalPrincipal
-from app.indicator_details.models import DetailColumn, DetailSnapshotSummary
+from app.indicator_details.models import DetailColumn, DetailSnapshotSummary, RunContext
 from app.indicator_details.repository import IndicatorDetailRepository
 from app.indicator_details.schema import ensure_indicator_detail_schema
 from app.indicator_details.service import IndicatorDetailError, IndicatorDetailService
@@ -122,6 +122,23 @@ def test_service_hides_other_hospital_run_and_requires_export_permission(tmp_pat
     assert cross_hospital.value.status_code == 404
     assert no_permission.value.status_code == 403
     assert [item["action"] for item in audit.items] == ["ACCESS_DENIED", "ACCESS_DENIED"]
+
+
+def test_service_hides_context_validation_internals(tmp_path: Path) -> None:
+    service, _, audit, _ = _service(tmp_path)
+
+    def invalid_context(*_args):
+        return RunContext.model_validate({"unexpected": "internal value"})
+
+    service.snapshot_store.create = invalid_context
+
+    with pytest.raises(IndicatorDetailError) as error:
+        service.ensure_snapshot(_principal(), "RUN_001")
+
+    assert error.value.code == "DETAIL_CONTEXT_INVALID"
+    assert "validation errors" not in str(error.value)
+    assert "重新试运行" in str(error.value)
+    assert audit.items[-1]["reason"] == "DETAIL_CONTEXT_INVALID"
 
 
 def test_service_creates_downloads_and_expires_excel(tmp_path: Path) -> None:
