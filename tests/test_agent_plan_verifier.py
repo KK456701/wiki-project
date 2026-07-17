@@ -157,3 +157,21 @@ def test_consistent_trial_result_passes_verification():
 
     assert result.ok is True
     assert result.code == "PLAN_VERIFIED"
+
+
+def test_upload_analysis_legacy_evidence_satisfies_file_analysis_fact():
+    plan = PlanCompiler().compile(RequestPlan.model_validate({
+        "intent": "upload_analysis",
+        "goal": "分析刚上传的指标文件",
+        "requested_outputs": ["file_analysis"],
+    }))
+    state = AgentRunState(evidence=[{
+        "source": "uploaded_excel",
+        "source_id": "hospital_001_report.xlsx",
+        "fact_types": ["upload_analysis"],
+    }])
+
+    result = PlanVerifier().verify(plan, state, _context())
+
+    assert result.ok is True
+    assert result.code == "PLAN_VERIFIED"

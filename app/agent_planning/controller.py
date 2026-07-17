@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent_runtime.contracts import AgentRunState
 
 from .contracts import CompiledPlan, PlanCapability
+from .facts import canonical_fact_type
 from .validator import FallbackCategory, PlanValidation
 
 
@@ -45,7 +46,7 @@ def _state_facts(state: AgentRunState, validation: PlanValidation) -> set[str]:
         if not isinstance(evidence, dict):
             continue
         for item in evidence.get("fact_types") or []:
-            fact = str(item)
+            fact = canonical_fact_type(item)
             if fact == "rule_identity" and not evidence.get("source_id"):
                 continue
             facts.add(fact)

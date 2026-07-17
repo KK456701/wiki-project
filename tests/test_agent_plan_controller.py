@@ -213,3 +213,24 @@ def test_trial_run_infrastructure_failure_routes_to_system_operator():
     assert decision.action is ControllerAction.FALLBACK
     assert decision.fallback_category.value == "SYSTEM_OPERATOR"
     assert decision.code == "TRIAL_RUN_FAILED"
+
+
+def test_upload_analysis_legacy_evidence_completes_without_repeated_tool_call():
+    plan = RequestPlan.model_validate({
+        "intent": "upload_analysis",
+        "goal": "分析刚上传的指标文件",
+        "requested_outputs": ["file_analysis"],
+    })
+    compiled = PlanCompiler().compile(plan)
+    validation = PlanValidator().validate(
+        plan,
+        now=datetime(2026, 7, 17, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+    state = AgentRunState(
+        evidence=[_evidence("upload_analysis", source_id="hospital_001_report.xlsx")],
+    )
+
+    decision = AgentStateController().next_decision(compiled, validation, state)
+
+    assert decision.action is ControllerAction.COMPOSE_ANSWER
+    assert decision.tool_names == []

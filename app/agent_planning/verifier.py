@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
 
 from .contracts import CompiledPlan
+from .facts import canonical_fact_type
 from .time_resolver import ResolvedTimeRange
 
 
@@ -49,7 +50,7 @@ def _facts(state: AgentRunState) -> set[str]:
     for item in state.evidence:
         if isinstance(item, dict):
             for value in item.get("fact_types") or []:
-                fact = str(value)
+                fact = canonical_fact_type(value)
                 if fact == "rule_identity" and not item.get("source_id"):
                     continue
                 result.add(fact)
@@ -61,7 +62,8 @@ def _facts(state: AgentRunState) -> set[str]:
         for evidence in item.get("evidence") or []:
             if isinstance(evidence, dict):
                 result.update(
-                    str(value) for value in evidence.get("fact_types") or []
+                    canonical_fact_type(value)
+                    for value in evidence.get("fact_types") or []
                 )
         if code == "EFFECTIVE_RULE_FOUND":
             result.add("rule_identity")

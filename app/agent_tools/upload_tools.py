@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import io
-import json
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
@@ -268,7 +265,7 @@ def analyze_uploaded_indicators(
         evidence=[ToolEvidence(
             source="uploaded_excel",
             source_id=arguments.file_key,
-            fact_types=["upload_analysis"],
+            fact_types=["file_analysis"],
         )],
     )
 
