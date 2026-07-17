@@ -83,6 +83,23 @@ def test_missing_time_returns_user_clarification():
     assert result.code == "TIME_RANGE_AMBIGUOUS"
 
 
+def test_trial_result_without_indicator_returns_user_clarification():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_trial_run",
+        "goal": "对比上传文件与本院指标结果",
+        "target_indicator": {},
+        "time_expression": {"raw_text": "从1月到现在"},
+        "requested_outputs": ["file_analysis", "trial_result"],
+    })
+
+    result = PlanValidator().validate(plan, now=NOW)
+
+    assert result.ok is False
+    assert result.fallback_category is FallbackCategory.USER_CLARIFICATION
+    assert result.code == "TARGET_INDICATOR_AMBIGUOUS"
+    assert "指标名称" in result.message
+
+
 def test_no_database_constraint_conflicts_with_trial_result():
     result = PlanValidator().validate(
         _plan("这个月", constraints=["no_database_access"]),

@@ -121,3 +121,26 @@ def test_requested_trial_output_compiles_required_chain_even_if_intent_is_imprec
     assert PlanCapability.EXECUTE_TRIAL_RUN in [
         node.capability for node in compiled.nodes
     ]
+
+
+def test_upload_and_system_comparison_compiles_both_evidence_chains():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_trial_run",
+        "goal": "对比上传文件与本院指标结果",
+        "target_indicator": {"raw_name": "患者入院 48 小时内转科的比例"},
+        "time_expression": {"raw_text": "从1月到现在"},
+        "requested_outputs": ["file_analysis", "trial_result"],
+    })
+
+    compiled = PlanCompiler().compile(plan)
+
+    assert [node.capability for node in compiled.nodes] == [
+        PlanCapability.RESOLVE_INDICATOR,
+        PlanCapability.RESOLVE_EFFECTIVE_RULE,
+        PlanCapability.RESOLVE_TIME_RANGE,
+        PlanCapability.PREPARE_VERIFIED_SQL,
+        PlanCapability.EXECUTE_TRIAL_RUN,
+        PlanCapability.ANALYZE_UPLOADED_FILE,
+        PlanCapability.COMPOSE_ANSWER,
+    ]
+    assert {"file_analysis", "trial_run"} <= compiled.required_facts

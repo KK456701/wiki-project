@@ -234,3 +234,34 @@ def test_upload_analysis_legacy_evidence_completes_without_repeated_tool_call():
 
     assert decision.action is ControllerAction.COMPOSE_ANSWER
     assert decision.tool_names == []
+
+
+def test_upload_comparison_analyzes_file_after_trial_run_then_composes():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_trial_run",
+        "goal": "对比上传文件与本院指标结果",
+        "target_indicator": {"raw_name": "患者入院 48 小时内转科的比例"},
+        "time_expression": {"raw_text": "从1月到现在"},
+        "requested_outputs": ["file_analysis", "trial_result"],
+    })
+    now = datetime(2026, 7, 17, tzinfo=ZoneInfo("Asia/Shanghai"))
+    compiled = PlanCompiler().compile(plan)
+    validation = PlanValidator().validate(plan, now=now)
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        evidence=[
+            _evidence("rule_identity"),
+            _evidence("definition", "formula", "effective_level"),
+            _evidence("sql_validation", source_id="SQL_1"),
+            _evidence("trial_run", source_id="RUN_1"),
+        ],
+    )
+
+    analyze = AgentStateController().next_decision(compiled, validation, state)
+    assert analyze.action is ControllerAction.EXECUTE_TOOL
+    assert analyze.tool_names == ["analyze_uploaded_indicators"]
+
+    state.evidence.append(_evidence("file_analysis", source_id="h1_report.xlsx"))
+    complete = AgentStateController().next_decision(compiled, validation, state)
+    assert complete.action is ControllerAction.COMPOSE_ANSWER
+    assert complete.tool_names == []

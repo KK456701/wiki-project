@@ -142,6 +142,10 @@ class ModelRequestPlanner:
                     "当前统计周期："
                     f"{state.current_stat_start} 至 {state.current_stat_end}"
                 )
+            if state.current_upload_file_key:
+                values.append(
+                    f"当前会话已上传文件：{state.current_upload_file_key}"
+                )
             if values:
                 state_context = "；".join(values) + "。追问中的这个指标或直接给结果优先复用该状态。"
             if state.recent_history:

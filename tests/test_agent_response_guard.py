@@ -1,6 +1,7 @@
 import pytest
 
 from app.agent_runtime.response_guard import (
+    contains_tool_protocol_markup,
     evidence_correction_prompt,
     missing_fact_types,
 )
@@ -54,3 +55,13 @@ def test_correction_prompt_names_missing_business_evidence() -> None:
     assert "SQL 安全校验" in prompt
     assert "试运行聚合结果" in prompt
     assert "不得编造" in prompt
+
+
+def test_dsml_tool_protocol_markup_is_detected() -> None:
+    content = """<｜｜DSML｜｜tool_calls>
+<｜｜DSML｜｜invoke name="get_indicator_result">
+</｜｜DSML｜｜invoke>
+</｜｜DSML｜｜tool_calls>"""
+
+    assert contains_tool_protocol_markup(content) is True
+    assert contains_tool_protocol_markup("请明确需要对比的统计时间范围。") is False

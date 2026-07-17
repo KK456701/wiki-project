@@ -307,6 +307,7 @@ def test_model_planner_receives_safe_structured_followup_context():
         current_rule_id="RULE_1",
         current_stat_start="2026-06-01T00:00:00+08:00",
         current_stat_end="2026-07-01T00:00:00+08:00",
+        current_upload_file_key="h1_report.xlsx",
     )
 
     asyncio.run(ModelRequestPlanner(adapter).plan(
@@ -319,6 +320,8 @@ def test_model_planner_receives_safe_structured_followup_context():
     planner_context = adapter.calls[0]["messages"][0]["content"]
     assert "RULE_1" in planner_context
     assert "2026-06-01" in planner_context
+    assert "h1_report.xlsx" in planner_context
+    assert "file_analysis 和 trial_result" in planner_context
 
 
 def test_planning_runtime_reuses_structured_rule_and_period_context():
@@ -433,6 +436,41 @@ def test_empty_final_model_action_is_warning_and_retried_once():
     assert executor_nodes[0]["status"] == "warning"
     assert executor_nodes[0]["error_code"] == "MODEL_EMPTY_ACTION"
     assert executor_nodes[1]["status"] == "success"
+
+
+def test_final_dsml_tool_markup_is_never_returned_to_user():
+    adapter = SequenceAdapter([
+        AgentModelResponse(content=(
+            '<｜｜DSML｜｜tool_calls>\n'
+            '<｜｜DSML｜｜invoke name="get_indicator_result">\n'
+            '</｜｜DSML｜｜invoke>\n'
+            '</｜｜DSML｜｜tool_calls>'
+        )),
+        AgentModelResponse(content="请明确需要对比的统计时间范围。"),
+    ])
+    registry = _registry()
+    runner = AgentRunner(
+        adapter,
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+
+    result = asyncio.run(runner.run("这个指标", _context()))
+
+    assert result.stop_reason == "final_answer"
+    assert result.answer == "请明确需要对比的统计时间范围。"
+    assert "DSML" not in result.answer
+    assert "get_indicator_result" not in result.answer
+    assert len(adapter.calls) == 2
+    assert any(
+        "工具协议" in message.get("content", "")
+        for message in adapter.calls[1]["messages"]
+        if message.get("role") == "system"
+    )
 
 
 def test_time_clarification_trace_is_warning_not_failure():

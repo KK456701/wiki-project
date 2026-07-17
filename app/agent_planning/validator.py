@@ -57,6 +57,15 @@ class PlanValidator:
                 message="实际指标结果需要执行医院业务库只读聚合查询。",
                 fallback_category=FallbackCategory.BUSINESS_CONFIRMATION,
             )
+        if needs_database and not (
+            plan.target_indicator.raw_name or plan.target_indicator.rule_id
+        ):
+            return PlanValidation(
+                ok=False,
+                code="TARGET_INDICATOR_AMBIGUOUS",
+                message="请明确需要查询或对比的本院指标名称。",
+                fallback_category=FallbackCategory.USER_CLARIFICATION,
+            )
         resolved_time = None
         if needs_time_range:
             resolved_time = self.resolver.resolve(plan.time_expression, now=now)

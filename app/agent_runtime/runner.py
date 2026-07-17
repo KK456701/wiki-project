@@ -25,6 +25,7 @@ from app.agent_runtime.prompts import (
     executor_correction,
 )
 from app.agent_runtime.response_guard import (
+    contains_tool_protocol_markup,
     evidence_correction_prompt,
     missing_fact_types,
     normalize_agent_answer,
@@ -273,6 +274,7 @@ class AgentRunner:
         fact_corrections = 0
         planned_tool_corrections = 0
         empty_answer_corrections = 0
+        tool_protocol_corrections = 0
         for _ in range(self.max_steps):
             replanned = False
             plan_corrected = False
@@ -632,6 +634,47 @@ class AgentRunner:
                     )
                 if not response.tool_calls:
                     guard_started = time.perf_counter()
+                    if contains_tool_protocol_markup(response.content):
+                        tool_protocol_corrections += 1
+                        self._trace(
+                            node_name="response_guard",
+                            node_type="code",
+                            status=(
+                                "warning"
+                                if tool_protocol_corrections <= 1
+                                else "failed"
+                            ),
+                            duration_ms=max(
+                                1,
+                                int((time.perf_counter() - guard_started) * 1000),
+                            ),
+                            input_data={"raw_content": response.content},
+                            output_data={"answer": ""},
+                            processing_data={
+                                "description": "阻止模型把内部工具协议标记输出给用户。"
+                            },
+                            config_data={"guard": "tool_protocol_guard"},
+                            error_code="TOOL_PROTOCOL_LEAK",
+                            error_message="模型在最终回答中输出了工具协议标记。",
+                        )
+                        if (
+                            tool_protocol_corrections <= 1
+                            and run_state.step_count < self.max_steps
+                        ):
+                            run_state.messages.append({
+                                "role": "system",
+                                "content": executor_correction(
+                                    "tool_protocol_forbidden"
+                                ),
+                            })
+                            continue
+                        run_state.stop_reason = "tool_error"
+                        return AgentRunResult(
+                            answer="模型未生成有效业务回答，请重新发送问题。",
+                            stop_reason="tool_error",
+                            state=run_state,
+                            model=model_name,
+                        )
                     answer = normalize_agent_answer(response.content)
                     assistant_message["content"] = answer
                     if (

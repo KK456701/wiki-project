@@ -88,6 +88,19 @@ class PlanCompiler:
     @staticmethod
     def _capabilities(plan: RequestPlan) -> list[PlanCapability]:
         outputs = set(plan.requested_outputs)
+        if {
+            RequestedOutput.FILE_ANALYSIS,
+            RequestedOutput.TRIAL_RESULT,
+        } <= outputs:
+            return [
+                PlanCapability.RESOLVE_INDICATOR,
+                PlanCapability.RESOLVE_EFFECTIVE_RULE,
+                PlanCapability.RESOLVE_TIME_RANGE,
+                PlanCapability.PREPARE_VERIFIED_SQL,
+                PlanCapability.EXECUTE_TRIAL_RUN,
+                PlanCapability.ANALYZE_UPLOADED_FILE,
+                PlanCapability.COMPOSE_ANSWER,
+            ]
         if RequestedOutput.FILE_ANALYSIS in outputs:
             return [
                 PlanCapability.ANALYZE_UPLOADED_FILE,

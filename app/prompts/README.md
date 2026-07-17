@@ -13,7 +13,7 @@
 | `agent_executor.txt` | Executor / 最终回答模型 | `app.agent_runtime.runner.AgentRunner` | 服务端完成受控工具链且证据齐全后，只组织最终中文回答 |
 | `agent_executor_context.txt` | Executor / 会话上下文包装器 | `AgentConversationMemory` | 注入当前日期、结构化状态和最多 8 轮最近对话 |
 | `agent_executor_step.txt` | Executor / 最终回答约束 | `AgentPlanningRuntime.instruction` | 声明目标指标、规则、统计周期以及当前阶段禁止调用工具 |
-| `agent_executor_corrections.txt` | Executor / 回答纠错器 | `AgentRunner` | 最终回答为空、非中文、缺少证据或事实不一致时最多纠正一次 |
+| `agent_executor_corrections.txt` | Executor / 回答纠错器 | `AgentRunner` | 最终回答为空、非中文、缺少证据、事实不一致或误输出工具协议时最多纠正一次 |
 
 ## 指标实施草稿
 

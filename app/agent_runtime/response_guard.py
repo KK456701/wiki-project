@@ -64,6 +64,23 @@ _FACT_LABELS = {
 }
 
 
+_TOOL_PROTOCOL_PATTERNS = (
+    r"<[^>\n]{0,24}DSML[^>\n]{0,32}(?:tool_calls|invoke|parameter)[^>\n]*>",
+    r"</?\s*(?:tool_calls?|function_calls?|invoke)\b[^>\n]*>",
+)
+
+
+def contains_tool_protocol_markup(answer: str) -> bool:
+    """判断模型是否把内部工具协议误写进了最终回答。"""
+    return bool(
+        answer
+        and any(
+            re.search(pattern, answer, flags=re.IGNORECASE)
+            for pattern in _TOOL_PROTOCOL_PATTERNS
+        )
+    )
+
+
 def normalize_agent_answer(answer: str) -> str:
     """把常见模型 LaTeX 公式和对话格式前缀收敛为可读纯文本。"""
     if not answer:

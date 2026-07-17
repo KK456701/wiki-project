@@ -16,6 +16,7 @@ from .events import (
     public_agent_event,
 )
 from .response_guard import (
+    contains_tool_protocol_markup,
     evidence_correction_prompt,
     missing_fact_types,
     normalize_agent_answer,
@@ -44,6 +45,7 @@ __all__ = [
     "AgentStopReason",
     "AgentToolCall",
     "AgentRunner",
+    "contains_tool_protocol_markup",
     "evidence_correction_prompt",
     "emit_agent_event",
     "public_agent_event",
