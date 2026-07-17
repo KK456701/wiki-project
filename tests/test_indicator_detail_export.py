@@ -7,8 +7,12 @@ import pytest
 
 openpyxl = pytest.importorskip("openpyxl")
 
-from app.indicator_details.exporter import create_indicator_workbook, safe_excel_value
-from app.indicator_details.models import (
+from app.indicator_details.exporter import (  # noqa: E402
+    create_indicator_workbook,
+    create_upload_comparison_workbook,
+    safe_excel_value,
+)
+from app.indicator_details.models import (  # noqa: E402
     DetailColumn,
     DetailFieldLineage,
     DetailSnapshotSummary,
@@ -109,3 +113,53 @@ def test_excel_rejects_count_mismatch_and_formula_values_are_escaped(tmp_path: P
 
     with pytest.raises(ValueError, match="数量不一致"):
         create_indicator_workbook(tmp_path / "bad.xlsx", _summary(), _rows()[:2], actor_id="user_001")
+
+
+def test_upload_comparison_excel_separates_matching_and_different_metrics(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "comparison.xlsx"
+    comparison = {
+        "rule_id": "MQSI2025_001",
+        "rule_name": "患者入院48小时内转科的比例",
+        "hospital_id": "hospital_001",
+        "system_stat_period": "2026-01-01 00:00:00 至 2026-07-17 00:00:00",
+        "file_name": "hospital_001_report.xlsx",
+        "comparison_direction": "上传文件值 - 系统值",
+        "row_level_note": "上传文件仅包含汇总值，不能判断具体记录的交集与差集。",
+        "matched_count": 1,
+        "different_count": 2,
+        "metrics": [
+            {
+                "metric": "分母", "system_value": 389, "uploaded_value": 522,
+                "difference": 133, "unit": "人次", "match": False,
+                "source_column": "denominator",
+            },
+            {
+                "metric": "分子", "system_value": 11, "uploaded_value": 30,
+                "difference": 19, "unit": "人次", "match": False,
+                "source_column": "numerator",
+            },
+            {
+                "metric": "指标率", "system_value": 5.75, "uploaded_value": 5.75,
+                "difference": 0, "unit": "百分点", "match": True,
+                "source_column": "rate_pct",
+            },
+        ],
+    }
+
+    create_upload_comparison_workbook(
+        path,
+        comparison,
+        actor_id="user_001",
+        created_at=datetime(2026, 7, 17, 10, 0, 0),
+    )
+
+    workbook = openpyxl.load_workbook(path, read_only=False, data_only=False)
+    assert workbook.sheetnames == ["对比摘要", "一致项_1", "不一致项_2"]
+    summary = workbook["对比摘要"]
+    assert summary["B6"].value == "汇总级"
+    assert "不能判断具体记录" in summary["B8"].value
+    assert summary["D15"].value == 133
+    assert workbook["一致项_1"]["A4"].value == "指标率"
+    assert workbook["不一致项_2"]["A4"].value == "分母"

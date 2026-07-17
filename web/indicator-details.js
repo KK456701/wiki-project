@@ -306,6 +306,25 @@
     if (state.trigger && typeof state.trigger.focus === "function") state.trigger.focus();
   }
 
+  async function downloadExport(result) {
+    var response = await detailFetch(
+      "/api/indicator-exports/" + encodeURIComponent(result.export_id) + "/download"
+    );
+    if (!response.ok) {
+      var data = await response.json();
+      throw new Error(apiMessage(data, "文件下载失败"));
+    }
+    var blob = await response.blob();
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = result.file_name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function exportExcel() {
     if (!hasPermission("indicator_detail_export")) return;
     var confirmed = root.confirm(
@@ -319,26 +338,49 @@
         "/api/sql-runs/" + encodeURIComponent(state.runId) + "/exports",
         {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({confirmed: true})}
       );
-      var response = await detailFetch("/api/indicator-exports/" + encodeURIComponent(result.export_id) + "/download");
-      if (!response.ok) {
-        var data = await response.json();
-        throw new Error(apiMessage(data, "文件下载失败"));
-      }
-      var blob = await response.blob();
-      var url = URL.createObjectURL(blob);
-      var link = document.createElement("a");
-      link.href = url;
-      link.download = result.file_name;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
+      await downloadExport(result);
       showNotice("Excel 已生成并开始下载，服务器临时文件将在24小时后自动清理。", "success");
     } catch (error) {
       showNotice(error.message, "error");
     } finally {
       exportButton.disabled = !hasPermission("indicator_detail_export");
       exportButton.textContent = "生成并下载 Excel";
+    }
+  }
+
+  async function exportUploadComparison(runId, fileToken, trigger) {
+    if (!/^RUN_[A-Za-z0-9_]+$/.test(runId) || !/^[A-Za-z0-9_-]+$/.test(fileToken)) return;
+    if (!state.token) {
+      root.dispatchEvent(new CustomEvent("hospital-auth-required"));
+      return;
+    }
+    if (!hasPermission("indicator_detail_export")) {
+      root.alert("当前账号没有指标明细导出权限，请联系管理员。");
+      return;
+    }
+    var confirmed = root.confirm(
+      "将导出上传文件与本次系统试运行的汇总差异。\n\n当前上传文件只有汇总值，文件会列出分子、分母和指标率的一致项与不一致项，不代表患者级记录交集。确认继续吗？"
+    );
+    if (!confirmed) return;
+    var originalText = trigger.textContent;
+    trigger.disabled = true;
+    trigger.textContent = "正在生成差异表...";
+    try {
+      var result = await requestJson(
+        "/api/sql-runs/" + encodeURIComponent(runId) + "/upload-comparison-exports",
+        {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({confirmed: true, file_token: fileToken})
+        }
+      );
+      await downloadExport(result);
+      trigger.textContent = "差异表已开始下载";
+    } catch (error) {
+      root.alert(error.message);
+      trigger.textContent = originalText;
+    } finally {
+      trigger.disabled = false;
     }
   }
 
@@ -413,6 +455,15 @@
   }
 
   document.addEventListener("click", function (event) {
+    var comparisonTrigger = event.target.closest(".upload-comparison-export-trigger");
+    if (comparisonTrigger) {
+      exportUploadComparison(
+        comparisonTrigger.dataset.runId || "",
+        comparisonTrigger.dataset.fileToken || "",
+        comparisonTrigger
+      );
+      return;
+    }
     var trigger = event.target.closest(".indicator-detail-trigger");
     if (trigger) open(trigger.dataset.runId || "", trigger.dataset.detailGroup || "", trigger);
     var tab = event.target.closest(".indicator-detail-tab");

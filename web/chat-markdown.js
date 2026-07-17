@@ -12,6 +12,14 @@
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(
+        /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_]+):([A-Za-z0-9_-]+)\}\}/g,
+        function (_, runId, fileToken) {
+          return '<button type="button" class="indicator-detail-export-entry upload-comparison-export-trigger" ' +
+            'data-run-id="' + runId + '" data-file-token="' + fileToken + '" ' +
+            'aria-label="导出上传文件与系统结果的汇总差异表">导出文件与系统差异表</button>';
+        }
+      )
+      .replace(
         /\{\{detail_export:(RUN_[A-Za-z0-9_]+)\}\}/g,
         function (_, runId) {
           return '<button type="button" class="indicator-detail-trigger indicator-detail-export-entry" ' +

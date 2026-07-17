@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import logging
 import os
@@ -18,7 +20,9 @@ from app.hospital_auth.models import (
 )
 from app.hospital_auth.repository import HospitalAuthRepository
 
-from .exporter import create_indicator_workbook
+from app.agent_tools.upload_tools import build_aggregate_comparison, parse_excel_preview
+
+from .exporter import create_indicator_workbook, create_upload_comparison_workbook
 from .models import CleanupResult, DetailPage, DetailSnapshotSummary, ExportSummary
 from .repository import IndicatorDetailRepository
 from .snapshot import DetailSnapshotStore
@@ -55,6 +59,7 @@ class IndicatorDetailService:
         audit_repository: HospitalAuthRepository,
         *,
         export_root: Path = Path("runtime/exports"),
+        upload_root: Path | None = None,
         now_provider: Callable[[], datetime] = _utcnow,
         export_ttl: timedelta = EXPORT_TTL,
     ) -> None:
@@ -62,6 +67,9 @@ class IndicatorDetailService:
         self.snapshot_store = snapshot_store
         self.audit_repository = audit_repository
         self.export_root = Path(export_root)
+        self.upload_root = upload_root or (
+            Path(__file__).resolve().parents[2] / "runtime" / "uploads"
+        )
         self.now_provider = now_provider
         self.export_ttl = export_ttl
 
@@ -348,6 +356,177 @@ class IndicatorDetailService:
             run_id=run_id,
             export_id=export_id,
             row_count=snapshot.denominator_count,
+        )
+        return self._summary(ready)
+
+    @staticmethod
+    def _decode_file_token(file_token: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", file_token or ""):
+            raise IndicatorDetailError(
+                "上传文件标识无效", code="UPLOAD_FILE_TOKEN_INVALID", status_code=400
+            )
+        try:
+            padding = "=" * (-len(file_token) % 4)
+            file_key = base64.b64decode(
+                file_token + padding,
+                altchars=b"-_",
+                validate=True,
+            ).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise IndicatorDetailError(
+                "上传文件标识无效", code="UPLOAD_FILE_TOKEN_INVALID", status_code=400
+            ) from exc
+        if (
+            not file_key
+            or len(file_key) > 128
+            or Path(file_key).name != file_key
+            or "/" in file_key
+            or "\\" in file_key
+        ):
+            raise IndicatorDetailError(
+                "上传文件标识无效", code="UPLOAD_FILE_TOKEN_INVALID", status_code=400
+            )
+        return file_key
+
+    def create_upload_comparison_export(
+        self,
+        principal: HospitalPrincipal,
+        run_id: str,
+        file_token: str,
+        confirmed: bool,
+    ) -> ExportSummary:
+        """导出上传文件汇总值与指定系统试运行结果的差异。"""
+        self._require_permission(principal, DETAIL_EXPORT_PERMISSION)
+        if not confirmed:
+            raise IndicatorDetailError(
+                "导出前必须确认对比范围",
+                code="UPLOAD_COMPARISON_EXPORT_CONFIRM_REQUIRED",
+                status_code=400,
+            )
+        self.cleanup_expired()
+        run = self._run_in_scope(principal, run_id)
+        if str(run.get("run_status") or "") != "success":
+            raise IndicatorDetailError(
+                "本次试运行未成功，不能生成差异表",
+                code="UPLOAD_COMPARISON_RUN_INVALID",
+                status_code=409,
+            )
+        file_key = self._decode_file_token(file_token)
+        if not file_key.startswith(f"{principal.hospital_id}_"):
+            raise IndicatorDetailError(
+                "上传文件不存在", code="UPLOAD_NOT_FOUND", status_code=404
+            )
+        upload_root = Path(self.upload_root).resolve()
+        file_path = (upload_root / file_key).resolve()
+        try:
+            file_path.relative_to(upload_root)
+        except ValueError as exc:
+            raise IndicatorDetailError(
+                "上传文件标识无效", code="UPLOAD_FILE_TOKEN_INVALID", status_code=400
+            ) from exc
+        if not file_path.is_file():
+            raise IndicatorDetailError(
+                "上传文件不存在或已清理", code="UPLOAD_NOT_FOUND", status_code=404
+            )
+        preview = parse_excel_preview(file_path)
+        if "error" in preview:
+            raise IndicatorDetailError(
+                str(preview["error"]), code="EXCEL_PARSE_ERROR", status_code=409
+            )
+        start = str(run.get("stat_start_time") or "")
+        end = str(run.get("stat_end_time") or "")
+        system_result = {
+            "system_stat_period": f"{start} 至 {end}",
+            "system_numerator": run.get("numerator_count"),
+            "system_denominator": run.get("denominator_count"),
+            "system_rate": run.get("result_value"),
+        }
+        comparison = build_aggregate_comparison(preview, system_result)
+        if not comparison["metrics"]:
+            raise IndicatorDetailError(
+                "上传文件中未识别到可与系统核对的分子、分母或指标率",
+                code="UPLOAD_COMPARISON_VALUES_MISSING",
+                status_code=409,
+            )
+        run_context = run.get("run_context_json") or {}
+        effective_rule = (
+            run_context.get("effective_rule") or {}
+            if isinstance(run_context, dict)
+            else {}
+        )
+        rule_id = str(run.get("rule_id") or effective_rule.get("rule_id") or "")
+        comparison.update({
+            "rule_id": rule_id,
+            "rule_name": str(
+                effective_rule.get("rule_name")
+                or (run_context.get("rule_name") if isinstance(run_context, dict) else "")
+                or rule_id
+            ),
+            "hospital_id": principal.hospital_id,
+            "file_name": preview["file_name"],
+        })
+
+        export_id = f"EXP_{uuid.uuid4().hex[:16]}"
+        safe_hospital = self._safe_segment(principal.hospital_id)
+        safe_run = self._safe_segment(run_id)
+        start_text = re.sub(r"[^0-9]", "", start)[:8]
+        end_text = re.sub(r"[^0-9]", "", end)[:8]
+        file_name = f"{rule_id}_{start_text}_{end_text}_汇总差异_{export_id}.xlsx"
+        relative_path = f"{safe_hospital}/{safe_run}/{file_name}"
+        now = self.now_provider()
+        self.repository.create_export(
+            export_id=export_id,
+            snapshot_id=f"UPLCMP_{uuid.uuid4().hex[:16]}",
+            run_id=run_id,
+            hospital_id=principal.hospital_id,
+            rule_id=rule_id,
+            relative_path=relative_path,
+            file_name=file_name,
+            row_count=len(comparison["metrics"]),
+            created_by=principal.user_id,
+            created_at=now,
+            expires_at=now + self.export_ttl,
+        )
+        final_path = self._resolve_relative_path(relative_path)
+        temp_path = final_path.with_name(final_path.name + ".tmp")
+        try:
+            create_upload_comparison_workbook(
+                temp_path,
+                comparison,
+                actor_id=principal.account_id,
+                created_at=now,
+            )
+            os.replace(temp_path, final_path)
+            self.repository.mark_export_ready(export_id, _sha256(final_path))
+        except Exception as exc:
+            if temp_path.exists():
+                temp_path.unlink()
+            self.repository.mark_export_failed(export_id, str(exc))
+            self._audit(
+                principal,
+                "UPLOAD_COMPARISON_EXPORT_CREATE",
+                "failed",
+                rule_id=rule_id,
+                run_id=run_id,
+                export_id=export_id,
+                reason="UPLOAD_COMPARISON_EXPORT_FAILED",
+            )
+            raise IndicatorDetailError(
+                "差异表生成失败，请稍后重试",
+                code="UPLOAD_COMPARISON_EXPORT_FAILED",
+                status_code=500,
+            ) from exc
+        ready = self.repository.get_export(export_id)
+        if ready is None:
+            raise RuntimeError("导出记录不存在")
+        self._audit(
+            principal,
+            "UPLOAD_COMPARISON_EXPORT_CREATE",
+            "success",
+            rule_id=rule_id,
+            run_id=run_id,
+            export_id=export_id,
+            row_count=len(comparison["metrics"]),
         )
         return self._summary(ready)
 

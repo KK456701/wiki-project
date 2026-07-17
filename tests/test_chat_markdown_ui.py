@@ -156,6 +156,33 @@ process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
         self.assertEqual(result.stdout.count("indicator-detail-export-entry"), 1)
         self.assertNotIn("<script>", result.stdout)
 
+    def test_renderer_builds_strict_upload_comparison_export_entry(self) -> None:
+        markdown = (
+            "{{upload_comparison_export:RUN_80:aG9zcGl0YWxfMDAxX3JlcG9ydC54bHN4}}\n\n"
+            "{{upload_comparison_export:RUN_80:<script>}}\n\n"
+            "{{upload_comparison_export:SQL_80:aG9zcGl0YWw}}"
+        )
+        script = f"""
+const renderer = require('./web/chat-markdown.js');
+process.stdout.write(renderer.renderAssistantMarkdown({json.dumps(markdown)}));
+"""
+
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+
+        self.assertIn('class="indicator-detail-export-entry upload-comparison-export-trigger"', result.stdout)
+        self.assertIn('data-run-id="RUN_80"', result.stdout)
+        self.assertIn('data-file-token="aG9zcGl0YWxfMDAxX3JlcG9ydC54bHN4"', result.stdout)
+        self.assertIn('>导出文件与系统差异表</button>', result.stdout)
+        self.assertEqual(result.stdout.count("upload-comparison-export-trigger"), 1)
+        self.assertNotIn("<script>", result.stdout)
+
     def test_renderer_only_builds_strict_diagnosis_comparison_buttons(self) -> None:
         markdown = (
             "{{diagnosis_detail:CMP_a1B2_30}}\n\n"

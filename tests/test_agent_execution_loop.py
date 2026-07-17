@@ -11,7 +11,7 @@ from app.agent_runtime import (
     AgentRuntimeContext,
     AgentToolCall,
 )
-from app.agent_runtime.runner import AgentRunner
+from app.agent_runtime.runner import AgentRunner, _append_trial_detail_export
 from app.agent_runtime.response_guard import normalize_agent_answer
 from app.agent_tools import ToolGateway
 from app.agent_tools.catalog import build_agent_tool_registry
@@ -34,6 +34,31 @@ class SequenceAdapter:
     async def chat(self, **kwargs):
         self.calls.append(kwargs)
         return self.responses.pop(0)
+
+
+def test_upload_comparison_export_replaces_regular_detail_export() -> None:
+    answer = _append_trial_detail_export(
+        "对比完成。{{detail_export:RUN_OLD}}",
+        [
+            {
+                "ok": True,
+                "code": "TRIAL_RUN_COMPLETED",
+                "data": {"run_id": "RUN_001", "status": "success"},
+            },
+            {
+                "ok": True,
+                "code": "UPLOAD_ANALYZED",
+                "data": {
+                    "file_key": "hospital_001_无标题.xlsx",
+                    "aggregate_comparison": {"different_count": 3},
+                },
+            },
+        ],
+    )
+
+    assert "upload_comparison_export:RUN_001:" in answer
+    assert "导出文件与系统的汇总差异表" in answer
+    assert "detail_export" not in answer
 
 
 class FakeDomainServices:

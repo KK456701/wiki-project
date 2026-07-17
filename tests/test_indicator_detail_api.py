@@ -67,6 +67,12 @@ class _FakeService:
             download_count=0,
         )
 
+    def create_upload_comparison_export(
+        self, principal, run_id, file_token, confirmed
+    ):
+        self.comparison_file_token = file_token
+        return self.create_export(principal, run_id, confirmed)
+
     def list_exports(self, principal):
         return [self.create_export(principal, "RUN_001", True)]
 
@@ -124,6 +130,18 @@ def test_export_requires_confirmation_and_download_is_not_cached(tmp_path: Path)
     assert downloaded.status_code == 200
     assert downloaded.headers["cache-control"] == "no-store"
     assert "attachment" in downloaded.headers["content-disposition"]
+
+
+def test_upload_comparison_export_passes_bound_file_token(tmp_path: Path) -> None:
+    client, service = _client(tmp_path)
+
+    created = client.post(
+        "/api/sql-runs/RUN_001/upload-comparison-exports",
+        json={"confirmed": True, "file_token": "aG9zcGl0YWxfMDAxX3JlcG9ydC54bHN4"},
+    )
+
+    assert created.status_code == 201
+    assert service.comparison_file_token == "aG9zcGl0YWxfMDAxX3JlcG9ydC54bHN4"
 
 
 def test_invalid_group_and_page_size_are_rejected_before_service(tmp_path: Path) -> None:

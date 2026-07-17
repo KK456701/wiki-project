@@ -1,4 +1,5 @@
-.indicator-detail-trigger {
+.indicator-detail-trigger,
+.upload-comparison-export-trigger {
   min-height: 32px;
   padding: 5px 11px;
   border: 1px solid var(--line-strong);
@@ -9,7 +10,9 @@
   white-space: nowrap;
 }
 .indicator-detail-trigger:hover,
-.indicator-detail-trigger:focus-visible {
+.indicator-detail-trigger:focus-visible,
+.upload-comparison-export-trigger:hover,
+.upload-comparison-export-trigger:focus-visible {
   border-color: var(--teal);
   background: var(--teal-soft);
   outline: 2px solid transparent;

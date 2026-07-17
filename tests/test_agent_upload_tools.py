@@ -18,7 +18,7 @@ def test_successful_upload_analysis_emits_canonical_completion_fact(
     monkeypatch.setattr(upload_tools, "_UPLOAD_ROOT", tmp_path)
     monkeypatch.setattr(
         upload_tools,
-        "_parse_excel_preview",
+        "parse_excel_preview",
         lambda _path: {
             "file_name": file_key,
             "sheet_count": 1,
@@ -28,7 +28,13 @@ def test_successful_upload_analysis_emits_canonical_completion_fact(
                 "headers": ["指标名称", "指标率"],
                 "row_count": 2,
             }],
-            "indicator_hints": {},
+            "indicator_hints": {
+                "potential_indicator_values": [
+                    {"column": "分母", "role": "denominator", "stats": {"avg": 522}},
+                    {"column": "分子", "role": "numerator", "stats": {"avg": 30}},
+                    {"column": "指标率", "role": "rate", "stats": {"avg": 5.75}},
+                ],
+            },
         },
     )
     context = AgentRuntimeContext(
@@ -44,9 +50,25 @@ def test_successful_upload_analysis_emits_canonical_completion_fact(
     result = analyze_uploaded_indicators(
         AnalyzeUploadedIndicatorsInput(file_key=file_key),
         context,
-        AgentRunState(),
+        AgentRunState(last_tool_results=[{
+            "ok": True,
+            "code": "TRIAL_RUN_COMPLETED",
+            "data": {
+                "stat_start": "2026-01-01 00:00:00",
+                "stat_end": "2026-07-17 00:00:00",
+                "numerator_count": 11,
+                "denominator_count": 389,
+                "result_value": 2.83,
+            },
+        }]),
         UploadToolServices(),
     )
 
     assert result.ok is True
     assert result.evidence[0].fact_types == ["file_analysis"]
+    assert result.data["file_key"] == file_key
+    comparison = result.data["aggregate_comparison"]
+    assert comparison["row_level_comparison_available"] is False
+    assert comparison["matched_count"] == 0
+    assert comparison["different_count"] == 3
+    assert [item["difference"] for item in comparison["metrics"]] == [133.0, 19.0, 2.92]

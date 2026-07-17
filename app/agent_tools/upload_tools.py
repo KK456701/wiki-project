@@ -32,7 +32,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _parse_excel_preview(file_path: Path) -> dict[str, Any]:
+def parse_excel_preview(file_path: Path) -> dict[str, Any]:
     """解析 Excel 并返回摘要数据，不暴露患者明细。"""
     try:
         from openpyxl import load_workbook
@@ -91,13 +91,15 @@ def _parse_excel_preview(file_path: Path) -> dict[str, Any]:
     # 尝试检测指标结构
     indicator_hints = _detect_indicator_structure(headers_sample, sheets_info)
 
-    return {
+    result = {
         "file_name": file_path.name,
         "sheet_count": len(sheets_info),
         "total_rows": total_rows,
         "sheets": sheets_info,
         "indicator_hints": indicator_hints,
     }
+    wb.close()
+    return result
 
 
 def _detect_indicator_structure(
@@ -138,7 +140,7 @@ def _detect_indicator_structure(
         for col_name, stats in numeric.items():
             col_lower = col_name.lower()
             if any(kw in col_lower for kw in rate_keywords):
-                potential_rates.append({"column": col_name, "stats": stats})
+                potential_rates.append({"column": col_name, "stats": stats, "role": "rate"})
             elif any(kw in col_lower for kw in numerator_keywords):
                 potential_rates.append({"column": col_name, "stats": stats, "role": "numerator"})
             elif any(kw in col_lower for kw in denominator_keywords):
@@ -147,6 +149,70 @@ def _detect_indicator_structure(
             hints.setdefault("potential_indicator_values", []).extend(potential_rates)
 
     return hints
+
+
+def _stat_value(stats: dict[str, Any]) -> float | None:
+    value = stats.get("avg")
+    if value is None:
+        value = stats.get("sum")
+    return float(value) if value is not None else None
+
+
+def build_aggregate_comparison(
+    preview: dict[str, Any],
+    system_result: dict[str, Any],
+) -> dict[str, Any]:
+    """构造汇总级对比，不把单行汇总误报成患者级差异。"""
+    hints = preview.get("indicator_hints") or {}
+    candidates = hints.get("potential_indicator_values") or []
+    values_by_role: dict[str, float] = {}
+    columns_by_role: dict[str, str] = {}
+    for candidate in candidates:
+        role = str(candidate.get("role") or "")
+        if role not in {"numerator", "denominator", "rate"} or role in values_by_role:
+            continue
+        value = _stat_value(candidate.get("stats") or {})
+        if value is None:
+            continue
+        values_by_role[role] = value
+        columns_by_role[role] = str(candidate.get("column") or "")
+
+    definitions = (
+        ("denominator", "分母", "system_denominator", "人次", 0.01),
+        ("numerator", "分子", "system_numerator", "人次", 0.01),
+        ("rate", "指标率", "system_rate", "百分点", 0.01),
+    )
+    metrics: list[dict[str, Any]] = []
+    for role, label, system_key, unit, tolerance in definitions:
+        if role not in values_by_role or system_result.get(system_key) is None:
+            continue
+        uploaded = values_by_role[role]
+        system = float(system_result[system_key])
+        difference = round(uploaded - system, 4)
+        metrics.append({
+            "metric": label,
+            "role": role,
+            "source_column": columns_by_role[role],
+            "system_value": round(system, 4),
+            "uploaded_value": round(uploaded, 4),
+            "difference": difference,
+            "unit": unit,
+            "match": abs(difference) < tolerance,
+        })
+
+    return {
+        "comparison_level": "aggregate",
+        "comparison_direction": "上传文件值 - 系统值",
+        "row_level_comparison_available": False,
+        "row_level_note": (
+            "上传文件仅包含汇总值，未提供入院流水号等逐条标识，"
+            "因此只能核对分子、分母和指标率，不能判断具体记录的交集与差集。"
+        ),
+        "system_stat_period": system_result.get("system_stat_period"),
+        "metrics": metrics,
+        "matched_count": sum(1 for item in metrics if item["match"]),
+        "different_count": sum(1 for item in metrics if not item["match"]),
+    }
 
 
 def _save_upload(file_content: bytes, filename: str, hospital_id: str) -> str:
@@ -181,7 +247,7 @@ def analyze_uploaded_indicators(
             summary="无权访问其他医院的上传文件。",
         )
 
-    preview = _parse_excel_preview(file_path)
+    preview = parse_excel_preview(file_path)
     if "error" in preview:
         return ToolResult(
             ok=False,
@@ -205,41 +271,25 @@ def analyze_uploaded_indicators(
             }
             break
 
-    # 对匹配到的指标值做比较
     hints = preview.get("indicator_hints") or {}
-    comparisons_detail: list[dict[str, Any]] = []
-    if comparison and hints.get("potential_indicator_values"):
-        for val in hints["potential_indicator_values"]:
-            role = val.get("role", "")
-            stats = val.get("stats") or {}
-            detail: dict[str, Any] = {"column": val["column"], "role": role}
-            if role == "numerator" and comparison.get("system_numerator") is not None:
-                excel_val = stats.get("avg") or stats.get("sum")
-                detail["excel_value"] = excel_val
-                detail["system_value"] = comparison["system_numerator"]
-                detail["match"] = (
-                    abs(float(excel_val) - float(comparison["system_numerator"])) < 0.01
-                    if excel_val is not None
-                    else None
-                )
-            elif role == "denominator" and comparison.get("system_denominator") is not None:
-                excel_val = stats.get("avg") or stats.get("sum")
-                detail["excel_value"] = excel_val
-                detail["system_value"] = comparison["system_denominator"]
-                detail["match"] = (
-                    abs(float(excel_val) - float(comparison["system_denominator"])) < 0.01
-                    if excel_val is not None
-                    else None
-                )
-            elif comparison.get("system_rate") is not None:
-                excel_val = stats.get("avg")
-                detail["excel_value"] = excel_val
-                detail["system_value"] = comparison["system_rate"]
-                if excel_val is not None:
-                    detail["diff_pct"] = round(
-                        (float(comparison["system_rate"]) - float(excel_val)) / max(float(excel_val), 0.0001) * 100, 2
-                    )
-            comparisons_detail.append(detail)
+    aggregate_comparison = (
+        build_aggregate_comparison(preview, comparison) if comparison else None
+    )
+    comparisons_detail = (
+        [
+            {
+                "column": item["source_column"],
+                "role": item["role"],
+                "excel_value": item["uploaded_value"],
+                "system_value": item["system_value"],
+                "difference": item["difference"],
+                "match": item["match"],
+            }
+            for item in aggregate_comparison["metrics"]
+        ]
+        if aggregate_comparison
+        else []
+    )
 
     return ToolResult(
         ok=True,
@@ -248,6 +298,7 @@ def analyze_uploaded_indicators(
         summary=f"已解析 {preview['file_name']}，共 {preview['total_rows']} 行数据。",
         data={
             "file_name": preview["file_name"],
+            "file_key": arguments.file_key,
             "sheet_count": preview["sheet_count"],
             "total_rows": preview["total_rows"],
             "sheets": [
@@ -260,6 +311,7 @@ def analyze_uploaded_indicators(
             ],
             "indicator_hints": hints,
             "comparison_with_system": comparison if comparison else None,
+            "aggregate_comparison": aggregate_comparison,
             "comparisons_detail": comparisons_detail if comparisons_detail else None,
         },
         evidence=[ToolEvidence(

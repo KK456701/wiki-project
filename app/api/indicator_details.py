@@ -36,6 +36,11 @@ class ExportCreateRequest(BaseModel):
     confirmed: bool = False
 
 
+class UploadComparisonExportCreateRequest(BaseModel):
+    confirmed: bool = False
+    file_token: str
+
+
 def get_indicator_detail_service() -> IndicatorDetailService:
     from app.api.main import create_business_db_client
     from app.db.engine import create_runtime_engine
@@ -129,6 +134,28 @@ def create_export(
 ) -> ExportSummary:
     try:
         return service.create_export(principal, run_id, body.confirmed)
+    except Exception as exc:
+        _raise_detail_error(exc)
+
+
+@router.post(
+    "/api/sql-runs/{run_id}/upload-comparison-exports",
+    response_model=ExportSummary,
+    status_code=201,
+)
+def create_upload_comparison_export(
+    run_id: str,
+    body: UploadComparisonExportCreateRequest,
+    principal: HospitalPrincipal = Depends(require_detail_export),
+    service: IndicatorDetailService = Depends(get_indicator_detail_service),
+) -> ExportSummary:
+    try:
+        return service.create_upload_comparison_export(
+            principal,
+            run_id,
+            body.file_token,
+            body.confirmed,
+        )
     except Exception as exc:
         _raise_detail_error(exc)
 

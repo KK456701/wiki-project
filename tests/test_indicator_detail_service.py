@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import create_engine, text
 
 from app.hospital_auth.models import HospitalPrincipal
@@ -67,7 +68,10 @@ def _service(tmp_path: Path, *, export_ttl: timedelta = timedelta(hours=24)):
             text(
                 "CREATE TABLE med_sql_run_log ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, run_id VARCHAR(64), "
-                "hospital_id VARCHAR(64), rule_id VARCHAR(64))"
+                "hospital_id VARCHAR(64), rule_id VARCHAR(64), run_status VARCHAR(32), "
+                "stat_start_time VARCHAR(32), stat_end_time VARCHAR(32), "
+                "result_value FLOAT, numerator_count INTEGER, denominator_count INTEGER, "
+                "run_context_json TEXT)"
             )
         )
         conn.execute(
@@ -76,6 +80,13 @@ def _service(tmp_path: Path, *, export_ttl: timedelta = timedelta(hours=24)):
                 "VALUES ('RUN_001', 'hospital_001', 'MQSI2025_005')"
             )
         )
+        conn.execute(text(
+            "UPDATE med_sql_run_log SET run_status='success', "
+            "stat_start_time='2026-01-01 00:00:00', "
+            "stat_end_time='2026-07-17 00:00:00', result_value=2.83, "
+            "numerator_count=11, denominator_count=389, "
+            "run_context_json='{\"effective_rule\":{\"rule_name\":\"急会诊及时到位率\"}}'"
+        ))
     ensure_indicator_detail_schema(engine)
     repository = IndicatorDetailRepository(engine)
     clock = _Clock()
@@ -105,6 +116,7 @@ def _service(tmp_path: Path, *, export_ttl: timedelta = timedelta(hours=24)):
         _SnapshotStore(summary),
         audit,
         export_root=tmp_path / "exports",
+        upload_root=tmp_path / "uploads",
         now_provider=clock,
         export_ttl=export_ttl,
     )
@@ -179,3 +191,29 @@ def test_export_expiry_can_be_configured(tmp_path: Path) -> None:
     export = service.create_export(_principal(), "RUN_001", True)
 
     assert export.expires_at == clock.now + timedelta(hours=2)
+
+
+def test_service_creates_upload_comparison_export(tmp_path: Path) -> None:
+    service, repository, audit, _ = _service(tmp_path)
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    file_key = "hospital_001_report.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["denominator", "numerator", "rate_pct"])
+    sheet.append([522, 30, 5.75])
+    workbook.save(upload_root / file_key)
+    token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
+
+    export = service.create_upload_comparison_export(
+        _principal(), "RUN_001", token, True
+    )
+    record = repository.get_export(export.export_id)
+    path = service._resolve_relative_path(record["relative_path"])
+    result = load_workbook(path, read_only=False, data_only=False)
+
+    assert result.sheetnames == ["对比摘要", "一致项_0", "不一致项_3"]
+    assert result["对比摘要"]["D15"].value == 133
+    assert result["不一致项_3"]["A4"].value == "分母"
+    assert record["row_count"] == 3
+    assert audit.items[-1]["action"] == "UPLOAD_COMPARISON_EXPORT_CREATE"

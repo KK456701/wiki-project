@@ -28,6 +28,8 @@ flowchart TD
     X --> W
     W -->|"成功试运行的 RUN_ID"| E["受控明细快照<br/>分母 / 分子 / 未达到要求"]
     E --> EX["授权导出三工作表 Excel<br/>24 小时自动清理"]
+    W -->|"试运行 + 上传分析"| CE["汇总对比导出<br/>对比摘要 / 一致项 / 不一致项"]
+    CE --> EX
 ```
 
 旧 `/api/chat`、`/api/chat/stream`、`app/agent/graph.py`、Shadow Runtime 和前端 legacy 分流已经删除。失败时只返回当前 Agent 的明确错误，不再执行第二套流程。
@@ -61,6 +63,8 @@ flowchart TD
 - 缺少指标名称时 Validator 返回 `TARGET_INDICATOR_AMBIGUOUS`；缺少统计周期时返回 `TIME_RANGE_AMBIGUOUS`，两种情况都在访问业务库前暂停并向用户澄清。
 - 信息完整后，Compiler 按 `resolve_indicator → resolve_effective_rule → resolve_time_range → prepare_verified_sql → execute_trial_run → analyze_uploaded_file → compose_answer` 编译。Excel 分析位于试运行之后，因此工具能够直接核对文件与本院结果的分子、分母和指标率。
 - Verifier 同时要求 `trial_run` 与 `file_analysis` 证据，最终回答模型只能基于本轮两条证据链说明一致项和差异。
+- 上传分析工具同时生成确定性的 `aggregate_comparison`：逐项保存系统值、上传文件值、差异方向、单位和一致状态。Runner 检测到同轮存在成功试运行与上传对比时，优先追加绑定 `RUN_ID` 和上传文件令牌的 `upload_comparison_export` 标记，不再追加普通 `detail_export`。
+- 差异导出复用 `indicator_detail_export` 权限、医院范围校验、审计、文件哈希、下载接口和 24 小时清理。工作簿固定包含“对比摘要”“一致项_N”“不一致项_N”；当前文件只有汇总数据时明确标记 `row_level_comparison_available=false`，不能推断具体患者记录的交集或差集。
 
 ## SQL 准备与试运行边界
 

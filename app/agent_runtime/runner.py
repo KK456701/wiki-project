@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -152,10 +153,22 @@ def _append_trial_detail_export(
 ) -> str:
     """为本轮成功试运行追加受控明细入口，不依赖模型生成 UI 标记。"""
     safe_answer = re.sub(
-        r"\{\{detail(?:_export)?:[^{}\r\n]*\}\}",
+        r"\{\{(?:detail(?:_export)?|upload_comparison_export):[^{}\r\n]*\}\}",
         "",
         answer,
     ).rstrip()
+    comparison = next(
+        (
+            result
+            for result in reversed(tool_results)
+            if isinstance(result, dict)
+            and result.get("ok") is True
+            and result.get("code") == "UPLOAD_ANALYZED"
+            and isinstance((result.get("data") or {}).get("aggregate_comparison"), dict)
+            and (result.get("data") or {}).get("file_key")
+        ),
+        None,
+    )
     for result in reversed(tool_results):
         if (
             not isinstance(result, dict)
@@ -170,6 +183,16 @@ def _append_trial_detail_export(
             or re.fullmatch(r"RUN_[A-Za-z0-9_]+", run_id) is None
         ):
             return safe_answer
+        if comparison is not None:
+            file_key = str((comparison.get("data") or {}).get("file_key") or "")
+            file_token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
+            marker = f"{{{{upload_comparison_export:{run_id}:{file_token}}}}}"
+            return (
+                safe_answer
+                + "\n\n---\n\n"
+                + "本次对比支持导出文件与系统的汇总差异表：\n\n"
+                + marker
+            )
         marker = f"{{{{detail_export:{run_id}}}}}"
         return (
             safe_answer
