@@ -33,6 +33,10 @@ def test_page_loads_runtime_assets_before_inline_chat_code() -> None:
     assert html.index(script) < html.index("<script>")
     assert 'id="agentRuntimeMode"' not in html
     assert 'id="modelSelector"' in html
+    assert (
+        '/static/agent-runtime.js?v=20260717-upload-file-session'
+        in html
+    )
 
 
 def test_runtime_exports_only_the_agent_chat_mode() -> None:
