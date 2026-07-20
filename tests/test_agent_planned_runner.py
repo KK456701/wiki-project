@@ -750,7 +750,7 @@ def test_empty_final_model_action_is_warning_and_retried_once():
     assert len(adapter.calls) == 2
     executor_nodes = [
         event for event in trace_events
-        if event.get("node_name") == "executor_llm"
+        if event.get("node_name") == "final_answer_llm"
     ]
     assert executor_nodes[0]["status"] == "warning"
     assert executor_nodes[0]["error_code"] == "MODEL_EMPTY_ACTION"

@@ -7,8 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agent_runtime.contracts import AgentRunState
 
 from .contracts import CompiledPlan, PlanCapability
+from .capability_registry import CapabilitySpecRegistry, get_capability_registry
 from .facts import canonical_fact_type
 from .validator import FallbackCategory, PlanValidation
+from .failures import FailureClass, classify_failure
 
 
 class ControllerAction(str, Enum):
@@ -26,18 +28,7 @@ class ControllerDecision(BaseModel):
     code: str = ""
     message: str = ""
     fallback_category: FallbackCategory | None = None
-
-
-CAPABILITY_TOOLS: dict[PlanCapability, tuple[str, ...]] = {
-    PlanCapability.RESOLVE_INDICATOR: ("search_indicator_rules",),
-    PlanCapability.RESOLVE_EFFECTIVE_RULE: ("get_effective_rule",),
-    PlanCapability.INSPECT_IMPLEMENTATION: ("inspect_indicator_implementation",),
-    PlanCapability.PREPARE_VERIFIED_SQL: ("prepare_indicator_sql",),
-    PlanCapability.EXECUTE_TRIAL_RUN: ("trial_run_indicator_sql",),
-    PlanCapability.DIAGNOSE_INDICATOR: ("diagnose_indicator_issue",),
-    PlanCapability.PREVIEW_RULE_CHANGE: ("preview_rule_change",),
-    PlanCapability.ANALYZE_UPLOADED_FILE: ("analyze_uploaded_indicators",),
-}
+    failure_class: FailureClass | None = None
 
 
 def _state_facts(state: AgentRunState, validation: PlanValidation) -> set[str]:
@@ -70,6 +61,9 @@ def _state_facts(state: AgentRunState, validation: PlanValidation) -> set[str]:
 
 
 class AgentStateController:
+    def __init__(self, registry: CapabilitySpecRegistry | None = None) -> None:
+        self.registry = registry or get_capability_registry()
+
     def next_decision(
         self,
         plan: CompiledPlan,
@@ -82,6 +76,7 @@ class AgentStateController:
                 code=validation.code,
                 message=validation.message,
                 fallback_category=validation.fallback_category,
+                failure_class=validation.failure_class,
             )
         blocking = self._blocking_failure(state)
         if blocking is not None:
@@ -94,13 +89,15 @@ class AgentStateController:
                 code="INDICATOR_AMBIGUOUS",
                 message=ambiguity,
                 fallback_category=FallbackCategory.USER_CLARIFICATION,
+                failure_class=classify_failure("INDICATOR_AMBIGUOUS"),
             )
         facts = _state_facts(state, validation)
         for node in plan.nodes:
             capability = node.capability
             if capability is PlanCapability.COMPOSE_ANSWER:
                 continue
-            if self._is_complete(capability, facts):
+            spec = self.registry.get(capability)
+            if spec.verifier(facts, spec):
                 continue
             if capability is PlanCapability.RESOLVE_TIME_RANGE:
                 return ControllerDecision(
@@ -109,11 +106,12 @@ class AgentStateController:
                     code="TIME_RANGE_AMBIGUOUS",
                     message="请明确需要统计的开始时间和结束时间。",
                     fallback_category=FallbackCategory.USER_CLARIFICATION,
+                    failure_class=classify_failure("TIME_RANGE_AMBIGUOUS"),
                 )
             return ControllerDecision(
                 action=ControllerAction.EXECUTE_TOOL,
                 capability=capability,
-                tool_names=list(CAPABILITY_TOOLS.get(capability, ()))[:2],
+                tool_names=[spec.tool_name] if spec.tool_name else [],
                 code="NEXT_CAPABILITY",
             )
         return ControllerDecision(
@@ -165,20 +163,6 @@ class AgentStateController:
                 code=code,
                 message=str(result.get("summary") or "当前执行环境无法继续处理。"),
                 fallback_category=category,
+                failure_class=classify_failure(code),
             )
         return None
-
-    @staticmethod
-    def _is_complete(capability: PlanCapability, facts: set[str]) -> bool:
-        completion_fact = {
-            PlanCapability.RESOLVE_INDICATOR: "rule_identity",
-            PlanCapability.RESOLVE_EFFECTIVE_RULE: "effective_rule",
-            PlanCapability.RESOLVE_TIME_RANGE: "stat_period",
-            PlanCapability.INSPECT_IMPLEMENTATION: "implementation_status",
-            PlanCapability.PREPARE_VERIFIED_SQL: "sql_validation",
-            PlanCapability.EXECUTE_TRIAL_RUN: "trial_run",
-            PlanCapability.DIAGNOSE_INDICATOR: "diagnosis",
-            PlanCapability.PREVIEW_RULE_CHANGE: "rule_change_preview",
-            PlanCapability.ANALYZE_UPLOADED_FILE: "file_analysis",
-        }.get(capability)
-        return completion_fact is None or completion_fact in facts

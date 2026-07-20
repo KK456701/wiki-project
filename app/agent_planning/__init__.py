@@ -17,6 +17,12 @@ from .verifier import EvidenceEnvelope, PlanVerifier, VerificationResult
 from .planner import AgentPlanningError, ModelRequestPlanner, RequestPlanner
 from .runtime import AgentPlanningRuntime, PlanningExecution
 from .replan import ReplanPolicy
+from .failures import FailureClass, classify_failure
+from .capability_registry import (
+    CapabilitySpec,
+    CapabilitySpecRegistry,
+    get_capability_registry,
+)
 
 __all__ = [
     "CompiledPlan",
@@ -46,4 +52,9 @@ __all__ = [
     "AgentPlanningRuntime",
     "PlanningExecution",
     "ReplanPolicy",
+    "FailureClass",
+    "classify_failure",
+    "CapabilitySpec",
+    "CapabilitySpecRegistry",
+    "get_capability_registry",
 ]

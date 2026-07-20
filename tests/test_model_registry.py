@@ -119,7 +119,7 @@ def test_registry_builds_role_specific_qwen8b_adapters_and_timeouts() -> None:
         "ollama-qwen3-8b-thinking", role="planner"
     )
     executor = registry.build_adapter(
-        "ollama-qwen3-8b-thinking", role="executor"
+        "ollama-qwen3-8b-thinking", role="final_answer"
     )
 
     assert info.request_timeout_seconds == 300

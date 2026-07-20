@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from contextvars import ContextVar
 import json
 import logging
 import re
@@ -23,7 +24,7 @@ from app.agent_runtime.prompts import (
     EMPTY_ANSWER_PROMPT,
     EVIDENCE_REQUIRED_PROMPT,
     TRIAL_RUN_REQUIRED_PROMPT,
-    executor_correction,
+    final_answer_correction,
 )
 from app.agent_runtime.response_guard import (
     contains_tool_protocol_markup,
@@ -50,6 +51,10 @@ from app.prompts import prompt_version
 
 
 logger = logging.getLogger("wiki_agent.agent_runtime")
+_ACTIVE_SUBTASK_ID: ContextVar[str] = ContextVar(
+    "agent_active_subtask_id",
+    default="root",
+)
 
 
 def _contains_chinese(text: str) -> bool:
@@ -567,6 +572,33 @@ def _append_trial_detail_export(
     return safe_answer
 
 
+def _verified_final_messages(
+    messages: list[dict[str, Any]],
+    verified_evidence_ids: list[str],
+) -> list[dict[str, Any]]:
+    """Expose successful tool payloads to Final Answer only after verification."""
+    verified = set(verified_evidence_ids)
+    result: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") != "tool":
+            result.append(message)
+            continue
+        try:
+            payload = json.loads(str(message.get("content") or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if payload.get("ok") is not True:
+            continue
+        evidence_ids = {
+            str(value)
+            for value in payload.get("evidence_ids") or []
+            if str(value)
+        }
+        if evidence_ids and evidence_ids.issubset(verified):
+            result.append(message)
+    return result
+
+
 class AgentRunner:
     def __init__(
         self,
@@ -580,6 +612,8 @@ class AgentRunner:
         event_callback: AgentEventCallback | None = None,
         trace_callback: AgentEventCallback | None = None,
         planning_runtime: AgentPlanningRuntime | None = None,
+        compound_concurrency: int = 1,
+        model_provider: str = "ollama",
     ) -> None:
         self.adapter = adapter
         self.registry = registry
@@ -590,11 +624,15 @@ class AgentRunner:
         self.event_callback = event_callback
         self.trace_callback = trace_callback
         self.planning_runtime = planning_runtime
+        self.compound_concurrency = max(1, int(compound_concurrency))
+        self.model_provider = model_provider
+        self.compound_semaphore = asyncio.Semaphore(self.compound_concurrency)
 
     def _trace(self, **payload) -> None:
         if self.trace_callback is None:
             return
         try:
+            payload.setdefault("subtask_id", _ACTIVE_SUBTASK_ID.get())
             self.trace_callback({"event": "trace_node", **payload})
         except Exception:
             return
@@ -621,6 +659,14 @@ class AgentRunner:
         parent.step_count += child.step_count
         parent.messages = child.messages
         parent.evidence.extend(child.evidence)
+        parent.evidence_ids.extend(
+            value for value in child.evidence_ids if value not in parent.evidence_ids
+        )
+        parent.verified_evidence_ids.extend(
+            value
+            for value in child.verified_evidence_ids
+            if value not in parent.verified_evidence_ids
+        )
         parent.last_tool_results.extend(child.last_tool_results)
         parent.tool_result_cache.update(child.tool_result_cache)
         for fingerprint, count in child.tool_call_counts.items():
@@ -713,13 +759,11 @@ class AgentRunner:
             config_data={"splitter": "deterministic_compound_indicator", "max_tasks": 3},
         )
 
-        sections: list[str] = []
-        resolved_rule_ids: list[str] = []
-        stop_reason = "final_answer"
-        model_name: str | None = None
         base_state = self._compound_subtask_state(run_state)
+        subtask_specs = []
         for index, subquery in enumerate(subqueries, start=1):
             child_state = self._compound_subtask_state(base_state)
+            child_state.subtask_id = f"{context.request_id}:subtask:{index}"
             if followup_rule_ids:
                 plan_override = _compound_followup_plan(
                     followup_rule_ids[index - 1],
@@ -746,24 +790,104 @@ class AgentRunner:
                         "description": "把带统一统计周期的结果子句编译为独立指标业务计划，避免省略句依赖 Planner 补全。"
                     },
                     config_data={"planner": "deterministic_compound_result"},
+                    subtask_id=child_state.subtask_id,
                 )
-            child_result = await self._run(
-                subquery,
-                context,
-                child_state,
-                allow_compound=False,
-                forced_time_range=forced_time_range,
-                request_plan_override=plan_override,
+            subtask_specs.append((index, subquery, child_state, plan_override))
+
+        serial_required = any(term in user_message for term in (
+            "上传", "文件对比", "规则变更", "修改口径", "发布", "审批",
+        ))
+        execution_semaphore = (
+            asyncio.Semaphore(1)
+            if serial_required
+            else self.compound_semaphore
+        )
+
+        async def execute_subtask(spec):
+            index, subquery, child_state, plan_override = spec
+            queued_at = time.perf_counter()
+            self._trace(
+                node_name="compound_subtask_queue",
+                node_type="code",
+                status="success",
+                duration_ms=1,
+                input_data={"subquery": subquery, "subtask_index": index},
+                output_data={"concurrency_limit": 1 if serial_required else self.compound_concurrency},
+                processing_data={"description": "子任务进入轻量并发控制队列。"},
+                config_data={"provider": self.model_provider},
+                subtask_id=child_state.subtask_id,
             )
+            async with execution_semaphore:
+                queue_ms = max(0, int((time.perf_counter() - queued_at) * 1000))
+                execute_started = time.perf_counter()
+                try:
+                    result = await self._run(
+                        subquery,
+                        context,
+                        child_state,
+                        allow_compound=False,
+                        forced_time_range=forced_time_range,
+                        request_plan_override=plan_override,
+                    )
+                except asyncio.CancelledError:
+                    child_state.cancelled = True
+                    raise
+                except Exception:
+                    logger.exception("compound subtask failed")
+                    child_state.stop_reason = "tool_error"
+                    result = AgentRunResult(
+                        answer="该指标子任务执行失败，请单独重试。",
+                        stop_reason="tool_error",
+                        state=child_state,
+                    )
+                execute_ms = max(
+                    0, int((time.perf_counter() - execute_started) * 1000)
+                )
+                self._trace(
+                    node_name="compound_subtask_execute",
+                    node_type="code",
+                    status=(
+                        "success"
+                        if result.stop_reason == "final_answer"
+                        else "warning"
+                    ),
+                    duration_ms=execute_ms,
+                    exclusive_duration_ms=0,
+                    input_data={"subquery": subquery, "subtask_index": index},
+                    output_data={
+                        "queue_duration_ms": queue_ms,
+                        "execution_duration_ms": execute_ms,
+                        "stop_reason": result.stop_reason,
+                    },
+                    processing_data={"description": "在隔离子状态中完成子任务执行。"},
+                    config_data={"provider": self.model_provider},
+                    subtask_id=child_state.subtask_id,
+                )
+                return index, result
+
+        completed = await asyncio.gather(
+            *(execute_subtask(spec) for spec in subtask_specs)
+        )
+        completed.sort(key=lambda item: item[0])
+        sections: list[str] = []
+        resolved_rule_ids: list[str] = []
+        model_name: str | None = None
+        successful_count = 0
+        failure_reason = "tool_error"
+        for index, child_result in completed:
             self._merge_compound_subtask_state(run_state, child_result.state)
             if child_result.state.current_rule_id:
                 resolved_rule_ids.append(child_result.state.current_rule_id)
             title = _latest_rule_name(child_result.state) or f"子任务 {index}"
             sections.append(f"## {title}\n\n{child_result.answer}")
-            if child_result.stop_reason != "final_answer":
-                stop_reason = child_result.stop_reason
+            if child_result.stop_reason == "final_answer":
+                successful_count += 1
+            else:
+                failure_reason = child_result.stop_reason
             if child_result.model:
                 model_name = child_result.model
+
+        stop_reason = "final_answer" if successful_count else failure_reason
 
         active_rule_ids = followup_rule_ids or list(dict.fromkeys(resolved_rule_ids))
         run_state.current_rule_ids = active_rule_ids[:3] if len(active_rule_ids) >= 2 else []
@@ -777,6 +901,8 @@ class AgentRunner:
                 "section_count": len(sections),
                 "active_rule_ids": run_state.current_rule_ids,
                 "stop_reason": stop_reason,
+                "successful_subtasks": successful_count,
+                "failed_subtasks": len(completed) - successful_count,
             },
             processing_data={"description": "合并各指标的独立证据回答和明细入口。"},
             config_data={"merger": "deterministic_compound_answer"},
@@ -818,9 +944,16 @@ class AgentRunner:
                         else 1
                     )
                 )
+            # 并发子任务按实际批次数扩展总超时；本地 Ollama 并发为 1，
+            # API 默认并发 2，避免简单地按子任务总数线性放大等待窗口。
+            compound_batches = max(
+                1,
+                (compound_count + self.compound_concurrency - 1)
+                // self.compound_concurrency,
+            )
             result = await asyncio.wait_for(
                 self._run(user_message, context, run_state),
-                timeout=self.request_timeout_seconds * max(1, compound_count),
+                timeout=self.request_timeout_seconds * compound_batches,
             )
         except TimeoutError:
             run_state.stop_reason = "request_timeout"
@@ -868,6 +1001,9 @@ class AgentRunner:
         request_plan_override: RequestPlan | None = None,
     ) -> AgentRunResult:
         turn_tool_results_start = len(run_state.last_tool_results)
+        if not run_state.subtask_id:
+            run_state.subtask_id = context.request_id
+        _ACTIVE_SUBTASK_ID.set(run_state.subtask_id)
         if allow_compound and self.planning_runtime is not None:
             compound_result = await self._run_compound_request(
                 user_message,
@@ -987,8 +1123,8 @@ class AgentRunner:
                         },
                         config_data={
                             "controller": type(self.planning_runtime.controller).__name__,
-                            "prompt_file": "agent_executor_step.txt",
-                            "prompt_version": prompt_version("agent_executor_step"),
+                            "prompt_file": "agent_final_answer_step.txt",
+                            "prompt_version": prompt_version("agent_final_answer_step"),
                         },
                     )
                     if decision.action.value == "fallback":
@@ -1046,7 +1182,8 @@ class AgentRunner:
                                 "context": context.model_dump(mode="json"),
                             },
                             output_data={
-                                "verification": verification.model_dump(mode="json")
+                                "verification": verification.model_dump(mode="json"),
+                                "verified_evidence_ids": verification.verified_evidence_ids,
                             },
                             processing_data={
                                 "description": "校验规则、医院、统计时间和 SQL 证据链一致性。"
@@ -1190,6 +1327,52 @@ class AgentRunner:
                             tool_calls=[direct_call]
                         )
                     else:
+                        if decision.action.value == "compose_answer":
+                            verify_started = time.perf_counter()
+                            verification = self.planning_runtime.verify(
+                                planning_execution, run_state, context
+                            )
+                            self._trace(
+                                node_name="plan_verify",
+                                node_type="code",
+                                status="success" if verification.ok else "failed",
+                                duration_ms=max(1, int((time.perf_counter() - verify_started) * 1000)),
+                                input_data={
+                                    "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
+                                    "evidence_ids": run_state.evidence_ids,
+                                    "context": context.model_dump(mode="json"),
+                                    "subtask_id": run_state.subtask_id,
+                                },
+                                output_data={
+                                    "verification": verification.model_dump(mode="json"),
+                                    "verified_evidence_ids": verification.verified_evidence_ids,
+                                },
+                                processing_data={
+                                    "description": "在生成最终回答前验证证据链，并只开放已验证 Evidence。"
+                                },
+                                config_data={
+                                    "verifier": type(self.planning_runtime.verifier).__name__,
+                                    "verifier_version": getattr(self.planning_runtime.verifier, "version", "unknown"),
+                                },
+                            )
+                            if not verification.ok:
+                                run_state.stop_reason = "tool_error"
+                                return AgentRunResult(
+                                    answer=verification.message,
+                                    stop_reason="tool_error",
+                                    state=run_state,
+                                    model=model_name,
+                                )
+                            if run_state.evidence_ids and not set(run_state.evidence_ids).issubset(
+                                set(run_state.verified_evidence_ids)
+                            ):
+                                run_state.stop_reason = "tool_error"
+                                return AgentRunResult(
+                                    answer="当前证据尚未完成验证，不能生成最终结论。",
+                                    stop_reason="tool_error",
+                                    state=run_state,
+                                    model=model_name,
+                                )
                         available = self.registry.list_for_names(
                             decision.tool_names, context, run_state
                         )
@@ -1206,6 +1389,17 @@ class AgentRunner:
                     response = direct_response
                     empty_model_action = False
                 else:
+                    model_messages = list(run_state.messages)
+                    if (
+                        planning_execution is not None
+                        and decision is not None
+                        and decision.action.value == "compose_answer"
+                        and run_state.evidence_ids
+                    ):
+                        model_messages = _verified_final_messages(
+                            run_state.messages,
+                            run_state.verified_evidence_ids,
+                        )
                     emit_agent_event(
                         self.event_callback,
                         "model_start",
@@ -1215,20 +1409,20 @@ class AgentRunner:
                     )
                     tool_schemas = self.registry.to_ollama_schema(available)
                     model_input = {
-                        "messages": list(run_state.messages),
+                        "messages": model_messages,
                         "tools": tool_schemas,
                         "temperature": 0.0,
                     }
                     model_started = time.perf_counter()
                     try:
                         response = await self.adapter.chat(
-                            messages=run_state.messages,
+                            messages=model_messages,
                             tools=tool_schemas,
                             temperature=0.0,
                         )
                     except AgentModelError as exc:
                         self._trace(
-                            node_name="executor_llm",
+                            node_name="final_answer_llm",
                             node_type="llm",
                             status="failed",
                             duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
@@ -1246,7 +1440,7 @@ class AgentRunner:
                         )
                     except Exception:
                         self._trace(
-                            node_name="executor_llm",
+                            node_name="final_answer_llm",
                             node_type="llm",
                             status="failed",
                             duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
@@ -1267,7 +1461,7 @@ class AgentRunner:
                         not response.content.strip() and not response.tool_calls
                     )
                     self._trace(
-                        node_name="executor_llm",
+                        node_name="final_answer_llm",
                         node_type="llm",
                         status="warning" if empty_model_action else "success",
                         duration_ms=max(1, int((time.perf_counter() - model_started) * 1000)),
@@ -1282,8 +1476,8 @@ class AgentRunner:
                         config_data={
                             "adapter": type(self.adapter).__name__,
                             "step": run_state.step_count,
-                            "prompt_file": "agent_executor.txt",
-                            "prompt_version": prompt_version("agent_executor"),
+                            "prompt_file": "agent_final_answer.txt",
+                            "prompt_version": prompt_version("agent_final_answer"),
                         },
                         error_code=(
                             "MODEL_EMPTY_ACTION" if empty_model_action else ""
@@ -1349,7 +1543,7 @@ class AgentRunner:
                         ):
                             run_state.messages.append({
                                 "role": "system",
-                                "content": executor_correction(
+                                "content": final_answer_correction(
                                     "tool_protocol_forbidden"
                                 ),
                             })
@@ -1380,7 +1574,7 @@ class AgentRunner:
                             run_state.messages.append({
                                 "role": "system",
                                 "content": (
-                                    executor_correction(
+                                    final_answer_correction(
                                         "premature_answer",
                                         tool_names="、".join(decision.tool_names),
                                     )
@@ -1436,35 +1630,6 @@ class AgentRunner:
                                 "content": evidence_correction_prompt(missing),
                             })
                             continue
-                    if planning_execution is not None:
-                        verify_started = time.perf_counter()
-                        verification = self.planning_runtime.verify(
-                            planning_execution, run_state, context
-                        )
-                        self._trace(
-                            node_name="plan_verify",
-                            node_type="code",
-                            status="success" if verification.ok else "failed",
-                            duration_ms=max(1, int((time.perf_counter() - verify_started) * 1000)),
-                            input_data={
-                                "compiled_plan": planning_execution.compiled_plan.model_dump(mode="json"),
-                                "state": run_state.model_dump(mode="json"),
-                                "context": context.model_dump(mode="json"),
-                            },
-                            output_data={"verification": verification.model_dump(mode="json")},
-                            processing_data={
-                                "description": "校验规则、医院、统计时间、SQL 对象和数值证据链一致性。"
-                            },
-                            config_data={"verifier": type(self.planning_runtime.verifier).__name__},
-                        )
-                        if not verification.ok:
-                            run_state.stop_reason = "tool_error"
-                            return AgentRunResult(
-                                answer=verification.message,
-                                stop_reason="tool_error",
-                                state=run_state,
-                                model=model_name,
-                            )
                     self._trace(
                         node_name="response_guard",
                         node_type="code",
@@ -1516,7 +1681,7 @@ class AgentRunner:
                             and run_state.step_count < self.max_steps
                         ):
                             planned_tool_corrections += 1
-                            correction = executor_correction(
+                            correction = final_answer_correction(
                                 "tool_outside_plan",
                                 tool_names="、".join(decision.tool_names),
                             )

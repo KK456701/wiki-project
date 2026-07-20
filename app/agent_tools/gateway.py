@@ -12,6 +12,11 @@ from pydantic import ValidationError
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
 from app.agent_tools.contracts import ToolResult
+from app.agent_evidence import EvidenceLedger
+from app.agent_tools.access_policy import (
+    PolicyDecisionService,
+    ToolExecutionContext,
+)
 from app.agent_tools.policy import (
     RepeatDecision,
     ToolExecutionPolicy,
@@ -21,6 +26,14 @@ from app.agent_tools.registry import ToolRegistry, ToolRegistryError
 
 
 TraceCallback = Callable[[dict[str, Any]], None]
+_DB_READ_TOOLS = {
+    "search_indicator_rules",
+    "get_effective_rule",
+    "inspect_indicator_implementation",
+    "prepare_indicator_sql",
+    "trial_run_indicator_sql",
+    "diagnose_indicator_issue",
+}
 
 
 class ToolGateway:
@@ -29,10 +42,16 @@ class ToolGateway:
         registry: ToolRegistry,
         *,
         policy: ToolExecutionPolicy | None = None,
+        decision_service: PolicyDecisionService | None = None,
+        evidence_ledger: EvidenceLedger | None = None,
+        db_concurrency: int = 2,
         trace_callback: TraceCallback | None = None,
     ) -> None:
         self.registry = registry
         self.policy = policy or ToolExecutionPolicy()
+        self.decision_service = decision_service or PolicyDecisionService()
+        self.evidence_ledger = evidence_ledger
+        self.db_semaphore = asyncio.Semaphore(max(1, int(db_concurrency)))
         self.trace_callback = trace_callback
 
     async def execute(
@@ -52,26 +71,18 @@ class ToolGateway:
                 summary=f"工具不可用：{tool_name}",
             )
 
-        if not tool.required_permissions.issubset(context.permissions):
+        policy_decision = self.decision_service.decide(tool, context, state)
+        if not policy_decision.allowed:
             return ToolResult(
                 ok=False,
-                status="forbidden",
-                code="PERMISSION_DENIED",
-                summary="当前用户没有执行该工具所需的权限。",
+                status=(
+                    "forbidden"
+                    if policy_decision.reason_code == "PERMISSION_DENIED"
+                    else "unavailable"
+                ),
+                code=policy_decision.reason_code,
+                summary=policy_decision.display_message,
             )
-
-        if tool.availability is not None:
-            try:
-                available = bool(tool.availability(context, state))
-            except Exception:
-                available = False
-            if not available:
-                return ToolResult(
-                    ok=False,
-                    status="unavailable",
-                    code="TOOL_UNAVAILABLE",
-                    summary="当前运行状态不允许执行该工具。",
-                )
 
         try:
             arguments = tool.input_model.model_validate(raw_arguments)
@@ -92,6 +103,7 @@ class ToolGateway:
                 result = ToolResult.model_validate(cached)
                 self._emit({
                     "event": "tool_result",
+                    "subtask_id": state.subtask_id or context.request_id,
                     "tool_name": tool.name,
                     "arguments": raw_arguments,
                     "duration_ms": 0,
@@ -108,6 +120,7 @@ class ToolGateway:
             )
             self._emit({
                 "event": "tool_result",
+                "subtask_id": state.subtask_id or context.request_id,
                 "tool_name": tool.name,
                 "arguments": raw_arguments,
                 "duration_ms": 0,
@@ -125,6 +138,7 @@ class ToolGateway:
             )
             self._emit({
                 "event": "tool_result",
+                "subtask_id": state.subtask_id or context.request_id,
                 "tool_name": tool.name,
                 "arguments": raw_arguments,
                 "duration_ms": 0,
@@ -136,17 +150,39 @@ class ToolGateway:
         self._emit(
             {
                 "event": "tool_call",
+                "subtask_id": state.subtask_id or context.request_id,
                 "tool_name": tool.name,
                 "arguments": raw_arguments,
                 "risk_level": tool.risk_level.value,
             }
         )
         started_at = time.perf_counter()
+        execution_context = ToolExecutionContext(
+            agent_context=context,
+            subtask_id=state.subtask_id or context.request_id,
+            run_state=state,
+            policy_decision=policy_decision,
+        )
         try:
-            value = await asyncio.wait_for(
-                self._invoke(tool.handler, arguments, context, state),
-                timeout=tool.timeout_seconds,
-            )
+            async def invoke_tool():
+                return await self._invoke(
+                    tool.handler,
+                    arguments,
+                    execution_context,
+                    state,
+                )
+
+            if tool.name in _DB_READ_TOOLS:
+                async with self.db_semaphore:
+                    value = await asyncio.wait_for(
+                        invoke_tool(),
+                        timeout=tool.timeout_seconds,
+                    )
+            else:
+                value = await asyncio.wait_for(
+                    invoke_tool(),
+                    timeout=tool.timeout_seconds,
+                )
             result = value if isinstance(value, ToolResult) else ToolResult.model_validate(value)
         except TimeoutError:
             result = ToolResult(
@@ -165,9 +201,20 @@ class ToolGateway:
                 retryable=False,
             )
 
+        evidence_ids: list[str] = []
+        if self.evidence_ledger is not None:
+            evidence_ids = self.evidence_ledger.record_tool_result(
+                tool_name=tool.name,
+                arguments=raw_arguments,
+                result=result,
+                context=context,
+                state=state,
+            )
+            result.evidence_ids = evidence_ids
         self._emit(
             {
                 "event": "tool_result",
+                "subtask_id": state.subtask_id or context.request_id,
                 "tool_name": tool.name,
                 "arguments": raw_arguments,
                 "duration_ms": max(
@@ -176,6 +223,8 @@ class ToolGateway:
                 ),
                 "reused": False,
                 "result": result.model_dump(mode="json"),
+                "evidence_ids": evidence_ids,
+                "policy_decision": policy_decision.model_dump(mode="json"),
             }
         )
         state.tool_result_cache[fingerprint] = result.model_dump(mode="json")

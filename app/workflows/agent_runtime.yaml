@@ -3,6 +3,76 @@ name: 工具调用型 Agent 运行链路
 description: 记录从会话读取、业务规划、状态控制、模型执行、工具观察、证据校验到会话保存的真实阶段。
 
 nodes:
+  - id: compound_request_split
+    agent_owner: human_interaction
+    title: 拆分复合指标任务
+    type: code
+    description: 确定性拆分多个指标子任务并解析公共统计周期。
+    inputs: [user_message]
+    outputs: [subqueries]
+    required: false
+    on_failure: stop
+    required_inputs: [user_message]
+    required_outputs: [subqueries]
+    config: {max_tasks: 3}
+    failure_hint: 检查并列指标表达和会话中的复数 rule_id。
+
+  - id: compound_subtask_plan
+    agent_owner: human_interaction
+    title: 编译子任务计划
+    type: code
+    description: 为一个指标子任务生成独立业务计划。
+    inputs: [subquery, subtask_index]
+    outputs: [request_plan]
+    required: false
+    on_failure: stop
+    required_inputs: [subquery]
+    required_outputs: [request_plan]
+    config: {state_scope: child}
+    failure_hint: 检查指标子句和公共统计周期。
+
+  - id: compound_subtask_queue
+    agent_owner: human_interaction
+    title: 子任务排队
+    type: code
+    description: 子任务进入按模型提供方配置的轻量并发队列。
+    inputs: [subquery, subtask_index]
+    outputs: [concurrency_limit]
+    required: false
+    on_failure: stop
+    required_inputs: [subquery]
+    required_outputs: [concurrency_limit]
+    config: {queue: asyncio.Semaphore}
+    failure_hint: 检查并发配置和取消传播。
+
+  - id: compound_subtask_execute
+    agent_owner: human_interaction
+    title: 执行隔离子任务
+    type: code
+    description: 获取并发许可后，在独立 child state 与 Evidence namespace 中执行子任务。
+    inputs: [subquery, subtask_index]
+    outputs: [queue_duration_ms]
+    required: false
+    on_failure: continue
+    required_inputs: [subquery]
+    required_outputs: [queue_duration_ms]
+    config: {state_scope: child, cancellation: propagated}
+    failure_hint: 检查排队耗时、模型超时和局部失败。
+
+  - id: compound_result_merge
+    agent_owner: human_interaction
+    title: 合并复合任务结果
+    type: code
+    description: 按用户输入顺序合并各子任务结果，并保留局部失败。
+    inputs: [subtask_count]
+    outputs: [section_count, stop_reason]
+    required: false
+    on_failure: stop
+    required_inputs: [subtask_count]
+    required_outputs: [section_count]
+    config: {order: user_input}
+    failure_hint: 检查子任务结果数量和顺序。
+
   - id: memory_load
     agent_owner: human_interaction
     title: 读取会话上下文
@@ -87,7 +157,7 @@ nodes:
     config: {implementation: build_deterministic_tool_call, llm_calls: 0}
     failure_hint: 检查 rule_id、统计区间、sql_id 或上传文件编号是否已进入结构化状态。
 
-  - id: executor_llm
+  - id: final_answer_llm
     agent_owner: human_interaction
     title: 生成最终回答
     type: llm
@@ -98,8 +168,36 @@ nodes:
     on_failure: stop
     required_inputs: [messages]
     required_outputs: [content]
-    config: {prompt_file: agent_executor.txt, temperature: 0, tools: none, chain_of_thought: metadata_only}
+    config: {prompt_file: agent_final_answer.txt, temperature: 0, tools: none, chain_of_thought: metadata_only}
     failure_hint: 检查完整 messages、证据、MODEL_EMPTY_ACTION 和模型安全元数据。
+
+  - id: plan_replan
+    agent_owner: human_interaction
+    title: 重新规划业务方向
+    type: code
+    description: 仅在允许的语义方向错误下接受一次替代计划，并保留原计划和失败路径。
+    inputs: [original_plan_id, failure_code, failure_reason, known_facts]
+    outputs: [compiled_plan, replan_count]
+    required: false
+    on_failure: stop
+    required_inputs: [original_plan_id, failure_code]
+    required_outputs: [compiled_plan]
+    config: {max_replan_count: 1}
+    failure_hint: 检查 FailureClass 是否允许 Replan，以及新计划是否重复旧失败指纹。
+
+  - id: executor_llm
+    agent_owner: human_interaction
+    title: 生成最终回答（历史节点）
+    type: llm
+    description: 兼容升级前 Trace；语义等同 final_answer_llm，不再用于新运行。
+    inputs: [messages, temperature]
+    outputs: [content, usage]
+    required: false
+    on_failure: stop
+    required_inputs: [messages]
+    required_outputs: []
+    config: {legacy_alias_of: final_answer_llm}
+    failure_hint: 按 final_answer_llm 的方式排查历史记录。
 
   - id: tool_gateway
     agent_owner: human_interaction

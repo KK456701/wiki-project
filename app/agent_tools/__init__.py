@@ -7,6 +7,7 @@ from .diagnosis_tools import (
     diagnose_indicator_issue,
 )
 from .gateway import ToolGateway
+from .access_policy import PolicyDecision, PolicyDecisionService, ToolExecutionContext
 from .policy import RepeatDecision, ToolExecutionPolicy, redact_payload, tool_call_fingerprint
 from .preview_tools import (
     CreateIndicatorDraftInput,
@@ -66,13 +67,18 @@ __all__ = [
     "SqlToolServices",
     "ToolEvidence",
     "ToolGateway",
+    "PolicyDecision",
+    "PolicyDecisionService",
+    "ToolExecutionContext",
     "ToolExecutionPolicy",
     "ToolRegistry",
     "ToolRegistryError",
     "ToolResult",
     "ToolRiskLevel",
-    "TrialRunIndicatorSqlInput",    "UploadToolServices",
-    "AnalyzeUploadedIndicatorsInput",    "build_read_tool_registry",
+    "TrialRunIndicatorSqlInput",
+    "UploadToolServices",
+    "AnalyzeUploadedIndicatorsInput",
+    "build_read_tool_registry",
     "build_read_tools",
     "build_agent_tool_registry",
     "build_diagnosis_tools",

@@ -87,6 +87,18 @@ agent_default_tool_timeout_seconds: 30
 agent_max_tool_result_chars: 12000
 agent_sql_ttl_minutes: 30
 
+# Agent Trace 保留、慢请求和轻量性能提示阈值。
+agent_trace_retention_days: 30
+agent_trace_slow_request_ms: 120000
+agent_trace_slow_llm_ms: 60000
+agent_trace_tool_failure_warning_rate: 0.05
+agent_trace_timeout_warning_rate: 0.05
+
+# 复合指标子任务并发。Ollama 默认串行，API 与只读 DB 查询最多并发 2。
+compound_api_concurrency: 2
+compound_ollama_concurrency: 1
+compound_db_concurrency: 2
+
 # 工具调用型 Agent 可用模型列表。不配置 models 时会自动回退到上方 Ollama 配置。
 models:
   - id: "ollama-qwen3"

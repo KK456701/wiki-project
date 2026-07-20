@@ -10,6 +10,7 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
+from app.agent_tools.access_policy import ToolExecutionContext
 
 
 class ToolRiskLevel(str, Enum):
@@ -50,11 +51,15 @@ class ToolResult(ToolContract):
     summary: str
     data: dict[str, Any] = Field(default_factory=dict)
     evidence: list[ToolEvidence] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     retryable: bool = False
 
 
-ToolHandler = Callable[[BaseModel, AgentRuntimeContext, AgentRunState], Any]
+ToolHandler = Callable[
+    [BaseModel, AgentRuntimeContext | ToolExecutionContext, AgentRunState],
+    Any,
+]
 ToolAvailability = Callable[[AgentRuntimeContext, AgentRunState], bool]
 
 

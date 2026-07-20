@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from pydantic import ValidationError
 
 from app.agent_planning import (
+    CapabilitySpec,
+    CapabilitySpecRegistry,
     PlanCapability,
     PlanCompiler,
     RequestPlan,
@@ -59,7 +63,10 @@ def test_trial_run_plan_is_compiled_from_business_goal():
         "sql_validation",
         "trial_run",
     }
-    assert all("tool" not in node.model_dump() for node in compiled.nodes)
+    assert compiled.schema_version == "compiled-plan-ir-v1"
+    assert compiled.capability_registry_version == "capability-registry-v1"
+    assert compiled.nodes[0].tool_name == "search_indicator_rules"
+    assert compiled.nodes[-1].tool_name is None
 
 
 def test_rule_explanation_plan_does_not_compile_sql_steps():
@@ -144,3 +151,75 @@ def test_upload_and_system_comparison_compiles_both_evidence_chains():
         PlanCapability.COMPOSE_ANSWER,
     ]
     assert {"file_analysis", "trial_run"} <= compiled.required_facts
+
+
+def _capability_spec(capability, *, requires=(), produces=(), tool_name=None):
+    return CapabilitySpec(
+        capability=capability,
+        version="test-v1",
+        requires=frozenset(requires),
+        produces=frozenset(produces),
+        tool_name=tool_name,
+        policy_action="test",
+        argument_compiler=(lambda execution, state, message: {}) if tool_name else None,
+        verifier_name="fact_present",
+        verifier=lambda facts, spec: True,
+        retry_policy="none",
+        answer_mode="evidence_only",
+        completion_fact=None,
+    )
+
+
+def test_capability_registry_rejects_dependency_cycle():
+    with pytest.raises(ValueError, match="dependency cycle"):
+        CapabilitySpecRegistry([
+            _capability_spec(
+                PlanCapability.RESOLVE_INDICATOR,
+                requires={"fact_b"},
+                produces={"fact_a"},
+            ),
+            _capability_spec(
+                PlanCapability.RESOLVE_EFFECTIVE_RULE,
+                requires={"fact_a"},
+                produces={"fact_b"},
+            ),
+        ])
+
+
+def test_capability_registry_rejects_duplicate_fact_producer():
+    with pytest.raises(ValueError, match="duplicate Fact Producer"):
+        CapabilitySpecRegistry([
+            _capability_spec(
+                PlanCapability.RESOLVE_INDICATOR,
+                produces={"same_fact"},
+            ),
+            _capability_spec(
+                PlanCapability.RESOLVE_EFFECTIVE_RULE,
+                produces={"same_fact"},
+            ),
+        ])
+
+
+def test_capability_registry_rejects_unknown_tool_at_startup():
+    registry = CapabilitySpecRegistry([
+        _capability_spec(
+            PlanCapability.RESOLVE_INDICATOR,
+            produces={"rule_identity"},
+            tool_name="missing_tool",
+        ),
+    ])
+
+    with pytest.raises(ValueError, match="unknown tool"):
+        registry.validate({"search_indicator_rules"})
+
+
+def test_capability_registry_rejects_unknown_verifier():
+    invalid = _capability_spec(
+        PlanCapability.RESOLVE_INDICATOR,
+        produces={"rule_identity"},
+    )
+
+    with pytest.raises(ValueError, match="unknown verifier"):
+        CapabilitySpecRegistry([
+            replace(invalid, verifier_name="missing_verifier")
+        ])

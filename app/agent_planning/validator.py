@@ -6,6 +6,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict
 
 from .contracts import PlanIntent, RequestPlan, RequestedOutput
+from .failures import FailureClass, classify_failure
 from .time_resolver import ResolvedTimeRange, TimeRangeResolver
 
 
@@ -26,6 +27,7 @@ class PlanValidation(BaseModel):
     message: str = ""
     resolved_time: ResolvedTimeRange | None = None
     fallback_category: FallbackCategory | None = None
+    failure_class: FailureClass | None = None
 
 
 class PlanValidator:
@@ -40,6 +42,7 @@ class PlanValidator:
                 code="PATIENT_DETAIL_FORBIDDEN",
                 message="当前 Agent 不允许访问或返回患者明细。",
                 fallback_category=FallbackCategory.SECURITY_DENIAL,
+                failure_class=classify_failure("PATIENT_DETAIL_FORBIDDEN"),
             )
         outputs = set(plan.requested_outputs)
         needs_database = RequestedOutput.TRIAL_RESULT in outputs
@@ -56,6 +59,7 @@ class PlanValidator:
                 code="DATABASE_ACCESS_CONFLICT",
                 message="实际指标结果需要执行医院业务库只读聚合查询。",
                 fallback_category=FallbackCategory.BUSINESS_CONFIRMATION,
+                failure_class=classify_failure("DATABASE_ACCESS_CONFLICT"),
             )
         if needs_database and not (
             plan.target_indicator.raw_name or plan.target_indicator.rule_id
@@ -65,6 +69,7 @@ class PlanValidator:
                 code="TARGET_INDICATOR_AMBIGUOUS",
                 message="请明确需要查询或对比的本院指标名称。",
                 fallback_category=FallbackCategory.USER_CLARIFICATION,
+                failure_class=classify_failure("TARGET_INDICATOR_AMBIGUOUS"),
             )
         resolved_time = None
         if needs_time_range:
@@ -75,6 +80,7 @@ class PlanValidator:
                     code="TIME_RANGE_AMBIGUOUS",
                     message="请明确需要统计的开始时间和结束时间。",
                     fallback_category=FallbackCategory.USER_CLARIFICATION,
+                    failure_class=classify_failure("TIME_RANGE_AMBIGUOUS"),
                 )
         return PlanValidation(
             ok=True,

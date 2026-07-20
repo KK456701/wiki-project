@@ -5,7 +5,7 @@ def test_agent_runtime_trace_manifest_is_valid() -> None:
     result = validate_workflow_manifest("agent_runtime")
 
     assert result["ok"] is True
-    assert result["node_count"] == 12
+    assert result["node_count"] == 19
 
 
 def test_agent_runtime_manifest_separates_dispatch_from_final_answer_model() -> None:
@@ -24,7 +24,7 @@ def test_agent_runtime_manifest_separates_dispatch_from_final_answer_model() -> 
     )
     executor = annotate_trace_node(
         {
-            "node_name": "executor_llm",
+            "node_name": "final_answer_llm",
             "input_data": {"messages": []},
             "output_data": {"content": "回答"},
         },

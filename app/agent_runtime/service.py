@@ -14,7 +14,7 @@ from app.agent_runtime.memory import AgentConversationMemory
 from app.agent_runtime.events import public_agent_event
 from app.agent_runtime.model_adapter import AgentModelError
 from app.agent_runtime.tracing import AgentTraceBridge
-from app.config import get_bool, get_int
+from app.config import get, get_bool, get_int
 from app.hospital_auth.models import (
     DETAIL_EXPORT_PERMISSION,
     DETAIL_VIEW_PERMISSION,
@@ -342,6 +342,52 @@ class AgentRuntimeService:
             raise AgentRunAccessError("无权查看其他医院的 Agent 运行记录。", 403)
         return trace
 
+    def list_runs(
+        self,
+        principal: HospitalPrincipal,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        items = self.trace_recorder_factory().list_runs(
+            hospital_id=principal.hospital_id,
+            **filters,
+        )
+        return {"hospital_id": principal.hospital_id, "items": items}
+
+    def run_metrics(
+        self,
+        principal: HospitalPrincipal,
+        **filters: Any,
+    ) -> dict[str, Any]:
+        result = self.trace_recorder_factory().metrics(
+            hospital_id=principal.hospital_id,
+            **filters,
+        )
+        slow_request_ms = max(1, get_int("agent_trace_slow_request_ms", 120000))
+        slow_llm_ms = max(1, get_int("agent_trace_slow_llm_ms", 60000))
+        tool_warning = float(get("agent_trace_tool_failure_warning_rate", 0.05))
+        timeout_warning = float(get("agent_trace_timeout_warning_rate", 0.05))
+        warnings = []
+        if int((result.get("latency_ms") or {}).get("p95") or 0) > slow_request_ms:
+            warnings.append({"code": "P95_ABOVE_BASELINE", "message": "p95 请求耗时超过配置阈值。"})
+        for item in result.get("tools") or []:
+            calls = int(item.get("calls") or 0)
+            if calls and int(item.get("failures") or 0) / calls > tool_warning:
+                warnings.append({"code": "TOOL_FAILURE_RATE_HIGH", "message": f"工具 {item.get('tool_name')} 失败率偏高。"})
+        for item in result.get("models") or []:
+            calls = int(item.get("calls") or 0)
+            if calls and int(item.get("timeouts") or 0) / calls > timeout_warning:
+                warnings.append({"code": "MODEL_TIMEOUT_RATE_HIGH", "message": f"模型 {item.get('model_id')} 超时率偏高。"})
+            if calls and int(item.get("duration_ms") or 0) / calls > slow_llm_ms:
+                warnings.append({"code": "MODEL_SLOW", "message": f"模型 {item.get('model_id')} 平均耗时超过配置阈值。"})
+        result["warnings"] = warnings
+        result["thresholds"] = {
+            "slow_request_ms": slow_request_ms,
+            "slow_llm_ms": slow_llm_ms,
+            "tool_failure_warning_rate": tool_warning,
+            "timeout_warning_rate": timeout_warning,
+        }
+        return result
+
     def _make_runner(self, event_callback, *, model_id: str | None = None):
         try:
             try:
@@ -369,9 +415,25 @@ class AgentRuntimeService:
         from app.db.engine import create_runtime_engine
         from app.llm.model_registry import get_model_registry
         from app.agent_planning import AgentPlanningRuntime, ModelRequestPlanner
+        from app.agent_evidence import (
+            EvidenceLedger,
+            EvidenceStore,
+            ensure_evidence_schema,
+        )
+        from app.agent_planning import PlanVerifier
 
         engine = create_runtime_engine()
         ensure_agent_sql_object_schema(engine)
+        # Evidence 的 MySQL 表不可用时由 EvidenceStore 自动降级到 JSONL，
+        # 因此建表失败不能阻止 Agent 启动。
+        try:
+            ensure_evidence_schema(engine)
+        except Exception:
+            pass
+        evidence_ledger = EvidenceLedger(
+            EvidenceStore(engine),
+            ttl_days=max(1, get_int("agent_trace_retention_days", 30)),
+        )
         business_db = create_business_db_client()
         orchestrator = _create_agent_orchestrator(
             runtime_engine=engine,
@@ -414,12 +476,20 @@ class AgentRuntimeService:
                 detail_loader=load_system_details,
             ),
         )
-        gateway = ToolGateway(registry, trace_callback=event_callback)
+        from app.agent_planning import get_capability_registry
+
+        get_capability_registry().validate({tool.name for tool in registry.all()})
+        gateway = ToolGateway(
+            registry,
+            evidence_ledger=evidence_ledger,
+            db_concurrency=max(1, get_int("compound_db_concurrency", 2)),
+            trace_callback=event_callback,
+        )
         model_registry = get_model_registry()
         selected_model_id = model_id or self.model
         model_info = model_registry.get_model(selected_model_id)
         adapter = model_registry.build_adapter(
-            selected_model_id, role="executor"
+            selected_model_id, role="final_answer"
         )
         planner_adapter = model_registry.build_adapter(
             selected_model_id, role="planner"
@@ -429,6 +499,7 @@ class AgentRuntimeService:
                 planner=ModelRequestPlanner(
                     planner_adapter, trace_callback=event_callback
                 ),
+                verifier=PlanVerifier(evidence_ledger=evidence_ledger),
                 event_callback=event_callback,
             )
             if self.planning_enabled
@@ -445,6 +516,12 @@ class AgentRuntimeService:
             event_callback=event_callback,
             trace_callback=event_callback,
             planning_runtime=planning_runtime,
+            compound_concurrency=(
+                max(1, get_int("compound_ollama_concurrency", 1))
+                if model_info.provider == "ollama"
+                else max(1, get_int("compound_api_concurrency", 2))
+            ),
+            model_provider=model_info.provider,
         )
 
     @staticmethod
@@ -452,7 +529,10 @@ class AgentRuntimeService:
         from app.db.engine import create_runtime_engine
         from app.observability.trace import TraceRecorder
 
-        return TraceRecorder(create_runtime_engine())
+        return TraceRecorder(
+            create_runtime_engine(),
+            retention_days=max(1, get_int("agent_trace_retention_days", 30)),
+        )
 
     @staticmethod
     def _build_memory() -> AgentConversationMemory:

@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from app.agent_runtime.prompts import executor_correction
+from app.agent_runtime.prompts import final_answer_correction
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +144,7 @@ def evidence_correction_prompt(missing: set[str]) -> str:
         if fact_type in missing
     ]
     joined = "、".join(labels) or "对应工具"
-    return executor_correction(
+    return final_answer_correction(
         "missing_evidence",
         evidence_labels=joined,
     )

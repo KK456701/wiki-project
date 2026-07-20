@@ -145,7 +145,7 @@ class ModelRegistry:
         self,
         model_id: str | None = None,
         *,
-        role: Literal["planner", "executor"] = "executor",
+        role: Literal["planner", "final_answer", "executor"] = "final_answer",
     ) -> AgentModelAdapter:
         info = self.get_model(model_id)
         if info.provider == "ollama":

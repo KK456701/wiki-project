@@ -544,6 +544,7 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 <link rel="stylesheet" href="/static/indicator-details.css?v=20260717-upload-comparison" />
 <link rel="stylesheet" href="/static/diagnosis-details.css" />
 <link rel="stylesheet" href="/static/agent-runtime.css?v=20260717-full-trace" />
+<link rel="stylesheet" href="/static/agent-observability.css?v=20260720-lightweight" />
 </head>
 <body>
 
@@ -600,6 +601,10 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
     <button class="workbench-nav-item" type="button" data-workbench-route="monitoring" title="指标运算监控">
       <span class="workbench-nav-index">监控</span>
       <span>指标运算监控</span>
+    </button>
+    <button class="workbench-nav-item" type="button" data-workbench-route="agent-observability" title="Agent 运行观察">
+      <span class="workbench-nav-index">链路</span>
+      <span>Agent 运行观察</span>
     </button>
     <button class="workbench-nav-item" type="button" data-workbench-route="metadata" title="数据库与元数据">
       <span class="workbench-nav-index">数据</span>
@@ -1002,6 +1007,36 @@ button:disabled { background: #879995; cursor: wait; transform: none; }
 </div>
 
 <!-- 指标运算监控正式页面：由 workbench.js 挂载到主工作区 -->
+<section id="agentObservabilityPage" class="workbench-page agent-observability-page" data-route="agent-observability" aria-labelledby="agentObservabilityTitle" hidden>
+  <header class="agent-observability-header">
+    <div>
+      <span>同医院安全运行摘要</span>
+      <h2 id="agentObservabilityTitle">Agent 运行观察</h2>
+      <p>查看耗时、失败、工具与模型表现；不展示完整上下文或患者数据。</p>
+    </div>
+    <button id="agentObservabilityRefresh" class="ghost" type="button">刷新</button>
+  </header>
+  <div class="agent-observability-filters">
+    <label>开始日期<input id="agentObservationStart" type="date" /></label>
+    <label>结束日期<input id="agentObservationEnd" type="date" /></label>
+    <label>状态<select id="agentObservationStatus"><option value="">全部</option><option value="success">成功</option><option value="failed">未完成</option></select></label>
+    <label>模型<select id="agentObservationModel"><option value="">全部模型</option></select></label>
+    <label>工具<input id="agentObservationTool" type="search" placeholder="例如 trial_run_indicator_sql" /></label>
+    <label>失败分类<select id="agentObservationFailure"><option value="">全部分类</option><option value="semantic_plan_error">语义计划</option><option value="task_type_error">任务类型</option><option value="user_clarification_required">待用户澄清</option><option value="database_error">数据库</option><option value="permission_error">权限</option><option value="object_expired">对象过期</option><option value="evidence_conflict">Evidence 冲突</option><option value="tool_error">工具</option></select></label>
+  </div>
+  <div id="agentObservationWarnings" class="agent-observation-warnings" hidden></div>
+  <section id="agentObservationMetrics" class="agent-observation-metrics" aria-label="运行指标"></section>
+  <section class="agent-observation-chart" aria-labelledby="agentObservationTrendTitle">
+    <div class="agent-observation-section-head"><h3 id="agentObservationTrendTitle">Planner 与 Final Answer 耗时趋势</h3><span>毫秒</span></div>
+    <svg id="agentObservationTrend" role="img" aria-label="Planner 与最终回答耗时趋势图"></svg>
+  </section>
+  <div class="agent-observation-tables">
+    <section><div class="agent-observation-section-head"><h3>工具表现</h3><span>调用 / 失败 / 耗时</span></div><div id="agentObservationTools"></div></section>
+    <section><div class="agent-observation-section-head"><h3>模型表现</h3><span>Token / 超时 / 耗时</span></div><div id="agentObservationModels"></div></section>
+  </div>
+  <section class="agent-observation-runs"><div class="agent-observation-section-head"><h3>最近运行</h3><span>点击查看单轮链路</span></div><div id="agentObservationRuns"></div></section>
+</section>
+
 <section id="monitoringPage" class="workbench-page" data-route="monitoring" aria-labelledby="monitoringTitle" hidden>
   <div class="monitoring-page-surface">
     <header class="monitoring-page-header">
@@ -1944,7 +1979,9 @@ function appendTraceJsonDisclosure(parent, node) {
 
 function renderTraceTimingSummary(nodes, totalDurationMs) {
   var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
-  var recordedStageMs = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
+  var recordedStageMs = timedNodes.reduce(function(sum, node) {
+    return sum + Number(node.exclusive_duration_ms == null ? node.duration_ms || 0 : node.exclusive_duration_ms);
+  }, 0);
   var slowest = timedNodes.reduce(function(current, node) {
     if (!current || Number(node.duration_ms || 0) > Number(current.duration_ms || 0)) return node;
     return current;
@@ -1968,6 +2005,28 @@ function renderTraceTimingSummary(nodes, totalDurationMs) {
   recorded.className = "review-meta";
   recorded.textContent = "已记录阶段耗时：" + formatTraceDuration(recordedStageMs);
   box.appendChild(recorded);
+  var typeTotals = {llm: 0, tool: 0, code: 0, storage: 0};
+  var tokens = {input: 0, output: 0, calls: 0};
+  nodes.forEach(function(node) {
+    var type = traceNodeType(node);
+    typeTotals[type] += Number(node.exclusive_duration_ms == null ? node.duration_ms || 0 : node.exclusive_duration_ms);
+    if (type === "llm") {
+      tokens.calls += 1;
+      tokens.input += Number(node.input_tokens || 0);
+      tokens.output += Number(node.output_tokens || 0);
+    }
+  });
+  var breakdown = document.createElement("div");
+  breakdown.className = "trace-timing-breakdown";
+  [["LLM", typeTotals.llm], ["工具", typeTotals.tool], ["代码", typeTotals.code], ["存储", typeTotals.storage]].forEach(function(item) {
+    var value = document.createElement("span");
+    value.textContent = item[0] + " " + formatTraceDuration(item[1]);
+    breakdown.appendChild(value);
+  });
+  var tokenValue = document.createElement("span");
+  tokenValue.textContent = "模型调用 " + tokens.calls + " 次 · Token " + tokens.input + " / " + tokens.output;
+  breakdown.appendChild(tokenValue);
+  box.appendChild(breakdown);
   if (slowest) {
     var slow = document.createElement("div");
     slow.className = "review-meta";
@@ -1984,10 +2043,104 @@ function traceDurationPercent(durationMs, totalDurationMs) {
   return Math.min(100, Math.round(duration / total * 1000) / 10);
 }
 
+function renderTraceFilters(nodes) {
+  var controls = document.createElement("div");
+  controls.className = "trace-filter-controls";
+  var options = [
+    ["all", "全部节点"], ["llm", "LLM"], ["tool", "工具"],
+    ["code", "代码"], ["storage", "存储"], ["failed", "失败 / 告警"]
+  ];
+  options.forEach(function(option, index) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost trace-filter" + (index === 0 ? " active" : "");
+    button.textContent = option[1];
+    button.setAttribute("aria-pressed", index === 0 ? "true" : "false");
+    button.addEventListener("click", function() {
+      controls.querySelectorAll(".trace-filter").forEach(function(item) {
+        var active = item === button;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      traceNodeList.querySelectorAll(".trace-node").forEach(function(card) {
+        card.hidden = option[0] !== "all"
+          && (option[0] === "failed"
+            ? card.dataset.status === "success"
+            : card.dataset.nodeType !== option[0]);
+      });
+    });
+    controls.appendChild(button);
+  });
+  return controls;
+}
+
+function renderTraceCallTree(nodes) {
+  var section = document.createElement("section");
+  section.className = "trace-call-tree";
+  var heading = document.createElement("strong");
+  heading.textContent = "父子调用树";
+  section.appendChild(heading);
+  var children = {};
+  var knownNodeIds = {};
+  nodes.forEach(function(node) { if (node.node_id) knownNodeIds[node.node_id] = true; });
+  nodes.forEach(function(node) {
+    var parent = node.parent_node_id && knownNodeIds[node.parent_node_id]
+      ? node.parent_node_id : "root";
+    (children[parent] || (children[parent] = [])).push(node);
+  });
+  function appendBranch(parentId, parent, depth) {
+    (children[parentId] || []).forEach(function(node) {
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "trace-tree-row trace-type-" + traceNodeType(node);
+      row.style.setProperty("--trace-tree-depth", Math.min(depth, 8));
+      row.textContent = (node.node_title || node.node_name) + " · " + formatTraceDuration(node.duration_ms);
+      row.addEventListener("click", function() {
+        var target = document.getElementById("trace-node-" + node.node_id);
+        if (target) target.scrollIntoView({behavior: "smooth", block: "center"});
+      });
+      parent.appendChild(row);
+      appendBranch(node.node_id, parent, depth + 1);
+    });
+  }
+  appendBranch("root", section, 0);
+  return section;
+}
+
+function renderTraceVersions(data) {
+  var versions = data.versions || {};
+  var section = document.createElement("section");
+  section.className = "trace-version-strip";
+  [["IR", versions.ir], ["Capability", versions.capability], ["Prompt", versions.prompt], ["模型", versions.model], ["Verifier", versions.verifier]].forEach(function(item) {
+    var value = Array.isArray(item[1]) ? item[1].join("、") : "";
+    if (!value) return;
+    var span = document.createElement("span");
+    span.textContent = item[0] + "：" + value;
+    section.appendChild(span);
+  });
+  (data.evidence_ids || []).forEach(function(evidenceId) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost trace-evidence-link";
+    button.textContent = evidenceId;
+    button.addEventListener("click", function() {
+      var target = nodesForTraceView.find(function(node) {
+        return JSON.stringify(node.output_data || {}).indexOf(evidenceId) >= 0;
+      });
+      var element = target && document.getElementById("trace-node-" + target.node_id);
+      if (element) element.scrollIntoView({behavior: "smooth", block: "center"});
+    });
+    section.appendChild(button);
+  });
+  return section;
+}
+
+var nodesForTraceView = [];
+
 function renderTraceTimeline(nodes, totalDurationMs) {
-  var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) > 0; });
-  var fallbackTotal = timedNodes.reduce(function(sum, node) { return sum + Number(node.duration_ms || 0); }, 0);
-  var total = Number(totalDurationMs || 0) || fallbackTotal;
+  var timedNodes = nodes.filter(function(node) { return Number(node.duration_ms || 0) >= 0; });
+  var fallbackTotal = timedNodes.reduce(function(max, node) { return Math.max(max, Number(node.started_offset_ms || 0) + Number(node.duration_ms || 0)); }, 0);
+  var total = Number(totalDurationMs || 0) || fallbackTotal || 1;
   var slowest = timedNodes.reduce(function(current, node) {
     return !current || Number(node.duration_ms || 0) > Number(current.duration_ms || 0) ? node : current;
   }, null);
@@ -1996,35 +2149,44 @@ function renderTraceTimeline(nodes, totalDurationMs) {
   var head = document.createElement("div");
   head.className = "trace-timeline-head";
   var heading = document.createElement("strong");
-  heading.textContent = "阶段时间轴";
+  heading.textContent = "阶段瀑布与子任务泳道";
   var totalLabel = document.createElement("span");
   totalLabel.className = "review-meta";
   totalLabel.textContent = "总耗时 " + formatTraceDuration(total);
   head.append(heading, totalLabel);
   var list = document.createElement("div");
-  list.className = "trace-timeline-list";
+  list.className = "trace-waterfall";
+  var lanes = {};
   timedNodes.forEach(function(node) {
-    var percent = traceDurationPercent(node.duration_ms, total);
-    var item = document.createElement("div");
-    item.className = "trace-timeline-item" + (node === slowest ? " slowest" : "");
+    var lane = node.subtask_id || "root";
+    (lanes[lane] || (lanes[lane] = [])).push(node);
+  });
+  Object.keys(lanes).forEach(function(lane) {
+    var row = document.createElement("div");
+    row.className = "trace-waterfall-lane";
     var label = document.createElement("div");
-    label.className = "trace-timeline-label";
-    var name = document.createElement("span");
-    name.className = "trace-timeline-name";
-    name.textContent = (node.node_title || node.node_name || "未知节点") + (node === slowest ? " · 最慢" : "");
-    name.title = node.node_title || node.node_name || "未知节点";
-    var value = document.createElement("span");
-    value.className = "trace-timeline-value";
-    value.textContent = formatTraceDuration(node.duration_ms) + " · " + percent + "%";
+    label.className = "trace-waterfall-lane-label";
+    label.textContent = lane === "root" ? "主任务" : lane;
     var track = document.createElement("div");
-    track.className = "trace-duration-track";
-    var bar = document.createElement("div");
-    bar.className = "trace-duration-bar";
-    bar.style.width = percent + "%";
-    track.appendChild(bar);
-    label.append(name, value);
-    item.append(label, track);
-    list.appendChild(item);
+    track.className = "trace-waterfall-track";
+    lanes[lane].forEach(function(node) {
+      var mark = document.createElement("button");
+      mark.type = "button";
+      mark.className = "trace-waterfall-mark trace-type-" + traceNodeType(node) + (node === slowest ? " slowest" : "");
+      var markLeft = Math.min(99.4, Number(node.started_offset_ms || 0) / total * 100);
+      var markWidth = Math.min(100 - markLeft, Math.max(.6, Number(node.duration_ms || 0) / total * 100));
+      mark.style.left = markLeft + "%";
+      mark.style.width = markWidth + "%";
+      mark.setAttribute("aria-label", (node.node_title || node.node_name) + "，" + formatTraceDuration(node.duration_ms));
+      mark.textContent = Number(node.duration_ms || 0) / total > .08 ? (node.node_title || node.node_name) : "";
+      mark.addEventListener("click", function() {
+        var target = document.getElementById("trace-node-" + node.node_id);
+        if (target) target.scrollIntoView({behavior: "smooth", block: "center"});
+      });
+      track.appendChild(mark);
+    });
+    row.append(label, track);
+    list.appendChild(row);
   });
   timeline.append(head, list);
   if (slowest) {
@@ -2052,15 +2214,22 @@ async function showTrace(traceId) {
     if (!resp.ok) throw new Error(data.detail || "链路加载失败");
     traceNodeList.innerHTML = "";
     var nodes = data.nodes || [];
+    nodesForTraceView = nodes;
     if (!nodes.length) { traceNodeList.textContent = "暂无节点记录。"; return; }
     traceNodeList.appendChild(renderTraceLegend());
     traceNodeList.appendChild(renderTraceTimingSummary(nodes, data.duration_ms));
+    traceNodeList.appendChild(renderTraceFilters(nodes));
     traceNodeList.appendChild(renderTraceTimeline(nodes, data.duration_ms));
+    traceNodeList.appendChild(renderTraceCallTree(nodes));
+    traceNodeList.appendChild(renderTraceVersions(data));
     nodes.forEach(function(node, index) {
       var box = document.createElement("div");
       var visualStatus = traceNodeVisualStatus(node);
       var nodeType = traceNodeType(node);
       box.className = "review-item trace-node trace-type-" + nodeType + " " + visualStatus;
+      box.id = "trace-node-" + node.node_id;
+      box.dataset.nodeType = nodeType;
+      box.dataset.status = visualStatus || node.status || "unknown";
       var nodeHealthy = visualStatus === "success" && node.contract_status === "ok";
       var titleRow = document.createElement("div");
       titleRow.className = "trace-title-row";
@@ -2092,6 +2261,24 @@ async function showTrace(traceId) {
       var typeBadge = document.createElement("span");
       typeBadge.className = "trace-type-badge trace-type-" + nodeType;
       typeBadge.textContent = traceNodeTypeLabel(nodeType);
+      if (node.cache_reused) {
+        var cacheBadge = document.createElement("span");
+        cacheBadge.className = "trace-runtime-badge";
+        cacheBadge.textContent = "缓存复用";
+        actions.appendChild(cacheBadge);
+      }
+      if (Number(node.retry_count || 0) > 0) {
+        var retryBadge = document.createElement("span");
+        retryBadge.className = "trace-runtime-badge";
+        retryBadge.textContent = "重试 " + node.retry_count;
+        actions.appendChild(retryBadge);
+      }
+      if (nodeType === "llm" && (node.input_tokens != null || node.output_tokens != null)) {
+        var tokenBadge = document.createElement("span");
+        tokenBadge.className = "trace-runtime-badge";
+        tokenBadge.textContent = "Token " + Number(node.input_tokens || 0) + " / " + Number(node.output_tokens || 0);
+        actions.appendChild(tokenBadge);
+      }
       if (!nodeHealthy && node.status === "success") {
         var contractWarning = document.createElement("span");
         contractWarning.className = "trace-status";
@@ -3136,6 +3323,7 @@ document.querySelectorAll("[data-close]").forEach(function(el) {
 <script src="/static/metadata.js"></script>
 <script src="/static/terminology.js"></script>
 <script src="/static/package-exchange.js?v=20260714-implementation-console"></script>
+<script src="/static/agent-observability.js?v=20260720-lightweight"></script>
 <script src="/static/workbench.js?v=20260714-implementation-console"></script>
 </body>
 </html>

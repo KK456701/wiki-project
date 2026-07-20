@@ -176,25 +176,16 @@ def insert_trace_node(engine: Engine, trace_id: str, node_id: str, node_name: st
                       db_source: str = "", sql_id: str = "", run_id: str = "", rule_id: str = "",
                       llm_model: str = "", started_at: datetime | str | None = None,
                       ended_at: datetime | str | None = None, duration_ms: int | None = None,
-                      created_at: datetime | str | None = None) -> None:
+                      created_at: datetime | str | None = None,
+                      parent_node_id: str = "", subtask_id: str = "", sequence: int | None = None,
+                      started_offset_ms: int | None = None, exclusive_duration_ms: int | None = None,
+                      capability: str = "", model_id: str = "", failure_class: str = "",
+                      input_tokens: int | None = None, output_tokens: int | None = None,
+                      cache_reused: bool = False, retry_count: int | None = None) -> None:
     started_at_value = _normalize_datetime(started_at) or datetime.now().isoformat(sep=" ", timespec="milliseconds")
     ended_at_value = _normalize_datetime(ended_at) or started_at_value
     created_at_value = _normalize_datetime(created_at) or started_at_value
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                INSERT INTO med_agent_trace_node
-                  (trace_id, node_id, node_name, node_type, status, input_summary, output_summary,
-                   error_code, error_message, tool_name, db_source, sql_id, run_id, rule_id,
-                   llm_model, started_at, ended_at, duration_ms, created_at)
-                VALUES
-                  (:trace_id, :node_id, :node_name, :node_type, :status, :input_summary,
-                   :output_summary, :error_code, :error_message, :tool_name, :db_source, :sql_id,
-                   :run_id, :rule_id, :llm_model, :started_at, :ended_at, :duration_ms, :created_at)
-                """
-            ),
-            {
+    payload = {
                 "trace_id": trace_id,
                 "node_id": node_id,
                 "node_name": node_name,
@@ -214,8 +205,30 @@ def insert_trace_node(engine: Engine, trace_id: str, node_id: str, node_name: st
                 "ended_at": ended_at_value,
                 "duration_ms": duration_ms if duration_ms is not None else 0,
                 "created_at": created_at_value,
-            },
-        )
+                "parent_node_id": parent_node_id or None,
+                "subtask_id": subtask_id or None,
+                "sequence": sequence,
+                "started_offset_ms": started_offset_ms,
+                "exclusive_duration_ms": exclusive_duration_ms,
+                "capability": capability or None,
+                "model_id": model_id or None,
+                "failure_class": failure_class or None,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_reused": 1 if cache_reused else 0,
+                "retry_count": retry_count,
+            }
+    available = {column["name"] for column in inspect(engine).get_columns("med_agent_trace_node")}
+    columns = [name for name in payload if name in available]
+    statement = text(
+        "INSERT INTO med_agent_trace_node ("
+        + ", ".join(columns)
+        + ") VALUES ("
+        + ", ".join(f":{name}" for name in columns)
+        + ")"
+    )
+    with engine.begin() as conn:
+        conn.execute(statement, {name: payload[name] for name in columns})
 
 
 def finish_trace_record(engine: Engine, trace_id: str, final_status: str,
@@ -279,6 +292,96 @@ def get_trace_record(engine: Engine, trace_id: str) -> dict[str, Any] | None:
     result = dict(trace)
     result["nodes"] = [dict(row) for row in nodes]
     return result
+
+
+def list_trace_records(
+    engine: Engine,
+    *,
+    hospital_id: str,
+    started_after: str | None = None,
+    started_before: str | None = None,
+    status: str | None = None,
+    model_id: str | None = None,
+    tool_name: str | None = None,
+    failure_class: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    clauses = ["t.hospital_id = :hospital_id"]
+    params: dict[str, Any] = {"hospital_id": hospital_id, "limit": max(1, min(500, limit))}
+    if started_after:
+        clauses.append("t.started_at >= :started_after")
+        params["started_after"] = started_after
+    if started_before:
+        clauses.append("t.started_at < :started_before")
+        params["started_before"] = started_before
+    if status:
+        clauses.append("t.final_status = :status")
+        params["status"] = status
+    node_columns = {column["name"] for column in inspect(engine).get_columns("med_agent_trace_node")}
+    node_filters = []
+    if model_id:
+        if "model_id" in node_columns:
+            node_filters.append("n.model_id = :model_id")
+            params["model_id"] = model_id
+        elif "llm_model" in node_columns:
+            node_filters.append("n.llm_model = :model_id")
+            params["model_id"] = model_id
+        else:
+            node_filters.append("1 = 0")
+    if tool_name:
+        node_filters.append("n.tool_name = :tool_name")
+        params["tool_name"] = tool_name
+    if failure_class:
+        if "failure_class" in node_columns:
+            node_filters.append("n.failure_class = :failure_class")
+            params["failure_class"] = failure_class
+        else:
+            node_filters.append("1 = 0")
+    if node_filters:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM med_agent_trace_node n WHERE n.trace_id=t.trace_id AND "
+            + " AND ".join(node_filters)
+            + ")"
+        )
+    query = text(
+        "SELECT t.trace_id, t.session_id, t.hospital_id, t.intent, "
+        "t.final_status, t.error_count, t.fallback_count, t.started_at, t.ended_at, t.duration_ms "
+        "FROM med_agent_trace t WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY t.started_at DESC LIMIT :limit"
+    )
+    with engine.connect() as connection:
+        return [dict(row) for row in connection.execute(query, params).mappings().all()]
+
+
+def trace_nodes_for_records(engine: Engine, trace_ids: list[str]) -> list[dict[str, Any]]:
+    if not trace_ids:
+        return []
+    params = {f"trace_{index}": value for index, value in enumerate(trace_ids)}
+    placeholders = ", ".join(f":trace_{index}" for index in range(len(trace_ids)))
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(f"SELECT * FROM med_agent_trace_node WHERE trace_id IN ({placeholders})"),
+            params,
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def prune_trace_records(engine: Engine, *, before: str) -> int:
+    """Delete expired Trace rows and their nodes from the existing runtime DB."""
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "DELETE FROM med_agent_trace_node WHERE trace_id IN "
+                "(SELECT trace_id FROM med_agent_trace WHERE started_at < :before)"
+            ),
+            {"before": before},
+        )
+        result = connection.execute(
+            text("DELETE FROM med_agent_trace WHERE started_at < :before"),
+            {"before": before},
+        )
+    return max(0, int(result.rowcount or 0))
 
 
 def ensure_recovery_task_table(engine: Engine) -> None:

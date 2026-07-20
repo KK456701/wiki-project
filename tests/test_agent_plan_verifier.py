@@ -84,18 +84,21 @@ def _state(*, rate=90.0, trial_sql_id="SQL_1", denominator=20):
 def test_evidence_envelope_requires_tenant_and_trace_provenance():
     envelope = EvidenceEnvelope(
         evidence_id="EV_1",
-        evidence_type="trial_run",
-        source="db1",
-        hospital_id="hospital_001",
         trace_id="trace1",
+        subtask_id="req1",
+        fact_type="trial_run",
+        hospital_id="hospital_001",
         rule_id="RULE_1",
-        sql_id="SQL_1",
-        result_id="RUN_1",
-        context_digest="digest1",
+        source_tool="trial_run_indicator_sql",
+        source_object_id="RUN_1",
+        input_fingerprint="a" * 64,
+        result_fingerprint="b" * 64,
+        safe_payload={"sql_id": "SQL_1", "run_id": "RUN_1"},
     )
 
     assert envelope.hospital_id == "hospital_001"
     assert envelope.trace_id == "trace1"
+    assert envelope.safe_payload["sql_id"] == "SQL_1"
 
 
 def test_missing_required_fact_blocks_completion():

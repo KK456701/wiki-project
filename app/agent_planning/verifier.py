@@ -1,39 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext
+from app.agent_evidence import EvidenceAccessError, EvidenceEnvelope, EvidenceLedger
 
 from .contracts import CompiledPlan
+from .capability_registry import CapabilitySpecRegistry, get_capability_registry
 from .facts import canonical_fact_type
 from .time_resolver import ResolvedTimeRange
-
-
-class EvidenceEnvelope(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evidence_id: str
-    evidence_type: str
-    source: str
-    source_id: str | None = None
-    hospital_id: str
-    db_source_id: str | None = None
-    rule_id: str | None = None
-    rule_version: str | None = None
-    field_mapping_version: str | None = None
-    sql_id: str | None = None
-    result_id: str | None = None
-    start_time: datetime | None = None
-    end_time: datetime | None = None
-    trace_id: str
-    tool_run_id: str | None = None
-    context_digest: str | None = None
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
 
 
 class VerificationResult(BaseModel):
@@ -43,6 +20,7 @@ class VerificationResult(BaseModel):
     code: str
     message: str = ""
     missing_facts: set[str] = Field(default_factory=set)
+    verified_evidence_ids: list[str] = Field(default_factory=list)
 
 
 def _facts(state: AgentRunState) -> set[str]:
@@ -89,8 +67,17 @@ def _latest_result(state: AgentRunState, code: str) -> dict | None:
 
 
 class PlanVerifier:
-    def __init__(self, rate_tolerance: Decimal = Decimal("0.01")) -> None:
+    version = "plan-verifier-v1"
+
+    def __init__(
+        self,
+        rate_tolerance: Decimal = Decimal("0.01"),
+        registry: CapabilitySpecRegistry | None = None,
+        evidence_ledger: EvidenceLedger | None = None,
+    ) -> None:
         self.rate_tolerance = rate_tolerance
+        self.registry = registry or get_capability_registry()
+        self.evidence_ledger = evidence_ledger
 
     def verify(
         self,
@@ -100,7 +87,12 @@ class PlanVerifier:
         *,
         expected_time: ResolvedTimeRange | None = None,
     ) -> VerificationResult:
-        missing = set(plan.required_facts) - _facts(state)
+        facts = _facts(state)
+        missing = set(plan.required_facts) - facts
+        for node in plan.nodes:
+            spec = self.registry.get(node.capability)
+            if node.capability.value != "compose_answer" and not spec.verifier(facts, spec):
+                missing.update(spec.produces - facts)
         if missing:
             return VerificationResult(
                 ok=False,
@@ -131,7 +123,47 @@ class PlanVerifier:
                     code="NUMERIC_RESULT_INCONSISTENT",
                     message="试运行的分子、分母与指标值不一致。",
                 )
-        return VerificationResult(ok=True, code="PLAN_VERIFIED")
+        verified_ids: list[str] = []
+        if self.evidence_ledger is not None and state.evidence_ids:
+            try:
+                verified_ids = self.evidence_ledger.verify_many(
+                    state.evidence_ids,
+                    context=context,
+                    subtask_id=state.subtask_id or context.request_id,
+                    verifier_version=self.version,
+                    expected_rule_id=state.current_rule_id,
+                    expected_stat_start=(
+                        expected_time.start_time.strftime("%Y-%m-%d %H:%M:%S")
+                        if expected_time is not None
+                        else None
+                    ),
+                    expected_stat_end=(
+                        expected_time.end_time.strftime("%Y-%m-%d %H:%M:%S")
+                        if expected_time is not None
+                        else None
+                    ),
+                    expected_sql_id=(
+                        str(prepared.get("sql_id") or "")
+                        if prepared is not None
+                        else None
+                    ),
+                    legacy_tool_results=state.last_tool_results,
+                )
+            except EvidenceAccessError as exc:
+                return VerificationResult(
+                    ok=False,
+                    code=exc.code,
+                    message=str(exc),
+                )
+            state.verified_evidence_ids = list(dict.fromkeys([
+                *state.verified_evidence_ids,
+                *verified_ids,
+            ]))
+        return VerificationResult(
+            ok=True,
+            code="PLAN_VERIFIED",
+            verified_evidence_ids=verified_ids,
+        )
 
     @staticmethod
     def _same_period(prepared: dict, expected: ResolvedTimeRange) -> bool:

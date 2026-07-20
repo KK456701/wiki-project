@@ -18,6 +18,8 @@ from app.db.migrations import (
     ensure_rule_lineage_schema,
     ensure_terminology_schema,
 )
+from app.agent_evidence import ensure_evidence_schema
+from app.observability.schema import ensure_trace_enhancement_schema
 
 
 def main() -> int:
@@ -29,6 +31,8 @@ def main() -> int:
     hospital_auth = ensure_hospital_auth_schema(engine)
     indicator_details = ensure_indicator_detail_schema(engine)
     kb_exchange = ensure_kb_exchange_schema(engine)
+    evidence = ensure_evidence_schema(engine)
+    trace_enhancement = ensure_trace_enhancement_schema(engine)
     print(
         json.dumps(
             {
@@ -41,6 +45,8 @@ def main() -> int:
                 "hospital_auth": hospital_auth,
                 "indicator_details": indicator_details,
                 "kb_exchange": kb_exchange,
+                "evidence": evidence,
+                "trace_enhancement": trace_enhancement,
             },
             ensure_ascii=False,
             indent=2,

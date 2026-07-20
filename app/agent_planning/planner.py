@@ -190,6 +190,8 @@ class ModelRequestPlanner:
                         "raw_content": raw_content,
                         "normalized_plan": plan.model_dump(mode="json"),
                         "attempt": attempt + 1,
+                        "model": response.model,
+                        "usage": response.usage,
                     },
                     processing_data={
                         "description": "调用 Planner 模型，解析 JSON，并校验 RequestPlan 合约。"
@@ -200,6 +202,7 @@ class ModelRequestPlanner:
                         "context_prompt_file": "agent_planner_context.txt",
                         "context_prompt_version": prompt_version("agent_planner_context"),
                         "repair_prompt_file": "agent_planner_repair.txt",
+                        "model_id": response.model,
                     },
                 )
                 return plan

@@ -3,13 +3,13 @@ from __future__ import annotations
 from app.agent_runtime.contracts import AgentRunState
 
 from .validator import FallbackCategory
+from .failures import FailureClass, classify_failure
 
-
-_REPLANNABLE_CODES = {
-    "PLAN_INTENT_MISMATCH",
-    "TASK_TYPE_MISMATCH",
-    "USER_GOAL_CHANGED",
-    "ASSUMPTION_INVALID_ALTERNATIVE_AVAILABLE",
+_REPLANNABLE_FAILURE_CLASSES = {
+    FailureClass.SEMANTIC_PLAN_ERROR,
+    FailureClass.TASK_TYPE_ERROR,
+    FailureClass.USER_GOAL_CHANGED,
+    FailureClass.ALTERNATIVE_DIRECTION_AVAILABLE,
 }
 
 _FALLBACKS = {
@@ -30,9 +30,13 @@ class ReplanPolicy:
 
     def can_replan(self, state: AgentRunState, failure_code: str) -> bool:
         return (
-            failure_code in _REPLANNABLE_CODES
+            self.classify(failure_code) in _REPLANNABLE_FAILURE_CLASSES
             and state.replan_count < self.max_replan_count
         )
+
+    @staticmethod
+    def classify(failure_code: str) -> FailureClass:
+        return classify_failure(failure_code)
 
     @staticmethod
     def record_failure(state: AgentRunState, plan_fingerprint: str) -> None:

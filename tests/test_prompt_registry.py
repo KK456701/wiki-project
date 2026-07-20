@@ -12,10 +12,10 @@ def test_all_production_llm_prompts_are_loadable_from_one_directory() -> None:
         "agent_planner_context",
         "agent_planner_repair",
         "agent_replanner",
-        "agent_executor",
-        "agent_executor_context",
-        "agent_executor_step",
-        "agent_executor_corrections",
+        "agent_final_answer",
+        "agent_final_answer_context",
+        "agent_final_answer_step",
+        "agent_final_answer_corrections",
         "indicator_draft_parser",
         "indicator_draft_repair",
         "diagnosis_evidence",
@@ -33,7 +33,7 @@ def test_all_production_llm_prompts_are_loadable_from_one_directory() -> None:
     prompt_dir = ROOT / "app" / "prompts"
     catalog = (prompt_dir / "README.md").read_text(encoding="utf-8")
     assert "Planner" in catalog
-    assert "Executor" in catalog
+    assert "Final Answer" in catalog
     assert "## 旧聊天流程" not in catalog
     assert not (prompt_dir / "intent.txt").exists()
     assert not (prompt_dir / "answer.txt").exists()
@@ -54,11 +54,11 @@ def test_prompt_formatter_preserves_json_braces_and_replaces_named_values() -> N
     assert "field" in rendered
 
 
-def test_executor_prompt_is_final_answer_only() -> None:
-    executor = prompts.load_prompt("agent_executor")
-    step = prompts.load_prompt("agent_executor_step")
+def test_final_answer_prompt_has_no_tool_authority() -> None:
+    final_answer = prompts.load_prompt("agent_final_answer")
+    step = prompts.load_prompt("agent_final_answer_step")
 
-    assert "自主选择必要工具" not in executor
-    assert "服务端已经完成工具调用" in executor
-    assert "不要调用工具" in executor
+    assert "自主选择必要工具" not in final_answer
+    assert "服务端已经完成工具调用" in final_answer
+    assert "不要调用工具" in final_answer
     assert "当前阶段只负责生成最终回答" in step

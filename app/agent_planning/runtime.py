@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 import re
 import time
@@ -21,6 +21,7 @@ from .planner import RequestPlanner
 from .validator import PlanValidation, PlanValidator
 from .verifier import PlanVerifier, VerificationResult
 from .replan import ReplanPolicy
+from .capability_registry import CapabilitySpecRegistry, get_capability_registry
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,11 @@ class PlanningExecution:
     request_plan: RequestPlan
     compiled_plan: CompiledPlan
     validation: PlanValidation
+    capability_registry: CapabilitySpecRegistry = field(
+        default_factory=get_capability_registry,
+        repr=False,
+        compare=False,
+    )
 
 
 class AgentPlanningRuntime:
@@ -254,7 +260,15 @@ class AgentPlanningRuntime:
             processing_data={
                 "description": "把不含工具名的业务计划确定性编译为能力节点和必需事实。"
             },
-            config_data={"compiler": type(self.compiler).__name__},
+            config_data={
+                "compiler": type(self.compiler).__name__,
+                "ir_version": compiled.schema_version,
+                "request_plan_version": compiled.request_plan_version,
+                "capability_registry_version": compiled.capability_registry_version,
+                "prompt_version": compiled.prompt_version,
+                "model_adapter_version": compiled.model_adapter_version,
+                "verifier_version": compiled.verifier_version,
+            },
         )
         validate_started = time.perf_counter()
         validation = self.validator.validate(request_plan, now=now)
@@ -277,6 +291,7 @@ class AgentPlanningRuntime:
             request_plan=request_plan,
             compiled_plan=compiled,
             validation=validation,
+            capability_registry=self.compiler.registry,
         )
 
     def next_decision(
@@ -327,10 +342,32 @@ class AgentPlanningRuntime:
         compiled = self.compiler.compile(request_plan)
         if not self.replan_policy.accept_plan(state, compiled.plan_id):
             return None
+        self._trace(
+            node_name="plan_replan",
+            node_type="code",
+            status="success",
+            duration_ms=1,
+            input_data={
+                "original_plan_id": execution.compiled_plan.plan_id,
+                "failure_code": failure_code,
+                "failure_reason": failure_reason,
+                "known_facts": state.evidence_ids,
+            },
+            output_data={
+                "compiled_plan": compiled.model_dump(mode="json"),
+                "replan_count": state.replan_count,
+            },
+            processing_data={
+                "description": "仅在允许的语义方向错误下接受一次替代计划，并保留失败路径。"
+            },
+            config_data={"max_replan_count": self.replan_policy.max_replan_count},
+            failure_class=self.replan_policy.classify(failure_code).value,
+        )
         return PlanningExecution(
             request_plan=request_plan,
             compiled_plan=compiled,
             validation=self.validator.validate(request_plan, now=now),
+            capability_registry=self.compiler.registry,
         )
 
     def verify(
@@ -367,7 +404,7 @@ class AgentPlanningRuntime:
                 "左闭右开。"
             )
         return format_prompt(
-            "agent_executor_step",
+            "agent_final_answer_step",
             capability=decision.capability.value if decision.capability else "none",
             tool_names=", ".join(decision.tool_names) if decision.tool_names else "无工具，直接回答",
             target_line=target_line,

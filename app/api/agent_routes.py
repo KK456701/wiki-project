@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -145,6 +145,52 @@ async def agent_upload(
         "file_name": file.filename or "unknown",
         "size_bytes": len(content),
     }
+
+
+@router.get("/runs")
+def agent_runs(
+    principal: HospitalPrincipal = Depends(require_hospital_session),
+    service: AgentRuntimeService = Depends(get_agent_runtime_service),
+    started_after: str | None = Query(default=None, max_length=40),
+    started_before: str | None = Query(default=None, max_length=40),
+    status: str | None = Query(default=None, max_length=32),
+    model_id: str | None = Query(default=None, max_length=128),
+    tool_name: str | None = Query(default=None, max_length=80),
+    failure_class: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    return service.list_runs(
+        principal,
+        started_after=started_after,
+        started_before=started_before,
+        status=status,
+        model_id=model_id,
+        tool_name=tool_name,
+        failure_class=failure_class,
+        limit=limit,
+    )
+
+
+@router.get("/runs/metrics")
+def agent_run_metrics(
+    principal: HospitalPrincipal = Depends(require_hospital_session),
+    service: AgentRuntimeService = Depends(get_agent_runtime_service),
+    started_after: str | None = Query(default=None, max_length=40),
+    started_before: str | None = Query(default=None, max_length=40),
+    status: str | None = Query(default=None, max_length=32),
+    model_id: str | None = Query(default=None, max_length=128),
+    tool_name: str | None = Query(default=None, max_length=80),
+    failure_class: str | None = Query(default=None, max_length=80),
+) -> dict[str, Any]:
+    return service.run_metrics(
+        principal,
+        started_after=started_after,
+        started_before=started_before,
+        status=status,
+        model_id=model_id,
+        tool_name=tool_name,
+        failure_class=failure_class,
+    )
 
 
 @router.get("/runs/{trace_id}")

@@ -575,7 +575,8 @@ CREATE TABLE IF NOT EXISTS med_agent_trace (
   started_at DATETIME NOT NULL,
   ended_at DATETIME,
   duration_ms INT,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_agent_trace_hospital_started (hospital_id, started_at)
 );
 
 CREATE TABLE IF NOT EXISTS med_agent_trace_node (
@@ -598,10 +599,64 @@ CREATE TABLE IF NOT EXISTS med_agent_trace_node (
   started_at DATETIME NOT NULL,
   ended_at DATETIME,
   duration_ms INT,
+  parent_node_id VARCHAR(80),
+  subtask_id VARCHAR(128),
+  sequence INT,
+  started_offset_ms INT,
+  exclusive_duration_ms INT,
+  capability VARCHAR(80),
+  model_id VARCHAR(128),
+  failure_class VARCHAR(80),
+  input_tokens INT,
+  output_tokens INT,
+  cache_reused TINYINT DEFAULT 0,
+  retry_count INT DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_trace_node_trace_id (trace_id),
   INDEX idx_trace_node_status (status),
-  INDEX idx_trace_node_rule_id (rule_id)
+  INDEX idx_trace_node_rule_id (rule_id),
+  INDEX idx_trace_node_subtask (trace_id, subtask_id),
+  INDEX idx_trace_node_model (model_id),
+  INDEX idx_trace_node_failure_class (failure_class)
+);
+
+CREATE TABLE IF NOT EXISTS med_agent_evidence (
+  evidence_id VARCHAR(80) PRIMARY KEY,
+  schema_version VARCHAR(40) NOT NULL,
+  trace_id VARCHAR(128) NOT NULL,
+  subtask_id VARCHAR(128) NOT NULL,
+  fact_type VARCHAR(80) NOT NULL,
+  hospital_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128),
+  rule_version VARCHAR(80),
+  stat_start VARCHAR(40),
+  stat_end VARCHAR(40),
+  source_tool VARCHAR(80) NOT NULL,
+  source_object_id VARCHAR(128),
+  input_fingerprint VARCHAR(64) NOT NULL,
+  result_fingerprint VARCHAR(64) NOT NULL,
+  confidentiality VARCHAR(32) NOT NULL,
+  created_at VARCHAR(40) NOT NULL,
+  expires_at VARCHAR(40),
+  payload_ref VARCHAR(255),
+  safe_payload_json TEXT NOT NULL,
+  INDEX ix_agent_evidence_trace (trace_id, subtask_id),
+  INDEX ix_agent_evidence_hospital_created (hospital_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS med_agent_evidence_verification (
+  verification_id VARCHAR(80) PRIMARY KEY,
+  schema_version VARCHAR(40) NOT NULL,
+  evidence_id VARCHAR(80) NOT NULL,
+  trace_id VARCHAR(128) NOT NULL,
+  subtask_id VARCHAR(128) NOT NULL,
+  hospital_id VARCHAR(128) NOT NULL,
+  verifier_version VARCHAR(80) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  code VARCHAR(80) NOT NULL,
+  message TEXT NOT NULL,
+  verified_at VARCHAR(40) NOT NULL,
+  INDEX ix_agent_verification_evidence (evidence_id, status)
 );
 
 CREATE TABLE IF NOT EXISTS med_recovery_task (

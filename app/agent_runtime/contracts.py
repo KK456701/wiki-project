@@ -48,6 +48,9 @@ class AgentRunState(RuntimeContract):
     tool_call_counts: dict[str, int] = Field(default_factory=dict)
     tool_result_cache: dict[str, dict[str, Any]] = Field(default_factory=dict)
     evidence: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    verified_evidence_ids: list[str] = Field(default_factory=list)
+    subtask_id: str | None = None
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
     current_rule_id: str | None = None
     current_rule_ids: list[str] = Field(default_factory=list, max_length=3)

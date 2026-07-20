@@ -6,6 +6,7 @@ var workbenchLoading = document.getElementById("workbenchLoading");
 var workbenchAssistantPage = document.getElementById("assistantPage");
 var workbenchIndicatorConsolePage = document.getElementById("indicatorConsolePage");
 var workbenchMonitoringPage = document.getElementById("monitoringPage");
+var workbenchAgentObservabilityPage = document.getElementById("agentObservabilityPage");
 var workbenchMetadataPage = document.getElementById("metadataPage");
 var workbenchNavItems = document.querySelectorAll("[data-workbench-route]");
 var assistantToggleButton = document.getElementById("assistantToggleButton");
@@ -19,6 +20,7 @@ var WORKBENCH_ROUTES = {
   assistant: {requiresAdmin: false},
   "indicator-console": {requiresAdmin: false},
   monitoring: {requiresAdmin: true},
+  "agent-observability": {requiresAdmin: false},
   metadata: {requiresAdmin: false},
 };
 
@@ -30,6 +32,9 @@ function currentWorkbenchRoute() {
 function mountWorkbenchPages() {
   if (workbenchMonitoringPage.parentElement !== workbenchContent) {
     workbenchContent.appendChild(workbenchMonitoringPage);
+  }
+  if (workbenchAgentObservabilityPage.parentElement !== workbenchContent) {
+    workbenchContent.appendChild(workbenchAgentObservabilityPage);
   }
 }
 
@@ -74,6 +79,9 @@ function applyWorkbenchRoute() {
   }
   if (route === "metadata" && window.activateMetadataPage) {
     window.activateMetadataPage();
+  }
+  if (route === "agent-observability" && window.activateAgentObservabilityPage) {
+    window.activateAgentObservabilityPage();
   }
 }
 
