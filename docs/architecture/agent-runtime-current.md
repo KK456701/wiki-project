@@ -1,6 +1,8 @@
 # 当前 Agent 框架、模型、工具与架构决策
 
 > 更新日期：2026-07-20。本文以当前生产配置和代码为准，描述旧稳定流程和 Shadow 删除后的 Agent Runtime。
+>
+> 更适合快速阅读、打印和评审的分图版本，以及附件 PDF 的逐项核对和 Spring AI/Java 迁移方案，见 [`agent-runtime-summary-and-spring-ai.md`](agent-runtime-summary-and-spring-ai.md)。
 
 ## 一句话总结
 

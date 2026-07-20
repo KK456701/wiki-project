@@ -82,7 +82,7 @@
 | `runtime/exports/` | 经授权生成的短期指标明细和 Excel | 默认 24 小时过期，目录不进入 Git |
 | `tools/wxp-mcp` | 公司侧查询标准表模型的实施工具 | 不进入医院生产链路，不替代院内 DBHub |
 
-完整流程图、模型与工具清单、关键节点、工程化措施和框架选型说明见 [`docs/architecture/agent-runtime-current.md`](docs/architecture/agent-runtime-current.md)。
+完整运行细节见 [`docs/architecture/agent-runtime-current.md`](docs/architecture/agent-runtime-current.md)；精简流程图、PDF 核对结论以及 Spring AI/Java 迁移指南见 [`docs/architecture/agent-runtime-summary-and-spring-ai.md`](docs/architecture/agent-runtime-summary-and-spring-ai.md)。
 
 ## 目录结构
 
