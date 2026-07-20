@@ -74,6 +74,20 @@ def test_memory_restores_structured_rule_safe_ids_and_last_eight_turns(tmp_path)
     assert len(store.recent_messages(restored.storage_session_id, limit=100)) == 18
 
 
+def test_memory_restores_compound_rule_ids(tmp_path):
+    memory = AgentConversationMemory(store=ConversationMemory(tmp_path))
+    context = _context()
+    session = memory.open(context)
+    session.append_user("查询两个指标")
+    state = _completed_state()
+    state.current_rule_ids = ["MQSI2025_001", "MQSI2025_005"]
+    session.complete("查询两个指标", "两个结果", state)
+
+    restored = memory.open(context)
+
+    assert restored.state.current_rule_ids == ["MQSI2025_001", "MQSI2025_005"]
+
+
 def test_same_public_session_is_isolated_by_hospital_and_user(tmp_path):
     memory = AgentConversationMemory(store=ConversationMemory(tmp_path))
 

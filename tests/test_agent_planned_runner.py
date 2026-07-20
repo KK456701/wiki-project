@@ -12,10 +12,16 @@ from app.agent_planning.planner import AgentPlanningError, ModelRequestPlanner
 from app.agent_planning.runtime import AgentPlanningRuntime
 from app.agent_runtime.contracts import (
     AgentModelResponse,
+    AgentRunResult,
     AgentRunState,
     AgentRuntimeContext,
 )
-from app.agent_runtime.runner import AgentRunner, _request_kind_from_plan
+from app.agent_runtime.runner import (
+    AgentRunner,
+    _compound_indicator_target,
+    _request_kind_from_plan,
+    _split_compound_indicator_query,
+)
 from app.agent_tools.contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
@@ -56,6 +62,55 @@ class ReplanningStaticPlanner(StaticPlanner):
 class FailingPlanner:
     async def plan(self, **kwargs):
         raise AgentPlanningError("2 validation errors with internal schema details")
+
+
+class CompoundProbeRunner(AgentRunner):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.subtasks = []
+
+    async def _run(
+        self,
+        user_message,
+        context,
+        run_state,
+        *,
+        allow_compound=True,
+        forced_time_range=None,
+        request_plan_override=None,
+    ):
+        if allow_compound:
+            return await super()._run(
+                user_message,
+                context,
+                run_state,
+                allow_compound=True,
+                forced_time_range=forced_time_range,
+                request_plan_override=request_plan_override,
+            )
+        index = len(self.subtasks) + 1
+        rule_name = (
+            "患者入院 48 小时内转科的比例"
+            if index == 1
+            else "急会诊及时到位率"
+        )
+        run_id = f"RUN_{index}"
+        self.subtasks.append((user_message, forced_time_range, request_plan_override))
+        run_state.step_count = 1
+        run_state.current_rule_id = f"RULE_{index}"
+        run_state.last_run_id = run_id
+        if forced_time_range:
+            run_state.current_stat_start = forced_time_range[0]
+            run_state.current_stat_end = forced_time_range[1]
+        run_state.last_tool_results = [{
+            "ok": True,
+            "data": {"rule_name": rule_name},
+        }]
+        return AgentRunResult(
+            answer=f"{rule_name}结果。\n\n{{{{detail_export:{run_id}}}}}",
+            stop_reason="final_answer",
+            state=run_state,
+        )
 
 
 class SearchInput(BaseModel):
@@ -165,6 +220,107 @@ def test_model_planner_repairs_invalid_steps_and_returns_strict_plan():
     assert not hasattr(plan, "steps")
     assert len(adapter.calls) == 2
     assert all(call["tools"] == [] for call in adapter.calls)
+
+
+def test_compound_indicator_request_is_split_and_uses_one_common_period():
+    query = "患者入院 48 小时内转科的比例从26年1月到现在的结果怎么算，还有急会诊的结果"
+    assert _split_compound_indicator_query(query) == [
+        "患者入院 48 小时内转科的比例从26年1月到现在的结果怎么算",
+        "急会诊的结果",
+    ]
+    assert _compound_indicator_target(
+        "患者入院 48 小时内转科的比例从26年1月到现在的结果怎么算"
+    ) == "患者入院 48 小时内转科的比例"
+    assert _compound_indicator_target("急会诊的结果") == "急会诊"
+    assert _split_compound_indicator_query("解释指标定义以及计算公式") == []
+
+    registry = _registry()
+    runner = CompoundProbeRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+
+    result = asyncio.run(runner.run(query, _context()))
+
+    assert result.stop_reason == "final_answer"
+    assert len(runner.subtasks) == 2
+    assert runner.subtasks[0][1] == runner.subtasks[1][1] == (
+        "2026-01-01T00:00:00+08:00",
+        "2026-07-16T12:00:00+08:00",
+    )
+    assert "## 患者入院 48 小时内转科的比例" in result.answer
+    assert "## 急会诊及时到位率" in result.answer
+    assert "{{detail_export:RUN_1}}" in result.answer
+    assert "{{detail_export:RUN_2}}" in result.answer
+    assert result.state.current_rule_ids == ["RULE_1", "RULE_2"]
+
+
+def test_compound_sql_followup_reuses_all_rule_ids_and_common_period():
+    registry = _registry()
+    runner = CompoundProbeRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+    state = AgentRunState(
+        current_rule_id="MQSI2025_005",
+        current_rule_ids=["MQSI2025_001", "MQSI2025_005"],
+        current_stat_start="2026-01-01T00:00:00+08:00",
+        current_stat_end="2026-07-16T12:00:00+08:00",
+    )
+
+    result = asyncio.run(runner.run("这两个的 SQL 怎么写？", _context(), state))
+
+    assert result.stop_reason == "final_answer"
+    assert len(runner.subtasks) == 2
+    plans = [item[2] for item in runner.subtasks]
+    assert [plan.target_indicator.rule_id for plan in plans] == [
+        "MQSI2025_001",
+        "MQSI2025_005",
+    ]
+    assert all(plan.intent.value == "indicator_sql_prepare" for plan in plans)
+    assert runner.subtasks[0][1] == runner.subtasks[1][1] == (
+        "2026-01-01T00:00:00+08:00",
+        "2026-07-16T12:00:00+08:00",
+    )
+
+
+def test_compound_rule_components_followup_reuses_all_rule_ids():
+    registry = _registry()
+    runner = CompoundProbeRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+    state = AgentRunState(
+        current_rule_id="MQSI2025_005",
+        current_rule_ids=["MQSI2025_001", "MQSI2025_005"],
+    )
+
+    result = asyncio.run(
+        runner.run("这两个的分子分母是什么意思？", _context(), state)
+    )
+
+    assert result.stop_reason == "final_answer"
+    assert len(runner.subtasks) == 2
+    assert all("分子分母含义" in item[0] for item in runner.subtasks)
+    assert all(
+        item[2].intent.value == "rule_explanation"
+        for item in runner.subtasks
+    )
 
 
 def test_model_planner_normalizes_safe_scalar_container_shapes_for_4b():

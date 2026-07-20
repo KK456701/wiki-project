@@ -29,6 +29,23 @@ def _safe_object_ids(values: Any, prefix: str, limit: int = 8) -> list[str]:
     ][-limit:]
 
 
+def _safe_rule_ids(values: Any, limit: int = 3) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    result: list[str] = []
+    for item in values:
+        rule_id = str(item or "").strip()
+        if (
+            not rule_id
+            or len(rule_id) > 128
+            or not all(char.isalnum() or char in "_-" for char in rule_id)
+            or rule_id in result
+        ):
+            continue
+        result.append(rule_id)
+    return result[-limit:]
+
+
 def _safe_upload_file_key(value: Any) -> str | None:
     file_key = str(value or "").strip()
     if (
@@ -87,6 +104,7 @@ def _latest_period(state: AgentRunState) -> tuple[str, str] | None:
 def _safe_state_metadata(state: AgentRunState) -> dict[str, Any]:
     return {
         "current_rule_id": state.current_rule_id or "",
+        "current_rule_ids": _safe_rule_ids(state.current_rule_ids),
         "current_stat_start": state.current_stat_start,
         "current_stat_end": state.current_stat_end,
         "validated_sql_ids": _safe_object_ids(
@@ -214,6 +232,7 @@ class AgentConversationMemory:
             }],
             recent_history=prompt.recent_history,
             current_rule_id=current_rule_id or None,
+            current_rule_ids=_safe_rule_ids(safe.get("current_rule_ids")),
             current_stat_start=(
                 structured.stat_period.start_time
                 or safe.get("current_stat_start")

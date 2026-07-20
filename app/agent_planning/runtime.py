@@ -177,28 +177,71 @@ class AgentPlanningRuntime:
         query: str,
         context: AgentRuntimeContext,
         state: AgentRunState,
+        *,
+        forced_time_range: tuple[str, str] | None = None,
+        request_plan_override: RequestPlan | None = None,
     ) -> PlanningExecution:
         now = self.now_provider()
-        request_plan = await self.planner.plan(
-            query=query,
-            context=context,
-            state=state,
-            now=now,
-        )
+        if request_plan_override is not None:
+            request_plan = request_plan_override
+        else:
+            request_plan = await self.planner.plan(
+                query=query,
+                context=context,
+                state=state,
+                now=now,
+            )
         request_plan = request_plan.model_copy(deep=True)
-        if not request_plan.target_indicator.rule_id and state.current_rule_id:
+        if (
+            not request_plan.target_indicator.rule_id
+            and not request_plan.target_indicator.raw_name
+            and state.current_rule_id
+        ):
             request_plan.target_indicator.rule_id = state.current_rule_id
+        elif (
+            request_plan.target_indicator.raw_name
+            and not request_plan.target_indicator.rule_id
+        ) or (
+            request_plan.target_indicator.rule_id
+            and state.current_rule_id
+            and request_plan.target_indicator.rule_id != state.current_rule_id
+        ):
+            state.current_rule_id = None
+            state.validated_sql_ids = []
+            stale_facts = {
+                "rule_identity",
+                "definition",
+                "formula",
+                "effective_level",
+                "implementation_status",
+                "sql_object",
+                "sql_validation",
+                "trial_run",
+                "aggregate_result",
+            }
+            state.evidence = [
+                item
+                for item in state.evidence
+                if not stale_facts.intersection(item.get("fact_types") or [])
+            ]
         self._normalize_upload_comparison(
             request_plan,
             query=query,
             state=state,
         )
-        self._normalize_time_expression(
-            request_plan,
-            query=query,
-            state=state,
-            now=now,
-        )
+        if forced_time_range is not None:
+            request_plan.time_expression = TimeExpression(
+                raw_text="服务端统一统计周期",
+                start_time=forced_time_range[0],
+                end_time=forced_time_range[1],
+            )
+        else:
+            self._normalize_time_expression(
+                request_plan,
+                query=query,
+                state=state,
+                now=now,
+            )
         compile_started = time.perf_counter()
         compiled = self.compiler.compile(request_plan)
         self._trace(

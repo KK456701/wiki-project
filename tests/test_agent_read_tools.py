@@ -163,6 +163,73 @@ class AgentReadToolsTest(unittest.TestCase):
         self.assertEqual(result.status, "not_found")
         self.assertEqual(result.code, "RULE_NOT_FOUND")
 
+    def test_search_prefers_unique_production_candidate_over_test_indicator(self) -> None:
+        from app.agent_runtime import AgentRunState
+        from app.agent_tools.read_tools import (
+            ReadToolServices,
+            SearchIndicatorRulesInput,
+            search_indicator_rules,
+        )
+
+        caliber = FakeCaliber(RuleSearchResult(
+            query="急会诊",
+            resolved_rule_id="HOSP_TEST",
+            matches=[
+                {
+                    "rule_id": "HOSP_TEST",
+                    "rule_name": "急会诊10分钟到位率测试",
+                    "type": "mysql_hospital_defined",
+                },
+                {
+                    "rule_id": "MQSI2025_005",
+                    "rule_name": "急会诊及时到位率",
+                    "type": "mysql_standard",
+                },
+            ],
+        ))
+
+        result = search_indicator_rules(
+            SearchIndicatorRulesInput(query="急会诊"),
+            self._context(),
+            AgentRunState(),
+            ReadToolServices(caliber=caliber),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.data["resolved_rule_id"], "MQSI2025_005")
+        self.assertEqual(
+            result.data["selection_reason"],
+            "unique_production_candidate",
+        )
+
+    def test_search_keeps_multiple_production_candidates_unresolved(self) -> None:
+        from app.agent_runtime import AgentRunState
+        from app.agent_tools.read_tools import (
+            ReadToolServices,
+            SearchIndicatorRulesInput,
+            search_indicator_rules,
+        )
+
+        caliber = FakeCaliber(RuleSearchResult(
+            query="急会诊",
+            resolved_rule_id="MQSI2025_005",
+            matches=[
+                {"rule_id": "MQSI2025_005", "rule_name": "急会诊及时到位率"},
+                {"rule_id": "MQSI2025_006", "rule_name": "急会诊有效率"},
+            ],
+        ))
+
+        result = search_indicator_rules(
+            SearchIndicatorRulesInput(query="急会诊"),
+            self._context(),
+            AgentRunState(),
+            ReadToolServices(caliber=caliber),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.data["resolved_rule_id"])
+        self.assertEqual(result.data["selection_reason"], "ambiguous_candidates")
+
     def test_get_effective_rule_returns_safe_projection(self) -> None:
         from app.agent_runtime import AgentRunState
         from app.agent_tools.read_tools import (

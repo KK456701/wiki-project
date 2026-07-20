@@ -50,6 +50,7 @@ class AgentRunState(RuntimeContract):
     evidence: list[dict[str, Any]] = Field(default_factory=list)
     last_tool_results: list[dict[str, Any]] = Field(default_factory=list)
     current_rule_id: str | None = None
+    current_rule_ids: list[str] = Field(default_factory=list, max_length=3)
     current_stat_start: str | None = None
     current_stat_end: str | None = None
     current_request_kind: AgentRequestKind | None = None

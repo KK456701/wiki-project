@@ -72,6 +72,40 @@ def _retrieval_query(query: str, normalization: Any | None) -> str:
     return str(normalization.normalized_text or query)
 
 
+def _resolve_search_candidate(
+    query: str,
+    matches: list[dict[str, Any]],
+) -> tuple[str, str]:
+    """只在候选可唯一确定时返回 rule_id，并避免测试指标抢占正式指标。"""
+    query_text = str(query or "").strip()
+    exact = [
+        item
+        for item in matches
+        if str(item.get("rule_id") or "") == query_text
+        or str(item.get("rule_name") or "") == query_text
+    ]
+    if len(exact) == 1:
+        return str(exact[0].get("rule_id") or ""), "exact_match"
+
+    selectable = matches
+    if "测试" not in query_text:
+        production = [
+            item
+            for item in matches
+            if "测试" not in str(item.get("rule_name") or "")
+        ]
+        if production:
+            selectable = production
+    if len(selectable) == 1:
+        reason = (
+            "unique_production_candidate"
+            if len(matches) != len(selectable)
+            else "unique_candidate"
+        )
+        return str(selectable[0].get("rule_id") or ""), reason
+    return "", "ambiguous_candidates"
+
+
 def search_indicator_rules(
     arguments: SearchIndicatorRulesInput,
     context: AgentRuntimeContext,
@@ -107,7 +141,14 @@ def search_indicator_rules(
     if normalization is not None:
         payload["terminology"] = _normalization_payload(normalization)
     matches = list(payload.get("matches") or [])
-    resolved_rule_id = str(payload.get("resolved_rule_id") or "")
+    resolved_rule_id, selection_reason = _resolve_search_candidate(
+        retrieval_query,
+        matches,
+    )
+    if not matches:
+        resolved_rule_id = str(payload.get("resolved_rule_id") or "")
+    payload["resolved_rule_id"] = resolved_rule_id or None
+    payload["selection_reason"] = selection_reason
     if not matches and not resolved_rule_id:
         return ToolResult(
             ok=False,

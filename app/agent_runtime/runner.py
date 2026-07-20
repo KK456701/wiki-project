@@ -35,6 +35,13 @@ from app.agent_planning.dispatch import (
     DeterministicDispatchError,
     build_deterministic_tool_call,
 )
+from app.agent_planning.contracts import (
+    PlanIntent,
+    RequestPlan,
+    RequestedOutput,
+    TargetIndicator,
+    TimeExpression,
+)
 from app.agent_planning.runtime import AgentPlanningRuntime
 from app.agent_planning.planner import AgentPlanningError
 from app.agent_tools.gateway import ToolGateway
@@ -78,6 +85,30 @@ _TRIAL_RUN_TERMS = (
     "算一下",
 )
 
+_COMPOUND_INDICATOR_SPLIT = re.compile(
+    r"(?:[,，;；]\s*)?(?:还有|以及|另外(?:再|还|也)?|同时(?:还|也)?(?:查询|计算|查看|看看)?)"
+)
+
+_INDICATOR_CLAUSE_HINTS = (
+    "指标",
+    "率",
+    "比例",
+    "会诊",
+    "转科",
+    "查房",
+    "患者",
+    "住院",
+    "手术",
+    "抢救",
+    "死亡",
+    "感染",
+    "输血",
+)
+
+_COMPOUND_FOLLOWUP_REFERENCE = re.compile(
+    r"(?:这|上述|上面|前面)(?:两|2|几|多|些)个|这两个|它们|二者|分别"
+)
+
 
 def _classify_request_kind(user_message: str) -> str | None:
     compact = re.sub(r"\s+", "", user_message)
@@ -86,6 +117,101 @@ def _classify_request_kind(user_message: str) -> str | None:
     if any(term in compact for term in _TRIAL_RUN_TERMS):
         return "trial_run"
     return None
+
+
+def _split_compound_indicator_query(user_message: str) -> list[str]:
+    """仅拆分带明确并列连接词、且每段都像指标目标的请求。"""
+    parts = [
+        part.strip(" \t\r\n,，;；。")
+        for part in _COMPOUND_INDICATOR_SPLIT.split(str(user_message or ""))
+    ]
+    parts = [part for part in parts if part]
+    if not 2 <= len(parts) <= 3:
+        return []
+    if not all(any(hint in part for hint in _INDICATOR_CLAUSE_HINTS) for part in parts):
+        return []
+    return parts
+
+
+def _compound_indicator_target(clause: str) -> str:
+    """从已拆分子句中移除公共时间和结果措辞，保留指标检索词。"""
+    target = re.sub(
+        r"(?:从|自|在)?(?:\d{2,4}\s*年)?(?:1[0-2]|[1-9])\s*月份?.*$",
+        "",
+        str(clause or "").strip(),
+    ).strip()
+    target = re.sub(
+        r"(?:的)?(?:具体)?(?:结果|数值|指标值)(?:怎么(?:算|计算)|如何计算|是多少)?$",
+        "",
+        target,
+    ).strip()
+    target = re.sub(
+        r"^(?:请|帮我|再|同时|查询|查一下|计算|统计|查看|看看)+",
+        "",
+        target,
+    ).strip(" \t\r\n,，;；。？?")
+    return target or str(clause or "").strip()
+
+
+def _compound_result_plan(clause: str) -> RequestPlan:
+    target_name = _compound_indicator_target(clause)
+    return RequestPlan(
+        intent=PlanIntent.INDICATOR_TRIAL_RUN,
+        goal=f"查询{target_name}在服务端统一统计周期内的具体结果",
+        target_indicator=TargetIndicator(raw_name=target_name),
+        requested_outputs=[RequestedOutput.TRIAL_RESULT],
+    )
+
+
+def _compound_followup_kind(
+    user_message: str,
+    state: AgentRunState,
+) -> str | None:
+    compact = re.sub(r"\s+", "", str(user_message or "")).lower()
+    if len(state.current_rule_ids) < 2 or not _COMPOUND_FOLLOWUP_REFERENCE.search(compact):
+        return None
+    if "sql" in compact:
+        return "sql_prepare"
+    if any(term in compact for term in _TRIAL_RUN_TERMS):
+        return "trial_run"
+    if any(term in compact for term in (
+        "公式",
+        "定义",
+        "口径",
+        "怎么算",
+        "如何计算",
+        "分子",
+        "分母",
+        "含义",
+        "什么意思",
+    )):
+        return "rule_explanation"
+    return None
+
+
+def _compound_followup_plan(rule_id: str, kind: str) -> RequestPlan:
+    if kind == "sql_prepare":
+        intent = PlanIntent.INDICATOR_SQL_PREPARE
+        outputs = [RequestedOutput.PREPARED_SQL_HANDLE]
+        goal = f"生成指标 {rule_id} 在已确认统计周期内的受控 SQL"
+    elif kind == "trial_run":
+        intent = PlanIntent.INDICATOR_TRIAL_RUN
+        outputs = [RequestedOutput.TRIAL_RESULT]
+        goal = f"查询指标 {rule_id} 在已确认统计周期内的具体结果"
+    else:
+        intent = PlanIntent.RULE_EXPLANATION
+        outputs = [
+            RequestedOutput.DEFINITION,
+            RequestedOutput.FORMULA,
+            RequestedOutput.EXPLANATION,
+        ]
+        goal = f"解释指标 {rule_id} 的定义、公式和本院口径"
+    return RequestPlan(
+        intent=intent,
+        goal=goal,
+        target_indicator=TargetIndicator(raw_name=rule_id, rule_id=rule_id),
+        requested_outputs=outputs,
+    )
 
 
 def _request_kind_from_plan(user_message: str, planning_execution) -> str | None:
@@ -100,6 +226,45 @@ def _request_kind_from_plan(user_message: str, planning_execution) -> str | None
     if "trial_result" in outputs:
         return "trial_run"
     return _classify_request_kind(user_message)
+
+
+def _compose_existing_detail_answer(
+    user_message: str,
+    state: AgentRunState,
+) -> str | None:
+    """将分子/分母明细追问绑定到最近一次成功试运行。"""
+    compact = re.sub(r"\s+", "", str(user_message or ""))
+    targets = [target for target in ("分子", "分母") if target in compact]
+    if not targets:
+        return None
+    asks_for_records = any(
+        term in compact
+        for term in ("记录", "明细", "名单", "列表")
+    ) or bool(re.search(r"(?:分子|分母).{0,8}(?:有哪些|是哪些|具体是哪)", compact))
+    if not asks_for_records:
+        return None
+
+    run_id = str(state.last_run_id or "").strip()
+    if re.fullmatch(r"RUN_[A-Za-z0-9_]+", run_id) is None:
+        return "当前会话还没有可查看明细的成功计算结果，请先指定统计时间并计算指标。"
+
+    target_text = "、".join(targets)
+    return (
+        f"已定位到最近一次计算的{target_text}明细。"
+        f"点击下方入口后查看“{target_text}明细”页签：\n\n"
+        f"{{{{detail_export:{run_id}}}}}"
+    )
+
+
+def _latest_rule_name(state: AgentRunState) -> str:
+    for result in reversed(state.last_tool_results):
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        data = result.get("data") or {}
+        rule_name = str(data.get("rule_name") or "").strip()
+        if rule_name:
+            return rule_name
+    return ""
 
 
 def _has_fact_type(state: AgentRunState, fact_type: str) -> bool:
@@ -139,13 +304,53 @@ def _compose_prepared_sql_answer(planning_execution, state: AgentRunState) -> st
     )
     sql_id = str(data.get("sql_id") or "").strip()
     sql_id_line = f"\n- SQL 对象：`{sql_id}`" if sql_id else ""
-    target = planning_execution.request_plan.target_indicator.raw_name.strip()
+    target = _latest_rule_name(state) or planning_execution.request_plan.target_indicator.raw_name.strip()
     title = f"下面是“{target}”的已校验 SQL：" if target else "下面是已校验 SQL："
     return (
         f"{title}\n\n```sql\n{sql_preview}\n```\n\n"
         f"统计参数：\n{parameter_lines or '- 无额外参数'}"
         f"{sql_id_line}\n\n该请求只生成并校验 SQL，不会执行数据库。"
     )
+
+
+def _compose_rule_components_answer(
+    user_message: str,
+    tool_results: list[dict],
+) -> str | None:
+    compact = re.sub(r"\s+", "", str(user_message or ""))
+    if not any(term in compact for term in ("分子", "分母")):
+        return None
+    effective = next(
+        (
+            item
+            for item in reversed(tool_results)
+            if isinstance(item, dict)
+            and item.get("ok") is True
+            and item.get("code") == "EFFECTIVE_RULE_FOUND"
+        ),
+        None,
+    )
+    if effective is None:
+        return None
+    data = effective.get("data") or {}
+    rule_name = str(data.get("rule_name") or data.get("rule_id") or "当前指标")
+    numerator = str(data.get("numerator_rule") or "未配置")
+    denominator = str(data.get("denominator_rule") or "未配置")
+    filter_rule = str(data.get("filter_rule") or "").strip()
+    exclude_rule = str(data.get("exclude_rule") or "").strip()
+    lines = [
+        f"{rule_name}的分子和分母含义如下：",
+        "",
+        f"- **分子**：{numerator}",
+        f"- **分母**：{denominator}",
+        "- **计算公式**：指标率 = 分子 ÷ 分母 × 100%",
+    ]
+    if filter_rule:
+        lines.append(f"- **统计范围**：{filter_rule}")
+    if exclude_rule:
+        lines.append(f"- **排除规则**：{exclude_rule}")
+    lines.extend(("", "以上内容仅来自本轮读取的本院生效规则。"))
+    return "\n".join(lines)
 
 
 def _display_number(value) -> str:
@@ -335,7 +540,7 @@ def _append_trial_detail_export(
             file_token = base64.urlsafe_b64encode(file_key.encode("utf-8")).decode("ascii").rstrip("=")
             marker = f"{{{{upload_comparison_export:{run_id}:{file_token}}}}}"
             row_level = (
-                (comparison.get("data") or {}).get("row_comparison", {}).get(
+                ((comparison.get("data") or {}).get("row_comparison") or {}).get(
                     "comparison_status"
                 )
                 == "row_level_compared"
@@ -394,6 +599,196 @@ class AgentRunner:
         except Exception:
             return
 
+    @staticmethod
+    def _compound_subtask_state(parent: AgentRunState) -> AgentRunState:
+        return AgentRunState(
+            messages=[
+                dict(message)
+                for message in parent.messages
+                if message.get("role") == "system"
+            ],
+            recent_history=parent.recent_history,
+            current_stat_start=parent.current_stat_start,
+            current_stat_end=parent.current_stat_end,
+            current_upload_file_key=parent.current_upload_file_key,
+        )
+
+    @staticmethod
+    def _merge_compound_subtask_state(
+        parent: AgentRunState,
+        child: AgentRunState,
+    ) -> None:
+        parent.step_count += child.step_count
+        parent.messages = child.messages
+        parent.evidence.extend(child.evidence)
+        parent.last_tool_results.extend(child.last_tool_results)
+        parent.tool_result_cache.update(child.tool_result_cache)
+        for fingerprint, count in child.tool_call_counts.items():
+            parent.tool_call_counts[fingerprint] = (
+                parent.tool_call_counts.get(fingerprint, 0) + count
+            )
+        for sql_id in child.validated_sql_ids:
+            if sql_id not in parent.validated_sql_ids:
+                parent.validated_sql_ids.append(sql_id)
+        if child.current_rule_id:
+            parent.current_rule_id = child.current_rule_id
+        if child.current_stat_start:
+            parent.current_stat_start = child.current_stat_start
+        if child.current_stat_end:
+            parent.current_stat_end = child.current_stat_end
+        if child.last_run_id:
+            parent.last_run_id = child.last_run_id
+        if child.last_diagnosis_id:
+            parent.last_diagnosis_id = child.last_diagnosis_id
+        if child.last_draft_id:
+            parent.last_draft_id = child.last_draft_id
+        parent.current_request_kind = child.current_request_kind
+        parent.replan_count += child.replan_count
+        parent.failed_plan_fingerprints.extend(child.failed_plan_fingerprints)
+        parent.fallback_category = child.fallback_category
+        parent.failure_code = child.failure_code
+
+    async def _run_compound_request(
+        self,
+        user_message: str,
+        context: AgentRuntimeContext,
+        run_state: AgentRunState,
+    ) -> AgentRunResult | None:
+        subqueries = _split_compound_indicator_query(user_message)
+        followup_kind = _compound_followup_kind(user_message, run_state)
+        followup_rule_ids = (
+            list(run_state.current_rule_ids)
+            if not subqueries and followup_kind is not None
+            else []
+        )
+        if followup_rule_ids:
+            followup_label = {
+                "sql_prepare": "SQL",
+                "trial_run": "结果",
+                "rule_explanation": "分子分母含义",
+            }.get(str(followup_kind), "说明")
+            subqueries = [
+                f"指标 {rule_id} 的{followup_label}"
+                for rule_id in followup_rule_ids
+            ]
+        if not subqueries or self.planning_runtime is None:
+            return None
+
+        common_time = self.planning_runtime.validator.resolver.resolve(
+            TimeExpression(raw_text=user_message),
+            now=self.planning_runtime.now_provider(),
+        )
+        forced_time_range = (
+            (
+                common_time.start_time.isoformat(),
+                common_time.end_time.isoformat(),
+            )
+            if common_time is not None
+            else (
+                (run_state.current_stat_start, run_state.current_stat_end)
+                if followup_rule_ids
+                and run_state.current_stat_start
+                and run_state.current_stat_end
+                else None
+            )
+        )
+        if forced_time_range is not None:
+            run_state.current_stat_start = forced_time_range[0]
+            run_state.current_stat_end = forced_time_range[1]
+        self._trace(
+            node_name="compound_request_split",
+            node_type="code",
+            status="success",
+            duration_ms=1,
+            input_data={"user_message": user_message},
+            output_data={
+                "subqueries": subqueries,
+                "followup_kind": followup_kind,
+                "followup_rule_ids": followup_rule_ids,
+                "common_time_range": forced_time_range,
+            },
+            processing_data={
+                "description": "按明确并列连接词或已保存的复数指标指代拆分子任务，并绑定同一统计周期。"
+            },
+            config_data={"splitter": "deterministic_compound_indicator", "max_tasks": 3},
+        )
+
+        sections: list[str] = []
+        resolved_rule_ids: list[str] = []
+        stop_reason = "final_answer"
+        model_name: str | None = None
+        base_state = self._compound_subtask_state(run_state)
+        for index, subquery in enumerate(subqueries, start=1):
+            child_state = self._compound_subtask_state(base_state)
+            if followup_rule_ids:
+                plan_override = _compound_followup_plan(
+                    followup_rule_ids[index - 1],
+                    str(followup_kind),
+                )
+            else:
+                plan_override = (
+                    _compound_result_plan(subquery)
+                    if forced_time_range is not None
+                    and _classify_request_kind(user_message) == "trial_run"
+                    else None
+                )
+            if plan_override is not None:
+                self._trace(
+                    node_name="compound_subtask_plan",
+                    node_type="code",
+                    status="success",
+                    duration_ms=1,
+                    input_data={"subquery": subquery, "subtask_index": index},
+                    output_data={
+                        "request_plan": plan_override.model_dump(mode="json")
+                    },
+                    processing_data={
+                        "description": "把带统一统计周期的结果子句编译为独立指标业务计划，避免省略句依赖 Planner 补全。"
+                    },
+                    config_data={"planner": "deterministic_compound_result"},
+                )
+            child_result = await self._run(
+                subquery,
+                context,
+                child_state,
+                allow_compound=False,
+                forced_time_range=forced_time_range,
+                request_plan_override=plan_override,
+            )
+            self._merge_compound_subtask_state(run_state, child_result.state)
+            if child_result.state.current_rule_id:
+                resolved_rule_ids.append(child_result.state.current_rule_id)
+            title = _latest_rule_name(child_result.state) or f"子任务 {index}"
+            sections.append(f"## {title}\n\n{child_result.answer}")
+            if child_result.stop_reason != "final_answer":
+                stop_reason = child_result.stop_reason
+            if child_result.model:
+                model_name = child_result.model
+
+        active_rule_ids = followup_rule_ids or list(dict.fromkeys(resolved_rule_ids))
+        run_state.current_rule_ids = active_rule_ids[:3] if len(active_rule_ids) >= 2 else []
+        self._trace(
+            node_name="compound_result_merge",
+            node_type="code",
+            status="success" if stop_reason == "final_answer" else "warning",
+            duration_ms=1,
+            input_data={"subtask_count": len(subqueries)},
+            output_data={
+                "section_count": len(sections),
+                "active_rule_ids": run_state.current_rule_ids,
+                "stop_reason": stop_reason,
+            },
+            processing_data={"description": "合并各指标的独立证据回答和明细入口。"},
+            config_data={"merger": "deterministic_compound_answer"},
+        )
+        run_state.stop_reason = stop_reason
+        return AgentRunResult(
+            answer="\n\n---\n\n".join(sections),
+            stop_reason=stop_reason,
+            state=run_state,
+            model=model_name,
+        )
+
     async def run(
         self,
         user_message: str,
@@ -412,9 +807,20 @@ class AgentRunner:
             self._emit_terminal(result)
             return result
         try:
+            compound_count = 1
+            if self.planning_runtime is not None:
+                explicit_count = len(_split_compound_indicator_query(user_message))
+                compound_count = (
+                    explicit_count
+                    or (
+                        len(run_state.current_rule_ids)
+                        if _compound_followup_kind(user_message, run_state)
+                        else 1
+                    )
+                )
             result = await asyncio.wait_for(
                 self._run(user_message, context, run_state),
-                timeout=self.request_timeout_seconds,
+                timeout=self.request_timeout_seconds * max(1, compound_count),
             )
         except TimeoutError:
             run_state.stop_reason = "request_timeout"
@@ -456,13 +862,52 @@ class AgentRunner:
         user_message: str,
         context: AgentRuntimeContext,
         run_state: AgentRunState,
+        *,
+        allow_compound: bool = True,
+        forced_time_range: tuple[str, str] | None = None,
+        request_plan_override: RequestPlan | None = None,
     ) -> AgentRunResult:
         turn_tool_results_start = len(run_state.last_tool_results)
+        if allow_compound and self.planning_runtime is not None:
+            compound_result = await self._run_compound_request(
+                user_message,
+                context,
+                run_state,
+            )
+            if compound_result is not None:
+                return compound_result
+        detail_answer = _compose_existing_detail_answer(user_message, run_state)
+        if detail_answer is not None:
+            self._trace(
+                node_name="detail_followup_resolve",
+                node_type="code",
+                status="success",
+                duration_ms=1,
+                input_data={
+                    "user_message": user_message,
+                    "last_run_id": run_state.last_run_id,
+                },
+                output_data={"answer": detail_answer},
+                processing_data={
+                    "description": "识别分子或分母明细追问，并复用最近一次成功试运行入口。"
+                },
+                config_data={"resolver": "deterministic_detail_followup"},
+            )
+            run_state.stop_reason = "final_answer"
+            return AgentRunResult(
+                answer=detail_answer,
+                stop_reason="final_answer",
+                state=run_state,
+            )
         planning_execution = None
         if self.planning_runtime is not None:
             try:
                 planning_execution = await self.planning_runtime.prepare(
-                    user_message, context, run_state
+                    user_message,
+                    context,
+                    run_state,
+                    forced_time_range=forced_time_range,
+                    request_plan_override=request_plan_override,
                 )
             except AgentPlanningError:
                 logger.warning("agent planner rejected model output", exc_info=True)
@@ -573,6 +1018,9 @@ class AgentRunner:
                         )
                     deterministic_answer = _compose_prepared_sql_answer(
                         planning_execution, run_state
+                    ) or _compose_rule_components_answer(
+                        user_message,
+                        run_state.last_tool_results[turn_tool_results_start:],
                     ) or _compose_upload_comparison_answer(
                         run_state.last_tool_results[turn_tool_results_start:]
                     )
@@ -631,14 +1079,18 @@ class AgentRunner:
                                         )
                                         if isinstance(item, dict)
                                         and item.get("code")
-                                        in {"UPLOAD_ANALYZED", "SQL_OBJECT_PREPARED"}
+                                        in {
+                                            "UPLOAD_ANALYZED",
+                                            "SQL_OBJECT_PREPARED",
+                                            "EFFECTIVE_RULE_FOUND",
+                                        }
                                     ),
                                     {},
                                 )
                             },
                             output_data={"answer": deterministic_answer},
                             processing_data={
-                                "description": "使用已校验的 SQL 或上传对比证据确定性生成回答，不再交由模型补充无证据结论。"
+                                "description": "使用已校验的规则、SQL 或上传对比证据确定性生成回答，不再交由模型补充无证据结论。"
                             },
                             config_data={"guard": "deterministic_evidence_response"},
                         )

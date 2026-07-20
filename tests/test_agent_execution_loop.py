@@ -14,6 +14,7 @@ from app.agent_runtime import (
 from app.agent_runtime.runner import (
     AgentRunner,
     _append_trial_detail_export,
+    _compose_rule_components_answer,
     _compose_upload_comparison_answer,
 )
 from app.agent_runtime.response_guard import normalize_agent_answer
@@ -55,6 +56,7 @@ def test_upload_comparison_export_replaces_regular_detail_export() -> None:
                 "data": {
                     "file_key": "hospital_001_无标题.xlsx",
                     "aggregate_comparison": {"different_count": 3},
+                    "row_comparison": None,
                 },
             },
         ],
@@ -89,6 +91,28 @@ def test_upload_aggregate_comparison_does_not_guess_causes() -> None:
     assert "不能确认具体原因" in answer
     assert "可能" not in answer
     assert "admission_id" in answer
+
+
+def test_rule_components_answer_uses_only_effective_rule_evidence() -> None:
+    answer = _compose_rule_components_answer(
+        "分子分母是什么意思",
+        [{
+            "ok": True,
+            "code": "EFFECTIVE_RULE_FOUND",
+            "data": {
+                "rule_id": "MQSI2025_005",
+                "rule_name": "急会诊及时到位率",
+                "numerator_rule": "20分钟内到位的急会诊次数",
+                "denominator_rule": "同期急会诊总次数",
+                "filter_rule": "按请求时间纳入统计周期",
+                "exclude_rule": "无",
+            },
+        }],
+    )
+
+    assert "20分钟内到位的急会诊次数" in answer
+    assert "同期急会诊总次数" in answer
+    assert "国标" not in answer
 
 
 def test_upload_comparison_reports_indicator_mismatch_without_export_marker() -> None:
@@ -258,6 +282,18 @@ def _runner(adapter, domain=None, max_steps=8):
 
 
 class AgentExecutionLoopTest(unittest.IsolatedAsyncioTestCase):
+    async def test_detail_followup_reuses_last_run_without_model_or_diagnosis(self) -> None:
+        adapter = SequenceAdapter([])
+        runner, _ = _runner(adapter)
+        state = AgentRunState(last_run_id="RUN_001")
+
+        result = await runner.run("查一下分子是哪些记录", _context(), state)
+
+        self.assertEqual(result.stop_reason, "final_answer")
+        self.assertIn("{{detail_export:RUN_001}}", result.answer)
+        self.assertIn("分子明细", result.answer)
+        self.assertEqual(adapter.calls, [])
+
     def test_normalize_agent_answer_converts_common_latex_ratio(self) -> None:
         answer = """计算公式：
 $$
