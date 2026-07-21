@@ -6,7 +6,7 @@
 
 | 文件 | 模型角色 | 调用者 | 使用时机 |
 |---|---|---|---|
-| `agent_planner.txt` | Planner / 业务目标规划器 | `app.agent_planning.planner.ModelRequestPlanner` | 每轮开始，把用户问题转换为严格 `RequestPlan`，保留时间原文但不自行换算统计边界；识别上传文件结果差异追问，不选择工具 |
+| `agent_planner.txt` | Planner / 业务目标规划器 | `app.agent_planning.planner.ModelRequestPlanner` | 每轮开始，把用户问题转换为严格 `RequestPlan`，保留时间原文但不自行换算统计边界；识别上传文件差异和明确的全面实施验收请求，不选择工具 |
 | `agent_planner_context.txt` | Planner / 上下文包装器 | `ModelRequestPlanner` | 把 Planner 主提示词、日期和结构化会话状态组合成系统消息 |
 | `agent_planner_repair.txt` | Planner / JSON 修复器 | `ModelRequestPlanner` | Planner 首次输出不满足合约时，最多修复一次 |
 | `agent_replanner.txt` | Replanner / 方向重规划器 | `ModelRequestPlanner.replan` | 只有计划方向被工具证据证明错误时使用，默认最多一次 |

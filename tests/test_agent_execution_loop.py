@@ -14,6 +14,7 @@ from app.agent_runtime import (
 from app.agent_runtime.runner import (
     AgentRunner,
     _append_trial_detail_export,
+    _compose_implementation_validation_answer,
     _compose_rule_components_answer,
     _compose_upload_comparison_answer,
 )
@@ -65,6 +66,48 @@ def test_upload_comparison_export_replaces_regular_detail_export() -> None:
     assert "upload_comparison_export:RUN_001:" in answer
     assert "导出文件与系统的汇总差异表" in answer
     assert "detail_export" not in answer
+
+
+def test_implementation_validation_answer_is_deterministic_report():
+    answer = _compose_implementation_validation_answer([{
+        "ok": True,
+        "code": "IMPLEMENTATION_VALIDATION_COMPLETED",
+        "data": {
+            "report_id": "IVR_001",
+            "overall_status": "warning",
+            "rule_id": "RULE_1",
+            "rule_name": "测试指标",
+            "stat_start": "2026-01-01 00:00:00",
+            "stat_end": "2026-04-01 00:00:00",
+            "sql_id": "SQL_1",
+            "run_id": "RUN_1",
+            "numerator_count": 8,
+            "denominator_count": 122,
+            "result_value": 6.56,
+            "stages": [
+                {
+                    "stage_id": "L1",
+                    "stage_name": "字段映射与来源检查",
+                    "status": "passed",
+                    "summary": "已确认",
+                    "finding_codes": [],
+                },
+                {
+                    "stage_id": "L6",
+                    "stage_name": "报表数据核对",
+                    "status": "warning",
+                    "summary": "存在差异",
+                    "finding_codes": ["ROW_COMPARISON_DIFFERENCES"],
+                },
+            ],
+        },
+    }])
+
+    assert "测试指标实施验收报告" in answer
+    assert "IVR_001" in answer
+    assert "L6" in answer
+    assert "ROW_COMPARISON_DIFFERENCES" in answer
+    assert "8" in answer and "122" in answer and "6.56%" in answer
 
 
 def test_upload_aggregate_comparison_does_not_guess_causes() -> None:

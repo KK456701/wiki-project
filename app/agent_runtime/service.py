@@ -402,6 +402,7 @@ class AgentRuntimeService:
         from app.agent_tools import (
             AgentSqlObjectStore,
             DiagnosisToolServices,
+            ImplementationValidationServices,
             PreviewToolServices,
             ReadToolServices,
             SqlToolServices,
@@ -458,22 +459,28 @@ class AgentRuntimeService:
                 "rows": rows,
             }
 
+        read_services = ReadToolServices(
+            caliber=orchestrator.caliber,
+            terminology=orchestrator.terminology_normalizer,
+        )
+        sql_services = SqlToolServices(
+            orchestrator=orchestrator,
+            store=AgentSqlObjectStore(engine),
+            runtime_engine=engine,
+            business_db=business_db,
+            ttl=timedelta(minutes=max(1, get_int("agent_sql_ttl_minutes", 30))),
+        )
+        upload_services = UploadToolServices(detail_loader=load_system_details)
         registry = build_agent_tool_registry(
-            read_services=ReadToolServices(
-                caliber=orchestrator.caliber,
-                terminology=orchestrator.terminology_normalizer,
-            ),
-            sql_services=SqlToolServices(
-                orchestrator=orchestrator,
-                store=AgentSqlObjectStore(engine),
-                runtime_engine=engine,
-                business_db=business_db,
-                ttl=timedelta(minutes=max(1, get_int("agent_sql_ttl_minutes", 30))),
-            ),
+            read_services=read_services,
+            sql_services=sql_services,
             diagnosis_services=DiagnosisToolServices(orchestrator=orchestrator),
             preview_services=PreviewToolServices(orchestrator=orchestrator),
-            upload_services=UploadToolServices(
-                detail_loader=load_system_details,
+            upload_services=upload_services,
+            implementation_validation_services=ImplementationValidationServices(
+                sql_services=sql_services,
+                upload_services=upload_services,
+                trace_callback=event_callback,
             ),
         )
         from app.agent_planning import get_capability_registry

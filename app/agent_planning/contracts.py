@@ -17,6 +17,7 @@ class PlanIntent(str, Enum):
     INDICATOR_DIAGNOSIS = "indicator_diagnosis"
     RULE_CHANGE_PREVIEW = "rule_change_preview"
     UPLOAD_ANALYSIS = "upload_analysis"
+    IMPLEMENTATION_VALIDATION = "implementation_validation"
     UNKNOWN = "unknown"
 
 
@@ -29,6 +30,7 @@ class RequestedOutput(str, Enum):
     DIAGNOSIS = "diagnosis"
     CHANGE_PREVIEW = "change_preview"
     FILE_ANALYSIS = "file_analysis"
+    IMPLEMENTATION_VALIDATION_REPORT = "implementation_validation_report"
     EXPLANATION = "explanation"
 
 
@@ -69,6 +71,7 @@ class PlanCapability(str, Enum):
     DIAGNOSE_INDICATOR = "diagnose_indicator"
     PREVIEW_RULE_CHANGE = "preview_rule_change"
     ANALYZE_UPLOADED_FILE = "analyze_uploaded_file"
+    VALIDATE_IMPLEMENTATION = "validate_implementation"
     COMPOSE_ANSWER = "compose_answer"
 
 

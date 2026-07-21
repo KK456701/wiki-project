@@ -161,6 +161,40 @@ def test_builds_upload_call_from_recent_file_number() -> None:
     assert call.arguments == {"file_key": "hospital_001_report.xlsx"}
 
 
+def test_builds_implementation_validation_call_with_optional_upload() -> None:
+    execution = _execution({
+        "intent": "implementation_validation",
+        "goal": "执行全面实施验收",
+        "target_indicator": {"raw_name": "目标指标", "rule_id": "RULE_1"},
+        "time_expression": {
+            "raw_text": "2026年1月到3月",
+            "start_time": "2026-01-01 00:00:00",
+            "end_time": "2026-04-01 00:00:00",
+        },
+        "requested_outputs": ["implementation_validation_report"],
+    })
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        current_upload_file_key="hospital_001_report.xlsx",
+    )
+
+    call = build_deterministic_tool_call(
+        execution,
+        _decision(
+            PlanCapability.VALIDATE_IMPLEMENTATION,
+            "validate_indicator_implementation",
+        ),
+        state,
+        user_message="全面实施验收",
+    )
+
+    assert call.arguments == {
+        "rule_id": "RULE_1",
+        "stat_start_time": "2026-01-01T00:00:00+08:00",
+        "stat_end_time": "2026-04-01T00:00:00+08:00",
+        "file_key": "hospital_001_report.xlsx",
+    }
+
 def test_upload_call_prefers_structured_latest_file_key() -> None:
     execution = _execution({
         "intent": "upload_analysis",

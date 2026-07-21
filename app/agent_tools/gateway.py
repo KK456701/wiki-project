@@ -33,6 +33,7 @@ _DB_READ_TOOLS = {
     "prepare_indicator_sql",
     "trial_run_indicator_sql",
     "diagnose_indicator_issue",
+    "validate_indicator_implementation",
 }
 
 

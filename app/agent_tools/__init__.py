@@ -7,6 +7,12 @@ from .diagnosis_tools import (
     diagnose_indicator_issue,
 )
 from .gateway import ToolGateway
+from .implementation_validation_tools import (
+    ValidateIndicatorImplementationInput,
+    build_implementation_validation_tools,
+    validate_indicator_implementation,
+)
+from app.implementation_validation import ImplementationValidationServices
 from .access_policy import PolicyDecision, PolicyDecisionService, ToolExecutionContext
 from .policy import RepeatDecision, ToolExecutionPolicy, redact_payload, tool_call_fingerprint
 from .preview_tools import (
@@ -75,6 +81,8 @@ __all__ = [
     "ToolRegistryError",
     "ToolResult",
     "ToolRiskLevel",
+    "ImplementationValidationServices",
+    "ValidateIndicatorImplementationInput",
     "TrialRunIndicatorSqlInput",
     "UploadToolServices",
     "AnalyzeUploadedIndicatorsInput",
@@ -85,6 +93,7 @@ __all__ = [
     "build_preview_tools",
     "build_sql_tools",
     "build_upload_tools",
+    "build_implementation_validation_tools",
     "ensure_agent_sql_object_schema",
     "diagnose_indicator_issue",
     "create_indicator_draft",
@@ -98,5 +107,6 @@ __all__ = [
     "search_indicator_rules",
     "tool_call_fingerprint",
     "trial_run_indicator_sql",
+    "validate_indicator_implementation",
     "verified_rule_ids",
 ]

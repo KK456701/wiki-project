@@ -39,6 +39,7 @@ def _registry() -> ToolRegistry:
         _tool("diagnose_indicator_issue"),
         _tool("preview_rule_change"),
         _tool("analyze_uploaded_indicators"),
+        _tool("validate_indicator_implementation"),
     ])
 
 
@@ -112,6 +113,32 @@ def test_trial_plan_exposes_one_next_tool_per_state():
     final = controller.next_decision(compiled, validation, sql_state)
     assert final.action is ControllerAction.COMPOSE_ANSWER
     assert final.tool_names == []
+
+
+def test_validation_plan_exposes_specialized_tool_after_prerequisites():
+    plan = RequestPlan.model_validate({
+        "intent": "implementation_validation",
+        "goal": "全面实施验收",
+        "target_indicator": {"raw_name": "目标指标"},
+        "time_expression": {"raw_text": "2026年1月到3月"},
+        "requested_outputs": ["implementation_validation_report"],
+    })
+    now = datetime(2026, 7, 16, 12, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    compiled = PlanCompiler().compile(plan)
+    validation = PlanValidator().validate(plan, now=now)
+    state = AgentRunState(
+        current_rule_id="RULE_1",
+        evidence=[
+            _evidence("rule_identity"),
+            _evidence("definition", "formula", "effective_level"),
+            _evidence("implementation_status", "field_mapping"),
+        ],
+    )
+
+    decision = AgentStateController().next_decision(compiled, validation, state)
+
+    assert decision.action is ControllerAction.EXECUTE_TOOL
+    assert decision.tool_names == ["validate_indicator_implementation"]
 
 
 def test_invalid_plan_validation_returns_fallback_without_tools():

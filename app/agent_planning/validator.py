@@ -45,13 +45,18 @@ class PlanValidator:
                 failure_class=classify_failure("PATIENT_DETAIL_FORBIDDEN"),
             )
         outputs = set(plan.requested_outputs)
-        needs_database = RequestedOutput.TRIAL_RESULT in outputs
+        needs_database = bool(outputs & {
+            RequestedOutput.TRIAL_RESULT,
+            RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
+        })
         needs_time_range = bool(outputs & {
             RequestedOutput.PREPARED_SQL_HANDLE,
             RequestedOutput.TRIAL_RESULT,
+            RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
         }) or plan.intent in {
             PlanIntent.INDICATOR_SQL_PREPARE,
             PlanIntent.INDICATOR_TRIAL_RUN,
+            PlanIntent.IMPLEMENTATION_VALIDATION,
         }
         if needs_database and "no_database_access" in constraints:
             return PlanValidation(

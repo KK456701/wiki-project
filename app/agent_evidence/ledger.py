@@ -23,6 +23,8 @@ _SAFE_DATA_KEYS = {
     "numerator_count", "denominator_count", "result_value", "sample_count",
     "file_key", "sheet_count", "row_count", "columns", "summary",
     "row_level_comparison_available", "cause_analysis_available",
+    "report_id", "report_schema_version", "overall_status", "stages",
+    "passed_stages", "warning_stages", "failed_stages", "skipped_stages",
 }
 
 

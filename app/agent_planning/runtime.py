@@ -144,9 +144,11 @@ class AgentPlanningRuntime:
         needs_time = bool(outputs & {
             RequestedOutput.PREPARED_SQL_HANDLE,
             RequestedOutput.TRIAL_RESULT,
+            RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
         }) or request_plan.intent in {
             PlanIntent.INDICATOR_SQL_PREPARE,
             PlanIntent.INDICATOR_TRIAL_RUN,
+            PlanIntent.IMPLEMENTATION_VALIDATION,
         }
         if not needs_time:
             return
@@ -177,6 +179,33 @@ class AgentPlanningRuntime:
             return
 
         request_plan.time_expression = TimeExpression(raw_text=query)
+
+    @staticmethod
+    def _query_requests_implementation_validation(query: str) -> bool:
+        compact = re.sub(r"\s+", "", str(query or ""))
+        return any(term in compact for term in (
+            "全面实施验收",
+            "全面实施验证",
+            "上线验收",
+            "迁移核对",
+            "全链路实施验证",
+            "全链路验收",
+        ))
+
+    def _normalize_implementation_validation(
+        self,
+        request_plan: RequestPlan,
+        *,
+        query: str,
+    ) -> None:
+        """明确验收用语由服务端固定为专用意图，避免小模型退化为普通诊断。"""
+        if not self._query_requests_implementation_validation(query):
+            return
+        request_plan.intent = PlanIntent.IMPLEMENTATION_VALIDATION
+        request_plan.goal = "对当前指标执行全面实施验收并生成结构化验收结论"
+        request_plan.requested_outputs = [
+            RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT
+        ]
 
     async def prepare(
         self,
@@ -234,6 +263,10 @@ class AgentPlanningRuntime:
             request_plan,
             query=query,
             state=state,
+        )
+        self._normalize_implementation_validation(
+            request_plan,
+            query=query,
         )
         if forced_time_range is not None:
             request_plan.time_expression = TimeExpression(

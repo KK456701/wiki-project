@@ -599,6 +599,35 @@ def test_rule_caliber_difference_is_not_hijacked_by_existing_upload():
     }
 
 
+def test_explicit_implementation_validation_is_normalized_server_side():
+    misclassified = RequestPlan.model_validate({
+        "intent": "indicator_diagnosis",
+        "goal": "排查实施问题",
+        "target_indicator": {"rule_id": "RULE_1"},
+        "time_expression": {"raw_text": "2026年1月到3月"},
+        "requested_outputs": ["diagnosis"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(misclassified),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "对这个指标做全面实施验收，统计2026年1月到3月",
+        _context(),
+        AgentRunState(current_rule_id="RULE_1"),
+    ))
+
+    assert execution.request_plan.intent.value == "implementation_validation"
+    assert [item.value for item in execution.request_plan.requested_outputs] == [
+        "implementation_validation_report"
+    ]
+    assert execution.validation.ok is True
+    assert "validate_implementation" in [
+        node.capability.value for node in execution.compiled_plan.nodes
+    ]
+
+
 def test_runtime_reuses_confirmed_period_when_sql_followup_has_no_time_text():
     plan = RequestPlan.model_validate({
         "intent": "indicator_sql_prepare",

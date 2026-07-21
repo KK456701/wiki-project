@@ -1,6 +1,6 @@
-# Agent Runtime 架构总结、PDF 核对与 Spring AI 迁移指南
+# Agent Runtime 架构总结与 Spring AI 迁移指南
 
-> 更新日期：2026-07-20
+> 更新日期：2026-07-21
 >
 > 代码基线：`28fb392` 及其后的当前工作区
 >
@@ -153,21 +153,45 @@ DeepSeek 名称是当前部署传给兼容 API 的模型标识，不代表本文
 
 当前聊天 Runtime 虽然在工具目录中注册了 `create_indicator_draft`，但 `CapabilitySpecRegistry` 尚未为它定义可编译 Capability，而且聊天 Runtime 装配的 `IndicatorGenerationAgent` 没有注入 draft parser/repository。因此当前可用的 LLM 草稿解析入口是独立指标草稿 API，不能把它画成主对话链中的可执行节点。
 
-## 6. 当前 9 个领域工具
+## 6. 当前 10 个领域工具
 
 | 工具 | 作用 | 主要边界 |
 |---|---|---|
 | `search_indicator_rules` | 根据名称、简称、错别字、同义词或主题查指标 | 只查询当前医院可见规则；多候选时澄清 |
 | `get_effective_rule` | 获取定义、公式、版本、生效层级和 SQL 状态 | 必须已有唯一 `rule_id`；不返回 SQL 文本 |
-| `inspect_indicator_implementation` | 检查字段映射、关联、缺失项和实施状态 | 不读取患者数据；主要服务诊断链 |
+| `inspect_indicator_implementation` | 检查字段映射、关联、缺失项和实施状态 | 不读取患者数据；服务诊断链和实施验收前置检查 |
 | `prepare_indicator_sql` | 字段预检、确定性生成 SQL 和只读安全校验 | 必须有生效规则与明确统计周期；返回短期 `sql_id` |
 | `trial_run_indicator_sql` | 执行已校验 SQL 的只读试运行 | 只接受同会话、同医院、未过期的 `sql_id`；返回聚合结果和 `run_id/result_id` |
 | `diagnose_indicator_issue` | 排查异常、结果不一致、算不对或数据质量问题 | 不得用于普通公式解释、改时间、查结果或生成 SQL |
 | `create_indicator_draft` | 把业务描述转换成预览级指标草稿 | 不提交审批、不发布、不执行 SQL；当前主计划不把它用于普通查询 |
 | `preview_rule_change` | 预览本院口径变化和实施影响 | 只预览，不提交、审批、发布或回退 |
 | `analyze_uploaded_indicators` | 分析 Excel，并与本院聚合结果或系统明细对比 | 必须是同医院文件；患者原始行不进入 LLM |
+| `validate_indicator_implementation` | 执行全面实施验收 MVP，并生成结构化验收报告 | 仅用于明确的全面/上线/迁移验收；内部固定执行 L1、L4、L5 和可选 L6，不用于普通查询 |
 
 明细预览、Excel 导出、差异表下载是受控业务 API，不作为 LLM 工具暴露。这使医院隔离、下载权限、审计和文件过期不依赖模型判断。
+
+### 6.1 全面实施验收 MVP
+
+这是一条挂在动态 `CompiledPlan` 主架构下的确定性专用子工作流，不是第二套 Agent，也不把四个阶段分别暴露给模型：
+
+```mermaid
+flowchart LR
+    P["Planner: implementation_validation"] --> IR["CompiledPlan IR<br/>validate_implementation"]
+    IR --> G["ToolGateway<br/>权限、参数、超时"]
+    G --> V["validate_indicator_implementation"]
+    V --> L1["L1 字段映射与来源"]
+    L1 --> L4["L4 生效规则对齐"]
+    L4 --> L5["L5 SQL 校验与只读试运行"]
+    L5 --> L6{"存在上传文件?"}
+    L6 -->|是| C["L6 报表数据核对"]
+    L6 -->|否| S["L6 已跳过"]
+    C --> R["结构化验收报告"]
+    S --> R
+    R --> E["Evidence + PlanVerifier"]
+    E --> A["确定性中文报告"]
+```
+
+MVP 的验收状态为 `passed`、`warning`、`failed`、`skipped`。业务检查不通过仍会成功生成报告，因此不会被误当作系统异常触发 Replanner；数据库连接、权限或未捕获异常仍由 ToolGateway 的既有错误边界处理。当前报告包含 `report_id`、指标、医院、统计周期、阶段结论、失败码、`sql_id`、`run_id` 和聚合结果引用，不保存 SQL 原文或患者行。正式 Excel/PDF 报告、L2/L3 和扩展 L5 检查留到后续批次。
 
 ## 7. 关键节点
 
@@ -189,6 +213,7 @@ DeepSeek 名称是当前部署传给兼容 API 的模型标识，不代表本文
 | Final Answer | LLM | 只组织已验证的本轮结果 |
 | `ResponseGuard` | 代码 | 拦截 DSML、`tool_calls`、内部协议泄漏和无证据数值 |
 | `TraceRecorder` | 存储 | 保存安全节点数据、耗时、版本、Evidence、Token、缓存和重试信息 |
+| `ImplementationValidationWorkflow` | 确定性子工作流 | 按固定顺序执行 L1/L4/L5/可选 L6，生成阶段化报告；模型不参与阶段路由 |
 
 ## 8. 已实施的工程化措施
 
@@ -206,6 +231,7 @@ DeepSeek 名称是当前部署传给兼容 API 的模型标识，不代表本文
 12. **同医院观察接口**：`/api/agent/runs` 和 `/api/agent/runs/metrics` 只查询当前医院的安全摘要。
 13. **轻量 Eval**：YAML/JSON 数据集覆盖语义、时间、跨轮、多指标、SQL 边界、上传比较和 Prompt Injection；模型矩阵只在人工运行时调用模型。
 14. **轻量部署**：继续使用 FastAPI、现有 MySQL/JSONL/SQLite、DBHub、Ollama/DeepSeek 和原生前端，不增加新的服务或中间件。
+15. **专用验收工作流**：高风险且步骤固定的全面实施验收被编译成一个 Capability，内部阶段失败只进入报告，不触发工具自由循环或不必要的 Replan。
 
 ## 9. 为什么不直接采用其他 Agent 框架
 
@@ -299,7 +325,7 @@ com.example.hospital.agent
 ├── runtime/             # AgentRuntimeService、Runner、Memory、ResponseGuard
 ├── planning/            # RequestPlan、IR、Registry、Compiler、Validator、Controller
 ├── policy/              # PolicyDecisionService、ToolExecutionContext
-├── tools/               # ToolGateway、9 个领域工具 DTO 与适配器
+├── tools/               # ToolGateway、10 个领域工具 DTO 与适配器
 ├── evidence/            # EvidenceEnvelope、Repository、Ledger、Verifier
 ├── model/               # ModelClientRegistry、PlannerClient、FinalAnswerClient
 ├── observability/       # TraceRecorder、runs/metrics 查询

@@ -105,3 +105,18 @@ cases:
     expected:
       security_safe: true
       constraint: patient_level_detail
+  - id: implementation_validation_explicit
+    category: specialized_workflow
+    query: 对患者入院48小时内转科比例做一次全面实施验收，统计2026年1月到3月
+    expected:
+      intent: implementation_validation
+      outputs: [implementation_validation_report]
+      time_required: true
+      indicator_contains: 入院48小时
+  - id: implementation_validation_not_plain_result
+    category: specialized_workflow_boundary
+    query: 查询患者入院48小时内转科比例2026年1月到3月的结果
+    expected:
+      intent: indicator_trial_run
+      outputs: [trial_result]
+      forbidden_outputs: [implementation_validation_report]

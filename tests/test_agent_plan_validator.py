@@ -162,3 +162,26 @@ def test_patient_detail_request_is_security_denial():
     assert result.ok is False
     assert result.fallback_category is FallbackCategory.SECURITY_DENIAL
     assert result.code == "PATIENT_DETAIL_FORBIDDEN"
+
+
+def test_implementation_validation_requires_period_and_database_access():
+    missing_period = RequestPlan.model_validate({
+        "intent": "implementation_validation",
+        "goal": "全面实施验收",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "requested_outputs": ["implementation_validation_report"],
+    })
+    no_database = RequestPlan.model_validate({
+        "intent": "implementation_validation",
+        "goal": "全面实施验收",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "time_expression": {"raw_text": "今年"},
+        "requested_outputs": ["implementation_validation_report"],
+        "constraints": ["no_database_access"],
+    })
+
+    period_result = PlanValidator().validate(missing_period, now=NOW)
+    database_result = PlanValidator().validate(no_database, now=NOW)
+
+    assert period_result.code == "TIME_RANGE_AMBIGUOUS"
+    assert database_result.code == "DATABASE_ACCESS_CONFLICT"

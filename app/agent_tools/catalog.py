@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from app.agent_tools.diagnosis_tools import DiagnosisToolServices, build_diagnosis_tools
+from app.agent_tools.implementation_validation_tools import (
+    build_implementation_validation_tools,
+)
+from app.implementation_validation import ImplementationValidationServices
 from app.agent_tools.preview_tools import PreviewToolServices, build_preview_tools
 from app.agent_tools.read_tools import ReadToolServices, build_read_tools
 from app.agent_tools.registry import ToolRegistry
@@ -17,6 +21,7 @@ def build_agent_tool_registry(
     diagnosis_services: DiagnosisToolServices,
     preview_services: PreviewToolServices,
     upload_services: UploadToolServices | None = None,
+    implementation_validation_services: ImplementationValidationServices | None = None,
 ) -> ToolRegistry:
     tools: list = [
         *build_read_tools(read_services),
@@ -26,4 +31,10 @@ def build_agent_tool_registry(
     ]
     if upload_services is not None:
         tools.extend(build_upload_tools(upload_services))
+    if implementation_validation_services is not None:
+        tools.extend(
+            build_implementation_validation_tools(
+                implementation_validation_services
+            )
+        )
     return ToolRegistry(tools)

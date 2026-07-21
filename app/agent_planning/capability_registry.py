@@ -217,6 +217,30 @@ def _compile_upload(
     return {"file_key": _file_key(user_message, state)}
 
 
+def _compile_implementation_validation(
+    execution: PlanningExecutionLike,
+    state: AgentRunState,
+    user_message: str,
+) -> dict[str, object]:
+    del user_message
+    period = execution.validation.resolved_time
+    if period is None:
+        raise CapabilityDispatchError(
+            "STAT_PERIOD_MISSING",
+            "请明确全面实施验收所使用的开始时间和结束时间。",
+            needs_clarification=True,
+        )
+    arguments: dict[str, object] = {
+        "rule_id": _rule_id(execution, state),
+        "stat_start_time": period.start_time.isoformat(),
+        "stat_end_time": period.end_time.isoformat(),
+    }
+    file_key = str(state.current_upload_file_key or "").strip()
+    if file_key:
+        arguments["file_key"] = file_key
+    return arguments
+
+
 class CapabilitySpecRegistry:
     version = CAPABILITY_REGISTRY_VERSION
 
@@ -287,6 +311,7 @@ class CapabilitySpecRegistry:
             RequestedOutput.DIAGNOSIS: "diagnosis",
             RequestedOutput.CHANGE_PREVIEW: "rule_change_preview",
             RequestedOutput.FILE_ANALYSIS: "file_analysis",
+            RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT: "implementation_validation_report",
         }
         facts = {mapping[value] for value in plan.requested_outputs if value in mapping}
         if facts:
@@ -298,6 +323,7 @@ class CapabilitySpecRegistry:
             PlanIntent.INDICATOR_DIAGNOSIS: {"diagnosis"},
             PlanIntent.RULE_CHANGE_PREVIEW: {"rule_change_preview"},
             PlanIntent.UPLOAD_ANALYSIS: {"file_analysis"},
+            PlanIntent.IMPLEMENTATION_VALIDATION: {"implementation_validation_report"},
         }
         return set(implied.get(plan.intent, set()))
 
@@ -330,6 +356,7 @@ class CapabilitySpecRegistry:
                 PlanCapability.DIAGNOSE_INDICATOR,
                 PlanCapability.PREVIEW_RULE_CHANGE,
                 PlanCapability.ANALYZE_UPLOADED_FILE,
+                PlanCapability.VALIDATE_IMPLEMENTATION,
             ))
         }
         ordered.sort(key=lambda value: phase_order[value])
@@ -376,6 +403,7 @@ def _default_specs() -> tuple[CapabilitySpec, ...]:
         _spec(PlanCapability.DIAGNOSE_INDICATOR, requires={"effective_rule", "implementation_status"}, produces={"diagnosis"}, tool_name="diagnose_indicator_issue", argument_compiler=_compile_diagnosis, completion_fact="diagnosis"),
         _spec(PlanCapability.PREVIEW_RULE_CHANGE, requires={"effective_rule"}, produces={"rule_change_preview"}, tool_name="preview_rule_change", argument_compiler=_compile_rule_change, completion_fact="rule_change_preview"),
         _spec(PlanCapability.ANALYZE_UPLOADED_FILE, produces={"file_analysis"}, tool_name="analyze_uploaded_indicators", argument_compiler=_compile_upload, completion_fact="file_analysis"),
+        _spec(PlanCapability.VALIDATE_IMPLEMENTATION, requires={"effective_rule", "implementation_status", "stat_period"}, produces={"implementation_validation_report"}, tool_name="validate_indicator_implementation", argument_compiler=_compile_implementation_validation, completion_fact="implementation_validation_report", policy_action="agent.implementation.validate", answer_mode="validation_report"),
         _spec(PlanCapability.COMPOSE_ANSWER, policy_action="agent.answer.compose", answer_mode="verified_evidence_only"),
     )
 

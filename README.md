@@ -1,6 +1,6 @@
 # 核心制度指标 Agent
 
-> 更新日期：2026-07-20。当前生产对话入口为“业务语义规划 + 服务端计划编译 + 确定性执行 + 证据验证”的工具调用型 Agent，旧稳定流程和 Shadow 分流已经删除。
+> 更新日期：2026-07-21。当前生产对话入口为“业务语义规划 + 服务端计划编译 + 确定性执行 + 证据验证”的工具调用型 Agent，旧稳定流程和 Shadow 分流已经删除。
 
 本项目是一个面向医院核心制度指标的本地化 Agent。已迁移指标以 MySQL 保存国标口径、医院定制口径及不可变版本，Markdown Wiki 作为规则导入来源和数据库故障时的只读兜底；系统同时提供 AI 问答、指标实施、审批发布、SQL 生成与试运行、明细审阅、异常诊断、运算监控和医院知识回收能力，前端以 AI 指标助手为主入口，并提供可直接操作的业务工作台。
 
@@ -20,6 +20,7 @@
 - **Agent 结果明细与 Excel 导出**：本轮只读试运行成功后，服务端根据经过校验的 `RUN_ID` 确定性追加“查看明细并导出 Excel”入口，不依赖模型生成特殊按钮。授权用户可查看统计范围（分母）、达到要求（分子）和未达到要求三组明细，并导出使用同一规则、医院、统计周期和快照的三工作表 Excel；明细边界同时兼容旧版平铺 `RunContext` 与新版 Agent 嵌套 SQL 快照，跨院访问、数量不一致、上下文不完整、过期或无权限时均以中文提示拒绝，不暴露内部校验信息。
 - **Excel 上传分析与本院结果对比**：上传成功后，前端通过独立 `file_key` 字段把最近上传文件绑定到当前 Agent 会话，服务端保存安全文件引用；用户只说“分析刚上传的文件”也能确定性调用文件分析工具。用户要求与本院指标对比时，计划会先按明确统计周期取得本院试运行结果，再分析 Excel 并核对分子、分母和指标率；缺少指标名称或统计周期时直接澄清。当前存在上传文件时，“为什么我们的结果不一样”“哪些数据不一致”等追问由服务端确定性归一化为上传对比，即使 Planner 误判为普通诊断也不会调用错误工具；Runner 的请求类型始终服从已校验计划。对比回答不再附加普通患者明细导出，而是确定性提供“导出文件与系统差异表”，生成“对比摘要”“一致项”“不一致项”三张工作表，差值统一为上传文件值减系统值。只有汇总值的文件会明确标注无法判断患者级交集与差集，不会编造逐条差异。分析成功统一产生 `file_analysis` 完成证据，控制器不会再次调用同一工具，同时兼容历史会话中的 `upload_analysis` 旧证据。上传新文件会替换当前引用，新建会话会清除前端引用，工具仍按 `hospital_id` 阻止跨院访问。
 - **指标实施控制台**：支持从自然语言创建“本院新增指标”，或把已有公司/国标指标适配到本院；实施任务依次完成取数要求确认、医院数据映射、确定性 SQL 生成、DBHub 试运行、审批和版本化发布，未发布任务不参与正式查询。
+- **全面实施验收 MVP**：用户明确提出“全面实施验收、上线验收、迁移核对或全链路验收”并给出指标与统计周期时，Planner 只输出 `implementation_validation` 业务意图，服务端 IR 只开放一个 `validate_implementation` 专用能力。该能力内部固定执行 L1 字段映射与来源检查、L4 生效规则对齐、L5 受控 SQL 安全校验与只读试运行；当前会话存在上传文件时追加 L6 报表数据核对。各阶段失败形成结构化“未通过”报告，不触发自由 Replan 或重复工具循环；回答由服务端模板生成，并在 Trace 中显示四个独立阶段。正式 Excel/PDF 报告、L2/L3 和扩展 L5 仍属于后续批次。
 - **三层异常诊断**：支持直接粘贴用户 SQL、参数和聚合结果；系统先做只读安全检查，再核对表字段，对比用户 SQL、国标与本院生效口径，并检查数据质量，输出医生可读结论和实施排障依据。
 - **DBHub MCP 数据库接入**：通过本地 DBHub sidecar 读取业务库元数据、同步字段快照，并执行只读 SQL 试运行。
 - **公司业务库真实取数**：`hospital_001` 默认连接 `WIN60_QA_991827`；已核验的急会诊指标从 `WINDBA.INPATIENT_CONSULT_APPLY` 与 `WINDBA.INP_CONSULT_INVITATION` 取数，入院 48 小时转科指标从 `WINDBA.INPATIENT_ENCOUNTER` 与 `WINDBA.INPAT_TRANSFER` 取数。两个指标的分子、分母、明细预览和 Excel 导出都共用各自同一份统计范围与字段映射。
@@ -66,6 +67,7 @@
        -> CapabilitySpecRegistry -> PlanCompiler + PlanValidator -> StateController（查找缺失事实）
        -> DeterministicDispatch（从 CapabilitySpec 编译工具与参数）
        -> PolicyDecisionService -> ToolGateway（PEP）-> 规则 / SQL / 诊断 / 文件工具
+       -> 明确全面实施验收：validate_indicator_implementation -> 固定 L1 / L4 / L5 / 可选 L6
        -> Evidence Ledger（未验证）-> PlanVerifier（验证记录）
        -> Final Answer LLM（仅 VerifiedEvidence）-> ResponseGuard
        -> CompoundResultMerge（自适应并发、按输入顺序合并）-> Trace + 会话记忆
@@ -93,6 +95,7 @@
 |   +-- agent_evidence/
 |   +-- agent_runtime/
 |   +-- agent_tools/
+|   +-- implementation_validation/
 |   +-- agents/
 |   +-- api/
 |   +-- db/

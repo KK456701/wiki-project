@@ -228,6 +228,8 @@ def _request_kind_from_plan(user_message: str, planning_execution) -> str | None
     }
     if "diagnosis" in outputs:
         return "diagnosis"
+    if "implementation_validation_report" in outputs:
+        return "trial_run"
     if "trial_result" in outputs:
         return "trial_run"
     return _classify_request_kind(user_message)
@@ -316,6 +318,79 @@ def _compose_prepared_sql_answer(planning_execution, state: AgentRunState) -> st
         f"统计参数：\n{parameter_lines or '- 无额外参数'}"
         f"{sql_id_line}\n\n该请求只生成并校验 SQL，不会执行数据库。"
     )
+
+
+def _compose_implementation_validation_answer(
+    tool_results: list[dict],
+) -> str | None:
+    completed = next(
+        (
+            item
+            for item in reversed(tool_results)
+            if isinstance(item, dict)
+            and item.get("ok") is True
+            and item.get("code") == "IMPLEMENTATION_VALIDATION_COMPLETED"
+        ),
+        None,
+    )
+    if completed is None:
+        return None
+    data = completed.get("data") or {}
+    status_labels = {
+        "passed": "通过",
+        "warning": "有警告",
+        "failed": "未通过",
+        "skipped": "已跳过",
+    }
+    overall = str(data.get("overall_status") or "failed")
+    lines = [
+        f"## {data.get('rule_name') or data.get('rule_id') or '当前指标'}实施验收报告",
+        "",
+        f"- **验收结论**：{status_labels.get(overall, overall)}",
+        f"- **报告编号**：`{data.get('report_id') or '-'}`",
+        f"- **指标编号**：`{data.get('rule_id') or '-'}`",
+        f"- **统计区间**：{data.get('stat_start') or '-'} 至 {data.get('stat_end') or '-'}（左闭右开）",
+        "",
+        "| 阶段 | 检查项 | 状态 | 结论 |",
+        "|---|---|---|---|",
+    ]
+    for stage in data.get("stages") or []:
+        if not isinstance(stage, dict):
+            continue
+        status = str(stage.get("status") or "")
+        lines.append(
+            f"| {stage.get('stage_id') or '-'} | {stage.get('stage_name') or '-'} "
+            f"| {status_labels.get(status, status)} | {stage.get('summary') or '-'} |"
+        )
+    if data.get("run_id"):
+        lines.extend((
+            "",
+            "### L5 试运行结果",
+            "",
+            f"- 分子：{data.get('numerator_count')}",
+            f"- 分母：{data.get('denominator_count')}",
+            f"- 指标值：{data.get('result_value')}%",
+            f"- SQL 对象：`{data.get('sql_id') or '-'}`",
+            f"- 试运行对象：`{data.get('run_id')}`",
+        ))
+    findings = []
+    for stage in data.get("stages") or []:
+        if not isinstance(stage, dict) or stage.get("status") not in {"warning", "failed"}:
+            continue
+        codes = "、".join(
+            f"`{code}`" for code in stage.get("finding_codes") or []
+        )
+        findings.append(
+            f"- {stage.get('stage_id')} {stage.get('stage_name')}："
+            f"{stage.get('summary')}" + (f"（{codes}）" if codes else "")
+        )
+    if findings:
+        lines.extend(("", "### 待处理项", "", *findings))
+    lines.extend((
+        "",
+        "> 本报告由服务端固定工作流生成；L1、L4、L5 和可选 L6 的状态均来自本轮工具证据，不由模型推测。",
+    ))
+    return "\n".join(lines)
 
 
 def _compose_rule_components_answer(
@@ -1152,7 +1227,9 @@ class AgentRunner:
                             state=run_state,
                             model=model_name,
                         )
-                    deterministic_answer = _compose_prepared_sql_answer(
+                    deterministic_answer = _compose_implementation_validation_answer(
+                        run_state.last_tool_results[turn_tool_results_start:]
+                    ) or _compose_prepared_sql_answer(
                         planning_execution, run_state
                     ) or _compose_rule_components_answer(
                         user_message,
@@ -1220,6 +1297,7 @@ class AgentRunner:
                                             "UPLOAD_ANALYZED",
                                             "SQL_OBJECT_PREPARED",
                                             "EFFECTIVE_RULE_FOUND",
+                                            "IMPLEMENTATION_VALIDATION_COMPLETED",
                                         }
                                     ),
                                     {},

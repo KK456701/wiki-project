@@ -153,6 +153,31 @@ def test_upload_and_system_comparison_compiles_both_evidence_chains():
     assert {"file_analysis", "trial_run"} <= compiled.required_facts
 
 
+def test_implementation_validation_compiles_one_specialized_capability():
+    plan = RequestPlan.model_validate({
+        "intent": "implementation_validation",
+        "goal": "对指标执行全面实施验收",
+        "target_indicator": {"raw_name": "患者入院48小时内转科的比例"},
+        "time_expression": {"raw_text": "2026年1月到3月"},
+        "requested_outputs": ["implementation_validation_report"],
+    })
+
+    compiled = PlanCompiler().compile(plan)
+    capabilities = [node.capability for node in compiled.nodes]
+
+    assert capabilities == [
+        PlanCapability.RESOLVE_INDICATOR,
+        PlanCapability.RESOLVE_EFFECTIVE_RULE,
+        PlanCapability.RESOLVE_TIME_RANGE,
+        PlanCapability.INSPECT_IMPLEMENTATION,
+        PlanCapability.VALIDATE_IMPLEMENTATION,
+        PlanCapability.COMPOSE_ANSWER,
+    ]
+    assert PlanCapability.PREPARE_VERIFIED_SQL not in capabilities
+    assert PlanCapability.EXECUTE_TRIAL_RUN not in capabilities
+    assert "implementation_validation_report" in compiled.required_facts
+
+
 def _capability_spec(capability, *, requires=(), produces=(), tool_name=None):
     return CapabilitySpec(
         capability=capability,
