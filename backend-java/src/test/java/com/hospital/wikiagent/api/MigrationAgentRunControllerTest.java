@@ -11,7 +11,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
-import com.hospital.wikiagent.agent.runtime.AgentRunner;
+import com.hospital.wikiagent.agent.runtime.CompoundAgentRuntime;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.contract.AgentChatRequest;
@@ -20,7 +20,7 @@ class MigrationAgentRunControllerTest {
     @Test
     void authenticatesAndKeepsFrozenChatResponseShape() {
         HospitalAuthService auth = mock(HospitalAuthService.class);
-        AgentRunner runner = mock(AgentRunner.class);
+        CompoundAgentRuntime runner = mock(CompoundAgentRuntime.class);
         HospitalPrincipal principal = new HospitalPrincipal(
                 "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
         when(auth.authenticate("token")).thenReturn(principal);

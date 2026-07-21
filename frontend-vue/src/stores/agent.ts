@@ -27,8 +27,10 @@ export interface ChatMessage {
   status: 'complete' | 'running' | 'failed'
   traceId?: string
   detailRunId?: string
+  detailRunIds?: string[]
   comparisonRunId?: string
   comparisonFileToken?: string
+  comparisonExports?: Array<{ runId: string; fileToken: string }>
   evidence: EvidenceStep[]
 }
 
@@ -59,12 +61,20 @@ function restoreUser(): HospitalUser | null {
 function setAgentContent(message: ChatMessage, value: string) {
   const detailMarker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
   const comparisonMarker = /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\}\}/g
-  const detailMatch = detailMarker.exec(value)
-  const comparisonMatch = comparisonMarker.exec(value)
+  const detailMatches = Array.from(value.matchAll(detailMarker))
+  const comparisonMatches = Array.from(value.matchAll(comparisonMarker))
+  const detailMatch = detailMatches[0]
+  const comparisonMatch = comparisonMatches[0]
   if (detailMatch) message.detailRunId = detailMatch[1]
+  if (detailMatches.length) message.detailRunIds = detailMatches.map((match) => match[1])
   if (comparisonMatch) {
     message.comparisonRunId = comparisonMatch[1]
     message.comparisonFileToken = comparisonMatch[2]
+  }
+  if (comparisonMatches.length) {
+    message.comparisonExports = comparisonMatches.map((match) => ({
+      runId: match[1], fileToken: match[2],
+    }))
   }
   message.content = value.replace(detailMarker, '').replace(comparisonMarker, '')
     .replace(/\n{3,}/g, '\n\n').trim()

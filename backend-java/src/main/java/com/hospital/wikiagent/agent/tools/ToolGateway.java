@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.evidence.EvidenceRecorder;
+import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 
@@ -28,18 +29,38 @@ public class ToolGateway {
     private final ObjectMapper objectMapper;
     private final EvidenceRecorder evidenceRecorder;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
-    private final Semaphore databaseReads = new Semaphore(2);
+    private final Semaphore databaseReads;
+
+    public ToolGateway(
+            ToolRegistry registry,
+            PolicyDecisionService policy,
+            ObjectMapper objectMapper,
+            EvidenceRecorder evidenceRecorder) {
+        this(registry, policy, objectMapper, evidenceRecorder, 2);
+    }
 
     @Autowired
     public ToolGateway(
             ToolRegistry registry,
             PolicyDecisionService policy,
             ObjectMapper objectMapper,
-            EvidenceRecorder evidenceRecorder) {
+            EvidenceRecorder evidenceRecorder,
+            AgentModelProperties properties) {
+        this(registry, policy, objectMapper, evidenceRecorder,
+                Math.max(1, properties.getCompoundDbConcurrency()));
+    }
+
+    private ToolGateway(
+            ToolRegistry registry,
+            PolicyDecisionService policy,
+            ObjectMapper objectMapper,
+            EvidenceRecorder evidenceRecorder,
+            int databaseConcurrency) {
         this.registry = registry;
         this.policy = policy;
         this.objectMapper = objectMapper;
         this.evidenceRecorder = evidenceRecorder;
+        this.databaseReads = new Semaphore(databaseConcurrency);
     }
 
     ToolGateway(

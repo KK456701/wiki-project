@@ -31,6 +31,10 @@ wiki:
     default-model: ${AGENT_DEFAULT_MODEL:ollama-qwen3}
     planner-timeout: 90s
     final-answer-timeout: 120s
+    compound-api-concurrency: 2
+    compound-ollama-concurrency: 1
+    compound-db-concurrency: 2
+    compound-timeout: 300s
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     upload:

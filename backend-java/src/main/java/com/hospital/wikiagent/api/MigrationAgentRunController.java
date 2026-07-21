@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
-import com.hospital.wikiagent.agent.runtime.AgentRunner;
+import com.hospital.wikiagent.agent.runtime.CompoundAgentRuntime;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -30,10 +30,10 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/migration/agent")
 public class MigrationAgentRunController {
     private final HospitalAuthService auth;
-    private final AgentRunner runner;
+    private final CompoundAgentRuntime runner;
     private final ExecutorService streamExecutor = Executors.newFixedThreadPool(4);
 
-    public MigrationAgentRunController(HospitalAuthService auth, AgentRunner runner) {
+    public MigrationAgentRunController(HospitalAuthService auth, CompoundAgentRuntime runner) {
         this.auth = auth;
         this.runner = runner;
     }

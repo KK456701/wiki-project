@@ -147,14 +147,22 @@ async function exportComparison(runId?: string, fileToken?: string) {
           <div class="message-card">
             <header><strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong><span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span></header>
             <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
-            <button v-if="message.detailRunId" type="button" class="detail-link" @click="selectedDetailRunId = message.detailRunId">查看明细并导出 Excel →</button>
             <button
-              v-if="message.comparisonRunId && message.comparisonFileToken && canExportDetails"
+              v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
+              :key="`${runId}-${detailIndex}`"
               type="button"
               class="detail-link"
-              :disabled="exportingComparison === message.comparisonRunId"
-              @click="exportComparison(message.comparisonRunId, message.comparisonFileToken)"
-            >{{ exportingComparison === message.comparisonRunId ? '正在生成差异表…' : '导出逐条差异 Excel →' }}</button>
+              @click="selectedDetailRunId = runId"
+            >查看第 {{ detailIndex + 1 }} 个指标明细并导出 Excel →</button>
+            <button
+              v-for="(comparison, comparisonIndex) in message.comparisonExports || (message.comparisonRunId && message.comparisonFileToken ? [{ runId: message.comparisonRunId, fileToken: message.comparisonFileToken }] : [])"
+              v-show="canExportDetails"
+              :key="`${comparison.runId}-${comparisonIndex}`"
+              type="button"
+              class="detail-link"
+              :disabled="exportingComparison === comparison.runId"
+              @click="exportComparison(comparison.runId, comparison.fileToken)"
+            >{{ exportingComparison === comparison.runId ? '正在生成差异表…' : `导出第 ${comparisonIndex + 1} 个逐条差异 Excel →` }}</button>
             <button v-if="message.traceId" type="button" class="trace-link" @click="openTrace(message.traceId)">查看链路 →</button>
           </div>
         </article>

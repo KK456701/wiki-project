@@ -102,7 +102,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 当前 Java 测试 28 项通过。测试覆盖模型配置、Planner 单次修复、Evidence 允许列表、跨医院拒绝、结果指纹、Final Answer 工具协议防护、规则解释完整工具顺序和 REST 响应形状。
 - 待迁移：一次语义 Replan、ResponseGuard 的确定性模板降级、会话/Trace 持久化和跨模型离线 Eval；完成前不会把聊天入口切到 Java。
 
-### 阶段 4：SQL、诊断、文件与复合任务（上传逐条差异子批次已完成）
+### 阶段 4：SQL、诊断、文件与复合任务（自适应复合任务子批次已完成）
 
 - 已迁移 `inspect_indicator_implementation`、`prepare_indicator_sql` 和 `trial_run_indicator_sql`。Java Runner 可真实完成字段映射预检、医院覆盖 SQL 模板确定性渲染、只读安全校验、私有 SQL 对象保存、执行前上下文指纹复核和 DBHub 聚合试运行。
 - SQL 对象继续复用 `med_generated_sql`、`med_agent_sql_object` 和 `med_sql_run_log`。对象绑定医院、用户、登录会话、规则、统计周期、业务数据源和 30 分钟有效期；跨医院、跨用户、跨会话、跨数据源、过期或上下文漂移均拒绝执行。
@@ -127,10 +127,13 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 逐条匹配按患者/业务标识和关键事件时间组成稳定键，并使用多重集合保留重复记录。安全结果固定报告双方都有、仅系统有、仅上传文件有、字段值不同和达标判定不同的数量；未经数据证明的业务原因仍不允许推测。
 - 原始系统行、上传行和匹配行只在服务端比较器及授权导出过程中存在，不写入 ToolResult 安全载荷、Evidence、Trace、会话或模型输入。Final Answer 只能消费允许列表中的计数、字段名称和已确认差异。
 - 已新增兼容接口 `POST /api/sql-runs/{run_id}/upload-comparison-exports`。Runner 只在逐条比较成功且用户有导出权限时确定性追加带绑定文件令牌的入口；Vue 3 显式确认后生成“对比摘要、双方都有、仅系统有、仅上传文件有”四工作表 Excel，并复用现有医院隔离、过期、SHA-256 和下载审计。
-- 当前 Java 测试共 53 项通过，Vue 生产构建和 5 项 Python/Java 迁移契约测试通过；新增覆盖跨指标拒绝、多重集合交并差、字段/分类差异、安全载荷不含原始行，以及四工作表差异导出回读。
-- 待迁移：全面实施验收和复合任务拆分/并行。
+- 上传逐条差异子批次完成时 Java 测试共 53 项通过，Vue 生产构建和 5 项 Python/Java 迁移契约测试通过；覆盖跨指标拒绝、多重集合交并差、字段/分类差异、安全载荷不含原始行，以及四工作表差异导出回读。
+- 已迁移复合任务外层：`CompoundRequestSplitter` 确定性识别 2 至 3 个并列指标、公共统计周期和跨轮复数指代，不让 Planner 或 Final Answer 决定子任务数量。每个子任务创建独立会话、请求 ID、RunState、Evidence namespace 和 Trace 子标识，并继续复用单指标 `AgentRunner`。
+- `CompoundAgentRuntime` 使用 Java 17 有界线程池、`invokeAll` 和 `Semaphore` 自适应调度。OpenAI 兼容 API 默认最大并发 2，本地 Ollama 默认并发 1，DBHub 只读默认并发 2；上传对比、规则变更、发布与审批类请求保持串行，不增加任务队列或调度中间件。
+- fan-in 始终按用户输入顺序合并；一个子任务失败时保留其他成功结果，整体超时会取消未完成任务。父会话只保存一次合并回答，子状态不会回写父状态。SSE 工具事件携带 `subtask_id`、顺序和 child trace ID，Vue 可从一个回答中解析多个明细/差异导出标记。
+- 当前 Java 测试共 58 项通过，Vue 生产构建和 5 项 Python/Java 迁移契约测试通过；新增覆盖确定性拆分、普通单指标不误拆、跨轮复数指代、API 并行上限、Ollama 串行、局部失败与输入顺序合并。
+- 待迁移：全面实施验收。
 - 保持 SQL ID、rule ID、医院、周期、字段映射版本和 result ID 全链一致。
-- 使用 Java 17 有界线程池、`CompletableFuture` 和 `Semaphore` 实现自适应复合并行；Ollama 默认串行。
 
 ### 阶段 5：Trace、Vue 完整工作台与切换
 

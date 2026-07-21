@@ -104,7 +104,7 @@ public class AgentRunner {
         String requestId = blankTo(request.requestId(), id("REQ_"));
         String traceId = blankTo(request.traceId(), id("TRACE_"));
         String sessionId = conversation.sessionId();
-        String subtaskId = id("SUB_");
+        String subtaskId = requestId.contains(":subtask:") ? requestId : id("SUB_");
         emit(observer, "agent_start", traceId, 0, Map.of("status", "running"));
         emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
 

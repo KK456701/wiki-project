@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 import tools.jackson.databind.JsonNode;
@@ -56,6 +57,32 @@ public class RuleReadRepository {
         response.put("resolved_rule_id", matches.isEmpty() ? null : matches.get(0).get("rule_id"));
         response.put("matches", matches);
         return response;
+    }
+
+    public List<Map<String, String>> activeIndicatorNames(String hospitalId, int limit) {
+        int safeLimit = Math.max(1, Math.min(500, limit));
+        List<Map<String, String>> values = new ArrayList<>();
+        jdbc.query(
+                "SELECT index_code,index_name FROM med_index_standard WHERE status=1 ORDER BY index_code LIMIT ?",
+                (RowCallbackHandler) result -> values.add(Map.of(
+                        "rule_id", result.getString("index_code"),
+                        "rule_name", result.getString("index_name"))),
+                safeLimit);
+        LocalDateTime now = LocalDateTime.now();
+        jdbc.query(
+                "SELECT index_code,index_name FROM med_index_hospital_defined "
+                        + "WHERE hospital_id=? AND status=1 AND approval_status='approved' "
+                        + "AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>=?) ORDER BY index_code LIMIT ?",
+                (RowCallbackHandler) result -> values.add(Map.of(
+                        "rule_id", result.getString("index_code"),
+                        "rule_name", result.getString("index_name"))),
+                hospitalId, now, now, safeLimit);
+        Map<String, Map<String, String>> unique = new LinkedHashMap<>();
+        for (Map<String, String> value : values) {
+            unique.putIfAbsent(value.get("rule_id"), value);
+        }
+        return unique.values().stream().limit(safeLimit).toList();
     }
 
     public Map<String, Object> effectiveRule(String query, String hospitalId) {

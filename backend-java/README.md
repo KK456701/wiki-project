@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细，以及上传明细与系统明细的逐条差异导出。规则写入、审批、复合任务并行和完整 Trace 工作台仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出，以及 2 至 3 个指标的隔离执行与自适应并行。规则写入、审批和完整 Trace 工作台仍由 Python 负责。
 
 ## 本地运行
 
@@ -43,4 +43,6 @@ python ..\scripts\compare_java_python_read_api.py
 
 Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、PlanValidator、确定性中文时间解析、StateController、DeterministicDispatch、类型化策略和 ToolGateway。SQL Server 数据始终通过现有 DBHub sidecar 只读访问。上传明细与系统明细按患者/业务标识和关键事件时间执行多重集合比较，重复行不会被静默去重；模型只看到双方都有、仅系统有、仅上传有、字段差异和达标判定差异等安全汇总。患者级明细不会进入 LLM、Evidence、Trace 或会话；页面只取得脱敏分页，原始值只存在于 24 小时短期快照和经确认生成的导出文件。
 
-后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移复合任务自适应并行、完整 Trace 和 Vue 工作台。只有同一接口通过契约对比后，才允许在入口层切流。
+复合请求由 `CompoundRequestSplitter` 在服务端识别明确并列指标或跨轮“这两个/它们/分别”等复数指代，再由 `CompoundAgentRuntime` fan-out 到相互隔离的单指标 Runner。每个子任务拥有独立会话、请求 ID、RunState、Evidence namespace 与 Trace 子标识，子任务执行期间不修改父状态。OpenAI 兼容 API 最大并发 2，Ollama 最大并发 1，DBHub 只读最大并发 2；上传、规则变更、发布和审批类任务保持串行。整体超时会取消未完成任务，已成功子任务仍按输入顺序返回；Vue 同一回答可展示多个明细或差异导出入口。
+
+后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移完整 Trace 和 Vue 工作台。只有同一接口通过契约对比后，才允许在入口层切流。
