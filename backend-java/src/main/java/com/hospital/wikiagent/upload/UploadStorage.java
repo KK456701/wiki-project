@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.runtime.WorkspacePaths;
 
 @Component
 public class UploadStorage {
@@ -20,7 +21,7 @@ public class UploadStorage {
     private final long maxBytes;
 
     public UploadStorage(UploadProperties properties) {
-        this.root = properties.getRoot().toAbsolutePath().normalize();
+        this.root = WorkspacePaths.resolve(properties.getRoot());
         this.maxBytes = Math.max(1, properties.getMaxBytes());
         try {
             Files.createDirectories(root);

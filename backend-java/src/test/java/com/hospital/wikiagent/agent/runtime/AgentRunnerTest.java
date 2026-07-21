@@ -187,11 +187,13 @@ class AgentRunnerTest {
                 "计算2026年1月至3月急会诊及时到位率", "session_001", "ollama-test", null,
                 "request_001", "trace_001", "business_test", "{}", "",
                 new HospitalPrincipal(
-                        "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
+                        "user_001", "doctor", "hospital_001", Set.of("indicator_detail_view"),
+                        false, "auth_session_001")),
                 events::add);
 
         assertThat(result.stopReason()).as(result.answer() + " " + events).isEqualTo("final_answer");
         assertThat(result.answer()).contains("25.0%", "1", "4");
+        assertThat(result.answer()).contains("{{detail_export:RUN_");
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
                 .containsExactly(

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 
 import TraceDrawer from '../components/TraceDrawer.vue'
+import DetailDrawer from '../components/DetailDrawer.vue'
 import { useAgentStore } from '../stores/agent'
 
 const store = useAgentStore()
@@ -11,10 +12,12 @@ const loginError = ref('')
 const loggingIn = ref(false)
 const query = ref('')
 const selectedTraceId = ref('')
+const selectedDetailRunId = ref('')
 const uploadInput = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLElement | null>(null)
 
 const activeEvidence = computed(() => store.latestAgentMessage?.evidence || [])
+const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
 const suggestions = [
   '急会诊及时到位率怎么算？',
   '患者入院 48 小时内转科的比例从一月份到现在是多少？',
@@ -127,6 +130,7 @@ function openTrace(traceId?: string) {
           <div class="message-card">
             <header><strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong><span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span></header>
             <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
+            <button v-if="message.detailRunId" type="button" class="detail-link" @click="selectedDetailRunId = message.detailRunId">查看明细并导出 Excel →</button>
             <button v-if="message.traceId" type="button" class="trace-link" @click="openTrace(message.traceId)">查看链路 →</button>
           </div>
         </article>
@@ -155,5 +159,12 @@ function openTrace(traceId?: string) {
     <p v-if="store.error" class="global-error">{{ store.error }}</p>
 
     <TraceDrawer v-if="selectedTraceId" :token="store.token" :trace-id="selectedTraceId" @close="selectedTraceId = ''" />
+    <DetailDrawer
+      v-if="selectedDetailRunId"
+      :token="store.token"
+      :run-id="selectedDetailRunId"
+      :can-export="canExportDetails"
+      @close="selectedDetailRunId = ''"
+    />
   </main>
 </template>

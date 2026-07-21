@@ -26,6 +26,7 @@ export interface ChatMessage {
   content: string
   status: 'complete' | 'running' | 'failed'
   traceId?: string
+  detailRunId?: string
   evidence: EvidenceStep[]
 }
 
@@ -51,6 +52,13 @@ function restoreUser(): HospitalUser | null {
   } catch {
     return null
   }
+}
+
+function setAgentContent(message: ChatMessage, value: string) {
+  const marker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
+  const match = marker.exec(value)
+  if (match) message.detailRunId = match[1]
+  message.content = value.replace(marker, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 export const useAgentStore = defineStore('agent', {
@@ -149,7 +157,7 @@ export const useAgentStore = defineStore('agent', {
     applyEvent(message: ChatMessage, event: AgentEvent) {
       if (event.trace_id) message.traceId = event.trace_id
       if (event.event === 'assistant_message' || event.event === 'clarification_required') {
-        message.content = event.message || ''
+        setAgentContent(message, event.message || '')
       }
       if (event.event === 'agent_error') {
         message.status = 'failed'

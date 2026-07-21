@@ -50,6 +50,57 @@ export interface UploadResult {
   size_bytes: number
 }
 
+export interface DetailColumn {
+  field: string
+  label: string
+  sensitivity: string
+}
+
+export interface DetailSnapshot {
+  snapshot_id: string
+  run_id: string
+  hospital_id: string
+  rule_id: string
+  rule_name: string
+  effective_level: string
+  national_version?: string
+  hospital_version?: number
+  stat_start: string
+  stat_end: string
+  denominator_count: number
+  numerator_count: number
+  unmatched_count: number
+  columns: DetailColumn[]
+  created_at: string
+  expires_at: string
+  reused: boolean
+  source_database: string
+  source_tables: string[]
+}
+
+export interface DetailPage {
+  snapshot_id: string
+  run_id: string
+  group: 'denominator' | 'numerator' | 'unmatched'
+  page: number
+  page_size: number
+  total: number
+  items: Array<Record<string, unknown>>
+}
+
+export interface IndicatorExport {
+  export_id: string
+  run_id: string
+  hospital_id: string
+  rule_id: string
+  file_name: string
+  row_count: number
+  status: string
+  created_at: string
+  expires_at: string
+  download_count: number
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -114,6 +165,64 @@ export async function loadAgentRun(token: string, traceId: string): Promise<Reco
     headers: authHeaders(token),
   })
   return readJson<Record<string, unknown>>(response)
+}
+
+export async function ensureIndicatorDetails(token: string, runId: string): Promise<DetailSnapshot> {
+  const response = await fetch(`/api/sql-runs/${encodeURIComponent(runId)}/details`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return readJson<DetailSnapshot>(response)
+}
+
+export async function loadIndicatorDetailPage(
+  token: string,
+  runId: string,
+  group: DetailPage['group'],
+  page = 1,
+  pageSize = 50,
+): Promise<DetailPage> {
+  const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  const response = await fetch(
+    `/api/sql-runs/${encodeURIComponent(runId)}/details/${group}?${query}`,
+    { headers: authHeaders(token) },
+  )
+  return readJson<DetailPage>(response)
+}
+
+export async function createIndicatorExport(
+  token: string,
+  runId: string,
+  confirmed: boolean,
+): Promise<IndicatorExport> {
+  const response = await fetch(`/api/sql-runs/${encodeURIComponent(runId)}/exports`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmed }),
+  })
+  return readJson<IndicatorExport>(response)
+}
+
+export async function downloadIndicatorExport(
+  token: string,
+  value: IndicatorExport,
+): Promise<void> {
+  const response = await fetch(`/api/indicator-exports/${encodeURIComponent(value.export_id)}/download`, {
+    headers: authHeaders(token),
+  })
+  if (!response.ok) await readJson(response)
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  try {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = value.file_name
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 function parseSseBlock(block: string): AgentEvent | null {

@@ -217,13 +217,15 @@ public class AgentRunner {
         var answer = finalAnswer.compose(new FinalAnswerInput(
                 request.query(), plan.goal(), modelId,
                 LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
+        String answerContent = appendDetailExportMarker(
+                answer.content(), state.lastRunId(), request.principal());
         emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
-                "message", answer.content(), "status", "completed"));
+                "message", answerContent, "status", "completed"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
                 "stop_reason", "final_answer", "status", "completed",
                 "step_count", state.stepCount()));
         return new AgentRunResult(
-                answer.content(), "final_answer", traceId, sessionId,
+                answerContent, "final_answer", traceId, sessionId,
                 state.stepCount(), plan, compiled);
     }
 
@@ -381,5 +383,20 @@ public class AgentRunner {
 
     private static String id(String prefix) {
         return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+    }
+
+    private static String appendDetailExportMarker(
+            String content,
+            String runId,
+            com.hospital.wikiagent.auth.HospitalPrincipal principal) {
+        if (runId == null || runId.isBlank() || principal.mustChangePassword()
+                || !principal.permissions().contains("indicator_detail_view")) {
+            return content;
+        }
+        String marker = "{{detail_export:" + runId + "}}";
+        if (content.contains(marker)) {
+            return content;
+        }
+        return content.stripTrailing() + "\n\n本次统计支持查看分子、分母明细并导出 Excel：\n\n" + marker;
     }
 }

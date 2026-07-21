@@ -40,6 +40,11 @@ wiki:
       max-entries: 2000
       max-rows-per-sheet: 5001
       max-columns: 100
+    details:
+      export-root: runtime/exports
+      expire-hours: 24
+      max-rows: 20000
+      default-page-size: 50
     models:
       - id: ollama-qwen3
         name: Qwen3 4B（本地 Ollama）
