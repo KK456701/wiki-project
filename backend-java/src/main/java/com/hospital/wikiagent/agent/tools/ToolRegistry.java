@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.diagnosis.IndicatorDiagnosisTools;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
@@ -18,15 +19,26 @@ public class ToolRegistry {
     private final Map<String, AgentTool> tools;
 
     @Autowired
+    public ToolRegistry(
+            RuleReadRepository rules,
+            IndicatorSqlTools sqlTools,
+            IndicatorDiagnosisTools diagnosisTools) {
+        this(rules, sqlTools, diagnosisTools, true);
+    }
+
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, true);
+        this(rules, sqlTools, null, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, false);
+        this(rules, null, null, false);
     }
 
-    private ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools, boolean migrateSqlTools) {
+    private ToolRegistry(
+            RuleReadRepository rules,
+            IndicatorSqlTools sqlTools,
+            IndicatorDiagnosisTools diagnosisTools,
+            boolean migrateSqlTools) {
         Map<String, AgentTool> values = new LinkedHashMap<>();
         register(values, new AgentTool(
                 "search_indicator_rules",
@@ -89,6 +101,17 @@ public class ToolRegistry {
                     true,
                     (context, state) -> !state.validatedSqlIds().isEmpty(),
                     (input, context) -> sqlTools.trial((IndicatorSqlTools.TrialInput) input, context)));
+        }
+        if (diagnosisTools != null) {
+            register(values, new AgentTool(
+                    "diagnose_indicator_issue",
+                    IndicatorDiagnosisTools.Input.class,
+                    Set.of(),
+                    Duration.ofSeconds(60),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> state.currentRuleId() != null,
+                    (input, context) -> diagnosisTools.diagnose((IndicatorDiagnosisTools.Input) input, context)));
         }
 
         for (String name : List.of(

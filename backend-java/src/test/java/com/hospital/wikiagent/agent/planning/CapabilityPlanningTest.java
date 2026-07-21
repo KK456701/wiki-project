@@ -102,6 +102,17 @@ class CapabilityPlanningTest {
                 .hasMessageContaining("依赖环");
     }
 
+    @Test
+    void diagnosedBusinessConclusionCompletesFactInsteadOfRepeatingTool() {
+        AgentRunState state = new AgentRunState();
+        state.lastToolResults().add(ToolResult.success(
+                "INDICATOR_DIAGNOSED", "指标诊断已完成。",
+                Map.of("report_id", "DR_001", "diagnose_status", "failed")));
+        PlanValidation validation = PlanValidation.valid(null);
+
+        assertThat(AgentStateController.stateFacts(state, validation)).contains("diagnosis");
+    }
+
     private static RequestPlan trialPlan() {
         return new RequestPlan(
                 null,

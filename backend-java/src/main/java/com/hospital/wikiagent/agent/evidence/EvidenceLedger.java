@@ -31,6 +31,7 @@ public class EvidenceLedger implements EvidenceRecorder {
             "stat_start", "stat_end", "stat_start_time", "stat_end_time",
             "numerator_count", "denominator_count", "result_value", "sample_count",
             "file_key", "sheet_count", "row_count", "columns", "summary",
+            "diagnose_status", "user_summary", "layers", "stat_period",
             "row_level_comparison_available", "cause_analysis_available",
             "report_id", "report_schema_version", "overall_status", "stages",
             "passed_stages", "warning_stages", "failed_stages", "skipped_stages");

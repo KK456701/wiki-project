@@ -216,3 +216,21 @@ CREATE TABLE med_sql_run_log (
   run_context_json CLOB,
   run_time TIMESTAMP NOT NULL
 );
+
+CREATE TABLE med_index_diagnose_report (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  report_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  rule_id VARCHAR(64) NOT NULL,
+  diagnose_type VARCHAR(32) NOT NULL,
+  problem_detail CLOB,
+  repair_suggest CLOB,
+  repair_sql CLOB,
+  diagnose_time TIMESTAMP NOT NULL,
+  status TINYINT NOT NULL,
+  trigger_type VARCHAR(64) NOT NULL,
+  related_sql_id VARCHAR(64),
+  layer_results CLOB,
+  diagnose_status VARCHAR(32) NOT NULL,
+  stat_period VARCHAR(128)
+);

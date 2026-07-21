@@ -126,7 +126,7 @@ public class AgentStateController {
                 }
                 case "SQL_OBJECT_PREPARED" -> facts.add("sql_validation");
                 case "TRIAL_RUN_COMPLETED" -> facts.add("trial_run");
-                case "DIAGNOSIS_COMPLETED" -> facts.add("diagnosis");
+                case "DIAGNOSIS_COMPLETED", "INDICATOR_DIAGNOSED" -> facts.add("diagnosis");
                 case "RULE_CHANGE_PREVIEWED" -> facts.add("rule_change_preview");
                 case "UPLOAD_ANALYZED" -> facts.add("file_analysis");
                 case "IMPLEMENTATION_VALIDATED" -> facts.add("implementation_validation_report");

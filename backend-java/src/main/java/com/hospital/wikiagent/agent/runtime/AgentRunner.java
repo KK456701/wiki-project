@@ -237,6 +237,12 @@ public class AgentRunner {
                 state.validatedSqlIds().add(sqlId.toString());
             }
         }
+        if ("INDICATOR_DIAGNOSED".equals(result.code())) {
+            Object reportId = result.data().get("report_id");
+            if (reportId != null && !reportId.toString().isBlank()) {
+                state.lastDiagnosisId(reportId.toString());
+            }
+        }
     }
 
     private static void emit(

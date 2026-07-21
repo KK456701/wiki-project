@@ -11,6 +11,7 @@ public class AgentRunState {
     private String currentUploadFileKey;
     private String subtaskId;
     private String lastRunId;
+    private String lastDiagnosisId;
     private int stepCount;
     private final List<String> validatedSqlIds = new ArrayList<>();
     private final List<EvidenceFact> evidence = new ArrayList<>();
@@ -49,6 +50,14 @@ public class AgentRunState {
 
     public void lastRunId(String value) {
         lastRunId = value == null || value.isBlank() ? null : value.strip();
+    }
+
+    public String lastDiagnosisId() {
+        return lastDiagnosisId;
+    }
+
+    public void lastDiagnosisId(String value) {
+        lastDiagnosisId = value == null || value.isBlank() ? null : value.strip();
     }
 
     public int stepCount() {

@@ -290,11 +290,17 @@ public class CapabilitySpecRegistry {
 
     private static Map<String, Object> diagnosisArguments(
             PlanningExecution execution, AgentRunState state, String userMessage) {
-        return Map.of(
-                "rule_id", resolveRuleId(execution, state),
-                "issue_description", userMessage == null || userMessage.isBlank()
-                        ? "请排查当前指标异常。"
-                        : userMessage.strip());
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", resolveRuleId(execution, state));
+        values.put("issue_description", userMessage == null || userMessage.isBlank()
+                ? "请排查当前指标异常。"
+                : userMessage.strip());
+        if (execution.validation().resolvedTime() != null) {
+            values.put("stat_period",
+                    execution.validation().resolvedTime().startTime() + "~"
+                            + execution.validation().resolvedTime().endTime());
+        }
+        return values;
     }
 
     private static Map<String, Object> changeArguments(
