@@ -135,9 +135,13 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 待迁移：全面实施验收。
 - 保持 SQL ID、rule ID、医院、周期、字段映射版本和 result ID 全链一致。
 
-### 阶段 5：Trace、Vue 完整工作台与切换
+### 阶段 5：Trace、Vue 完整工作台与切换（单轮 Trace 子批次已完成）
 
-- 迁移会话、Trace 查询、运行观察、审批、实施、监控、元数据和术语页面。
+- Java Runner 已在真实执行边界记录会话读取、Planner、IR 编译/校验、Controller、确定性 Dispatch、工具结果、Evidence Verifier、Final Answer、回答协议检查和会话保存；复合请求额外记录拆分、独立子任务和按序合并。节点携带父节点、`subtask_id`、真实开始偏移、耗时、类型、能力、工具、模型、FailureClass、缓存与安全输入输出。
+- Java 复用现有 `med_agent_trace` / `med_agent_trace_node` 和 Evidence 表，不增加外部服务或数据库；`GET /api/agent/runs/{trace_id}` 只允许当前登录医院读取。密码、认证令牌、SQL 正文和患者原始行不进入 Trace，`SQL_*`、`RUN_*` 与 Evidence ID 等安全对象引用保留。
+- Vue Trace 抽屉已增加中英文节点名、类型/状态筛选、耗时分类、瀑布条、子任务泳道、最慢节点、完整安全输入输出和 Evidence 来源。旧 Python Trace 缺少新字段时仍可按原顺序显示。
+- 当前 Java 测试共 59 项、Python/Java 迁移契约 5 项、Vue 生产构建通过；新增覆盖 Trace 安全字段、节点增强和跨医院拒绝，现有 Runner/SSE 事件保持兼容。
+- 待迁移：`GET /api/agent/runs`、`GET /api/agent/runs/metrics`、跨运行观察页面，以及审批、实施、监控、元数据和术语页面。
 - Vue 构建产物进入 Spring Boot JAR。
 - 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。

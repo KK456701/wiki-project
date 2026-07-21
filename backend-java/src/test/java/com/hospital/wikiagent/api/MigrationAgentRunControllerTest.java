@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.agent.runtime.CompoundAgentRuntime;
+import com.hospital.wikiagent.agent.trace.AgentTraceService;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.contract.AgentChatRequest;
@@ -21,12 +22,14 @@ class MigrationAgentRunControllerTest {
     void authenticatesAndKeepsFrozenChatResponseShape() {
         HospitalAuthService auth = mock(HospitalAuthService.class);
         CompoundAgentRuntime runner = mock(CompoundAgentRuntime.class);
+        AgentTraceService traces = mock(AgentTraceService.class);
         HospitalPrincipal principal = new HospitalPrincipal(
                 "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
         when(auth.authenticate("token")).thenReturn(principal);
-        when(runner.run(any())).thenReturn(new AgentRunResult(
+        when(traces.observer(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(runner.run(any(), any())).thenReturn(new AgentRunResult(
                 "已完成", "final_answer", "trace_001", "session_001", 2, null, null));
-        MigrationAgentRunController controller = new MigrationAgentRunController(auth, runner);
+        MigrationAgentRunController controller = new MigrationAgentRunController(auth, runner, traces);
 
         try {
             var response = controller.chat(
@@ -36,7 +39,7 @@ class MigrationAgentRunControllerTest {
             assertThat(response.stopReason()).isEqualTo("final_answer");
             assertThat(response.stepCount()).isEqualTo(2);
             verify(auth).authenticate("token");
-            verify(runner).run(any());
+            verify(runner).run(any(), any());
         } finally {
             controller.close();
         }

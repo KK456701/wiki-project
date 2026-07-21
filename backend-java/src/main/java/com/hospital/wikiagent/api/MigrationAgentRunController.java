@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
 import com.hospital.wikiagent.agent.runtime.CompoundAgentRuntime;
+import com.hospital.wikiagent.agent.trace.AgentTraceService;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -31,11 +32,14 @@ import jakarta.validation.Valid;
 public class MigrationAgentRunController {
     private final HospitalAuthService auth;
     private final CompoundAgentRuntime runner;
+    private final AgentTraceService traces;
     private final ExecutorService streamExecutor = Executors.newFixedThreadPool(4);
 
-    public MigrationAgentRunController(HospitalAuthService auth, CompoundAgentRuntime runner) {
+    public MigrationAgentRunController(
+            HospitalAuthService auth, CompoundAgentRuntime runner, AgentTraceService traces) {
         this.auth = auth;
         this.runner = runner;
+        this.traces = traces;
     }
 
     @PostMapping("/chat")
@@ -44,10 +48,21 @@ public class MigrationAgentRunController {
             @RequestHeader(value = "X-Request-ID", required = false) String requestId,
             @Valid @RequestBody AgentChatRequest request) {
         HospitalPrincipal principal = auth.authenticate(BearerTokens.require(authorization));
-        var result = runner.run(runRequest(request, principal, requestId, null));
-        return new AgentChatResponse(
-                result.answer(), result.stopReason(), result.traceId(),
-                result.sessionId(), result.stepCount());
+        String traceId = id("TRACE_");
+        String resolvedRequestId = requestId == null || requestId.isBlank() ? id("REQ_") : requestId;
+        traces.start(traceId, request.sessionId(), principal, request.query());
+        try {
+            var result = runner.run(
+                    runRequest(request, principal, resolvedRequestId, traceId),
+                    traces.observer(traceId, event -> { }));
+            traces.finish(traceId, result);
+            return new AgentChatResponse(
+                    result.answer(), result.stopReason(), result.traceId(),
+                    result.sessionId(), result.stepCount());
+        } catch (RuntimeException exception) {
+            traces.fail(traceId, exception.getMessage());
+            throw exception;
+        }
     }
 
     @PostMapping(path = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -57,12 +72,18 @@ public class MigrationAgentRunController {
             @Valid @RequestBody AgentChatRequest request) {
         HospitalPrincipal principal = auth.authenticate(BearerTokens.require(authorization));
         String traceId = id("TRACE_");
+        String resolvedRequestId = requestId == null || requestId.isBlank() ? id("REQ_") : requestId;
+        traces.start(traceId, request.sessionId(), principal, request.query());
         SseEmitter emitter = new SseEmitter(300_000L);
         streamExecutor.submit(() -> {
             try {
-                runner.run(runRequest(request, principal, requestId, traceId), event -> send(emitter, event));
+                var result = runner.run(
+                        runRequest(request, principal, resolvedRequestId, traceId),
+                        traces.observer(traceId, event -> send(emitter, event)));
+                traces.finish(traceId, result);
                 emitter.complete();
             } catch (RuntimeException exception) {
+                traces.fail(traceId, exception.getMessage());
                 try {
                     send(emitter, Map.of(
                             "event", "agent_error",

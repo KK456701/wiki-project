@@ -58,6 +58,7 @@ public class CompoundAgentRuntime {
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        long splitStarted = TraceEvents.started();
         var conversation = conversations.open(request.principal(), request.sessionId());
         SplitResult split = splitter.split(
                 request.query(), conversation.recentHistory(), request.principal().hospitalId());
@@ -68,6 +69,14 @@ public class CompoundAgentRuntime {
                 conversation, request.principal(), request.query(), request.fileKey());
         String traceId = first(request.traceId(), id("TRACE_"));
         String requestId = first(request.requestId(), id("REQ_"));
+        TraceEvents.completed(observer, traceId, "compound_split", "code", splitStarted,
+                "root", Map.of("query", request.query()), Map.of(
+                        "subtask_count", split.tasks().size(),
+                        "targets", split.tasks().stream().map(SubtaskSpec::target).toList(),
+                        "common_time", split.commonTimeExpression() == null
+                                ? "" : split.commonTimeExpression(),
+                        "serial_required", split.serialRequired(),
+                        "splitter_version", CompoundRequestSplitter.VERSION));
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running",
                 "compound", true,
@@ -89,6 +98,7 @@ public class CompoundAgentRuntime {
 
         List<SubtaskOutcome> outcomes = invoke(callables, split.tasks(), timeout(properties.getCompoundTimeout()));
         outcomes.sort(java.util.Comparator.comparingInt(value -> value.task().index()));
+        long mergeStarted = TraceEvents.started();
         List<String> sections = new ArrayList<>();
         int successful = 0;
         int steps = 0;
@@ -107,6 +117,11 @@ public class CompoundAgentRuntime {
         }
         String answer = String.join("\n\n---\n\n", sections);
         String stopReason = successful > 0 ? "final_answer" : "compound_failed";
+        TraceEvents.completed(observer, traceId, "compound_merge", "code", mergeStarted,
+                "root", Map.of("subtask_count", outcomes.size()), Map.of(
+                        "successful_subtasks", successful,
+                        "failed_subtasks", outcomes.size() - successful,
+                        "ordered_targets", outcomes.stream().map(value -> value.task().target()).toList()));
         emit(observer, "assistant_message", traceId, steps, Map.of(
                 "message", answer,
                 "status", successful > 0 ? "completed" : "failed",
@@ -137,10 +152,12 @@ public class CompoundAgentRuntime {
             Semaphore semaphore,
             AgentRunObserver observer) {
         boolean acquired = false;
+        long subtaskStarted = TraceEvents.started();
+        String subtaskId = parentRequestId + ":subtask:" + task.index();
+        String subtaskNodeId = "SUBTASK_" + Integer.toUnsignedString(subtaskId.hashCode(), 36);
         try {
             semaphore.acquire();
             acquired = true;
-            String subtaskId = parentRequestId + ":subtask:" + task.index();
             AgentRunRequest child = new AgentRunRequest(
                     task.query(),
                     first(parent.sessionId(), parent.principal().sessionId()) + ":compound:"
@@ -150,12 +167,23 @@ public class CompoundAgentRuntime {
                     parentState + "\ncompound_subtask_id=" + subtaskId,
                     parentHistory, parent.principal());
             AgentRunResult result = runner.run(child, event -> forwardChildEvent(
-                    observer, event, parentTraceId, subtaskId, task.index()));
+                    observer, event, parentTraceId, subtaskId, subtaskNodeId, task.index()));
+            TraceEvents.completed(observer, parentTraceId, "compound_subtask", "code",
+                    subtaskStarted, subtaskId, Map.of(
+                            "target", task.target(), "query", task.query()), Map.of(
+                            "stop_reason", result.stopReason(), "step_count", result.stepCount()),
+                    "node_id", subtaskNodeId);
             return new SubtaskOutcome(task, result, result.answer());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            TraceEvents.failed(observer, parentTraceId, "compound_subtask", "code",
+                    subtaskStarted, subtaskId, "SUBTASK_CANCELLED", "子任务已取消。",
+                    "node_id", subtaskNodeId);
             return SubtaskOutcome.failed(task, "该指标子任务已取消，请单独重试。");
         } catch (RuntimeException exception) {
+            TraceEvents.failed(observer, parentTraceId, "compound_subtask", "code",
+                    subtaskStarted, subtaskId, "SUBTASK_FAILED", exception.getMessage(),
+                    "node_id", subtaskNodeId);
             return SubtaskOutcome.failed(task, "该指标子任务执行失败，请单独重试。");
         } finally {
             if (acquired) {
@@ -200,6 +228,7 @@ public class CompoundAgentRuntime {
             Map<String, Object> event,
             String parentTraceId,
             String subtaskId,
+            String subtaskNodeId,
             int subtaskIndex) {
         String type = String.valueOf(event.get("event"));
         if (List.of("agent_start", "assistant_message", "agent_done", "agent_error",
@@ -211,6 +240,9 @@ public class CompoundAgentRuntime {
         safe.put("trace_id", parentTraceId);
         safe.put("subtask_id", subtaskId);
         safe.put("subtask_index", subtaskIndex);
+        if ("trace_node".equals(type)) {
+            safe.put("parent_node_id", subtaskNodeId);
+        }
         observer.onEvent(Map.copyOf(safe));
     }
 

@@ -96,26 +96,58 @@ public class AgentRunner {
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        String requestId = blankTo(request.requestId(), id("REQ_"));
+        String traceId = blankTo(request.traceId(), id("TRACE_"));
+        long memoryStarted = TraceEvents.started();
         ConversationSnapshot conversation = conversations.open(
                 request.principal(), request.sessionId());
         request = withConversationContext(request, conversation);
         conversations.appendUser(
                 conversation, request.principal(), request.query(), request.fileKey());
-        String requestId = blankTo(request.requestId(), id("REQ_"));
-        String traceId = blankTo(request.traceId(), id("TRACE_"));
         String sessionId = conversation.sessionId();
         String subtaskId = requestId.contains(":subtask:") ? requestId : id("SUB_");
         emit(observer, "agent_start", traceId, 0, Map.of("status", "running"));
+        TraceEvents.completed(observer, traceId, "memory_load", "storage", memoryStarted,
+                subtaskId, Map.of("session_id", safe(request.sessionId())), Map.of(
+                        "history_length", request.recentHistory().length(),
+                        "structured_state_length", request.structuredState().length()));
         emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
 
-        PlannerResult modelPlan = planner.plan(new PlannerInput(
-                request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
-                request.structuredState(), request.recentHistory()));
+        long plannerStarted = TraceEvents.started();
+        PlannerResult modelPlan;
+        try {
+            modelPlan = planner.plan(new PlannerInput(
+                    request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                    request.structuredState(), request.recentHistory()));
+            TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
+                    subtaskId, Map.of(
+                            "query", request.query(),
+                            "structured_state", request.structuredState(),
+                            "recent_history", request.recentHistory()), Map.of(
+                            "intent", modelPlan.plan().intent().name(),
+                            "repaired", modelPlan.repaired()),
+                    "model_id", modelPlan.modelId());
+        } catch (RuntimeException exception) {
+            TraceEvents.failed(observer, traceId, "planner_llm", "llm", plannerStarted,
+                    subtaskId, "PLANNER_FAILED", exception.getMessage(),
+                    "model_id", request.modelId());
+            throw exception;
+        }
+        long compileStarted = TraceEvents.started();
         RequestPlan enrichedPlan = enrichFromConversation(modelPlan.plan(), conversation);
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
-        PlanValidation validation = validator.validate(planned.plan());
         CompiledPlanIR compiled = compiler.compile(planned.plan());
+        TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
+                subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
+                        "plan_id", compiled.planId(), "node_count", compiled.nodes().size(),
+                        "ir_version", CompiledPlanIR.VERSION));
+        long validationStarted = TraceEvents.started();
+        PlanValidation validation = validator.validate(planned.plan());
+        TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
+                subtaskId, Map.of("plan_id", compiled.planId()), Map.of(
+                        "valid", validation.ok(),
+                        "code", validation.code()));
         PlanningExecution execution = new PlanningExecution(
                 planned.plan(), compiled, validation, capabilities);
 
@@ -128,32 +160,50 @@ public class AgentRunner {
                 request.principal(), requestId, traceId, request.dbSourceId());
 
         while (state.stepCount() < MAX_STEPS) {
+            long controllerStarted = TraceEvents.started();
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
+            TraceEvents.completed(observer, traceId, "state_controller", "code",
+                    controllerStarted, subtaskId, Map.of(
+                            "evidence_count", state.evidenceIds().size(),
+                            "step_count", state.stepCount()), eventValues(
+                            "action", decision.action().name(),
+                            "capability", decision.capability()),
+                    "capability", decision.capability());
             if (decision.action() == ControllerAction.FALLBACK) {
                 AgentRunResult result = finishFallback(
                         observer, traceId, sessionId, state, planned.plan(), compiled, decision);
-                conversations.appendAssistant(
-                        conversation, request.principal(), result.answer(), state);
+                saveConversation(observer, traceId, subtaskId, conversation,
+                        request.principal(), result.answer(), state);
                 return result;
             }
             if (decision.action() == ControllerAction.COMPOSE_ANSWER) {
                 AgentRunResult result = compose(
                         request, observer, traceId, sessionId, state, planned.modelId(),
                         planned.plan(), compiled, validation, context);
-                conversations.appendAssistant(
-                        conversation, request.principal(), result.answer(), state);
+                saveConversation(observer, traceId, subtaskId, conversation,
+                        request.principal(), result.answer(), state);
                 return result;
             }
 
             DeterministicDispatch.ToolCall call;
+            long dispatchStarted = TraceEvents.started();
             try {
                 call = dispatch.buildToolCall(execution, decision, state, request.query());
+                TraceEvents.completed(observer, traceId, "deterministic_tool_dispatch", "code",
+                        dispatchStarted, subtaskId, Map.of(
+                                "capability", decision.capability()), Map.of(
+                                "tool_name", call.name(),
+                                "argument_names", call.arguments().keySet()),
+                        "capability", decision.capability(), "tool_name", call.name());
             } catch (CapabilityDispatchException exception) {
+                TraceEvents.failed(observer, traceId, "deterministic_tool_dispatch", "code",
+                        dispatchStarted, subtaskId, exception.code(), exception.getMessage(),
+                        "capability", decision.capability());
                 AgentRunResult result = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         exception.getMessage(), exception.code());
-                conversations.appendAssistant(
-                        conversation, request.principal(), result.answer(), state);
+                saveConversation(observer, traceId, subtaskId, conversation,
+                        request.principal(), result.answer(), state);
                 return result;
             }
             state.incrementStep();
@@ -171,20 +221,39 @@ public class AgentRunner {
                     "retryable", result.retryable(),
                     "reused", result.cacheReused(),
                     "duration_ms", durationMs));
+            long toolStartedEpoch = System.currentTimeMillis() - durationMs;
+            if (result.ok()) {
+                TraceEvents.completed(observer, traceId, "tool_result", "tool",
+                        toolStartedEpoch, subtaskId, Map.of(
+                                "tool_name", call.name(),
+                                "argument_names", call.arguments().keySet()), Map.of(
+                                "code", result.code(), "summary", result.summary(),
+                                "data", result.data()),
+                        "tool_name", call.name(), "capability", decision.capability(),
+                        "cache_reused", result.cacheReused(),
+                        "rule_id", state.currentRuleId());
+            } else {
+                TraceEvents.failed(observer, traceId, "tool_result", "tool",
+                        toolStartedEpoch, subtaskId, result.code(), result.summary(),
+                        "tool_name", call.name(), "capability", decision.capability(),
+                        "cache_reused", result.cacheReused(),
+                        "rule_id", state.currentRuleId());
+            }
             updateState(state, result);
             if (!result.ok()) {
                 AgentRunResult failure = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         result.summary(), result.code());
-                conversations.appendAssistant(
-                        conversation, request.principal(), failure.answer(), state);
+                saveConversation(observer, traceId, subtaskId, conversation,
+                        request.principal(), failure.answer(), state);
                 return failure;
             }
         }
         AgentRunResult failure = finishFailure(
                 observer, traceId, sessionId, state, planned.plan(), compiled,
                 "已达到最大处理步骤，请缩小问题范围后重试。", "MAX_STEPS_EXCEEDED");
-        conversations.appendAssistant(conversation, request.principal(), failure.answer(), state);
+        saveConversation(observer, traceId, subtaskId, conversation,
+                request.principal(), failure.answer(), state);
         return failure;
     }
 
@@ -211,15 +280,32 @@ public class AgentRunner {
                 ? null : validation.resolvedTime().endTime().format(EVIDENCE_TIME);
         String sqlId = state.validatedSqlIds().isEmpty()
                 ? null : state.validatedSqlIds().get(state.validatedSqlIds().size() - 1);
+        long verifyStarted = TraceEvents.started();
         List<com.hospital.wikiagent.agent.evidence.VerifiedEvidence> evidence = verifier.verifyMany(
                 state.evidenceIds(), context,
                 new VerificationExpectations(
                         state.subtaskId(), state.currentRuleId(), statStart, statEnd, sqlId, currentResults));
+        TraceEvents.completed(observer, traceId, "plan_verify", "code", verifyStarted,
+                state.subtaskId(), Map.of(
+                        "evidence_ids", state.evidenceIds()), eventValues(
+                        "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
+                "rule_id", state.currentRuleId(), "sql_id", sqlId);
         emit(observer, "model_start", traceId, state.stepCount(), Map.of("message", "生成最终回答"));
+        long finalStarted = TraceEvents.started();
         var answer = finalAnswer.compose(new FinalAnswerInput(
                 request.query(), plan.goal(), modelId,
                 LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
+        TraceEvents.completed(observer, traceId, "final_answer_llm", "llm", finalStarted,
+                state.subtaskId(), Map.of(
+                        "query", request.query(), "verified_evidence_count", evidence.size()),
+                Map.of("answer_length", answer.content().length(), "corrected", answer.corrected()),
+                "model_id", answer.modelId());
+        long guardStarted = TraceEvents.started();
         String answerContent = appendExportMarker(answer.content(), state, request.principal());
+        TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
+                state.subtaskId(), Map.of("answer_length", answer.content().length()), Map.of(
+                        "accepted", true, "export_marker_added",
+                        !answerContent.equals(answer.content())));
         emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
                 "message", answerContent, "status", "completed"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
@@ -297,6 +383,22 @@ public class AgentRunner {
                 state.lastRunId(runId.toString());
             }
         }
+    }
+
+    private void saveConversation(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            ConversationSnapshot conversation,
+            com.hospital.wikiagent.auth.HospitalPrincipal principal,
+            String answer,
+            AgentRunState state) {
+        long started = TraceEvents.started();
+        conversations.appendAssistant(conversation, principal, answer, state);
+        TraceEvents.completed(observer, traceId, "memory_save", "storage", started,
+                subtaskId, Map.of("session_id", conversation.sessionId()), Map.of(
+                        "answer_length", answer == null ? 0 : answer.length(),
+                        "evidence_count", state.evidenceIds().size()));
     }
 
     private static AgentRunRequest withConversationContext(
