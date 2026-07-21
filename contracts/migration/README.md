@@ -7,6 +7,8 @@
 - `agent-api.schema.json`：Agent 请求、非流式响应和上传响应。
 - `agent-sse.schema.json`：`POST /api/agent/chat/stream` 对外 SSE 事件。
 - `dbhub-mcp.md`：主服务与现有 DBHub sidecar 的 JSON-RPC 约定。
+- `hospital-auth-and-rule-read.md`：跨语言认证、医院隔离和规则只读约定。
+- `auth-crypto-vector.json`：PBKDF2 与令牌摘要的非生产测试向量。
 
 ## 兼容规则
 

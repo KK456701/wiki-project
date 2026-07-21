@@ -1,0 +1,8 @@
+{
+  "password": "contract-test-password-123",
+  "salt_hex": "00112233445566778899aabbccddeeff",
+  "iterations": 310000,
+  "password_hash_base64": "73zmGSGvMovUH82nX/L55uoqFu6lG7WEdH37HgCdmM4=",
+  "token": "contract-test-token",
+  "token_sha256": "7e832802d394dfe3b3645c949891a81e6c01e18171bbf87eaeaf70cfd2fd12f8"
+}

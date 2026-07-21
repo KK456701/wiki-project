@@ -5,6 +5,14 @@ server:
 spring:
   application:
     name: wiki-agent-java
+  datasource:
+    url: ${WIKI_RUNTIME_DB_URL:jdbc:mysql://127.0.0.1:3306/wiki_agent_runtime?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${WIKI_RUNTIME_DB_USER:root}
+    password: ${WIKI_RUNTIME_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 6
+      minimum-idle: 0
+      connection-timeout: 5000
   jackson:
     property-naming-strategy: SNAKE_CASE
     deserialization:
@@ -17,6 +25,8 @@ management:
         include: health,info
 
 wiki:
+  auth:
+    session-hours: 8
   dbhub:
     api-url: http://127.0.0.1:8080
     mcp-url: http://127.0.0.1:8080/mcp

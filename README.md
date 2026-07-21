@@ -1,6 +1,6 @@
 # 核心制度指标 Agent
 
-> 更新日期：2026-07-21。当前生产对话入口为“业务语义规划 + 服务端计划编译 + 确定性执行 + 证据验证”的工具调用型 Agent，旧稳定流程和 Shadow 分流已经删除。
+> 更新日期：2026-07-22。当前生产对话入口为“业务语义规划 + 服务端计划编译 + 确定性执行 + 证据验证”的工具调用型 Agent，旧稳定流程和 Shadow 分流已经删除。
 
 本项目是一个面向医院核心制度指标的本地化 Agent。已迁移指标以 MySQL 保存国标口径、医院定制口径及不可变版本，Markdown Wiki 作为规则导入来源和数据库故障时的只读兜底；系统同时提供 AI 问答、指标实施、审批发布、SQL 生成与试运行、明细审阅、异常诊断、运算监控和医院知识回收能力，前端以 AI 指标助手为主入口，并提供可直接操作的业务工作台。
 
@@ -43,7 +43,7 @@
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
 - **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
 - **业务工作台前端**：单页 HTML 前端以 AI 指标助手为主入口，并提供指标实施、指标监控、数据库与元数据、医学术语、审批和离线包交换等业务操作入口。
-- **Java / Vue 渐进迁移第一批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE 与 DBHub MCP 契约；`backend-java/` 提供 Java 17 + Spring Boot 4.1 影子服务、兼容健康接口和 DBHub 客户端，`frontend-vue/` 提供 Vue 3 + TypeScript 登录、模型选择、SSE 对话、Excel 上传、证据轨道和 Trace 外壳。当前 FastAPI 仍是权威运行时，旧页面不删除；后续按单接口双跑、验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
+- **Java / Vue 渐进迁移前两批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE、DBHub MCP、医院认证与规则只读契约；`backend-java/` 现已提供 Java 17 + Spring Boot 4.1 影子服务、DBHub 客户端、与 Python 兼容的 PBKDF2 登录会话，以及由登录主体强制注入医院范围的规则搜索和生效口径接口。`frontend-vue/` 提供 Vue 3 + TypeScript 登录、模型选择、SSE 对话、Excel 上传、证据轨道和 Trace 外壳。当前 FastAPI 仍是权威运行时，旧页面不删除，规则写入与 Agent 执行尚未切流；后续按单接口双跑、验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
 
 ## 技术栈
 
@@ -136,6 +136,7 @@
 |   +-- migrate_runtime_schema.py
 |   +-- seed_demo_hospital_data.py
 |   +-- seed_demo_hospital_user.py
+|   +-- compare_java_python_read_api.py
 |   +-- simulate_metadata_drift.py
 |   +-- seed_monitoring_baseline.py
 |   +-- import_four_indicator_rules.py

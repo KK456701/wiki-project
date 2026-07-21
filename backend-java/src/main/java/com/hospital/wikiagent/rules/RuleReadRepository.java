@@ -1,0 +1,363 @@
+package com.hospital.wikiagent.rules;
+
+import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+@Repository
+public class RuleReadRepository {
+    private static final Set<String> PATCH_ROOTS = Set.of(
+            "scope", "derived_fields", "denominator", "numerator", "result", "detail_fields");
+
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    public RuleReadRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
+        String normalized = query == null ? "" : query.strip();
+        String pattern = "%" + normalized + "%";
+        LocalDateTime now = LocalDateTime.now();
+        List<Map<String, Object>> local = jdbc.query(
+                "SELECT index_code,index_name,index_type,index_desc FROM med_index_hospital_defined "
+                        + "WHERE hospital_id=? AND status=1 AND approval_status='approved' "
+                        + "AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>=?) "
+                        + "AND (index_code=? OR index_name=? OR index_name LIKE ? OR index_desc LIKE ?) "
+                        + "ORDER BY CASE WHEN index_code=? OR index_name=? THEN 0 ELSE 1 END,index_code LIMIT ?",
+                (rs, rowNum) -> match(rs, "mysql_hospital_defined"),
+                hospitalId, now, now, normalized, normalized, pattern, pattern, normalized, normalized, limit);
+        List<Map<String, Object>> standard = searchStandard(normalized, pattern, limit);
+        List<Map<String, Object>> matches = new ArrayList<>(local);
+        matches.addAll(standard);
+        if (matches.size() > limit) {
+            matches = new ArrayList<>(matches.subList(0, limit));
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("query", normalized);
+        response.put("resolved_rule_id", matches.isEmpty() ? null : matches.get(0).get("rule_id"));
+        response.put("matches", matches);
+        return response;
+    }
+
+    public Map<String, Object> effectiveRule(String query, String hospitalId) {
+        Map<String, Object> standard = findStandard(query);
+        if (standard == null) {
+            Map<String, Object> defined = findDefined(query, hospitalId);
+            if (defined != null) {
+                return definedEffectiveRule(defined, hospitalId);
+            }
+            throw new RuleNotFoundException("RULE_NOT_MIGRATED: " + query);
+        }
+
+        String indexCode = text(standard.get("index_code"));
+        Map<String, Object> custom = findCustom(hospitalId, indexCode);
+        Map<String, Object> nationalParams = jsonObject(standard.get("rule_params"));
+        Map<String, Object> effectiveParams = new LinkedHashMap<>(nationalParams);
+        Map<String, Object> nationalCalculation = jsonObject(standard.get("calculation_definition"));
+        Map<String, Object> calculationPatch = jsonObject(custom == null ? null : custom.get("custom_calculation_patch"));
+        Map<String, Object> calculationDefinition = mergeCalculationPatch(nationalCalculation, calculationPatch);
+        List<String> overridden = new ArrayList<>();
+
+        if (custom != null) {
+            for (Map.Entry<String, Object> entry : jsonObject(custom.get("custom_params")).entrySet()) {
+                if (!java.util.Objects.equals(nationalParams.get(entry.getKey()), entry.getValue())) {
+                    overridden.add(entry.getKey());
+                }
+                effectiveParams.put(entry.getKey(), entry.getValue());
+            }
+        }
+        if (!calculationPatch.isEmpty()) {
+            overridden.add("calculation_definition");
+        }
+
+        String numerator = text(standard.get("numerator_rule"));
+        String denominator = text(standard.get("denominator_rule"));
+        String filterRule = text(standard.get("filter_rule"));
+        String excludeRule = text(standard.get("exclude_rule"));
+        String sql = text(standard.get("standard_sql"));
+        if (custom != null) {
+            numerator = override(custom, "custom_numerator", "numerator_rule", numerator, overridden);
+            denominator = override(custom, "custom_denominator", "denominator_rule", denominator, overridden);
+            filterRule = override(custom, "custom_filter", "filter_rule", filterRule, overridden);
+            excludeRule = override(custom, "exclude_rule", "exclude_rule", excludeRule, overridden);
+            sql = override(custom, "custom_sql", "standard_sql", sql, overridden);
+        }
+
+        String name = text(standard.get("index_name"));
+        String nationalNumerator = text(standard.get("numerator_rule"));
+        String nationalDenominator = text(standard.get("denominator_rule"));
+        String definition = text(standard.get("index_desc"));
+        if (custom != null && (!numerator.equals(nationalNumerator) || !denominator.equals(nationalDenominator))) {
+            definition = numerator + "占" + denominator + "的比例。";
+        }
+
+        Map<String, Object> nationalRule = new LinkedHashMap<>();
+        nationalRule.put("definition", text(standard.get("index_desc")));
+        nationalRule.put("formula", formula(name, nationalNumerator, nationalDenominator));
+        nationalRule.put("version", text(standard.get("version")));
+        nationalRule.put("source_path", text(standard.get("source_path")));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rule_id", indexCode);
+        result.put("index_code", indexCode);
+        result.put("rule_name", name);
+        result.put("category", text(standard.get("index_type")));
+        result.put("hospital_id", hospitalId);
+        result.put("effective_level", custom == null ? "national" : "hospital");
+        result.put("definition", definition);
+        result.put("formula", formula(name, numerator, denominator));
+        result.put("numerator_rule", numerator);
+        result.put("denominator_rule", denominator);
+        result.put("filter_rule", filterRule);
+        result.put("exclude_rule", excludeRule);
+        result.put("implementation_status", sql);
+        result.put("standard_sql", sql);
+        result.put("calculation_definition", calculationDefinition);
+        result.put("national_calculation_definition", nationalCalculation);
+        result.put("field_contract", jsonObject(standard.get("rely_table_field")));
+        result.put("field_status", "configured");
+        result.put("sql_status", sql.isEmpty() ? "unavailable" : "available");
+        result.put("hospital_override", custom);
+        result.put("national_rule", nationalRule);
+        result.put("national_params", nationalParams);
+        result.put("effective_params", effectiveParams);
+        result.put("national_version", text(standard.get("version")));
+        result.put("hospital_version", custom == null ? null : integer(custom.get("version")));
+        result.put("overridden_fields", new ArrayList<>(new LinkedHashSet<>(overridden)));
+        result.put("fallback_chain", List.of("hospital", "national"));
+        result.put("rule_source", "mysql");
+        result.put("warnings", List.of());
+        result.put("relations", Map.of());
+        return result;
+    }
+
+    private List<Map<String, Object>> searchStandard(String query, String pattern, int limit) {
+        return jdbc.query(
+                "SELECT index_code,index_name,index_type,index_desc FROM med_index_standard "
+                        + "WHERE status=1 AND (index_code=? OR index_name=? OR index_name LIKE ? OR index_desc LIKE ?) "
+                        + "ORDER BY CASE WHEN index_code=? OR index_name=? THEN 0 ELSE 1 END,index_code LIMIT ?",
+                (rs, rowNum) -> match(rs, "mysql_standard"),
+                query, query, pattern, pattern, query, query, limit);
+    }
+
+    private Map<String, Object> findStandard(String query) {
+        String normalized = query == null ? "" : query.strip();
+        List<Map<String, Object>> exact = jdbc.query(
+                "SELECT * FROM med_index_standard WHERE status=1 AND (index_code=? OR index_name=?) "
+                        + "ORDER BY CASE WHEN index_code=? THEN 0 ELSE 1 END LIMIT 1",
+                RuleReadRepository::rowMap,
+                normalized, normalized, normalized);
+        if (!exact.isEmpty()) {
+            return exact.get(0);
+        }
+        List<Map<String, Object>> fuzzy = jdbc.query(
+                "SELECT * FROM med_index_standard WHERE status=1 AND index_name LIKE ? ORDER BY index_code LIMIT 1",
+                RuleReadRepository::rowMap,
+                "%" + normalized + "%");
+        return fuzzy.isEmpty() ? null : fuzzy.get(0);
+    }
+
+    private Map<String, Object> findCustom(String hospitalId, String indexCode) {
+        LocalDateTime now = LocalDateTime.now();
+        List<Map<String, Object>> rows = jdbc.query(
+                "SELECT * FROM med_index_hospital_custom WHERE hospital_id=? AND index_code=? "
+                        + "AND status=1 AND approval_status='approved' "
+                        + "AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>?) LIMIT 1",
+                RuleReadRepository::rowMap,
+                hospitalId, indexCode, now, now);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private Map<String, Object> findDefined(String query, String hospitalId) {
+        String normalized = query == null ? "" : query.strip();
+        LocalDateTime now = LocalDateTime.now();
+        List<Map<String, Object>> exact = jdbc.query(
+                "SELECT * FROM med_index_hospital_defined WHERE hospital_id=? AND status=1 "
+                        + "AND approval_status='approved' AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>=?) AND (index_code=? OR index_name=?) "
+                        + "ORDER BY CASE WHEN index_code=? THEN 0 ELSE 1 END LIMIT 1",
+                RuleReadRepository::rowMap,
+                hospitalId, now, now, normalized, normalized, normalized);
+        if (!exact.isEmpty()) {
+            return exact.get(0);
+        }
+        List<Map<String, Object>> fuzzy = jdbc.query(
+                "SELECT * FROM med_index_hospital_defined WHERE hospital_id=? AND status=1 "
+                        + "AND approval_status='approved' AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>=?) AND index_name LIKE ? ORDER BY index_code LIMIT 1",
+                RuleReadRepository::rowMap,
+                hospitalId, now, now, "%" + normalized + "%");
+        return fuzzy.isEmpty() ? null : fuzzy.get(0);
+    }
+
+    private Map<String, Object> definedEffectiveRule(Map<String, Object> item, String hospitalId) {
+        String name = text(item.get("index_name"));
+        String numerator = text(item.get("numerator_rule"));
+        String denominator = text(item.get("denominator_rule"));
+        String sql = text(item.get("sql_template"));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rule_id", text(item.get("index_code")));
+        result.put("index_code", text(item.get("index_code")));
+        result.put("rule_name", name);
+        result.put("category", text(item.get("index_type")));
+        result.put("hospital_id", hospitalId);
+        result.put("effective_level", "hospital_defined");
+        result.put("definition", text(item.get("index_desc")));
+        result.put("formula", formula(name, numerator, denominator));
+        result.put("numerator_rule", numerator);
+        result.put("denominator_rule", denominator);
+        result.put("filter_rule", text(item.get("filter_rule")));
+        result.put("exclude_rule", text(item.get("exclude_rule")));
+        result.put("implementation_status", sql);
+        result.put("standard_sql", sql);
+        result.put("calculation_definition", jsonObject(item.get("calculation_definition")));
+        result.put("national_calculation_definition", Map.of());
+        result.put("field_contract", jsonValue(item.get("field_contract"), List.of()));
+        result.put("field_status", "configured");
+        result.put("sql_status", sql.isEmpty() ? "unavailable" : "available");
+        result.put("hospital_override", null);
+        result.put("national_rule", Map.of());
+        result.put("national_params", Map.of());
+        result.put("effective_params", jsonObject(item.get("rule_params")));
+        result.put("national_version", null);
+        result.put("hospital_version", integer(item.get("version")));
+        result.put("overridden_fields", List.of());
+        result.put("fallback_chain", List.of("hospital_defined"));
+        result.put("rule_source", "mysql");
+        result.put("warnings", List.of());
+        result.put("relations", Map.of());
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mergeCalculationPatch(Map<String, Object> base, Map<String, Object> patch) {
+        Map<String, Object> merged = (Map<String, Object>) deepCopy(base);
+        if (patch.isEmpty()) {
+            return merged;
+        }
+        if (patch.containsKey("schema_version")) {
+            throw new IllegalArgumentException("医院计算补丁不允许修改 schema_version");
+        }
+        Set<String> unknown = new LinkedHashSet<>(patch.keySet());
+        unknown.removeAll(PATCH_ROOTS);
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("医院计算补丁包含未知节点：" + String.join("、", unknown));
+        }
+        mergeNode(merged, patch);
+        return merged;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mergeNode(Map<String, Object> target, Map<String, Object> patch) {
+        for (Map.Entry<String, Object> entry : patch.entrySet()) {
+            if (entry.getValue() == null) {
+                throw new IllegalArgumentException("医院计算补丁不允许删除计算定义节点 " + entry.getKey());
+            }
+            Object current = target.get(entry.getKey());
+            if (current instanceof Map<?, ?> currentMap && entry.getValue() instanceof Map<?, ?> patchMap) {
+                mergeNode((Map<String, Object>) currentMap, (Map<String, Object>) patchMap);
+            } else {
+                target.put(entry.getKey(), deepCopy(entry.getValue()));
+            }
+        }
+    }
+
+    private Object deepCopy(Object value) {
+        return objectMapper.convertValue(value, Object.class);
+    }
+
+    private Map<String, Object> jsonObject(Object value) {
+        Object parsed = jsonValue(value, Map.of());
+        if (!(parsed instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
+    }
+
+    private Object jsonValue(Object value, Object fallback) {
+        if (value == null || "".equals(value)) {
+            return fallback;
+        }
+        if (value instanceof Map<?, ?> || value instanceof List<?>) {
+            return value;
+        }
+        try {
+            String text = value instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : value.toString();
+            JsonNode node = objectMapper.readTree(text);
+            return objectMapper.convertValue(node, Object.class);
+        } catch (Exception exception) {
+            return fallback;
+        }
+    }
+
+    private static Map<String, Object> match(ResultSet rs, String type) throws SQLException {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rule_id", rs.getString("index_code"));
+        result.put("rule_name", rs.getString("index_name"));
+        result.put("category", rs.getString("index_type"));
+        result.put("content", rs.getString("index_desc"));
+        result.put("type", type);
+        return result;
+    }
+
+    private static Map<String, Object> rowMap(ResultSet rs, int rowNum) throws SQLException {
+        ResultSetMetaData meta = rs.getMetaData();
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int index = 1; index <= meta.getColumnCount(); index++) {
+            Object value = rs.getObject(index);
+            if (value instanceof Timestamp timestamp) {
+                value = timestamp.toLocalDateTime();
+            }
+            result.put(meta.getColumnLabel(index).toLowerCase(), value);
+        }
+        return result;
+    }
+
+    private static String override(
+            Map<String, Object> custom,
+            String customKey,
+            String resultKey,
+            String current,
+            List<String> overridden) {
+        String candidate = text(custom.get(customKey)).strip();
+        if (candidate.isEmpty()) {
+            return current;
+        }
+        overridden.add(resultKey);
+        return candidate;
+    }
+
+    private static String formula(String name, String numerator, String denominator) {
+        return name + " = (" + numerator + " / " + denominator + ") × 100%";
+    }
+
+    private static int integer(Object value) {
+        return value instanceof Number number ? number.intValue() : Integer.parseInt(text(value));
+    }
+
+    private static String text(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+}
