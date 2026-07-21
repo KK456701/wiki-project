@@ -10,3 +10,14 @@ spring:
   sql:
     init:
       mode: never
+
+wiki:
+  agent:
+    default-model: ollama-test
+    evidence-jsonl-path: target/test-agent-evidence.jsonl
+    models:
+      - id: ollama-test
+        name: Ollama Test
+        provider: ollama
+        model: qwen3:4b
+        base-url: http://127.0.0.1:11434

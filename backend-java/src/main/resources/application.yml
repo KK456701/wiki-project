@@ -27,6 +27,39 @@ management:
 wiki:
   auth:
     session-hours: 8
+  agent:
+    default-model: ${AGENT_DEFAULT_MODEL:ollama-qwen3}
+    planner-timeout: 90s
+    final-answer-timeout: 120s
+    evidence-ttl-days: 30
+    evidence-jsonl-path: runtime/agent_evidence_java.jsonl
+    models:
+      - id: ollama-qwen3
+        name: Qwen3 4B（本地 Ollama）
+        provider: ollama
+        model: ${OLLAMA_MODEL:qwen3:4B-instruct}
+        base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
+        thinking: false
+      - id: ollama-qwen3-8b-thinking
+        name: Qwen3 8B 思考模式（本地 Ollama）
+        provider: ollama
+        model: ${OLLAMA_THINKING_MODEL:qwen3:8b}
+        base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
+        thinking: true
+      - id: deepseek-v4-flash
+        name: DeepSeek V4 Flash（API）
+        provider: openai-compatible
+        model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        api-key: ${DEEPSEEK_API_KEY:}
+        thinking: false
+      - id: deepseek-v4-pro
+        name: DeepSeek V4 Pro（API）
+        provider: openai-compatible
+        model: ${DEEPSEEK_PRO_MODEL:deepseek-v4-pro}
+        base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        api-key: ${DEEPSEEK_API_KEY:}
+        thinking: true
   dbhub:
     api-url: http://127.0.0.1:8080
     mcp-url: http://127.0.0.1:8080/mcp

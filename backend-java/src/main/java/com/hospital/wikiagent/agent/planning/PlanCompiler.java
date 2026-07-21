@@ -14,6 +14,9 @@ import com.hospital.wikiagent.agent.ir.CompiledPlanIR;
 import com.hospital.wikiagent.agent.ir.CompiledPlanIR.PlanNode;
 import com.hospital.wikiagent.agent.ir.PlanCapability;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
+import com.hospital.wikiagent.agent.model.PromptCatalog;
+import com.hospital.wikiagent.agent.model.SpringAiModelInvoker;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -53,9 +56,9 @@ public class PlanCompiler {
                 CompiledPlanIR.VERSION,
                 plan.schemaVersion(),
                 CapabilitySpecRegistry.VERSION,
-                "agent-prompts-v1",
-                "agent-model-adapter-v1",
-                "plan-verifier-v1",
+                PromptCatalog.VERSION,
+                SpringAiModelInvoker.VERSION,
+                EvidenceVerifier.VERSION,
                 plan.intent(),
                 plan.goal(),
                 nodes,

@@ -6,7 +6,7 @@ __pycache__/
 .worktrees/
 .superpowers/brainstorm/
 
-runtime/
+/runtime/
 evals/results/
 test_tmp/
 .test_tmp/

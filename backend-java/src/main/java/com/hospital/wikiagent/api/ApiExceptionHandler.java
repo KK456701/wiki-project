@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.hospital.wikiagent.auth.HospitalAuthException;
+import com.hospital.wikiagent.agent.model.AgentModelUnavailableException;
+import com.hospital.wikiagent.agent.model.PlannerOutputException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -33,5 +35,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(Map.of("detail", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PlannerOutputException.class)
+    public ResponseEntity<Map<String, String>> planner(PlannerOutputException exception) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(Map.of("detail", exception.getMessage(), "code", exception.code()));
+    }
+
+    @ExceptionHandler(AgentModelUnavailableException.class)
+    public ResponseEntity<Map<String, String>> model(AgentModelUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("detail", exception.getMessage(), "code", exception.code()));
     }
 }

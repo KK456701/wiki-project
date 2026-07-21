@@ -4,6 +4,7 @@ from pathlib import Path
 from app.agent_runtime.events import AGENT_EVENT_NAMES
 from app.api.agent_routes import AgentChatRequest, AgentChatResponse, UploadResponse
 from app.agent_planning.contracts import CompiledPlan, PlanNode, RequestPlan, TargetIndicator, TimeExpression
+from app.agent_evidence.models import EvidenceEnvelope, EvidenceVerification
 
 
 CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts" / "migration" / "v1"
@@ -56,6 +57,19 @@ def test_agent_plan_ir_contract_matches_python_models() -> None:
     }
 
     for contract_name, model in models.items():
+        current = model.model_json_schema()
+        expected = frozen[contract_name]
+        assert current.get("required", []) == expected.get("required", [])
+        assert set(current["properties"]) == set(expected["properties"])
+        assert expected["additionalProperties"] is False
+
+
+def test_agent_evidence_contract_matches_python_models() -> None:
+    frozen = _load("agent-evidence.schema.json")["$defs"]
+    for contract_name, model in {
+        "evidence": EvidenceEnvelope,
+        "verification": EvidenceVerification,
+    }.items():
         current = model.model_json_schema()
         expected = frozen[contract_name]
         assert current.get("required", []) == expected.get("required", [])

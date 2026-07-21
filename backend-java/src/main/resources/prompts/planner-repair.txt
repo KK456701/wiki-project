@@ -1,0 +1,4 @@
+上一个计划不符合 RequestPlan JSON 合约。请只修复格式和字段值，不得改变用户目标。
+重新输出完整 JSON，不得包含 Markdown、步骤、工具名或额外字段。
+校验错误：{{validation_error}}
+上次输出：{{raw_output}}

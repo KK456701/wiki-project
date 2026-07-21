@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-agent.local/contracts/migration/v1/agent-evidence.schema.json",
+  "title": "Agent Evidence and Verification v1",
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id", "trace_id", "subtask_id", "fact_type", "hospital_id",
+        "source_tool", "input_fingerprint", "result_fingerprint"
+      ],
+      "properties": {
+        "schema_version": {"const": "evidence-envelope-v1"},
+        "evidence_id": {"type": "string", "pattern": "^EVD_"},
+        "trace_id": {"type": "string"},
+        "subtask_id": {"type": "string"},
+        "fact_type": {"type": "string"},
+        "hospital_id": {"type": "string"},
+        "rule_id": {"type": ["string", "null"]},
+        "rule_version": {"type": ["string", "null"]},
+        "stat_start": {"type": ["string", "null"]},
+        "stat_end": {"type": ["string", "null"]},
+        "source_tool": {"type": "string"},
+        "source_object_id": {"type": ["string", "null"]},
+        "input_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "result_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "confidentiality": {"enum": ["internal", "restricted", "sensitive_reference"]},
+        "created_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"},
+        "payload_ref": {"type": ["string", "null"]},
+        "safe_payload": {"type": "object"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verification_id", "evidence_id", "trace_id", "subtask_id", "hospital_id",
+        "verifier_version", "status", "code"
+      ],
+      "properties": {
+        "schema_version": {"const": "evidence-verification-v1"},
+        "verification_id": {"type": "string", "pattern": "^EVV_"},
+        "evidence_id": {"type": "string", "pattern": "^EVD_"},
+        "trace_id": {"type": "string"},
+        "subtask_id": {"type": "string"},
+        "hospital_id": {"type": "string"},
+        "verifier_version": {"type": "string"},
+        "status": {"enum": ["verified", "rejected"]},
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "verified_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/evidence"},
+    {"$ref": "#/$defs/verification"}
+  ]
+}

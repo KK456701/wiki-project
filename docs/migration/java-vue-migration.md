@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0、阶段 1 的认证与规则子批次、阶段 2 的 IR 与网关子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
+> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2，以及阶段 3 的模型与 Evidence 子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
 
 ## 1. 迁移目标与约束
 
@@ -88,12 +88,16 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 
 本子批次 Java 测试 22 项通过，覆盖 IR JSON 契约、依赖拓扑、能力环、重复 Fact Producer、未知工具、非法目标、中文时间范围、受控 Dispatch、权限拒绝、参数校验和重复调用缓存。影子编译接口不执行工具，现有 Python 服务未切换。
 
-### 阶段 3：模型与 Evidence
+### 阶段 3：模型与 Evidence（模型与 Evidence 子批次已完成）
 
-- 使用 Spring AI 适配 Ollama 和 OpenAI 兼容的 DeepSeek；模型注册表仍从配置读取。
-- Planner 只输出业务语义结构，不能输出工具名；Final Answer 只消费 VerifiedEvidence。
-- 迁移 Evidence Ledger、独立验证记录、一次语义 Replan 和 ResponseGuard。
-- 用同一离线 Eval 比较 Qwen 4B、Qwen 8B 与 DeepSeek。
+- 已使用 Spring AI 2.0 手动构建 Ollama 与 OpenAI 兼容 `ChatModel`，避免多模型自动配置互相覆盖；模型 ID 与现有前端保持一致，配置中保留 Qwen3 4B、Qwen3 8B 思考模式、DeepSeek V4 Flash 和 V4 Pro，API Key 只从环境变量注入且不会出现在能力接口。
+- 已新增模型注册表和认证影子接口 `GET /api/migration/agent/capabilities`；本地 Ollama 强制单并发，OpenAI 兼容 API 最多并发 2。
+- 已集中 Java 生产提示词到 `backend-java/src/main/resources/prompts/`。Planner 只输出 `RequestPlan`，首次 JSON 不合约时只修复一次；`POST /api/migration/agent/plan` 可执行模型规划、服务端校验和 IR 编译，但明确不执行工具。
+- 已建立 `EvidenceEnvelope / EvidenceVerification / VerifiedEvidence` 类型边界，复用 Python 已有 `med_agent_evidence` 和 `med_agent_evidence_verification` 表；MySQL 不可用时写入独立 Java JSONL 兜底。
+- ToolGateway 成功后生成未验证 Evidence；SQL、运行对象和明细只保存引用，安全载荷使用固定允许列表。Verifier 独立检查医院、子任务、过期时间、规则、周期、SQL 和结果指纹，并写入 verified/rejected 记录。
+- Final Answer 只接受 `List<VerifiedEvidence>`，不注册任何 Spring AI 工具或自动 ToolCallingAdvisor；空回答或工具协议泄漏只允许纠正一次。
+- 本子批次 Java 测试 26 项通过。测试覆盖模型配置、Planner 单次修复、Evidence 允许列表、跨医院拒绝、结果指纹和 Final Answer 工具协议防护。
+- 待迁移：把上述组件接入完整 Java Runner、一次语义 Replan、ResponseGuard 的确定性模板降级，以及跨模型离线 Eval；完成前不会把聊天入口切到 Java。
 
 ### 阶段 4：SQL、诊断、文件与复合任务
 

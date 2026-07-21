@@ -1,0 +1,165 @@
+package com.hospital.wikiagent.agent.evidence;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
+
+import org.springframework.stereotype.Component;
+
+import com.hospital.wikiagent.agent.model.AgentModelProperties;
+import com.hospital.wikiagent.agent.runtime.AgentRunState;
+import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
+
+import tools.jackson.databind.ObjectMapper;
+
+@Component
+public class EvidenceLedger implements EvidenceRecorder {
+    private static final Set<String> SAFE_DATA_KEYS = Set.of(
+            "rule_id", "rule_name", "definition", "formula", "effective_level",
+            "national_version", "hospital_version", "version", "mapping_status",
+            "sql_status", "sql_id", "run_id", "result_id", "db_source_id",
+            "stat_start", "stat_end", "stat_start_time", "stat_end_time",
+            "numerator_count", "denominator_count", "result_value", "sample_count",
+            "file_key", "sheet_count", "row_count", "columns", "summary",
+            "row_level_comparison_available", "cause_analysis_available",
+            "report_id", "report_schema_version", "overall_status", "stages",
+            "passed_stages", "warning_stages", "failed_stages", "skipped_stages");
+
+    private static final Map<String, List<String>> FACT_TYPES = Map.ofEntries(
+            Map.entry("search_indicator_rules", List.of("rule_identity")),
+            Map.entry("get_effective_rule", List.of("effective_rule", "definition", "formula")),
+            Map.entry("inspect_indicator_implementation", List.of("implementation_status", "field_mapping")),
+            Map.entry("prepare_indicator_sql", List.of("sql_validation")),
+            Map.entry("trial_run_indicator_sql", List.of("trial_run")),
+            Map.entry("diagnose_indicator_issue", List.of("diagnosis")),
+            Map.entry("preview_rule_change", List.of("rule_change_preview")),
+            Map.entry("analyze_uploaded_indicators", List.of("file_analysis")),
+            Map.entry("validate_indicator_implementation", List.of("implementation_validation_report")));
+
+    private final EvidenceStore store;
+    private final ObjectMapper objectMapper;
+    private final int ttlDays;
+
+    public EvidenceLedger(
+            EvidenceStore store,
+            ObjectMapper objectMapper,
+            AgentModelProperties properties) {
+        this.store = store;
+        this.objectMapper = objectMapper;
+        this.ttlDays = Math.max(1, properties.getEvidenceTtlDays());
+    }
+
+    @Override
+    public ToolResult recordToolResult(
+            String toolName,
+            Map<String, Object> arguments,
+            ToolResult result,
+            AgentRuntimeContext context,
+            AgentRunState state) {
+        if (!result.ok()) {
+            return result;
+        }
+        Instant now = Instant.now();
+        String subtaskId = state.subtaskId() == null || state.subtaskId().isBlank()
+                ? context.requestId() : state.subtaskId();
+        Map<String, Object> safePayload = safePayload(result.data());
+        String sourceObjectId = sourceObjectId(result.data());
+        boolean sensitiveReference = sourceObjectId != null
+                && (sourceObjectId.startsWith("SQL_") || sourceObjectId.startsWith("RUN_")
+                || sourceObjectId.startsWith("SNAP_") || sourceObjectId.startsWith("IVR_"));
+        String inputFingerprint = fingerprint(Map.of("tool", toolName, "arguments", arguments));
+        String resultFingerprint = fingerprint(result.withEvidenceIds(List.of()));
+        List<String> evidenceIds = new ArrayList<>();
+        for (String factType : FACT_TYPES.getOrDefault(toolName, List.of("tool_result"))) {
+            String evidenceId = "EVD_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+            EvidenceEnvelope envelope = new EvidenceEnvelope(
+                    EvidenceEnvelope.VERSION,
+                    evidenceId,
+                    context.traceId(),
+                    subtaskId,
+                    factType,
+                    context.hospitalId(),
+                    text(result.data().get("rule_id"), state.currentRuleId()),
+                    text(result.data().get("hospital_version"), result.data().get("version")),
+                    text(result.data().get("stat_start"), result.data().get("stat_start_time")),
+                    text(result.data().get("stat_end"), result.data().get("stat_end_time")),
+                    toolName,
+                    sourceObjectId,
+                    inputFingerprint,
+                    resultFingerprint,
+                    sensitiveReference ? "sensitive_reference" : "internal",
+                    now,
+                    now.plus(ttlDays, ChronoUnit.DAYS),
+                    sensitiveReference ? sourceObjectId : null,
+                    safePayload);
+            store.saveEvidence(envelope);
+            evidenceIds.add(evidenceId);
+        }
+        state.evidenceIds().addAll(evidenceIds.stream()
+                .filter(id -> !state.evidenceIds().contains(id)).toList());
+        return result.withEvidenceIds(evidenceIds);
+    }
+
+    String fingerprint(Object value) {
+        try {
+            Object canonical = canonical(value);
+            byte[] payload = objectMapper.writeValueAsString(canonical).getBytes(StandardCharsets.UTF_8);
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload));
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法生成 Evidence 指纹", exception);
+        }
+    }
+
+    private Map<String, Object> safePayload(Map<String, Object> data) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (String key : SAFE_DATA_KEYS) {
+            if (data.containsKey(key)) {
+                result.put(key, data.get(key));
+            }
+        }
+        return result;
+    }
+
+    private static String sourceObjectId(Map<String, Object> data) {
+        for (String key : List.of("sql_id", "run_id", "result_id", "file_key", "report_id")) {
+            String value = text(data.get(key));
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private static Object canonical(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new TreeMap<>();
+            map.forEach((key, item) -> result.put(String.valueOf(key), canonical(item)));
+            return result;
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> result = new ArrayList<>();
+            iterable.forEach(item -> result.add(canonical(item)));
+            return result;
+        }
+        return value;
+    }
+
+    private static String text(Object... values) {
+        for (Object value : values) {
+            if (value != null && !String.valueOf(value).isBlank()) {
+                return String.valueOf(value);
+            }
+        }
+        return null;
+    }
+}

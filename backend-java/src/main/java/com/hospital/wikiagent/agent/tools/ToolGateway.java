@@ -11,8 +11,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.evidence.EvidenceRecorder;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 
@@ -24,16 +26,27 @@ public class ToolGateway {
     private final ToolRegistry registry;
     private final PolicyDecisionService policy;
     private final ObjectMapper objectMapper;
+    private final EvidenceRecorder evidenceRecorder;
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
     private final Semaphore databaseReads = new Semaphore(2);
 
+    @Autowired
     public ToolGateway(
             ToolRegistry registry,
             PolicyDecisionService policy,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            EvidenceRecorder evidenceRecorder) {
         this.registry = registry;
         this.policy = policy;
         this.objectMapper = objectMapper;
+        this.evidenceRecorder = evidenceRecorder;
+    }
+
+    ToolGateway(
+            ToolRegistry registry,
+            PolicyDecisionService policy,
+            ObjectMapper objectMapper) {
+        this(registry, policy, objectMapper, EvidenceRecorder.noop());
     }
 
     public CompletableFuture<ToolResult> execute(
@@ -96,9 +109,22 @@ public class ToolGateway {
                         "工具执行超时，未获得可用结果。",
                         true))
                 .thenApply(result -> {
-                    state.toolResultCache().put(fingerprint, result);
-                    state.lastToolResults().add(result);
-                    return result;
+                    ToolResult recorded = result;
+                    if (result.ok()) {
+                        try {
+                            recorded = evidenceRecorder.recordToolResult(
+                                    toolName, rawArguments, result, context, state);
+                        } catch (RuntimeException exception) {
+                            recorded = ToolResult.failure(
+                                    "error",
+                                    "EVIDENCE_PERSIST_FAILED",
+                                    "工具执行成功，但无法保存可验证证据，本轮结果不能用于回答。",
+                                    false);
+                        }
+                    }
+                    state.toolResultCache().put(fingerprint, recorded);
+                    state.lastToolResults().add(recorded);
+                    return recorded;
                 });
     }
 
