@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2，以及阶段 3 的模型与 Evidence 子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
+> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2，以及阶段 3 的模型、Evidence 与规则解释 Runner 子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
 
 ## 1. 迁移目标与约束
 
@@ -96,8 +96,11 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已建立 `EvidenceEnvelope / EvidenceVerification / VerifiedEvidence` 类型边界，复用 Python 已有 `med_agent_evidence` 和 `med_agent_evidence_verification` 表；MySQL 不可用时写入独立 Java JSONL 兜底。
 - ToolGateway 成功后生成未验证 Evidence；SQL、运行对象和明细只保存引用，安全载荷使用固定允许列表。Verifier 独立检查医院、子任务、过期时间、规则、周期、SQL 和结果指纹，并写入 verified/rejected 记录。
 - Final Answer 只接受 `List<VerifiedEvidence>`，不注册任何 Spring AI 工具或自动 ToolCallingAdvisor；空回答或工具协议泄漏只允许纠正一次。
-- 本子批次 Java 测试 26 项通过。测试覆盖模型配置、Planner 单次修复、Evidence 允许列表、跨医院拒绝、结果指纹和 Final Answer 工具协议防护。
-- 待迁移：把上述组件接入完整 Java Runner、一次语义 Replan、ResponseGuard 的确定性模板降级，以及跨模型离线 Eval；完成前不会把聊天入口切到 Java。
+- 已新增 `java-agent-runner-v1` 影子执行循环，规则解释请求真实经过 Planner、IR、Controller、Dispatch、ToolGateway、EvidenceVerifier 和 Final Answer。非流式 `/api/migration/agent/chat` 保持冻结响应字段，流式 `/chat/stream` 保持冻结 SSE 事件名。
+- Runner 每个成功工具结果都必须取得 Evidence；规则搜索结果会确定性写入当前 `rule_id`。任何未迁移或不可重试工具失败立即停止，不会再次调用同一工具直至触发重复调用保护。
+- 新增 `scripts/compare_java_python_agent_rule.py`，可在用户主动启动两个服务并提供现有医院登录 token 后双跑规则解释，比较响应字段、停止原因和步骤数；脚本不打印 token。
+- 当前 Java 测试 28 项通过。测试覆盖模型配置、Planner 单次修复、Evidence 允许列表、跨医院拒绝、结果指纹、Final Answer 工具协议防护、规则解释完整工具顺序和 REST 响应形状。
+- 待迁移：一次语义 Replan、ResponseGuard 的确定性模板降级、会话/Trace 持久化和跨模型离线 Eval；完成前不会把聊天入口切到 Java。
 
 ### 阶段 4：SQL、诊断、文件与复合任务
 
@@ -131,6 +134,10 @@ mvn -s maven-settings.xml spring-boot:run
 cd F:\A-wiki-project\frontend-vue
 npm install
 npm run dev
+
+# 两个服务均已由用户启动后，手工双跑规则解释（token 不会被脚本打印）
+cd F:\A-wiki-project
+python scripts\compare_java_python_agent_rule.py --token <医院登录令牌> --model-id deepseek-v4-flash
 ```
 
 当前本机 JDK 17 可以继续开发，不需要为了迁移先下载 Java 21。现有 JDK 是较早的 17.0 初始构建，正式部署前应升级到最新 Java 17 安全补丁，但不改变语言级别。

@@ -159,7 +159,7 @@ public class ToolGateway {
     }
 
     @PreDestroy
-    void close() {
+    public void close() {
         executor.shutdownNow();
     }
 }
