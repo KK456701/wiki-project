@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行，以及单轮 Trace 持久化与链路查看。规则写入、审批和跨运行观察工作台仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行，以及单轮 Trace 和跨运行观察。规则写入与审批仍由 Python 负责。
 
 ## 本地运行
 
@@ -29,6 +29,8 @@ mvn -s maven-settings.xml spring-boot:run
 - `POST /api/sql-runs/{run_id}/upload-comparison-exports`：把同指标上传明细与系统快照按稳定业务键逐条比较，生成四工作表差异 `.xlsx`。
 - `GET /api/indicator-exports/{export_id}/download`：医院隔离、有效期与 SHA-256 校验后的授权下载。
 - `GET /api/agent/runs/{trace_id}`：按当前登录医院读取 Java/Python 共用 Trace 表中的安全节点、Evidence 来源和耗时汇总。
+- `GET /api/agent/runs`：按时间、状态、模型、工具和 FailureClass 查询当前医院安全运行摘要。
+- `GET /api/agent/runs/metrics`：聚合当前医院成功率、p50/p95/p99、工具/模型性能、复合任务和稳定性指标。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -48,4 +50,6 @@ Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、Pla
 
 Java Trace 复用现有 `med_agent_trace` 和 `med_agent_trace_node`，不部署外部可观测服务。新运行记录 `memory_load`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`，复合请求另含拆分、子任务和合并节点。节点包含真实开始偏移、耗时、父子关系、`subtask_id`、工具、模型、能力、FailureClass、缓存及安全输入输出；密码、认证令牌、SQL 正文与患者原始行不会落入 Trace。Vue 链路抽屉以中英文节点名、类型颜色、瀑布条、泳道、筛选和 Evidence 来源显示这些数据，历史 Python Trace 缺少新字段时仍按顺序降级展示。
 
-后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移跨运行 Trace 指标和 Vue 观察工作台。只有同一接口通过契约对比后，才允许在入口层切流。
+Vue `/runs` 页面直接使用 Trace 汇总接口展示请求量、成功/未完成率、平均与 p50/p95/p99、按日趋势、工具/模型耗时、超时、复合请求、重复调用停止率和 Replan 率。阈值来自 `wiki.agent.trace-*` 配置；页面提示不发送外部通知。Java 每新增 100 次运行最多清理 1000 条超过保留期的 Trace，不增加定时任务或调度中间件。
+
+后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移剩余业务工作台与正式切流。只有同一接口通过契约对比后，才允许在入口层切流。

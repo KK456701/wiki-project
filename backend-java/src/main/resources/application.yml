@@ -35,6 +35,11 @@ wiki:
     compound-ollama-concurrency: 1
     compound-db-concurrency: 2
     compound-timeout: 300s
+    trace-retention-days: 30
+    trace-slow-request-ms: 120000
+    trace-slow-llm-ms: 60000
+    trace-tool-failure-warning-rate: 0.05
+    trace-timeout-warning-rate: 0.05
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     upload:

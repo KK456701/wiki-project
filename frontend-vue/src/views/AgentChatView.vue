@@ -125,6 +125,7 @@ async function exportComparison(runId?: string, fileToken?: string) {
           </select>
         </label>
         <code>{{ store.sessionId.slice(-12) }}</code>
+        <RouterLink class="quiet-button" to="/runs">运行观察</RouterLink>
         <button type="button" class="quiet-button" @click="store.newSession()">新会话</button>
         <div class="identity"><span>医院人员</span><strong>{{ store.user?.accountId }}</strong><small>{{ store.user?.hospitalId }}</small></div>
         <button type="button" class="quiet-button" @click="store.logout()">退出</button>

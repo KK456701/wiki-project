@@ -60,6 +60,17 @@ class AgentTraceServiceTest {
         assertThat(String.valueOf(node.get("output_data"))).contains("SQL_001");
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);
+
+        AgentTraceService.RunFilters filters = new AgentTraceService.RunFilters(
+                null, null, null, null, null, null, 100);
+        assertThat(service.list(hospital, filters)).containsEntry("count", 1);
+        Map<String, Object> metrics = service.metrics(hospital, filters);
+        assertThat(metrics).containsEntry("request_count", 1)
+                .containsEntry("success_rate", 1.0);
+        assertThat(String.valueOf(metrics.get("tools"))).contains("prepare_indicator_sql");
+        assertThat(service.list(principal("hospital_002"), filters)).containsEntry("count", 0);
+        assertThat(new AgentTraceRepository(jdbc).prune(java.time.LocalDateTime.now().plusDays(1)))
+                .isEqualTo(1);
     }
 
     private static HospitalPrincipal principal(String hospitalId) {

@@ -16,6 +16,11 @@ public class AgentModelProperties {
     private int compoundOllamaConcurrency = 1;
     private int compoundDbConcurrency = 2;
     private Duration compoundTimeout = Duration.ofSeconds(300);
+    private int traceRetentionDays = 30;
+    private long traceSlowRequestMs = 120_000;
+    private long traceSlowLlmMs = 60_000;
+    private double traceToolFailureWarningRate = 0.05;
+    private double traceTimeoutWarningRate = 0.05;
     private String evidenceJsonlPath = "runtime/agent_evidence_java.jsonl";
     private List<ModelDefinition> models = new ArrayList<>();
 
@@ -35,6 +40,16 @@ public class AgentModelProperties {
     public void setCompoundDbConcurrency(int value) { compoundDbConcurrency = value; }
     public Duration getCompoundTimeout() { return compoundTimeout; }
     public void setCompoundTimeout(Duration value) { compoundTimeout = value; }
+    public int getTraceRetentionDays() { return traceRetentionDays; }
+    public void setTraceRetentionDays(int value) { traceRetentionDays = value; }
+    public long getTraceSlowRequestMs() { return traceSlowRequestMs; }
+    public void setTraceSlowRequestMs(long value) { traceSlowRequestMs = value; }
+    public long getTraceSlowLlmMs() { return traceSlowLlmMs; }
+    public void setTraceSlowLlmMs(long value) { traceSlowLlmMs = value; }
+    public double getTraceToolFailureWarningRate() { return traceToolFailureWarningRate; }
+    public void setTraceToolFailureWarningRate(double value) { traceToolFailureWarningRate = value; }
+    public double getTraceTimeoutWarningRate() { return traceTimeoutWarningRate; }
+    public void setTraceTimeoutWarningRate(double value) { traceTimeoutWarningRate = value; }
     public String getEvidenceJsonlPath() { return evidenceJsonlPath; }
     public void setEvidenceJsonlPath(String value) { evidenceJsonlPath = value; }
     public List<ModelDefinition> getModels() { return models; }

@@ -101,6 +101,36 @@ export interface IndicatorExport {
   download_count: number
 }
 
+export interface AgentRunSummary {
+  trace_id: string
+  session_id?: string
+  intent?: string
+  final_status?: string
+  error_count?: number
+  fallback_count?: number
+  started_at?: string
+  ended_at?: string
+  duration_ms?: number
+}
+
+export interface AgentRunMetrics {
+  hospital_id: string
+  request_count: number
+  success_rate: number
+  incomplete_rate: number
+  latency_ms: { average: number; p50: number; p95: number; p99: number }
+  status_counts: Record<string, number>
+  trend: Array<{ date: string; requests: number; planner_ms: number; final_answer_ms: number }>
+  tools: Array<{ tool_name: string; calls: number; failures: number; duration_ms: number }>
+  models: Array<{ model_id: string; calls: number; timeouts: number; duration_ms: number; input_tokens: number; output_tokens: number }>
+  repeated_call_stop_rate: number
+  replan_rate: number
+  compound_request_count: number
+  compound_average_duration_ms: number
+  warnings: Array<{ code: string; message: string }>
+  thresholds: Record<string, number>
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -165,6 +195,28 @@ export async function loadAgentRun(token: string, traceId: string): Promise<Reco
     headers: authHeaders(token),
   })
   return readJson<Record<string, unknown>>(response)
+}
+
+export async function loadAgentRuns(
+  token: string,
+  filters: Record<string, string> = {},
+): Promise<{ hospital_id: string; count: number; items: AgentRunSummary[] }> {
+  const query = new URLSearchParams(filters)
+  const response = await fetch(`/api/agent/runs${query.size ? `?${query}` : ''}`, {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
+}
+
+export async function loadAgentRunMetrics(
+  token: string,
+  filters: Record<string, string> = {},
+): Promise<AgentRunMetrics> {
+  const query = new URLSearchParams(filters)
+  const response = await fetch(`/api/agent/runs/metrics${query.size ? `?${query}` : ''}`, {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
 }
 
 export async function ensureIndicatorDetails(token: string, runId: string): Promise<DetailSnapshot> {

@@ -3,6 +3,8 @@ package com.hospital.wikiagent.agent.trace;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,7 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -25,12 +29,23 @@ public class AgentTraceService {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private final AgentTraceRepository repository;
     private final ObjectMapper objectMapper;
+    private final AgentModelProperties properties;
     private final Map<String, Long> starts = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> sequences = new ConcurrentHashMap<>();
+    private final AtomicInteger startsSincePrune = new AtomicInteger();
 
     public AgentTraceService(AgentTraceRepository repository, ObjectMapper objectMapper) {
+        this(repository, objectMapper, new AgentModelProperties());
+    }
+
+    @Autowired
+    public AgentTraceService(
+            AgentTraceRepository repository,
+            ObjectMapper objectMapper,
+            AgentModelProperties properties) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.properties = properties;
     }
 
     public void start(
@@ -41,6 +56,11 @@ public class AgentTraceService {
         try {
             repository.start(traceId, sessionId, principal.hospitalId(), principal.userId(),
                     shorten(userQuery, 4000), at(now));
+            if (startsSincePrune.incrementAndGet() >= 100) {
+                startsSincePrune.set(0);
+                repository.prune(LocalDateTime.now(ZONE).minusDays(
+                        Math.max(1, properties.getTraceRetentionDays())));
+            }
         } catch (RuntimeException ignored) {
             // Trace 写入失败不能影响 Agent 主链。
         }
@@ -89,6 +109,122 @@ public class AgentTraceService {
         trace.put("trace_version", VERSION);
         trace.put("timing_summary", timing(enhanced));
         return trace;
+    }
+
+    public Map<String, Object> list(HospitalPrincipal principal, RunFilters filters) {
+        List<Map<String, Object>> runs = repository.list(
+                principal.hospitalId(), filters.startedAfter(), filters.startedBefore(),
+                filters.status(), filters.modelId(), filters.toolName(), filters.failureClass(),
+                filters.limit());
+        return Map.of(
+                "hospital_id", principal.hospitalId(),
+                "count", runs.size(),
+                "items", runs);
+    }
+
+    public Map<String, Object> metrics(HospitalPrincipal principal, RunFilters filters) {
+        List<Map<String, Object>> runs = repository.list(
+                principal.hospitalId(), filters.startedAfter(), filters.startedBefore(),
+                filters.status(), filters.modelId(), filters.toolName(), filters.failureClass(), 500);
+        List<String> traceIds = runs.stream().map(value -> text(value.get("trace_id")))
+                .filter(java.util.Objects::nonNull).toList();
+        List<Map<String, Object>> nodes = repository.nodesFor(traceIds);
+        List<Long> durations = runs.stream().map(value -> longValue(value.get("duration_ms"), 0))
+                .sorted().toList();
+        Map<String, Integer> statuses = new LinkedHashMap<>();
+        Map<String, MutableStats> tools = new LinkedHashMap<>();
+        Map<String, MutableStats> models = new LinkedHashMap<>();
+        Map<String, Map<String, Long>> trend = new java.util.TreeMap<>();
+        Map<String, java.util.Set<String>> subtasks = new LinkedHashMap<>();
+        java.util.Set<String> replans = new java.util.HashSet<>();
+        java.util.Set<String> repeated = new java.util.HashSet<>();
+        int slowRequests = 0;
+        for (Map<String, Object> run : runs) {
+            String status = first(text(run.get("final_status")), "unknown");
+            statuses.merge(status, 1, Integer::sum);
+            if (longValue(run.get("duration_ms"), 0) >= properties.getTraceSlowRequestMs()) slowRequests++;
+            String day = day(run.get("started_at"));
+            trend.computeIfAbsent(day, ignored -> trendRow()).merge("requests", 1L, Long::sum);
+        }
+        int llmCalls = 0;
+        int llmTimeouts = 0;
+        int slowLlmCalls = 0;
+        for (Map<String, Object> node : nodes) {
+            String traceId = text(node.get("trace_id"));
+            String name = first(text(node.get("node_name")), "");
+            String day = day(node.get("started_at"));
+            long duration = longValue(node.get("duration_ms"), 0);
+            Map<String, Long> daily = trend.computeIfAbsent(day, ignored -> trendRow());
+            if ("planner_llm".equals(name)) daily.merge("planner_ms", duration, Long::sum);
+            if (List.of("final_answer_llm", "executor_llm").contains(name)) {
+                daily.merge("final_answer_ms", duration, Long::sum);
+            }
+            if ("plan_replan".equals(name)) replans.add(traceId);
+            if ("AGENT_REPEATED_TOOL_CALL".equals(text(node.get("error_code")))) repeated.add(traceId);
+            subtasks.computeIfAbsent(traceId, ignored -> new java.util.HashSet<>())
+                    .add(first(text(node.get("subtask_id")), "root"));
+            String tool = text(node.get("tool_name"));
+            if (tool != null && !tool.isBlank() && "tool_result".equals(name)) {
+                MutableStats value = tools.computeIfAbsent(tool, ignored -> new MutableStats());
+                value.calls++;
+                value.durationMs += duration;
+                if (List.of("failed", "error").contains(text(node.get("status")))) value.failures++;
+            }
+            String model = first(text(node.get("model_id")), text(node.get("llm_model")));
+            if (model != null && !model.isBlank() && "llm".equals(text(node.get("node_type")))) {
+                MutableStats value = models.computeIfAbsent(model, ignored -> new MutableStats());
+                value.calls++;
+                value.durationMs += duration;
+                value.inputTokens += longValue(node.get("input_tokens"), 0);
+                value.outputTokens += longValue(node.get("output_tokens"), 0);
+                llmCalls++;
+                if (duration >= properties.getTraceSlowLlmMs()) slowLlmCalls++;
+                if ("TIMEOUT".equals(text(node.get("failure_class")))) {
+                    value.timeouts++;
+                    llmTimeouts++;
+                }
+            }
+        }
+        int total = runs.size();
+        long average = total == 0 ? 0 : Math.round(durations.stream().mapToLong(Long::longValue).average().orElse(0));
+        java.util.Set<String> compound = subtasks.entrySet().stream()
+                .filter(entry -> entry.getValue().stream().filter(value -> !"root".equals(value)).count() > 1)
+                .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
+        Map<String, Long> durationByTrace = runs.stream().collect(java.util.stream.Collectors.toMap(
+                value -> text(value.get("trace_id")), value -> longValue(value.get("duration_ms"), 0),
+                (left, right) -> left));
+        double toolFailureRate = tools.values().stream().mapToInt(value -> value.failures).sum()
+                / (double) Math.max(1, tools.values().stream().mapToInt(value -> value.calls).sum());
+        double timeoutRate = llmTimeouts / (double) Math.max(1, llmCalls);
+        List<Map<String, Object>> warnings = new ArrayList<>();
+        if (slowRequests > 0) warnings.add(warning("SLOW_REQUEST", slowRequests + " 个请求超过慢请求阈值。"));
+        if (slowLlmCalls > 0) warnings.add(warning("SLOW_LLM", slowLlmCalls + " 次模型调用超过慢模型阈值。"));
+        if (toolFailureRate >= properties.getTraceToolFailureWarningRate()) warnings.add(warning("TOOL_FAILURE_RATE", "工具失败率达到 " + percent(toolFailureRate) + "。"));
+        if (timeoutRate >= properties.getTraceTimeoutWarningRate()) warnings.add(warning("MODEL_TIMEOUT_RATE", "模型超时率达到 " + percent(timeoutRate) + "。"));
+        return eventValues(
+                "hospital_id", principal.hospitalId(),
+                "request_count", total,
+                "success_rate", ratio(statuses.getOrDefault("success", 0), total),
+                "incomplete_rate", ratio(total - statuses.getOrDefault("success", 0), total),
+                "latency_ms", Map.of("average", average, "p50", percentile(durations, .50),
+                        "p95", percentile(durations, .95), "p99", percentile(durations, .99)),
+                "status_counts", statuses,
+                "trend", trend.entrySet().stream().map(entry -> eventValues(
+                        "date", entry.getKey(), "requests", entry.getValue().get("requests"),
+                        "planner_ms", entry.getValue().get("planner_ms"),
+                        "final_answer_ms", entry.getValue().get("final_answer_ms"))).toList(),
+                "tools", stats(tools, "tool_name"), "models", stats(models, "model_id"),
+                "repeated_call_stop_rate", ratio(repeated.size(), total),
+                "replan_rate", ratio(replans.size(), total),
+                "compound_request_count", compound.size(),
+                "compound_average_duration_ms", compound.isEmpty() ? 0 : Math.round(
+                        compound.stream().mapToLong(value -> durationByTrace.getOrDefault(value, 0L)).average().orElse(0)),
+                "warnings", warnings,
+                "thresholds", Map.of(
+                        "slow_request_ms", properties.getTraceSlowRequestMs(),
+                        "slow_llm_ms", properties.getTraceSlowLlmMs(),
+                        "tool_failure_warning_rate", properties.getTraceToolFailureWarningRate(),
+                        "timeout_warning_rate", properties.getTraceTimeoutWarningRate()));
     }
 
     private void finish(
@@ -185,6 +321,63 @@ public class AgentTraceService {
         return Map.of("llm_ms", llm, "tool_ms", tool, "code_ms", code, "storage_ms", storage);
     }
 
+    public static LocalDateTime parseTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip().replace(' ', 'T');
+        try {
+            return LocalDateTime.parse(normalized, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        } catch (DateTimeParseException exception) {
+            throw new IllegalArgumentException("时间筛选必须使用 ISO 日期时间。", exception);
+        }
+    }
+
+    private static List<Map<String, Object>> stats(Map<String, MutableStats> values, String nameKey) {
+        return values.entrySet().stream().map(entry -> eventValues(
+                nameKey, entry.getKey(), "calls", entry.getValue().calls,
+                "failures", entry.getValue().failures, "timeouts", entry.getValue().timeouts,
+                "duration_ms", entry.getValue().durationMs,
+                "input_tokens", entry.getValue().inputTokens,
+                "output_tokens", entry.getValue().outputTokens)).toList();
+    }
+
+    private static Map<String, Long> trendRow() {
+        Map<String, Long> value = new LinkedHashMap<>();
+        value.put("requests", 0L);
+        value.put("planner_ms", 0L);
+        value.put("final_answer_ms", 0L);
+        return value;
+    }
+
+    private static String day(Object value) {
+        String text = String.valueOf(value == null ? "" : value);
+        return text.length() >= 10 ? text.substring(0, 10) : "unknown";
+    }
+
+    private static long percentile(List<Long> values, double fraction) {
+        if (values.isEmpty()) return 0;
+        return values.get(Math.min(values.size() - 1, (int) ((values.size() - 1) * fraction)));
+    }
+
+    private static double ratio(int numerator, int denominator) {
+        return denominator == 0 ? 0 : Math.round(numerator * 10000.0 / denominator) / 10000.0;
+    }
+
+    private static String percent(double value) {
+        return String.format(java.util.Locale.ROOT, "%.2f%%", value * 100);
+    }
+
+    private static Map<String, Object> warning(String code, String message) {
+        return Map.of("code", code, "message", message);
+    }
+
+    private static Map<String, Object> eventValues(Object... values) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (int index = 0; index + 1 < values.length; index += 2) {
+            if (values[index + 1] != null) result.put(String.valueOf(values[index]), values[index + 1]);
+        }
+        return result;
+    }
+
     private static String title(String name) {
         String safeName = name == null ? "" : name;
         return switch (safeName) {
@@ -251,6 +444,28 @@ public class AgentTraceService {
     private static long longValue(Object value, long fallback) { try { return value == null ? fallback : Long.parseLong(String.valueOf(value)); } catch (RuntimeException ignored) { return fallback; } }
     private static Integer integer(Object value) { try { return value == null ? null : Integer.valueOf(String.valueOf(value)); } catch (RuntimeException ignored) { return null; } }
     private static int integer(Object value, int fallback) { Integer parsed = integer(value); return parsed == null ? fallback : parsed; }
+
+    public record RunFilters(
+            LocalDateTime startedAfter,
+            LocalDateTime startedBefore,
+            String status,
+            String modelId,
+            String toolName,
+            String failureClass,
+            int limit) {
+        public RunFilters {
+            limit = Math.max(1, Math.min(500, limit));
+        }
+    }
+
+    private static final class MutableStats {
+        int calls;
+        int failures;
+        int timeouts;
+        long durationMs;
+        long inputTokens;
+        long outputTokens;
+    }
 
     public static class AgentTraceNotFoundException extends RuntimeException {
         private final String code;

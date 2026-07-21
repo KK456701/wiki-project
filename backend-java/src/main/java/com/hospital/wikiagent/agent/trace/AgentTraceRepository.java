@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.trace;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -84,6 +85,77 @@ public class AgentTraceRepository {
         } catch (RuntimeException exception) {
             return List.of();
         }
+    }
+
+    public List<Map<String, Object>> list(
+            String hospitalId,
+            LocalDateTime startedAfter,
+            LocalDateTime startedBefore,
+            String status,
+            String modelId,
+            String toolName,
+            String failureClass,
+            int limit) {
+        StringBuilder sql = new StringBuilder("""
+                SELECT t.trace_id,t.session_id,t.hospital_id,t.intent,t.final_status,
+                       t.error_count,t.fallback_count,t.started_at,t.ended_at,t.duration_ms
+                FROM med_agent_trace t WHERE t.hospital_id=?
+                """);
+        List<Object> args = new ArrayList<>();
+        args.add(hospitalId);
+        if (startedAfter != null) {
+            sql.append(" AND t.started_at>=?");
+            args.add(startedAfter);
+        }
+        if (startedBefore != null) {
+            sql.append(" AND t.started_at<?");
+            args.add(startedBefore);
+        }
+        if (status != null && !status.isBlank()) {
+            sql.append(" AND t.final_status=?");
+            args.add(status.strip());
+        }
+        List<String> nodeClauses = new ArrayList<>();
+        if (modelId != null && !modelId.isBlank()) {
+            nodeClauses.add("n.model_id=?");
+            args.add(modelId.strip());
+        }
+        if (toolName != null && !toolName.isBlank()) {
+            nodeClauses.add("n.tool_name=?");
+            args.add(toolName.strip());
+        }
+        if (failureClass != null && !failureClass.isBlank()) {
+            nodeClauses.add("n.failure_class=?");
+            args.add(failureClass.strip());
+        }
+        if (!nodeClauses.isEmpty()) {
+            sql.append(" AND EXISTS (SELECT 1 FROM med_agent_trace_node n WHERE n.trace_id=t.trace_id AND ")
+                    .append(String.join(" AND ", nodeClauses)).append(")");
+        }
+        sql.append(" ORDER BY t.started_at DESC LIMIT ?");
+        args.add(Math.max(1, Math.min(500, limit)));
+        return jdbc.queryForList(sql.toString(), args.toArray()).stream()
+                .map(AgentTraceRepository::normalize).toList();
+    }
+
+    public List<Map<String, Object>> nodesFor(List<String> traceIds) {
+        if (traceIds == null || traceIds.isEmpty()) return List.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(traceIds.size(), "?"));
+        return jdbc.queryForList(
+                "SELECT * FROM med_agent_trace_node WHERE trace_id IN (" + placeholders + ")",
+                traceIds.toArray()).stream().map(AgentTraceRepository::normalize).toList();
+    }
+
+    public int prune(LocalDateTime before) {
+        List<String> expired = jdbc.queryForList(
+                "SELECT trace_id FROM med_agent_trace WHERE started_at<? ORDER BY started_at LIMIT 1000",
+                String.class, before);
+        if (expired.isEmpty()) return 0;
+        String placeholders = String.join(",", java.util.Collections.nCopies(expired.size(), "?"));
+        jdbc.update("DELETE FROM med_agent_trace_node WHERE trace_id IN (" + placeholders + ")",
+                expired.toArray());
+        return jdbc.update("DELETE FROM med_agent_trace WHERE trace_id IN (" + placeholders + ")",
+                expired.toArray());
     }
 
     private static String shorten(String value, int limit) {
