@@ -347,6 +347,88 @@ export async function loadTerminologyReleases(
   return readJson(response)
 }
 
+export async function loginAdmin(password: string): Promise<{ token: string; message: string }> {
+  const response = await fetch('/api/admin/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
+  return readJson(response)
+}
+
+export async function logoutAdmin(token: string): Promise<void> {
+  if (!token) return
+  const response = await fetch('/api/admin/logout', {
+    method: 'POST', headers: authHeaders(token),
+  })
+  await readJson(response)
+}
+
+function terminologyAdminHeaders(adminToken: string, hospitalToken: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${adminToken}`,
+    'X-Hospital-Authorization': `Bearer ${hospitalToken}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+export async function createTerminologyAlias(
+  adminToken: string, hospitalToken: string, payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await fetch('/api/terminology/aliases', {
+    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify(payload),
+  })
+  return readJson(response)
+}
+
+export async function approveTerminologyAlias(
+  adminToken: string, hospitalToken: string, aliasId: number,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`/api/terminology/aliases/${aliasId}/approve`, {
+    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify({ actor_id: 'admin' }),
+  })
+  return readJson(response)
+}
+
+export async function createTerminologyMapping(
+  adminToken: string, hospitalToken: string, payload: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await fetch('/api/terminology/hospital-mappings', {
+    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify(payload),
+  })
+  return readJson(response)
+}
+
+export async function approveTerminologyMapping(
+  adminToken: string, hospitalToken: string, mappingId: number,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`/api/terminology/hospital-mappings/${mappingId}/approve`, {
+    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify({ actor_id: 'admin' }),
+  })
+  return readJson(response)
+}
+
+export async function publishTerminology(adminToken: string): Promise<Record<string, unknown>> {
+  const response = await fetch('/api/terminology/releases/publish', {
+    method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor_id: 'admin' }),
+  })
+  return readJson(response)
+}
+
+export async function restoreTerminology(
+  adminToken: string, releaseId: string,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`/api/terminology/releases/${encodeURIComponent(releaseId)}/restore`, {
+    method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actor_id: 'admin' }),
+  })
+  return readJson(response)
+}
+
 export async function ensureIndicatorDetails(token: string, runId: string): Promise<DetailSnapshot> {
   const response = await fetch(`/api/sql-runs/${encodeURIComponent(runId)}/details`, {
     method: 'POST',

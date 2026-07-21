@@ -247,6 +247,20 @@ CREATE TABLE med_hospital_term_mapping (
   approved_at TIMESTAMP
 );
 
+CREATE TABLE med_hospital_term_mapping_version (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  version_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  concept_code VARCHAR(96) NOT NULL,
+  version INT NOT NULL,
+  snapshot_json CLOB NOT NULL,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64),
+  approver_id VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  approved_at TIMESTAMP
+);
+
 CREATE TABLE med_term_release (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   release_id VARCHAR(64) NOT NULL UNIQUE,
@@ -257,6 +271,18 @@ CREATE TABLE med_term_release (
   change_summary CLOB NOT NULL,
   published_by VARCHAR(64) NOT NULL,
   published_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE med_term_audit_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  action VARCHAR(64) NOT NULL,
+  object_type VARCHAR(64) NOT NULL,
+  object_id VARCHAR(128) NOT NULL,
+  hospital_id VARCHAR(64),
+  version VARCHAR(64),
+  actor_id VARCHAR(64) NOT NULL,
+  detail_json CLOB NOT NULL,
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE med_table_relation (

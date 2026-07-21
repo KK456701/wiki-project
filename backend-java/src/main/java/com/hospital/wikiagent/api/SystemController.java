@@ -21,7 +21,7 @@ public class SystemController {
     @GetMapping("/migration/status")
     public Map<String, Object> migrationStatus() {
         return Map.of(
-                "phase", "terminology_read_shadow",
+                "phase", "terminology_governance_shadow",
                 "authority_runtime", "python",
                 "java_runtime", "compatibility_shadow",
                 "completed", List.of(
@@ -31,8 +31,8 @@ public class SystemController {
                         "controlled_sql_trial", "diagnosis", "upload_comparison",
                         "detail_export", "compound_runtime", "trace_observability",
                         "implementation_validation_mvp", "metadata_workbench",
-                        "terminology_read_workbench"),
-                "next", List.of("terminology_admin_workflow", "remaining_business_workbenches",
+                        "terminology_read_workbench", "terminology_admin_workflow"),
+                "next", List.of("remaining_business_workbenches",
                         "vue_bundle_in_jar", "contract_cutover"));
     }
 }

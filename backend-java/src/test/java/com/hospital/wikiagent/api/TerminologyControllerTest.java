@@ -2,6 +2,7 @@ package com.hospital.wikiagent.api;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Set;
@@ -9,9 +10,12 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.auth.HospitalAuthException;
+import com.hospital.wikiagent.auth.AdminSessionService;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.terminology.TerminologyService;
+import com.hospital.wikiagent.terminology.TerminologyGovernanceService;
+import com.hospital.wikiagent.api.TerminologyController.MappingRequest;
 
 class TerminologyControllerTest {
     @Test
@@ -20,11 +24,37 @@ class TerminologyControllerTest {
         TerminologyService terminology = mock(TerminologyService.class);
         when(auth.authenticate("token")).thenReturn(new HospitalPrincipal(
                 "user_001", "doctor", "hospital_001", Set.of(), false, "session_001"));
-        TerminologyController controller = new TerminologyController(auth, terminology);
+        TerminologyController controller = new TerminologyController(
+                auth, terminology, mock(AdminSessionService.class),
+                mock(TerminologyGovernanceService.class));
 
         assertThatThrownBy(() -> controller.concept(
                 "Bearer token", "TERM_001", "hospital_002"))
                 .isInstanceOf(HospitalAuthException.class)
                 .hasMessageContaining("其他医院");
+    }
+
+    @Test
+    void mutationRequiresAdminAndCurrentHospitalSessions() {
+        HospitalAuthService auth = mock(HospitalAuthService.class);
+        TerminologyService terminology = mock(TerminologyService.class);
+        TerminologyGovernanceService governance = mock(TerminologyGovernanceService.class);
+        AdminSessionService admins = new AdminSessionService("secret");
+        String adminToken = admins.login("secret");
+        when(auth.authenticate("hospital-token")).thenReturn(new HospitalPrincipal(
+                "user_001", "doctor", "hospital_001", Set.of(), false, "session_001"));
+        TerminologyController controller = new TerminologyController(
+                auth, terminology, admins, governance);
+        MappingRequest request = new MappingRequest(
+                "hospital_001", "TERM_001", "local", "A", "名称", "值", null, null);
+
+        controller.createMapping(
+                "Bearer " + adminToken, "Bearer hospital-token", request);
+
+        verify(governance).createMapping(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("hospital_001"));
+        assertThatThrownBy(() -> controller.createMapping(
+                "Bearer wrong", "Bearer hospital-token", request))
+                .isInstanceOf(HospitalAuthException.class);
     }
 }

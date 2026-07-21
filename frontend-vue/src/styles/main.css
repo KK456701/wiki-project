@@ -31,6 +31,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .term-toolbar label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
 .term-toolbar input, .term-toolbar select { min-height: 42px; padding: 8px 11px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
 .term-toolbar > span { padding-bottom: 11px; color: var(--teal-dark); font: 700 12px Bahnschrift, sans-serif; }
+.term-admin-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 20px; color: #f5fbf9; background: #1a3832; border-top: 1px solid #476b64; }
+.term-admin-bar > div { display: grid; gap: 3px; }.term-admin-bar span { color: #bcd0cb; font-size: 11px; }
+.term-admin-bar form { display: flex; gap: 7px; }.term-admin-bar input { min-width: 220px; padding: 8px 10px; border: 1px solid #6d8b85; background: white; }
+.term-admin-bar .quiet-button { color: white; border-color: #7b9993; background: transparent; }
 .term-error { margin: 14px 0 0; }
 .term-layout { display: grid; grid-template-columns: minmax(250px, 330px) minmax(0, 1fr); min-height: 520px; margin-top: 18px; border: 1px solid var(--line); background: var(--line); gap: 1px; }
 .term-index, .term-detail { background: var(--paper); }
@@ -54,6 +58,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .term-record > p { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; margin: 0; }
 .term-record span { padding: 3px 6px; color: #4f625d; background: #edf3f1; font-size: 10px; white-space: nowrap; }
 .term-record span[data-safe="true"] { color: var(--teal-dark); background: var(--mint); }.term-record span[data-safe="false"] { color: var(--danger); background: #fff0ed; }
+.term-record button, .term-inline-form button, .term-publish { padding: 5px 8px; color: white; border: 0; background: var(--teal); font-size: 10px; font-weight: 700; }
+.term-inline-form { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(100px, .7fr) auto auto; gap: 7px; margin-top: 14px; padding-top: 13px; border-top: 1px dashed #aec4be; }
+.term-inline-form input, .term-inline-form select { min-width: 0; padding: 7px 8px; border: 1px solid var(--line); background: var(--paper); font-size: 11px; }
+.term-inline-form label { display: flex; align-items: center; gap: 5px; font-size: 10px; }.term-inline-form label input { width: auto; }
+.term-mapping-form { grid-template-columns: repeat(2, minmax(100px, 1fr)); }.term-mapping-form button { grid-column: 1 / -1; }
+.term-publish { margin: 0 0 8px; }
 .term-empty { display: grid; place-content: center; color: var(--muted); }
 .term-recognition { display: grid; grid-template-columns: minmax(230px, .65fr) minmax(300px, 1fr) minmax(300px, 1.1fr); gap: 20px; margin-top: 18px; padding: 24px; color: white; background: #142e29; }
 .term-recognition h2 { margin: 7px 0; }.term-recognition > div > p:last-child { color: #bdd1cc; line-height: 1.6; }
@@ -68,10 +78,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .term-head, .term-detail > header { flex-direction: column; }
   .term-toolbar, .term-layout, .term-recognition { grid-template-columns: 1fr; }
   .term-index { max-height: 360px; }.term-detail-grid { grid-template-columns: 1fr; }
+  .term-admin-bar { align-items: stretch; flex-direction: column; }.term-inline-form { grid-template-columns: 1fr; }.term-mapping-form button { grid-column: auto; }
 }
 
 @media (max-width: 620px) {
-  .term-shell { padding: 0; }.term-head, .term-detail { padding: 20px; }.term-toolbar { grid-template-columns: 1fr; }.term-layout { border-left: 0; border-right: 0; }.term-recognition { margin-top: 0; }
+  .term-shell { padding: 0; }.term-head, .term-detail { padding: 20px; }.term-toolbar { grid-template-columns: 1fr; }.term-layout { border-left: 0; border-right: 0; }.term-recognition { margin-top: 0; }.term-admin-bar form { flex-direction: column; }.term-admin-bar input { min-width: 0; }
 }
 
 .login-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); background: var(--teal-dark); }

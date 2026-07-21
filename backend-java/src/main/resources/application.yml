@@ -25,6 +25,8 @@ management:
         include: health,info
 
 wiki:
+  admin:
+    password: ${WIKI_ADMIN_PASSWORD:CHANGE_ME}
   auth:
     session-hours: 8
   agent:

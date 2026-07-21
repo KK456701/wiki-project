@@ -6,6 +6,7 @@
 
 ```powershell
 cd F:\A-wiki-project\backend-java
+$env:WIKI_ADMIN_PASSWORD = '<与当前部署一致的管理员密码>'
 mvn -s maven-settings.xml test
 mvn -s maven-settings.xml spring-boot:run
 ```
@@ -37,7 +38,10 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/terminology/concepts`：检索已生效标准概念、同义词和指标关联。
 - `GET /api/terminology/concepts/{concept_code}`：按登录医院读取概念、同义词、本院映射与指标引用详情。
 - `POST /api/terminology/test`：执行不调用 LLM 的确定性术语识别，返回歧义和 SQL 可用性。
-- `GET /api/terminology/releases`：读取术语发布版本；候选、审批、发布和回退尚未切到 Java。
+- `POST /api/admin/login`、`POST /api/admin/logout`：独立轻量管理员会话；密码只从 `WIKI_ADMIN_PASSWORD` 注入，默认占位值不可登录。
+- `POST /api/terminology/aliases` 及其审批接口：创建、校验并审批公司或本院候选词。
+- `POST /api/terminology/hospital-mappings` 及其审批接口：仅在管理员会话和当前医院会话同时通过时维护本院编码和值。
+- `GET /api/terminology/releases`、`POST /api/terminology/releases/publish`、`POST /api/terminology/releases/{release_id}/restore`：读取、发布和恢复不可变术语版本。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -63,7 +67,7 @@ Vue `/runs` 页面直接使用 Trace 汇总接口展示请求量、成功/未完
 
 Vue `/metadata` 页面展示当前医院的快照批次、表数、映射字段数、结构变化和受影响规则。Java 固定查询 `INFORMATION_SCHEMA`，不接受客户端 SQL，也不允许客户端切换到未配置数据库；全库只采集表目录，列信息仅采集 `med_field_mapping` 已确认映射实际依赖的表，避免把无关的大量字段写入运行库。
 
-Vue `/terminology` 页面展示标准概念、已审核同义词、当前医院编码映射、关联指标和发布版本，并提供确定性识别测试。Java 识别链不调用 Spring AI：先做最长词匹配，同跨度多概念直接返回歧义，同长度时优先本院映射；`related`、`forbidden` 或未标记 SQL 安全的临床值会阻止结果直接进入 SQL 条件。当前批次只读，不允许通过 Java 创建或审批术语。
+Vue `/terminology` 页面展示标准概念、已审核同义词、当前医院编码映射、关联指标和发布版本，并提供确定性识别测试。Java 识别链不调用 Spring AI：先做最长词匹配，同跨度多概念直接返回歧义，同长度时优先本院映射；`related`、`forbidden` 或未标记 SQL 安全的临床值会阻止结果直接进入 SQL 条件。独立管理员维护模式支持候选词、本院映射、审批、发布和历史回退；所有医院级写入同时校验医院人员 token 和管理员 token，并记录版本及审计日志。
 
 Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 

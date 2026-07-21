@@ -17,10 +17,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hospital.wikiagent.auth.BearerTokens;
+import com.hospital.wikiagent.auth.AdminSessionService;
 import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.terminology.TerminologyService;
+import com.hospital.wikiagent.terminology.TerminologyGovernanceException;
+import com.hospital.wikiagent.terminology.TerminologyGovernanceService;
+import com.hospital.wikiagent.terminology.TerminologyGovernanceService.AliasCommand;
+import com.hospital.wikiagent.terminology.TerminologyGovernanceService.MappingCommand;
 import com.hospital.wikiagent.terminology.TerminologyService.TerminologyNotFoundException;
 
 @RestController
@@ -28,10 +33,16 @@ import com.hospital.wikiagent.terminology.TerminologyService.TerminologyNotFound
 public class TerminologyController {
     private final HospitalAuthService auth;
     private final TerminologyService terminology;
+    private final AdminSessionService admins;
+    private final TerminologyGovernanceService governance;
 
-    public TerminologyController(HospitalAuthService auth, TerminologyService terminology) {
+    public TerminologyController(
+            HospitalAuthService auth, TerminologyService terminology,
+            AdminSessionService admins, TerminologyGovernanceService governance) {
         this.auth = auth;
         this.terminology = terminology;
+        this.admins = admins;
+        this.governance = governance;
     }
 
     @GetMapping("/concepts")
@@ -74,6 +85,71 @@ public class TerminologyController {
         return Map.of("items", terminology.releases());
     }
 
+    @PostMapping("/aliases")
+    public Map<String, Object> createAlias(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @RequestBody AliasRequest request) {
+        admins.require(authorization);
+        String hospital = request.hospitalId() == null ? "" : request.hospitalId().strip();
+        if (!hospital.isEmpty()) requireHospital(principal(hospitalAuthorization), hospital);
+        return governance.createAlias(new AliasCommand(
+                hospital, request.conceptCode(), request.aliasText(), request.relationType(),
+                request.retrievalEnabled() == null || request.retrievalEnabled(),
+                Boolean.TRUE.equals(request.sqlSafe()), request.ambiguityGroup(),
+                request.sourceReference()));
+    }
+
+    @PostMapping("/aliases/{aliasId}/approve")
+    public Map<String, Object> approveAlias(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @PathVariable long aliasId, @RequestBody ActorRequest ignored) {
+        admins.require(authorization);
+        String hospital = hospitalAuthorization == null ? "" : principal(hospitalAuthorization).hospitalId();
+        return governance.approveAlias(aliasId, hospital);
+    }
+
+    @PostMapping("/hospital-mappings")
+    public Map<String, Object> createMapping(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @RequestBody MappingRequest request) {
+        admins.require(authorization);
+        HospitalPrincipal principal = principal(hospitalAuthorization);
+        requireHospital(principal, request.hospitalId());
+        return governance.createMapping(new MappingCommand(
+                request.hospitalId(), request.conceptCode(), request.codeSystem(), request.localCode(),
+                request.localName(), request.localValue(), request.effectiveFrom(), request.effectiveTo()),
+                principal.hospitalId());
+    }
+
+    @PostMapping("/hospital-mappings/{mappingId}/approve")
+    public Map<String, Object> approveMapping(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @PathVariable long mappingId, @RequestBody ActorRequest ignored) {
+        admins.require(authorization);
+        HospitalPrincipal principal = principal(hospitalAuthorization);
+        return governance.approveMapping(mappingId, principal.hospitalId());
+    }
+
+    @PostMapping("/releases/publish")
+    public Map<String, Object> publish(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestBody ActorRequest ignored) {
+        admins.require(authorization);
+        return governance.publish();
+    }
+
+    @PostMapping("/releases/{releaseId}/restore")
+    public Map<String, Object> restore(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable String releaseId, @RequestBody ActorRequest ignored) {
+        admins.require(authorization);
+        return governance.restore(releaseId);
+    }
+
     private HospitalPrincipal principal(String authorization) {
         return auth.authenticate(BearerTokens.require(authorization));
     }
@@ -92,7 +168,36 @@ public class TerminologyController {
         return Map.of("detail", exception.getMessage());
     }
 
+    @ExceptionHandler(TerminologyGovernanceException.class)
+    public org.springframework.http.ResponseEntity<Map<String, Object>> governance(
+            TerminologyGovernanceException exception) {
+        return org.springframework.http.ResponseEntity.status(exception.status())
+                .body(Map.of("detail", exception.getMessage(), "code", exception.code()));
+    }
+
     public record RecognitionRequest(
             @JsonProperty("hospital_id") String hospitalId,
             String text) { }
+
+    public record AliasRequest(
+            @JsonProperty("hospital_id") String hospitalId,
+            @JsonProperty("concept_code") String conceptCode,
+            @JsonProperty("alias_text") String aliasText,
+            @JsonProperty("relation_type") String relationType,
+            @JsonProperty("retrieval_enabled") Boolean retrievalEnabled,
+            @JsonProperty("sql_safe") Boolean sqlSafe,
+            @JsonProperty("ambiguity_group") String ambiguityGroup,
+            @JsonProperty("source_reference") String sourceReference) { }
+
+    public record MappingRequest(
+            @JsonProperty("hospital_id") String hospitalId,
+            @JsonProperty("concept_code") String conceptCode,
+            @JsonProperty("code_system") String codeSystem,
+            @JsonProperty("local_code") String localCode,
+            @JsonProperty("local_name") String localName,
+            @JsonProperty("local_value") String localValue,
+            @JsonProperty("effective_from") String effectiveFrom,
+            @JsonProperty("effective_to") String effectiveTo) { }
+
+    public record ActorRequest(@JsonProperty("actor_id") String actorId) { }
 }
