@@ -33,9 +33,12 @@ class AgentContractJacksonTest {
                 """, AgentChatRequest.class);
         String response = objectMapper.writeValueAsString(
                 new AgentChatResponse("已完成", "final_answer", "TRACE_1", "session-1", 2));
+        String upload = objectMapper.writeValueAsString(
+                new UploadResponse("hospital_001_file.xlsx", "file.xlsx", 128));
 
         assertThat(request.sessionId()).isEqualTo("session-1");
         assertThat(response).contains("\"stop_reason\"", "\"trace_id\"", "\"step_count\"");
+        assertThat(upload).contains("\"file_key\"", "\"file_name\"", "\"size_bytes\"");
     }
 
     @Test

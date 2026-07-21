@@ -13,10 +13,14 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier.VerificationExpectations;
 import com.hospital.wikiagent.agent.ir.CompiledPlanIR;
+import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
+import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationSnapshot;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer.FinalAnswerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerInput;
+import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerResult;
 import com.hospital.wikiagent.agent.planning.AgentStateController;
 import com.hospital.wikiagent.agent.planning.CapabilityDispatchException;
 import com.hospital.wikiagent.agent.planning.CapabilitySpecRegistry;
@@ -45,6 +49,31 @@ public class AgentRunner {
     private final ToolGateway gateway;
     private final EvidenceVerifier verifier;
     private final FinalAnswerComposer finalAnswer;
+    private final AgentConversationMemory conversations;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentRunner(
+            ModelRequestPlanner planner,
+            PlanValidator validator,
+            PlanCompiler compiler,
+            CapabilitySpecRegistry capabilities,
+            AgentStateController controller,
+            DeterministicDispatch dispatch,
+            ToolGateway gateway,
+            EvidenceVerifier verifier,
+            FinalAnswerComposer finalAnswer,
+            AgentConversationMemory conversations) {
+        this.planner = planner;
+        this.validator = validator;
+        this.compiler = compiler;
+        this.capabilities = capabilities;
+        this.controller = controller;
+        this.dispatch = dispatch;
+        this.gateway = gateway;
+        this.verifier = verifier;
+        this.finalAnswer = finalAnswer;
+        this.conversations = conversations;
+    }
 
     public AgentRunner(
             ModelRequestPlanner planner,
@@ -56,15 +85,8 @@ public class AgentRunner {
             ToolGateway gateway,
             EvidenceVerifier verifier,
             FinalAnswerComposer finalAnswer) {
-        this.planner = planner;
-        this.validator = validator;
-        this.compiler = compiler;
-        this.capabilities = capabilities;
-        this.controller = controller;
-        this.dispatch = dispatch;
-        this.gateway = gateway;
-        this.verifier = verifier;
-        this.finalAnswer = finalAnswer;
+        this(planner, validator, compiler, capabilities, controller, dispatch,
+                gateway, verifier, finalAnswer, AgentConversationMemory.noop());
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -72,16 +94,24 @@ public class AgentRunner {
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        ConversationSnapshot conversation = conversations.open(
+                request.principal(), request.sessionId());
+        request = withConversationContext(request, conversation);
+        conversations.appendUser(
+                conversation, request.principal(), request.query(), request.fileKey());
         String requestId = blankTo(request.requestId(), id("REQ_"));
         String traceId = blankTo(request.traceId(), id("TRACE_"));
-        String sessionId = blankTo(request.sessionId(), id("SESSION_"));
+        String sessionId = conversation.sessionId();
         String subtaskId = id("SUB_");
         emit(observer, "agent_start", traceId, 0, Map.of("status", "running"));
         emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
 
-        var planned = planner.plan(new PlannerInput(
+        PlannerResult modelPlan = planner.plan(new PlannerInput(
                 request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
                 request.structuredState(), request.recentHistory()));
+        RequestPlan enrichedPlan = enrichFromConversation(modelPlan.plan(), conversation);
+        PlannerResult planned = new PlannerResult(
+                enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
         PlanValidation validation = validator.validate(planned.plan());
         CompiledPlanIR compiled = compiler.compile(planned.plan());
         PlanningExecution execution = new PlanningExecution(
@@ -89,30 +119,40 @@ public class AgentRunner {
 
         AgentRunState state = new AgentRunState();
         state.subtaskId(subtaskId);
-        state.currentRuleId(planned.plan().targetIndicator().ruleId());
-        state.currentUploadFileKey(request.fileKey());
+        state.currentRuleId(first(
+                planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
+        state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId());
 
         while (state.stepCount() < MAX_STEPS) {
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
             if (decision.action() == ControllerAction.FALLBACK) {
-                return finishFallback(
+                AgentRunResult result = finishFallback(
                         observer, traceId, sessionId, state, planned.plan(), compiled, decision);
+                conversations.appendAssistant(
+                        conversation, request.principal(), result.answer(), state);
+                return result;
             }
             if (decision.action() == ControllerAction.COMPOSE_ANSWER) {
-                return compose(
+                AgentRunResult result = compose(
                         request, observer, traceId, sessionId, state, planned.modelId(),
                         planned.plan(), compiled, validation, context);
+                conversations.appendAssistant(
+                        conversation, request.principal(), result.answer(), state);
+                return result;
             }
 
             DeterministicDispatch.ToolCall call;
             try {
                 call = dispatch.buildToolCall(execution, decision, state, request.query());
             } catch (CapabilityDispatchException exception) {
-                return finishFailure(
+                AgentRunResult result = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         exception.getMessage(), exception.code());
+                conversations.appendAssistant(
+                        conversation, request.principal(), result.answer(), state);
+                return result;
             }
             state.incrementStep();
             emit(observer, "tool_call", traceId, state.stepCount(), Map.of(
@@ -131,14 +171,19 @@ public class AgentRunner {
                     "duration_ms", durationMs));
             updateState(state, result);
             if (!result.ok()) {
-                return finishFailure(
+                AgentRunResult failure = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         result.summary(), result.code());
+                conversations.appendAssistant(
+                        conversation, request.principal(), failure.answer(), state);
+                return failure;
             }
         }
-        return finishFailure(
+        AgentRunResult failure = finishFailure(
                 observer, traceId, sessionId, state, planned.plan(), compiled,
                 "已达到最大处理步骤，请缩小问题范围后重试。", "MAX_STEPS_EXCEEDED");
+        conversations.appendAssistant(conversation, request.principal(), failure.answer(), state);
+        return failure;
     }
 
     private AgentRunResult compose(
@@ -243,6 +288,44 @@ public class AgentRunner {
                 state.lastDiagnosisId(reportId.toString());
             }
         }
+        if ("TRIAL_RUN_COMPLETED".equals(result.code())) {
+            Object runId = result.data().get("run_id");
+            if (runId != null && !runId.toString().isBlank()) {
+                state.lastRunId(runId.toString());
+            }
+        }
+    }
+
+    private static AgentRunRequest withConversationContext(
+            AgentRunRequest request,
+            ConversationSnapshot conversation) {
+        String structured = "请求携带状态：\n" + safe(request.structuredState())
+                + "\n服务端会话状态：\n" + safe(conversation.structuredSummary());
+        String history = join(conversation.recentHistory(), request.recentHistory());
+        return new AgentRunRequest(
+                request.query(), conversation.sessionId(), request.modelId(), request.fileKey(),
+                request.requestId(), request.traceId(), request.dbSourceId(),
+                structured, history, request.principal());
+    }
+
+    private static RequestPlan enrichFromConversation(
+            RequestPlan plan,
+            ConversationSnapshot conversation) {
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        if (target.rawName().isBlank() && target.ruleId() == null
+                && conversation.ruleId() != null) {
+            target = new RequestPlan.TargetIndicator(
+                    first(conversation.ruleName(), conversation.ruleId()), conversation.ruleId());
+        }
+        RequestPlan.TimeExpression time = plan.timeExpression();
+        if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
+                && conversation.statStart() != null && conversation.statEnd() != null) {
+            time = new RequestPlan.TimeExpression(
+                    "沿用上一轮统计区间", conversation.statStart(), conversation.statEnd());
+        }
+        return new RequestPlan(
+                plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
+                plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
     }
 
     private static void emit(
@@ -271,6 +354,29 @@ public class AgentRunner {
 
     private static String blankTo(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.strip();
+    }
+
+    private static String first(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return null;
+    }
+
+    private static String safe(String value) {
+        return value == null || value.isBlank() ? "{}" : value.strip();
+    }
+
+    private static String join(String left, String right) {
+        if (left == null || left.isBlank()) {
+            return right == null ? "" : right.strip();
+        }
+        if (right == null || right.isBlank()) {
+            return left.strip();
+        }
+        return left.strip() + "\n" + right.strip();
     }
 
     private static String id(String prefix) {

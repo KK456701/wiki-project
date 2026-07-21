@@ -33,6 +33,13 @@ wiki:
     final-answer-timeout: 120s
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
+    upload:
+      root: runtime/uploads
+      max-bytes: 10485760
+      max-uncompressed-bytes: 52428800
+      max-entries: 2000
+      max-rows-per-sheet: 5001
+      max-columns: 100
     models:
       - id: ollama-qwen3
         name: Qwen3 4B（本地 Ollama）

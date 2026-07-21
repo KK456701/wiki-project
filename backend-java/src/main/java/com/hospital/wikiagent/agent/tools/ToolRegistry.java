@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.diagnosis.IndicatorDiagnosisTools;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
+import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 @Component
@@ -22,22 +23,24 @@ public class ToolRegistry {
     public ToolRegistry(
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
-            IndicatorDiagnosisTools diagnosisTools) {
-        this(rules, sqlTools, diagnosisTools, true);
+            IndicatorDiagnosisTools diagnosisTools,
+            UploadedIndicatorTools uploadTools) {
+        this(rules, sqlTools, diagnosisTools, uploadTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, null, true);
+        this(rules, sqlTools, null, null, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, null, false);
+        this(rules, null, null, null, false);
     }
 
     private ToolRegistry(
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
+            UploadedIndicatorTools uploadTools,
             boolean migrateSqlTools) {
         Map<String, AgentTool> values = new LinkedHashMap<>();
         register(values, new AgentTool(
@@ -112,6 +115,18 @@ public class ToolRegistry {
                     true,
                     (context, state) -> state.currentRuleId() != null,
                     (input, context) -> diagnosisTools.diagnose((IndicatorDiagnosisTools.Input) input, context)));
+        }
+        if (uploadTools != null) {
+            register(values, new AgentTool(
+                    "analyze_uploaded_indicators",
+                    UploadedIndicatorTools.Input.class,
+                    Set.of(),
+                    Duration.ofSeconds(30),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    false,
+                    (context, state) -> state.currentUploadFileKey() != null,
+                    (input, context) -> uploadTools.analyze(
+                            (UploadedIndicatorTools.Input) input, context)));
         }
 
         for (String name : List.of(
