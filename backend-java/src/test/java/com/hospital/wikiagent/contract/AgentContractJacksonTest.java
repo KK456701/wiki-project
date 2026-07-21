@@ -7,6 +7,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.util.List;
+
+import com.hospital.wikiagent.agent.ir.PlanIntent;
+import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.agent.ir.RequestedOutput;
+
 import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
@@ -38,5 +44,29 @@ class AgentContractJacksonTest {
                 "{\"query\":\"查询指标\",\"hospital_id\":\"other\"}",
                 AgentChatRequest.class))
                 .hasMessageContaining("hospital_id");
+    }
+
+    @Test
+    void planIrUsesFrozenSnakeCaseAndBusinessEnumValues() throws Exception {
+        RequestPlan plan = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_TRIAL_RUN,
+                "计算急会诊及时到位率",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", "MQSI2025_005"),
+                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01"),
+                List.of(RequestedOutput.TRIAL_RESULT),
+                List.of(),
+                List.of());
+
+        String payload = objectMapper.writeValueAsString(plan);
+        RequestPlan restored = objectMapper.readValue(payload, RequestPlan.class);
+
+        assertThat(payload).contains(
+                "\"schema_version\":\"request-plan-v1\"",
+                "\"indicator_trial_run\"",
+                "\"target_indicator\"",
+                "\"trial_result\"");
+        assertThat(restored.intent()).isEqualTo(PlanIntent.INDICATOR_TRIAL_RUN);
+        assertThat(restored.targetIndicator().ruleId()).isEqualTo("MQSI2025_005");
     }
 }

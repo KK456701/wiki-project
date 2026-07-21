@@ -21,10 +21,12 @@ public class SystemController {
     @GetMapping("/migration/status")
     public Map<String, Object> migrationStatus() {
         return Map.of(
-                "phase", "auth_and_rule_read_shadow",
+                "phase", "agent_ir_and_gateway_shadow",
                 "authority_runtime", "python",
                 "java_runtime", "compatibility_shadow",
-                "completed", List.of("agent_contract_v1", "dbhub_mcp_client", "hospital_auth", "rule_read_api"),
-                "next", List.of("dual_run_acceptance", "agent_ir", "tool_gateway"));
+                "completed", List.of(
+                        "agent_contract_v1", "dbhub_mcp_client", "hospital_auth", "rule_read_api",
+                        "compiled_plan_ir", "deterministic_dispatch", "policy_tool_gateway"),
+                "next", List.of("spring_ai_model_adapters", "evidence_ledger", "agent_shadow_runner"));
     }
 }

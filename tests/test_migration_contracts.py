@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.agent_runtime.events import AGENT_EVENT_NAMES
 from app.api.agent_routes import AgentChatRequest, AgentChatResponse, UploadResponse
+from app.agent_planning.contracts import CompiledPlan, PlanNode, RequestPlan, TargetIndicator, TimeExpression
 
 
 CONTRACT_ROOT = Path(__file__).resolve().parents[1] / "contracts" / "migration" / "v1"
@@ -42,3 +43,21 @@ def test_agent_sse_contract_lists_every_public_event() -> None:
     assert set(frozen["properties"]["event"]["enum"]) == set(AGENT_EVENT_NAMES)
     assert frozen["additionalProperties"] is False
     assert frozen["required"] == ["event", "trace_id"]
+
+
+def test_agent_plan_ir_contract_matches_python_models() -> None:
+    frozen = _load("agent-plan-ir.schema.json")["$defs"]
+    models = {
+        "request_plan": RequestPlan,
+        "compiled_plan": CompiledPlan,
+        "plan_node": PlanNode,
+        "target_indicator": TargetIndicator,
+        "time_expression": TimeExpression,
+    }
+
+    for contract_name, model in models.items():
+        current = model.model_json_schema()
+        expected = frozen[contract_name]
+        assert current.get("required", []) == expected.get("required", [])
+        assert set(current["properties"]) == set(expected["properties"])
+        assert expected["additionalProperties"] is False

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-agent.local/contracts/migration/v1/agent-plan-ir.schema.json",
+  "title": "Agent RequestPlan and CompiledPlan IR v1",
+  "$defs": {
+    "target_indicator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "raw_name": {"type": "string"},
+        "rule_id": {"type": ["string", "null"]}
+      }
+    },
+    "time_expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "raw_text": {"type": "string"},
+        "start_time": {"type": ["string", "null"]},
+        "end_time": {"type": ["string", "null"]}
+      }
+    },
+    "request_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intent", "goal"],
+      "properties": {
+        "schema_version": {"const": "request-plan-v1"},
+        "intent": {
+          "enum": [
+            "general_chat", "rule_explanation", "indicator_sql_prepare",
+            "indicator_trial_run", "indicator_diagnosis", "rule_change_preview",
+            "upload_analysis", "implementation_validation", "unknown"
+          ]
+        },
+        "goal": {"type": "string", "minLength": 1, "maxLength": 500},
+        "target_indicator": {"$ref": "#/$defs/target_indicator"},
+        "time_expression": {"$ref": "#/$defs/time_expression"},
+        "requested_outputs": {"type": "array", "items": {"type": "string"}},
+        "constraints": {"type": "array", "items": {"type": "string"}},
+        "semantic_ambiguities": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "plan_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability"],
+      "properties": {
+        "capability": {"type": "string"},
+        "capability_version": {"type": "string"},
+        "requires": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "produces": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "tool_name": {"type": ["string", "null"]},
+        "policy_action": {"type": "string"},
+        "verifier": {"type": "string"},
+        "retry_policy": {"type": "string"},
+        "answer_mode": {"type": "string"}
+      }
+    },
+    "compiled_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_id", "intent", "goal", "nodes"],
+      "properties": {
+        "plan_id": {"type": "string", "pattern": "^PLAN_[0-9a-f]{16}$"},
+        "schema_version": {"const": "compiled-plan-ir-v1"},
+        "request_plan_version": {"const": "request-plan-v1"},
+        "capability_registry_version": {"type": "string"},
+        "prompt_version": {"type": "string"},
+        "model_adapter_version": {"type": "string"},
+        "verifier_version": {"type": "string"},
+        "intent": {"type": "string"},
+        "goal": {"type": "string"},
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/plan_node"}},
+        "required_facts": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "requested_outputs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/request_plan"},
+    {"$ref": "#/$defs/compiled_plan"}
+  ]
+}

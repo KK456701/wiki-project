@@ -43,7 +43,7 @@
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
 - **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
 - **业务工作台前端**：单页 HTML 前端以 AI 指标助手为主入口，并提供指标实施、指标监控、数据库与元数据、医学术语、审批和离线包交换等业务操作入口。
-- **Java / Vue 渐进迁移前两批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE、DBHub MCP、医院认证与规则只读契约；`backend-java/` 现已提供 Java 17 + Spring Boot 4.1 影子服务、DBHub 客户端、与 Python 兼容的 PBKDF2 登录会话，以及由登录主体强制注入医院范围的规则搜索和生效口径接口。`frontend-vue/` 提供 Vue 3 + TypeScript 登录、模型选择、SSE 对话、Excel 上传、证据轨道和 Trace 外壳。当前 FastAPI 仍是权威运行时，旧页面不删除，规则写入与 Agent 执行尚未切流；后续按单接口双跑、验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
+- **Java / Vue 渐进迁移前三批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE、DBHub MCP、医院认证、规则只读和 Plan IR 契约；`backend-java/` 现已提供 Java 17 + Spring Boot 4.1 影子服务、DBHub 客户端、与 Python 兼容的 PBKDF2 登录会话、由登录主体强制注入医院范围的规则读取，以及版本化 `RequestPlan / CompiledPlanIR`、能力注册表、计划校验、确定性 Controller/Dispatch、策略 PEP 和工具网关。`frontend-vue/` 提供 Vue 3 + TypeScript 登录、模型选择、SSE 对话、Excel 上传、证据轨道和 Trace 外壳。当前 FastAPI 仍是权威运行时，旧页面不删除，规则写入与 Agent 执行尚未切流；后续按单接口双跑、验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
 
 ## 技术栈
 

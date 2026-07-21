@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0 已完成，阶段 1 已完成医院认证与规则只读子批次。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
+> 更新日期：2026-07-22。阶段 0、阶段 1 的认证与规则子批次、阶段 2 的 IR 与网关子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
 
 ## 1. 迁移目标与约束
 
@@ -75,12 +75,18 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 
 本子批次验收结果：Java 单元与仓储测试 13 项通过，Python 认证契约测试 8 项通过；影子服务使用同一 MySQL 临时会话对“急会诊及时到位率”执行双跑，安全规则字段返回一致。临时会话已清理，`8766` 已停止，现有 `8765` FastAPI 与 `8080` DBHub 未受影响。
 
-### 阶段 2：Agent IR 与工具网关
+### 阶段 2：Agent IR 与工具网关（IR 与网关子批次已完成）
 
-- 用 Java sealed interface / record 定义 `RequestPlan`、`CompiledPlanIR`、Fact、CapabilitySpec 和 FailureClass。
-- 迁移 PlanCompiler、PlanValidator、StateController、DeterministicDispatch。
-- 用 Spring Bean 注册 CapabilitySpec，启动时检查循环依赖、重复 Fact Producer、未知工具和未知 Verifier。
-- 迁移 PolicyDecisionService 与 ToolGateway；登录主体只能由服务端注入。
+- 已用 Java enum / record 定义 `RequestPlan`、`CompiledPlanIR`、Fact、CapabilitySpec 和 FailureClass，JSON 形状继续采用 `snake_case`。
+- 已迁移 PlanCompiler、PlanValidator、StateController 和 DeterministicDispatch；Planner 计划不含工具名，实际工具只能从 CapabilitySpec 取得。
+- 时间校验器可直接解析 Planner 已填的 ISO 边界，也可根据当前时钟确定性解析“从26年一月份到现在”“今年”“本月”“1月至3月”等原始表达，不依赖模型计算日期。
+- CapabilitySpec 由 Spring Bean 注册，启动时检查循环依赖、重复 Fact Producer、未知工具和未知 Verifier。
+- 已迁移不可变 ToolExecutionContext、PolicyDecisionService 与 ToolGateway；登录主体只能由服务端注入，PEP 在参数绑定和工具执行前生效。
+- 工具网关已具备参数类型转换、超时、数据库并发 2、调用指纹和成功结果复用；规则读取工具可执行，未迁移工具明确返回 `TOOL_NOT_MIGRATED`。
+- 新增认证影子接口 `POST /api/migration/agent/compile`，只展示校验、IR 和第一步决策，不执行任何工具。
+- Agent 影子 Runner、模型调用和 VerifiedEvidence 属于下一子批次，尚未切流。
+
+本子批次 Java 测试 22 项通过，覆盖 IR JSON 契约、依赖拓扑、能力环、重复 Fact Producer、未知工具、非法目标、中文时间范围、受控 Dispatch、权限拒绝、参数校验和重复调用缓存。影子编译接口不执行工具，现有 Python 服务未切换。
 
 ### 阶段 3：模型与 Evidence
 

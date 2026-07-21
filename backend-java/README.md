@@ -21,6 +21,7 @@ mvn -s maven-settings.xml spring-boot:run
 - `POST /api/auth/hospital/change-password`、`POST /api/auth/hospital/logout`：兼容现有认证语义。
 - `GET /api/kb/rules/search`：按登录主体所在医院搜索规则。
 - `GET /api/kb/rules/{rule_id}/effective`：读取本院生效口径；客户端传入其他医院会被拒绝。
+- `POST /api/migration/agent/compile`：认证后的影子编译接口，只返回计划校验、版本化 IR 和第一步确定性决策，不执行工具。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -34,4 +35,6 @@ python ..\scripts\compare_java_python_read_api.py
 
 脚本只输出安全字段的差异，不打印令牌。跨语言密码算法测试使用 `contracts/migration/v1/auth-crypto-vector.json` 中的非生产测试向量。
 
-后续批次会按照 `docs/migration/java-vue-migration.md` 迁移术语与只读元数据、Agent IR、工具网关、Evidence 和 Trace。只有同一接口通过契约对比后，才允许在入口层切流。
+Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、PlanValidator、确定性中文时间解析、StateController、DeterministicDispatch、类型化策略和 ToolGateway。当前网关只实际迁移规则搜索与生效口径，其余工具会明确返回 `TOOL_NOT_MIGRATED`，不会旁路调用 Python 或医院业务库。
+
+后续批次会按照 `docs/migration/java-vue-migration.md` 迁移 Spring AI 模型适配、Evidence、SQL/诊断/文件工具和 Trace。只有同一接口通过契约对比后，才允许在入口层切流。

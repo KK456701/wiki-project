@@ -9,6 +9,7 @@
 - `dbhub-mcp.md`：主服务与现有 DBHub sidecar 的 JSON-RPC 约定。
 - `hospital-auth-and-rule-read.md`：跨语言认证、医院隔离和规则只读约定。
 - `auth-crypto-vector.json`：PBKDF2 与令牌摘要的非生产测试向量。
+- `agent-plan-ir.schema.json`：Planner 业务输出与服务端编译 IR 的跨语言结构。
 
 ## 兼容规则
 
