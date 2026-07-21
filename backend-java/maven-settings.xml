@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+    <!-- 本机全局 Maven 镜像仍指向已失效的 HTTP 地址；项目构建显式使用 HTTPS Central。 -->
+    <mirrors>
+        <mirror>
+            <!-- 使用同一 ID 覆盖 Maven 安装目录里的 HTTP alimaven 配置。 -->
+            <id>alimaven</id>
+            <name>Maven Central HTTPS</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <mirrorOf>central</mirrorOf>
+        </mirror>
+        <mirror>
+            <id>maven-central-https</id>
+            <name>Maven Central HTTPS</name>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <mirrorOf>*</mirrorOf>
+        </mirror>
+    </mirrors>
+    <proxies>
+        <proxy>
+            <id>windows-local-proxy</id>
+            <active>true</active>
+            <protocol>http</protocol>
+            <host>127.0.0.1</host>
+            <port>7897</port>
+            <nonProxyHosts>127.0.0.1|localhost</nonProxyHosts>
+        </proxy>
+    </proxies>
+</settings>

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-agent.local/contracts/migration/v1/agent-sse.schema.json",
+  "title": "核心制度指标 Agent SSE 事件 v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event", "trace_id"],
+  "properties": {
+    "event": {
+      "enum": [
+        "agent_start",
+        "model_start",
+        "tool_call",
+        "tool_result",
+        "clarification_required",
+        "assistant_message",
+        "agent_done",
+        "agent_error"
+      ]
+    },
+    "trace_id": {"type": "string"},
+    "step": {"type": "integer", "minimum": 0},
+    "step_count": {"type": "integer", "minimum": 0},
+    "tool_name": {"type": "string"},
+    "status": {"type": "string"},
+    "code": {"type": "string"},
+    "message": {"type": "string"},
+    "stop_reason": {"type": "string"},
+    "fallback_category": {"type": "string"},
+    "failure_code": {"type": "string"},
+    "retryable": {"type": "boolean"},
+    "reused": {"type": "boolean"},
+    "duration_ms": {"type": "integer", "minimum": 0}
+  }
+}

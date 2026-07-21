@@ -28,3 +28,9 @@ tools/wxp-mcp/vendor/
 tools/wxp-mcp/wxp.local.env
 tools/wxp-mcp/*.local.log
 tools/wxp-mcp/output/
+
+# Java / Vue 迁移构建产物。
+backend-java/target/
+frontend-vue/node_modules/
+frontend-vue/dist/
+frontend-vue/.vite/

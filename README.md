@@ -43,6 +43,7 @@
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
 - **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
 - **业务工作台前端**：单页 HTML 前端以 AI 指标助手为主入口，并提供指标实施、指标监控、数据库与元数据、医学术语、审批和离线包交换等业务操作入口。
+- **Java / Vue 渐进迁移第一批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE 与 DBHub MCP 契约；`backend-java/` 提供 Java 17 + Spring Boot 4.1 影子服务、兼容健康接口和 DBHub 客户端，`frontend-vue/` 提供 Vue 3 + TypeScript 登录、模型选择、SSE 对话、Excel 上传、证据轨道和 Trace 外壳。当前 FastAPI 仍是权威运行时，旧页面不删除；后续按单接口双跑、验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
 
 ## 技术栈
 
@@ -54,6 +55,7 @@
 - SQL 模板：Jinja2
 - 知识库：MySQL 保存已审核术语与版本，Wiki/YAML 保存公司语料来源和只读兜底，Markdown、YAML、JSON 索引服务制度文档检索
 - 前端：原生 HTML/CSS/JavaScript，SSE 流式输出
+- 迁移技术栈：Java 17、Spring Boot 4.1、Spring AI 2.0 BOM；Vue 3、TypeScript、Vite、Vue Router、Pinia。迁移版 Vue 当前代理现有 FastAPI，生产切换后静态资源进入 Spring Boot JAR
 - 测试：Python `unittest` 测试套件，兼容使用 `pytest` 执行
 
 ## 运行架构与数据边界
@@ -141,6 +143,10 @@
 |   +-- generate_package_keys.py
 |   +-- kb_agent_demo.py
 +-- tests/
++-- contracts/
+|   +-- migration/
++-- backend-java/
++-- frontend-vue/
 +-- evals/
 +-- tools/
 |   +-- dbhub/

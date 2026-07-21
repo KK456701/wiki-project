@@ -1,0 +1,23 @@
+server:
+  address: 127.0.0.1
+  port: 8766
+
+spring:
+  application:
+    name: wiki-agent-java
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      fail-on-unknown-properties: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+wiki:
+  dbhub:
+    api-url: http://127.0.0.1:8080
+    mcp-url: http://127.0.0.1:8080/mcp
+    timeout-seconds: 10

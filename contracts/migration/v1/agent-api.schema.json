@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wiki-agent.local/contracts/migration/v1/agent-api.schema.json",
+  "title": "核心制度指标 Agent API v1",
+  "$defs": {
+    "AgentChatRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": {"type": "string", "minLength": 1, "maxLength": 5000},
+        "session_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128, "default": null},
+        "model_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128, "default": null},
+        "file_key": {"type": ["string", "null"], "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$", "default": null}
+      }
+    },
+    "AgentChatResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["answer", "stop_reason", "trace_id", "session_id", "step_count"],
+      "properties": {
+        "answer": {"type": "string"},
+        "stop_reason": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "session_id": {"type": "string"},
+        "step_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "UploadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_key", "file_name", "size_bytes"],
+      "properties": {
+        "file_key": {"type": "string"},
+        "file_name": {"type": "string"},
+        "size_bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
