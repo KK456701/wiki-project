@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 @Component
@@ -17,7 +18,15 @@ public class ToolRegistry {
     private final Map<String, AgentTool> tools;
 
     @Autowired
+    public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
+        this(rules, sqlTools, true);
+    }
+
     public ToolRegistry(RuleReadRepository rules) {
+        this(rules, null, false);
+    }
+
+    private ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools, boolean migrateSqlTools) {
         Map<String, AgentTool> values = new LinkedHashMap<>();
         register(values, new AgentTool(
                 "search_indicator_rules",
@@ -52,6 +61,36 @@ public class ToolRegistry {
                             data);
                 }));
 
+        if (migrateSqlTools) {
+            register(values, new AgentTool(
+                    "inspect_indicator_implementation",
+                    IndicatorSqlTools.InspectInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(10),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    null,
+                    (input, context) -> sqlTools.inspect((IndicatorSqlTools.InspectInput) input, context)));
+            register(values, new AgentTool(
+                    "prepare_indicator_sql",
+                    IndicatorSqlTools.PrepareInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(30),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> state.currentRuleId() != null,
+                    (input, context) -> sqlTools.prepare((IndicatorSqlTools.PrepareInput) input, context)));
+            register(values, new AgentTool(
+                    "trial_run_indicator_sql",
+                    IndicatorSqlTools.TrialInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(30),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> !state.validatedSqlIds().isEmpty(),
+                    (input, context) -> sqlTools.trial((IndicatorSqlTools.TrialInput) input, context)));
+        }
+
         for (String name : List.of(
                 "inspect_indicator_implementation",
                 "prepare_indicator_sql",
@@ -60,7 +99,9 @@ public class ToolRegistry {
                 "preview_rule_change",
                 "analyze_uploaded_indicators",
                 "validate_indicator_implementation")) {
-            register(values, placeholder(name));
+            if (!values.containsKey(name)) {
+                register(values, placeholder(name));
+            }
         }
         tools = Map.copyOf(values);
     }

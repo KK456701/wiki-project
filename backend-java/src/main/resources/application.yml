@@ -63,4 +63,6 @@ wiki:
   dbhub:
     api-url: http://127.0.0.1:8080
     mcp-url: http://127.0.0.1:8080/mcp
+    source-id: ${DBHUB_SOURCE_ID_WIN60_QA_991827:win60_qa_991827}
+    execute-tool: ${DBHUB_EXECUTE_TOOL_WIN60_QA_991827:execute_sql_win60_qa_991827}
     timeout-seconds: 10

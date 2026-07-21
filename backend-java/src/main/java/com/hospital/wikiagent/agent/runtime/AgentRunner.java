@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.runtime;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +34,7 @@ import com.hospital.wikiagent.agent.tools.ToolGateway;
 public class AgentRunner {
     public static final String VERSION = "java-agent-runner-v1";
     private static final int MAX_STEPS = 12;
+    private static final DateTimeFormatter EVIDENCE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -157,9 +159,9 @@ public class AgentRunner {
             }
         }
         String statStart = validation.resolvedTime() == null
-                ? null : validation.resolvedTime().startTime().toString();
+                ? null : validation.resolvedTime().startTime().format(EVIDENCE_TIME);
         String statEnd = validation.resolvedTime() == null
-                ? null : validation.resolvedTime().endTime().toString();
+                ? null : validation.resolvedTime().endTime().format(EVIDENCE_TIME);
         String sqlId = state.validatedSqlIds().isEmpty()
                 ? null : state.validatedSqlIds().get(state.validatedSqlIds().size() - 1);
         List<com.hospital.wikiagent.agent.evidence.VerifiedEvidence> evidence = verifier.verifyMany(

@@ -150,6 +150,56 @@ public class RuleReadRepository {
         return result;
     }
 
+    public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {
+        List<Map<String, Object>> items = jdbc.query(
+                "SELECT business_field,db_name,table_name,column_name,data_type,status "
+                        + "FROM med_field_mapping WHERE hospital_id=? AND rule_id=? ORDER BY id",
+                RuleReadRepository::rowMap,
+                hospitalId, ruleId);
+        Map<String, Object> fields = new LinkedHashMap<>();
+        for (Map<String, Object> item : items) {
+            fields.put(text(item.get("business_field")),
+                    text(item.get("table_name")) + "." + text(item.get("column_name")));
+        }
+        Map<String, Object> first = items.isEmpty() ? Map.of() : items.get(0);
+        String dbName = text(first.get("db_name"));
+        String dialect = dbName.toUpperCase().startsWith("WIN60_") ? "sqlserver" : "mysql";
+        boolean confirmed = !items.isEmpty()
+                && items.stream().allMatch(item -> "confirmed".equals(text(item.get("status"))));
+        List<Map<String, Object>> relations = items.isEmpty() ? List.of() : jdbc.query(
+                "SELECT left_table,left_column,right_table,right_column,join_type,relation_source,status "
+                        + "FROM med_table_relation WHERE hospital_id=? AND db_name=? AND status='confirmed' ORDER BY id",
+                RuleReadRepository::rowMap,
+                hospitalId, dbName);
+        List<Map<String, Object>> metadataItems = items.isEmpty() ? List.of() : jdbc.query(
+                "SELECT mapping.business_field,mapping.table_name,mapping.column_name,"
+                        + "mapping.data_type AS mapping_data_type,metadata.data_type AS metadata_data_type "
+                        + "FROM med_field_mapping mapping LEFT JOIN med_metadata_column metadata "
+                        + "ON metadata.hospital_id=mapping.hospital_id AND metadata.db_name=mapping.db_name "
+                        + "AND metadata.table_name=mapping.table_name AND metadata.column_name=mapping.column_name "
+                        + "WHERE mapping.hospital_id=? AND mapping.rule_id=? ORDER BY mapping.id",
+                RuleReadRepository::rowMap,
+                hospitalId, ruleId);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rule_id", ruleId);
+        result.put("hospital_id", hospitalId);
+        result.put("dialect", dialect);
+        result.put("db_name", dbName);
+        result.put("schema", "sqlserver".equals(dialect) ? "WINDBA" : "");
+        result.put("main_table", text(first.get("table_name")));
+        result.put("fields", fields);
+        result.put("status", confirmed ? "confirmed" : items.isEmpty() ? "missing" : "pending");
+        result.put("items", items);
+        result.put("relations", relations);
+        result.put("metadata_items", metadataItems);
+        result.put("query_profile", "MQSI2025_005".equals(ruleId) && "sqlserver".equals(dialect)
+                ? "urgent_consult_sqlserver"
+                : "MQSI2025_001".equals(ruleId) && "sqlserver".equals(dialect)
+                        ? "inpatient_transfer_48h_sqlserver" : "");
+        return result;
+    }
+
     private List<Map<String, Object>> searchStandard(String query, String pattern, int limit) {
         return jdbc.query(
                 "SELECT index_code,index_name,index_type,index_desc FROM med_index_standard "

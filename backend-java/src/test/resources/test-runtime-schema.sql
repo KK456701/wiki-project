@@ -122,3 +122,97 @@ CREATE TABLE med_index_hospital_defined (
   update_time TIMESTAMP NOT NULL,
   UNIQUE (hospital_id, index_code)
 );
+
+CREATE TABLE med_field_mapping (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  rule_id VARCHAR(64) NOT NULL,
+  business_field VARCHAR(128) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  table_name VARCHAR(128) NOT NULL,
+  column_name VARCHAR(128) NOT NULL,
+  data_type VARCHAR(64) NOT NULL,
+  status VARCHAR(32) NOT NULL
+);
+
+CREATE TABLE med_metadata_column (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  table_name VARCHAR(128) NOT NULL,
+  column_name VARCHAR(128) NOT NULL,
+  data_type VARCHAR(64),
+  column_type VARCHAR(128),
+  is_nullable VARCHAR(8),
+  column_key VARCHAR(32),
+  column_default CLOB,
+  column_comment CLOB,
+  sync_batch_id VARCHAR(64) NOT NULL,
+  sync_time TIMESTAMP NOT NULL,
+  UNIQUE (hospital_id, db_name, table_name, column_name)
+);
+
+CREATE TABLE med_table_relation (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  left_table VARCHAR(128) NOT NULL,
+  left_column VARCHAR(128) NOT NULL,
+  right_table VARCHAR(128) NOT NULL,
+  right_column VARCHAR(128) NOT NULL,
+  join_type VARCHAR(32) NOT NULL,
+  relation_source VARCHAR(64),
+  status VARCHAR(32) NOT NULL
+);
+
+CREATE TABLE med_generated_sql (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  sql_id VARCHAR(80) NOT NULL UNIQUE,
+  hospital_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128) NOT NULL,
+  dialect VARCHAR(32) NOT NULL,
+  sql_text CLOB NOT NULL,
+  sql_status VARCHAR(32) NOT NULL,
+  validation_message CLOB,
+  generated_by VARCHAR(128),
+  generated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE med_agent_sql_object (
+  sql_id VARCHAR(80) PRIMARY KEY,
+  hospital_id VARCHAR(128) NOT NULL,
+  user_id VARCHAR(128) NOT NULL,
+  session_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128) NOT NULL,
+  dialect VARCHAR(32) NOT NULL,
+  sql_text CLOB NOT NULL,
+  params_json CLOB NOT NULL,
+  stat_start VARCHAR(32) NOT NULL,
+  stat_end VARCHAR(32) NOT NULL,
+  context_snapshot_json CLOB NOT NULL,
+  context_digest VARCHAR(64) NOT NULL,
+  validation_status VARCHAR(32) NOT NULL,
+  validation_message CLOB NOT NULL,
+  created_at VARCHAR(40) NOT NULL,
+  expires_at VARCHAR(40) NOT NULL,
+  db_source_id VARCHAR(128)
+);
+
+CREATE TABLE med_sql_run_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  run_id VARCHAR(64) NOT NULL UNIQUE,
+  sql_id VARCHAR(80),
+  hospital_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128) NOT NULL,
+  stat_start_time TIMESTAMP,
+  stat_end_time TIMESTAMP,
+  run_status VARCHAR(32) NOT NULL,
+  result_value DECIMAL(18,4),
+  error_message CLOB,
+  duration_ms INT,
+  run_by VARCHAR(128),
+  numerator_count BIGINT,
+  denominator_count BIGINT,
+  run_context_json CLOB,
+  run_time TIMESTAMP NOT NULL
+);

@@ -39,6 +39,12 @@ import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.tools.PolicyDecisionService;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 import com.hospital.wikiagent.agent.tools.ToolRegistry;
+import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
+import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
+import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
+import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
+import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
+import com.hospital.wikiagent.agent.sql.SqlTemplateRenderer;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
@@ -114,6 +120,95 @@ class AgentRunnerTest {
         assertThat(models.calls).isEqualTo(2);
     }
 
+    @Test
+    void runsTrialResultThroughPreparedSqlObjectDbHubBoundaryAndVerifiedEvidence() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        assertThat(sql).contains("'hospital_001'", "'2026-01-01 00:00:00'", "'2026-04-01 00:00:00'");
+                        return List.of(Map.of(
+                                "index_value", 25.0,
+                                "numerator_count", 1,
+                                "denominator_count", 4));
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                },
+                objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker(
+                """
+                {
+                  "schema_version": "request-plan-v1",
+                  "intent": "indicator_trial_run",
+                  "goal": "计算急会诊及时到位率",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {
+                    "raw_text": "2026年1月至3月",
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-04-01T00:00:00"
+                  },
+                  "requested_outputs": ["trial_result"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """,
+                "急会诊及时到位率为 25.0%（1 ÷ 4 × 100%）。");
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper),
+                capabilities,
+                new AgentStateController(capabilities),
+                new DeterministicDispatch(),
+                gateway,
+                verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper));
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "计算2026年1月至3月急会诊及时到位率", "session_001", "ollama-test", null,
+                "request_001", "trace_001", "business_test", "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
+                events::add);
+
+        assertThat(result.stopReason()).as(result.answer() + " " + events).isEqualTo("final_answer");
+        assertThat(result.answer()).contains("25.0%", "1", "4");
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .containsExactly(
+                        "search_indicator_rules", "get_effective_rule",
+                        "prepare_indicator_sql", "trial_run_indicator_sql");
+        assertThat(store.evidence.values())
+                .filteredOn(value -> "trial_run".equals(value.factType()))
+                .singleElement()
+                .satisfies(value -> {
+                    assertThat(value.safePayload()).containsEntry("numerator_count", 1L)
+                            .containsEntry("denominator_count", 4L)
+                            .containsEntry("result_value", 25.0);
+                    assertThat(value.sourceObjectId()).startsWith("RUN_");
+                });
+        assertThat(store.verifications.values()).allMatch(value -> "verified".equals(value.status()));
+    }
+
     private static RuleReadRepository ruleRepository(ObjectMapper objectMapper) {
         var database = new EmbeddedDatabaseBuilder()
                 .setName("runner_" + System.nanoTime())
@@ -132,6 +227,52 @@ class AgentRunnerTest {
                 "rules/source.yml", "2025", 1, now, now);
         return new RuleReadRepository(jdbc, objectMapper);
     }
+
+    private static SqlFixture sqlFixture(ObjectMapper objectMapper) {
+        var database = new EmbeddedDatabaseBuilder()
+                .setName("runner_sql_" + System.nanoTime())
+                .setType(EmbeddedDatabaseType.H2)
+                .addScript("classpath:test-runtime-schema.sql")
+                .build();
+        JdbcTemplate jdbc = new JdbcTemplate(database);
+        LocalDateTime now = LocalDateTime.now();
+        String fieldContract = """
+                {"business_fields":{"hospital_id":{"required":true},"request_time":{"required":true},
+                "arrive_time":{"required":true},"consult_type":{"required":true}}}
+                """;
+        String sql = """
+                SELECT CASE WHEN COUNT(*)=0 THEN 0 ELSE 25.0 END AS index_value,
+                       1 AS numerator_count,4 AS denominator_count,4 AS sample_count
+                FROM consult_record
+                WHERE hospital_id=:hospital_id AND consult_type=:consult_type_value
+                  AND request_time>=:start_time AND request_time<:end_time
+                """;
+        jdbc.update(
+                "INSERT INTO med_index_standard "
+                        + "(index_code,index_name,index_type,index_desc,stat_cycle,numerator_rule,denominator_rule,"
+                        + "filter_rule,exclude_rule,rely_table_field,calculation_definition,standard_sql,rule_params,"
+                        + "source_path,version,status,create_time,update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "MQSI2025_005", "急会诊及时到位率", "会诊制度", "及时到位次数占总次数比例。", "month",
+                "及时到位次数", "急会诊总次数", "", "", fieldContract, "{}", sql,
+                "{\"consult_type_value\":\"急会诊\"}", "rules/source.yml", "2025", 1, now, now);
+        for (String field : List.of("hospital_id", "request_time", "arrive_time", "consult_type")) {
+            jdbc.update(
+                    "INSERT INTO med_field_mapping "
+                            + "(hospital_id,rule_id,business_field,db_name,table_name,column_name,data_type,status) "
+                            + "VALUES (?,?,?,?,?,?,?,?)",
+                    "hospital_001", "MQSI2025_005", field, "business_test", "consult_record", field,
+                    "varchar", "confirmed");
+            jdbc.update(
+                    "INSERT INTO med_metadata_column "
+                            + "(hospital_id,db_name,table_name,column_name,data_type,sync_batch_id,sync_time) "
+                            + "VALUES (?,?,?,?,?,?,?)",
+                    "hospital_001", "business_test", "consult_record", field,
+                    field.endsWith("time") ? "datetime" : "varchar", "batch-1", now);
+        }
+        return new SqlFixture(new RuleReadRepository(jdbc, objectMapper), jdbc);
+    }
+
+    private record SqlFixture(RuleReadRepository rules, JdbcTemplate jdbc) {}
 
     private static AgentModelProperties modelProperties() {
         AgentModelProperties properties = new AgentModelProperties();

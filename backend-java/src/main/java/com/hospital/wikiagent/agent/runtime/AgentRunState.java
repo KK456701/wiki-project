@@ -10,6 +10,7 @@ public class AgentRunState {
     private String currentRuleId;
     private String currentUploadFileKey;
     private String subtaskId;
+    private String lastRunId;
     private int stepCount;
     private final List<String> validatedSqlIds = new ArrayList<>();
     private final List<EvidenceFact> evidence = new ArrayList<>();
@@ -40,6 +41,14 @@ public class AgentRunState {
 
     public void subtaskId(String value) {
         subtaskId = value;
+    }
+
+    public String lastRunId() {
+        return lastRunId;
+    }
+
+    public void lastRunId(String value) {
+        lastRunId = value == null || value.isBlank() ? null : value.strip();
     }
 
     public int stepCount() {
