@@ -433,6 +433,102 @@ def _compose_rule_components_answer(
     return "\n".join(lines)
 
 
+def _compose_verified_fallback_answer(
+    planning_execution,
+    tool_results: list[dict],
+) -> str | None:
+    """最终回答模型失效时，仅用本轮已验证工具事实生成安全兜底回答。"""
+    if planning_execution is None:
+        return None
+    outputs = {
+        item.value if hasattr(item, "value") else str(item)
+        for item in planning_execution.compiled_plan.requested_outputs
+    }
+    effective = next(
+        (
+            item
+            for item in reversed(tool_results)
+            if isinstance(item, dict)
+            and item.get("ok") is True
+            and item.get("code") == "EFFECTIVE_RULE_FOUND"
+        ),
+        None,
+    )
+    trial = next(
+        (
+            item
+            for item in reversed(tool_results)
+            if isinstance(item, dict)
+            and item.get("ok") is True
+            and item.get("code") == "TRIAL_RUN_COMPLETED"
+        ),
+        None,
+    )
+    rule_data = (effective or {}).get("data") or {}
+    rule_name = str(
+        rule_data.get("rule_name")
+        or planning_execution.request_plan.target_indicator.raw_name
+        or rule_data.get("rule_id")
+        or "当前指标"
+    ).strip()
+
+    if "trial_result" in outputs and trial is not None:
+        data = trial.get("data") or {}
+        required = ("numerator_count", "denominator_count", "result_value")
+        if any(data.get(key) is None for key in required):
+            return None
+        numerator = _display_number(data["numerator_count"])
+        denominator = _display_number(data["denominator_count"])
+        result_value = _display_number(data["result_value"])
+        stat_start = str(data.get("stat_start") or "-")
+        stat_end = str(data.get("stat_end") or "-")
+        lines = [
+            f"## {rule_name}",
+            "",
+            f"- **统计区间**：{stat_start} 至 {stat_end}（左闭右开）",
+            f"- **分子**：{numerator}",
+            f"- **分母**：{denominator}",
+            f"- **指标率**：{result_value}%",
+            "",
+            f"计算：{numerator} ÷ {denominator} × 100% = {result_value}%",
+        ]
+        numerator_rule = str(rule_data.get("numerator_rule") or "").strip()
+        denominator_rule = str(rule_data.get("denominator_rule") or "").strip()
+        if numerator_rule or denominator_rule:
+            lines.extend(("", "### 本院口径"))
+            if numerator_rule:
+                lines.append(f"- **分子定义**：{numerator_rule}")
+            if denominator_rule:
+                lines.append(f"- **分母定义**：{denominator_rule}")
+        version = rule_data.get("hospital_version")
+        if version is not None:
+            lines.append(f"- **本院版本**：v{version}")
+        return "\n".join(lines)
+
+    if effective is None or not outputs.intersection({
+        "definition",
+        "formula",
+        "explanation",
+        "implementation_status",
+    }):
+        return None
+    definition = str(rule_data.get("definition") or "").strip()
+    numerator_rule = str(rule_data.get("numerator_rule") or "").strip()
+    denominator_rule = str(rule_data.get("denominator_rule") or "").strip()
+    lines = [f"## {rule_name}", ""]
+    if definition:
+        lines.extend(("### 指标定义", definition, ""))
+    lines.extend((
+        "### 计算公式",
+        "指标率 = 分子 ÷ 分母 × 100%",
+    ))
+    if numerator_rule:
+        lines.append(f"- **分子**：{numerator_rule}")
+    if denominator_rule:
+        lines.append(f"- **分母**：{denominator_rule}")
+    return "\n".join(lines)
+
+
 def _display_number(value) -> str:
     number = float(value)
     if number.is_integer():
@@ -1573,6 +1669,22 @@ class AgentRunner:
                 }
                 run_state.messages.append(assistant_message)
                 if empty_model_action:
+                    verified_fallback = _compose_verified_fallback_answer(
+                        planning_execution,
+                        run_state.last_tool_results[turn_tool_results_start:],
+                    )
+                    if verified_fallback is not None:
+                        verified_fallback = _append_trial_detail_export(
+                            verified_fallback,
+                            run_state.last_tool_results[turn_tool_results_start:],
+                        )
+                        run_state.stop_reason = "final_answer"
+                        return AgentRunResult(
+                            answer=verified_fallback,
+                            stop_reason="final_answer",
+                            state=run_state,
+                            model=model_name,
+                        )
                     empty_answer_corrections += 1
                     if (
                         empty_answer_corrections <= 1
@@ -1594,6 +1706,10 @@ class AgentRunner:
                     guard_started = time.perf_counter()
                     if contains_tool_protocol_markup(response.content):
                         tool_protocol_corrections += 1
+                        verified_fallback = _compose_verified_fallback_answer(
+                            planning_execution,
+                            run_state.last_tool_results[turn_tool_results_start:],
+                        )
                         self._trace(
                             node_name="response_guard",
                             node_type="code",
@@ -1607,7 +1723,7 @@ class AgentRunner:
                                 int((time.perf_counter() - guard_started) * 1000),
                             ),
                             input_data={"raw_content": response.content},
-                            output_data={"answer": ""},
+                            output_data={"answer": verified_fallback or ""},
                             processing_data={
                                 "description": "阻止模型把内部工具协议标记输出给用户。"
                             },
@@ -1615,6 +1731,18 @@ class AgentRunner:
                             error_code="TOOL_PROTOCOL_LEAK",
                             error_message="模型在最终回答中输出了工具协议标记。",
                         )
+                        if verified_fallback is not None:
+                            verified_fallback = _append_trial_detail_export(
+                                verified_fallback,
+                                run_state.last_tool_results[turn_tool_results_start:],
+                            )
+                            run_state.stop_reason = "final_answer"
+                            return AgentRunResult(
+                                answer=verified_fallback,
+                                stop_reason="final_answer",
+                                state=run_state,
+                                model=model_name,
+                            )
                         if (
                             tool_protocol_corrections <= 1
                             and run_state.step_count < self.max_steps

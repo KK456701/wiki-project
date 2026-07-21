@@ -180,6 +180,53 @@ class AgentPlanningRuntime:
 
         request_plan.time_expression = TimeExpression(raw_text=query)
 
+    def _normalize_concrete_result_request(
+        self,
+        request_plan: RequestPlan,
+        *,
+        query: str,
+        now: datetime,
+    ) -> None:
+        """将“怎么算 + 明确统计周期”确定性纠偏为指标结果试运行。"""
+        if request_plan.intent is not PlanIntent.RULE_EXPLANATION:
+            return
+        outputs = set(request_plan.requested_outputs)
+        if RequestedOutput.PREPARED_SQL_HANDLE in outputs:
+            return
+        compact = re.sub(r"\s+", "", str(query or ""))
+        if any(term in compact for term in (
+            "只解释",
+            "只看公式",
+            "只要公式",
+            "不查数据库",
+            "不执行数据库",
+        )):
+            return
+        if not any(term in compact for term in (
+            "怎么算",
+            "如何计算",
+            "算一下",
+            "计算一下",
+            "统计一下",
+            "具体结果",
+            "指标结果",
+            "结果是多少",
+            "是多少",
+            "多少",
+            "试运行",
+        )):
+            return
+        resolved = self.validator.resolver.resolve(
+            TimeExpression(raw_text=query),
+            now=now,
+        )
+        if resolved is None:
+            return
+        request_plan.intent = PlanIntent.INDICATOR_TRIAL_RUN
+        request_plan.goal = "按用户指定统计周期计算当前指标的本院实际结果"
+        if RequestedOutput.TRIAL_RESULT not in request_plan.requested_outputs:
+            request_plan.requested_outputs.append(RequestedOutput.TRIAL_RESULT)
+
     @staticmethod
     def _query_requests_implementation_validation(query: str) -> bool:
         compact = re.sub(r"\s+", "", str(query or ""))
@@ -267,6 +314,11 @@ class AgentPlanningRuntime:
         self._normalize_implementation_validation(
             request_plan,
             query=query,
+        )
+        self._normalize_concrete_result_request(
+            request_plan,
+            query=query,
+            now=now,
         )
         if forced_time_range is not None:
             request_plan.time_expression = TimeExpression(

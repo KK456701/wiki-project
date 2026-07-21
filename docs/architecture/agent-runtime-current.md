@@ -151,7 +151,7 @@ flowchart TD
 
 用户澄清和业务确认属于正常暂停，`state_controller` 节点记录为 `warning`，不会显示成执行失败。`tool_gateway` 表示参数、权限和风险校验已经接受，记录为成功；后续 `tool_result` 节点同时保存该次调用的完整安全参数和实际结果，便于将结果与入参对应。前端只保留“处理结果”和“完整节点数据”，不再重复展示“开发与排障”字段。
 
-最终回答阶段的模型工具列表为空。若模型仍在正文中输出 DSML、`tool_calls`、`invoke` 或类似内部工具协议，`response_guard` 记录 `TOOL_PROTOCOL_LEAK` 并阻止正文进入用户消息；系统最多使用集中纠错提示重试一次，重复异常返回安全错误，任何虚构工具都不会被执行。
+最终回答阶段的模型工具列表为空。若模型仍在正文中输出 DSML、`tool_calls`、`invoke` 或类似内部工具协议，`response_guard` 记录 `TOOL_PROTOCOL_LEAK` 并阻止正文进入用户消息；本轮已有完整已验证规则或试运行证据时，系统直接使用确定性模板生成回答，不再重复请求模型输出同一种非法协议。证据不足时才使用安全错误，任何虚构工具都不会被执行。
 
 ## 上传文件与本院指标对比
 
@@ -172,7 +172,7 @@ flowchart TD
 - 只有 `requested_outputs` 包含 `trial_result` 时，`PlanCompiler` 才编译 `execute_trial_run`。即使模型误写 `intent=indicator_trial_run`，也不能越过这条确定性边界。
 - DBHub 连接中断类错误自动重试一次；仍失败时只返回安全分类、`run_id`、`sql_id` 和数据源编号，不返回连接串或底层堆栈。
 
-统计周期不依赖 Planner 自行计算。`AgentPlanningRuntime` 先用用户本轮原文调用 `TimeRangeResolver`；“从一月份到三月份”会确定性归一化为当年 1 月 1 日至 4 月 1 日的左闭右开区间。本轮没有时间表达且会话已有确认周期时，直接复用结构化 `current_stat_start/current_stat_end`，即使模型从历史回答生成了另一段 `raw_text` 也不能覆盖。用户本轮包含时间但解析失败时才暂停澄清，不接受模型猜测的 `start_time/end_time`。
+统计周期不依赖 Planner 自行计算。`AgentPlanningRuntime` 先用用户本轮原文调用 `TimeRangeResolver`；“从一月份到三月份”会确定性归一化为当年 1 月 1 日至 4 月 1 日的左闭右开区间。本轮没有时间表达且会话已有确认周期时，直接复用结构化 `current_stat_start/current_stat_end`，即使模型从历史回答生成了另一段 `raw_text` 也不能覆盖。用户本轮同时提供可解析周期和“怎么算/计算结果”等实际计算诉求时，服务端会把误判的 `rule_explanation` 纠偏为 `indicator_trial_run`。用户本轮包含时间但解析失败时才暂停澄清，不接受模型猜测的 `start_time/end_time`。
 
 成功的 `TRIAL_RUN_COMPLETED` 会返回经过校验的 `RUN_ID`。Runner 只检查本轮新增工具结果，并确定性追加 `detail_export` UI 标记；模型不能指定或复用其他运行编号。前端将该标记渲染为“查看明细并导出 Excel”，随后调用现有明细 API 创建短期快照。明细边界的 `RunContext` 会把新版 Agent SQL 快照中的 `effective_rule`、`field_mapping`、`db_source_id` 和统计区间确定性转换为明细契约，同时继续接受旧版平铺快照；不修改原快照和聚合结果。快照生成时再次核对规则、医院、统计区间及分子分母数量，页面预览和 Excel 下载分别要求 `indicator_detail_view`、`indicator_detail_export` 权限，患者行级数据不进入 LLM、SSE 或 Trace。上下文校验失败只返回 `DETAIL_CONTEXT_INVALID` 中文提示，内部 Pydantic 字段和值不发送到浏览器。
 

@@ -503,6 +503,60 @@ def test_planning_runtime_reuses_structured_rule_and_period_context():
     assert execution.validation.resolved_time.start_time.isoformat() == "2026-06-01T00:00:00+08:00"
 
 
+def test_runtime_upgrades_formula_plan_with_resolvable_period_to_trial_run():
+    plan = RequestPlan.model_validate({
+        "intent": "rule_explanation",
+        "goal": "解释患者入院48小时内转科的比例的计算方法",
+        "target_indicator": {"raw_name": "患者入院48小时内转科的比例"},
+        "time_expression": {"raw_text": "从一月份到现在"},
+        "requested_outputs": ["definition", "formula"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "患者入院 48 小时内转科的比例怎么算，从一月份到现在",
+        _context(),
+        AgentRunState(),
+    ))
+
+    assert execution.request_plan.intent.value == "indicator_trial_run"
+    assert "trial_result" in {
+        item.value for item in execution.request_plan.requested_outputs
+    }
+    assert execution.validation.ok is True
+    assert execution.validation.resolved_time.start_time.isoformat() == (
+        "2026-01-01T00:00:00+08:00"
+    )
+    assert execution.validation.resolved_time.end_time.isoformat() == NOW.isoformat()
+
+
+def test_runtime_keeps_formula_plan_when_query_only_mentions_time_field():
+    plan = RequestPlan.model_validate({
+        "intent": "rule_explanation",
+        "goal": "解释指标统计周期字段",
+        "target_indicator": {"raw_name": "急会诊及时到位率"},
+        "requested_outputs": ["definition", "formula"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "这个指标怎么算，统计周期按什么字段",
+        _context(),
+        AgentRunState(),
+    ))
+
+    assert execution.request_plan.intent.value == "rule_explanation"
+    assert "trial_result" not in {
+        item.value for item in execution.request_plan.requested_outputs
+    }
+
+
 def test_upload_difference_followup_overrides_misclassified_diagnosis_plan():
     plan = RequestPlan.model_validate({
         "intent": "indicator_diagnosis",
@@ -752,7 +806,7 @@ def test_general_chat_plan_calls_no_tools():
     assert adapter.calls[0]["tools"] == []
 
 
-def test_empty_final_model_action_is_warning_and_retried_once():
+def test_empty_final_model_action_uses_verified_rule_fallback():
     adapter = SequenceAdapter([
         AgentModelResponse(content="", tool_calls=[], model="qwen3:8b"),
         AgentModelResponse(
@@ -776,14 +830,14 @@ def test_empty_final_model_action_is_warning_and_retried_once():
     result = asyncio.run(runner.run("急会诊及时到位率怎么算", _context()))
 
     assert result.stop_reason == "final_answer"
-    assert len(adapter.calls) == 2
+    assert len(adapter.calls) == 1
+    assert "指标率 = 分子 ÷ 分母 × 100%" in result.answer
     executor_nodes = [
         event for event in trace_events
         if event.get("node_name") == "final_answer_llm"
     ]
     assert executor_nodes[0]["status"] == "warning"
     assert executor_nodes[0]["error_code"] == "MODEL_EMPTY_ACTION"
-    assert executor_nodes[1]["status"] == "success"
 
 
 def test_final_dsml_tool_markup_is_never_returned_to_user():
@@ -810,15 +864,10 @@ def test_final_dsml_tool_markup_is_never_returned_to_user():
     result = asyncio.run(runner.run("这个指标", _context()))
 
     assert result.stop_reason == "final_answer"
-    assert result.answer == "请明确需要对比的统计时间范围。"
+    assert "指标率 = 分子 ÷ 分母 × 100%" in result.answer
     assert "DSML" not in result.answer
     assert "get_indicator_result" not in result.answer
-    assert len(adapter.calls) == 2
-    assert any(
-        "工具协议" in message.get("content", "")
-        for message in adapter.calls[1]["messages"]
-        if message.get("role") == "system"
-    )
+    assert len(adapter.calls) == 1
 
 
 def test_time_clarification_trace_is_warning_not_failure():
