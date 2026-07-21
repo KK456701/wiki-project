@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析，以及试运行结果的分子/分母明细与 Excel 导出。规则写入、审批、复合任务并行和完整 Trace 工作台仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细，以及上传明细与系统明细的逐条差异导出。规则写入、审批、复合任务并行和完整 Trace 工作台仍由 Python 负责。
 
 ## 本地运行
 
@@ -26,6 +26,7 @@ mvn -s maven-settings.xml spring-boot:run
 - `POST /api/sql-runs/{run_id}/details`：基于已成功试运行生成或复用数量一致的短期明细快照。
 - `GET /api/sql-runs/{run_id}/details/{denominator|numerator|unmatched}`：分页返回脱敏明细。
 - `POST /api/sql-runs/{run_id}/exports`：在有导出权限且显式确认后生成三工作表 `.xlsx`。
+- `POST /api/sql-runs/{run_id}/upload-comparison-exports`：把同指标上传明细与系统快照按稳定业务键逐条比较，生成四工作表差异 `.xlsx`。
 - `GET /api/indicator-exports/{export_id}/download`：医院隔离、有效期与 SHA-256 校验后的授权下载。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
@@ -40,6 +41,6 @@ python ..\scripts\compare_java_python_read_api.py
 
 脚本只输出安全字段的差异，不打印令牌。跨语言密码算法测试使用 `contracts/migration/v1/auth-crypto-vector.json` 中的非生产测试向量。
 
-Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、PlanValidator、确定性中文时间解析、StateController、DeterministicDispatch、类型化策略和 ToolGateway。SQL Server 数据始终通过现有 DBHub sidecar 只读访问。患者级明细不会进入 LLM、Evidence、Trace 或会话；页面只取得脱敏分页，原始值只存在于 24 小时短期快照和经确认生成的导出文件。
+Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、PlanValidator、确定性中文时间解析、StateController、DeterministicDispatch、类型化策略和 ToolGateway。SQL Server 数据始终通过现有 DBHub sidecar 只读访问。上传明细与系统明细按患者/业务标识和关键事件时间执行多重集合比较，重复行不会被静默去重；模型只看到双方都有、仅系统有、仅上传有、字段差异和达标判定差异等安全汇总。患者级明细不会进入 LLM、Evidence、Trace 或会话；页面只取得脱敏分页，原始值只存在于 24 小时短期快照和经确认生成的导出文件。
 
-后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移上传文件逐条差异、复合任务自适应并行、完整 Trace 和 Vue 工作台。只有同一接口通过契约对比后，才允许在入口层切流。
+后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移复合任务自适应并行、完整 Trace 和 Vue 工作台。只有同一接口通过契约对比后，才允许在入口层切流。

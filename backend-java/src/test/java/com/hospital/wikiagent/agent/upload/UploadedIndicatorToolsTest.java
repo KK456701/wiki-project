@@ -2,11 +2,15 @@ package com.hospital.wikiagent.agent.upload;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,6 +28,13 @@ import com.hospital.wikiagent.agent.tools.PolicyDecision;
 import com.hospital.wikiagent.agent.tools.PolicyDecision.Decision;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.details.DetailContracts.DetailColumn;
+import com.hospital.wikiagent.details.DetailContracts.SnapshotPayload;
+import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
+import com.hospital.wikiagent.details.IndicatorDetailService;
+import com.hospital.wikiagent.details.UploadDetailComparator;
+import com.hospital.wikiagent.details.UploadDetailComparator.SystemDetailDataset;
+import com.hospital.wikiagent.details.XlsxWorkbookWriter;
 import com.hospital.wikiagent.upload.UploadProperties;
 import com.hospital.wikiagent.upload.UploadStorage;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
@@ -100,6 +111,67 @@ class UploadedIndicatorToolsTest {
                 .containsEntry("comparison_level", "none")
                 .containsEntry("comparison_status", "system_result_missing")
                 .doesNotContainKeys("system_numerator", "system_denominator", "system_rate");
+    }
+
+    @Test
+    void returnsOnlySafeRowComparisonSummaryForDetailWorkbook() throws Exception {
+        UploadProperties properties = new UploadProperties();
+        properties.setRoot(temporary.resolve("uploads"));
+        UploadStorage storage = new UploadStorage(properties);
+        SnapshotSummary summary = new SnapshotSummary(
+                "SNAP_1", "RUN_1", "hospital_001", "MQSI2025_005", "急会诊及时到位率",
+                "hospital", "2025", 1, "2026-01-01 00:00:00", "2026-04-01 00:00:00",
+                2, 1, 1,
+                List.of(
+                        new DetailColumn("consult_id", "会诊编号", "none"),
+                        new DetailColumn("request_time", "请求时间", "none")),
+                Instant.parse("2026-07-21T08:00:00Z"),
+                Instant.parse("2026-07-22T08:00:00Z"), false,
+                "business", List.of("CONSULT"));
+        List<Map<String, Object>> rawRows = List.of(
+                Map.of("consult_id", "C-001", "request_time", "2026-01-02 08:00:00",
+                        "__meets_numerator", 1),
+                Map.of("consult_id", "C-002", "request_time", "2026-01-03 08:00:00",
+                        "__meets_numerator", 0));
+        Path source = temporary.resolve("source.xlsx");
+        new XlsxWorkbookWriter().writeIndicatorWorkbook(
+                source, new SnapshotPayload(summary, rawRows), "doctor");
+        var upload = storage.store(new MockMultipartFile(
+                "file", "明细.xlsx", null, Files.readAllBytes(source)), principal("hospital_001"));
+        IndicatorDetailService detailService = mock(IndicatorDetailService.class);
+        when(detailService.comparisonDataset(
+                org.mockito.ArgumentMatchers.any(HospitalPrincipal.class),
+                org.mockito.ArgumentMatchers.eq("RUN_1")))
+                .thenReturn(new SystemDetailDataset(summary, rawRows));
+        UploadedIndicatorTools tools = new UploadedIndicatorTools(
+                storage, new XlsxWorkbookReader(properties), detailService,
+                new UploadDetailComparator());
+        AgentRunState state = new AgentRunState();
+        state.subtaskId("SUB_ROW");
+        state.currentUploadFileKey(upload.fileKey());
+        state.lastToolResults().add(ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "完成", Map.of(
+                        "run_id", "RUN_1", "rule_id", "MQSI2025_005",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-04-01 00:00:00",
+                        "numerator_count", 1, "denominator_count", 2,
+                        "result_value", 50)));
+
+        ToolResult result = tools.analyze(
+                new UploadedIndicatorTools.Input(upload.fileKey()),
+                execution(state, "hospital_001"));
+
+        assertThat(result.data())
+                .containsEntry("comparison_level", "row")
+                .containsEntry("row_level_comparison_available", true)
+                .containsEntry("both_count", 2)
+                .containsEntry("system_only_count", 0)
+                .containsEntry("uploaded_only_count", 0)
+                .doesNotContainKeys("matched_rows", "system_only_rows", "uploaded_only_rows");
+        Map<?, ?> safeComparison = (Map<?, ?>) result.data().get("row_comparison");
+        assertThat(safeComparison.containsKey("matched_rows")).isFalse();
+        assertThat(safeComparison.containsKey("system_only_rows")).isFalse();
+        assertThat(safeComparison.containsKey("uploaded_only_rows")).isFalse();
     }
 
     @Test

@@ -40,6 +40,13 @@ public class EvidenceLedger implements EvidenceRecorder {
             "different_count", "cause_analysis_note",
             "diagnose_status", "user_summary", "layers", "stat_period",
             "row_level_comparison_available", "cause_analysis_available",
+            "matching_fields", "common_fields",
+            "system_only_fields", "uploaded_only_fields", "system_count",
+            "uploaded_count", "both_count", "system_only_count",
+            "uploaded_only_count", "field_difference_count",
+            "system_numerator_count", "uploaded_numerator_count",
+            "system_only_numerator_count", "uploaded_only_numerator_count",
+            "classification_difference_count", "confirmed_findings",
             "report_id", "report_schema_version", "overall_status", "stages",
             "passed_stages", "warning_stages", "failed_stages", "skipped_stages");
 

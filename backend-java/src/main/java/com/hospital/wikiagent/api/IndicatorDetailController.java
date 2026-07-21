@@ -24,6 +24,7 @@ import com.hospital.wikiagent.details.DetailContracts.DetailPage;
 import com.hospital.wikiagent.details.DetailContracts.ExportSummary;
 import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
 import com.hospital.wikiagent.details.IndicatorDetailService;
+import com.hospital.wikiagent.details.UploadComparisonExportService;
 
 @RestController
 public class IndicatorDetailController {
@@ -32,10 +33,15 @@ public class IndicatorDetailController {
 
     private final HospitalAuthService auth;
     private final IndicatorDetailService details;
+    private final UploadComparisonExportService comparisonExports;
 
-    public IndicatorDetailController(HospitalAuthService auth, IndicatorDetailService details) {
+    public IndicatorDetailController(
+            HospitalAuthService auth,
+            IndicatorDetailService details,
+            UploadComparisonExportService comparisonExports) {
         this.auth = auth;
         this.details = details;
+        this.comparisonExports = comparisonExports;
     }
 
     @PostMapping("/api/sql-runs/{run_id}/details")
@@ -71,6 +77,19 @@ public class IndicatorDetailController {
                 .body(details.createExport(principal(authorization), runId, confirmed));
     }
 
+    @PostMapping("/api/sql-runs/{run_id}/upload-comparison-exports")
+    public ResponseEntity<ExportSummary> createUploadComparisonExport(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable("run_id") String runId,
+            @RequestBody(required = false) UploadComparisonExportCreateRequest request) {
+        boolean confirmed = request != null && request.confirmed();
+        String fileToken = request == null ? null : request.fileToken();
+        return ResponseEntity.status(201)
+                .cacheControl(CacheControl.noStore())
+                .body(comparisonExports.create(
+                        principal(authorization), runId, fileToken, confirmed));
+    }
+
     @GetMapping("/api/indicator-exports")
     public ResponseEntity<List<ExportSummary>> exports(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
@@ -99,5 +118,8 @@ public class IndicatorDetailController {
     }
 
     public record ExportCreateRequest(boolean confirmed) {
+    }
+
+    public record UploadComparisonExportCreateRequest(boolean confirmed, String fileToken) {
     }
 }

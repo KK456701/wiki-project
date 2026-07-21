@@ -1,5 +1,6 @@
 package com.hospital.wikiagent.agent.runtime;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -7,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Base64;
 
 import org.springframework.stereotype.Component;
 
@@ -217,8 +219,7 @@ public class AgentRunner {
         var answer = finalAnswer.compose(new FinalAnswerInput(
                 request.query(), plan.goal(), modelId,
                 LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
-        String answerContent = appendDetailExportMarker(
-                answer.content(), state.lastRunId(), request.principal());
+        String answerContent = appendExportMarker(answer.content(), state, request.principal());
         emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
                 "message", answerContent, "status", "completed"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
@@ -385,10 +386,34 @@ public class AgentRunner {
         return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
-    private static String appendDetailExportMarker(
+    private static String appendExportMarker(
             String content,
-            String runId,
+            AgentRunState state,
             com.hospital.wikiagent.auth.HospitalPrincipal principal) {
+        ToolResult uploadAnalysis = null;
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (candidate.ok() && "UPLOAD_ANALYZED".equals(candidate.code())) {
+                uploadAnalysis = candidate;
+                break;
+            }
+        }
+        if (uploadAnalysis != null) {
+            if (Boolean.TRUE.equals(uploadAnalysis.data().get("row_level_comparison_available"))
+                    && state.lastRunId() != null && state.currentUploadFileKey() != null
+                    && !principal.mustChangePassword()
+                    && principal.permissions().contains("indicator_detail_export")) {
+                String token = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                        state.currentUploadFileKey().getBytes(StandardCharsets.UTF_8));
+                String marker = "{{upload_comparison_export:" + state.lastRunId() + ":" + token + "}}";
+                if (!content.contains(marker)) {
+                    return content.stripTrailing() + "\n\n本次对比支持导出双方都有、仅系统有、仅上传文件有的逐条差异表：\n\n"
+                            + marker;
+                }
+            }
+            return content;
+        }
+        String runId = state.lastRunId();
         if (runId == null || runId.isBlank() || principal.mustChangePassword()
                 || !principal.permissions().contains("indicator_detail_view")) {
             return content;

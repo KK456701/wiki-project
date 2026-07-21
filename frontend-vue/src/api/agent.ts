@@ -203,6 +203,23 @@ export async function createIndicatorExport(
   return readJson<IndicatorExport>(response)
 }
 
+export async function createUploadComparisonExport(
+  token: string,
+  runId: string,
+  fileToken: string,
+  confirmed: boolean,
+): Promise<IndicatorExport> {
+  const response = await fetch(
+    `/api/sql-runs/${encodeURIComponent(runId)}/upload-comparison-exports`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed, file_token: fileToken }),
+    },
+  )
+  return readJson<IndicatorExport>(response)
+}
+
 export async function downloadIndicatorExport(
   token: string,
   value: IndicatorExport,

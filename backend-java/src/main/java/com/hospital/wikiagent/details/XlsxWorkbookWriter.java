@@ -8,7 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -19,6 +21,8 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.details.DetailContracts.DetailColumn;
 import com.hospital.wikiagent.details.DetailContracts.SnapshotPayload;
 import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
+import com.hospital.wikiagent.details.UploadDetailComparator.MatchedRow;
+import com.hospital.wikiagent.details.UploadDetailComparator.RowComparison;
 
 @Component
 public class XlsxWorkbookWriter {
@@ -40,6 +44,83 @@ public class XlsxWorkbookWriter {
                 sheet("未达到要求_" + (rows.size() - numerator), "已纳入统计范围、但未达到本院口径要求的记录",
                         summary, rows.stream().filter(row -> !meets(row)).toList(), actorId));
         return write(path, sheets);
+    }
+
+    public Path writeUploadComparisonWorkbook(
+            Path path,
+            RowComparison comparison,
+            String uploadedFileName,
+            String hospitalId,
+            String actorId,
+            Instant createdAt) {
+        if (!comparison.available()) {
+            throw new IllegalArgumentException("当前上传文件不支持逐条差异导出");
+        }
+        LinkedHashSet<String> systemFields = new LinkedHashSet<>(comparison.commonFields());
+        systemFields.addAll(comparison.systemOnlyFields());
+        comparison.matchedRows().forEach(item -> systemFields.addAll(item.system().keySet()));
+        comparison.systemOnlyRows().forEach(row -> systemFields.addAll(row.keySet()));
+        LinkedHashSet<String> uploadedFields = new LinkedHashSet<>(comparison.commonFields());
+        uploadedFields.addAll(comparison.uploadedOnlyFields());
+        comparison.matchedRows().forEach(item -> uploadedFields.addAll(item.uploaded().keySet()));
+        comparison.uploadedOnlyRows().forEach(row -> uploadedFields.addAll(row.keySet()));
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("指标名称", comparison.systemRuleName());
+        metadata.put("指标编号", comparison.systemRuleId());
+        metadata.put("适用医院", hospitalId);
+        metadata.put("系统统计区间", comparison.systemStatPeriod());
+        metadata.put("上传文件统计区间", comparison.uploadedStatPeriod());
+        metadata.put("上传文件", uploadedFileName);
+        metadata.put("对比层级", "逐条记录");
+        metadata.put("逐条匹配字段", String.join("、", comparison.matchingFields()));
+        metadata.put("已确认差异", String.join("\n", comparison.confirmedFindings()));
+        metadata.put("导出人", actorId);
+        metadata.put("导出时间", createdAt.toString());
+        List<List<Object>> summaryRows = List.of(
+                List.of("双方都有", comparison.bothCount()),
+                List.of("仅系统有", comparison.systemOnlyCount()),
+                List.of("仅上传文件有", comparison.uploadedOnlyCount()),
+                List.of("同一记录但字段值不同", comparison.fieldDifferenceCount()),
+                List.of("同一记录但达标判定不同", comparison.classificationDifferenceCount()));
+
+        List<String> matchedHeaders = new ArrayList<>(List.of("匹配键", "字段差异"));
+        systemFields.forEach(field -> matchedHeaders.add("系统-" + field));
+        uploadedFields.forEach(field -> matchedHeaders.add("上传文件-" + field));
+        List<List<Object>> matchedRows = new ArrayList<>();
+        for (MatchedRow item : comparison.matchedRows()) {
+            List<Object> row = new ArrayList<>();
+            row.add(item.key());
+            row.add(item.differentFields().isEmpty() ? "无" : String.join("、", item.differentFields()));
+            systemFields.forEach(field -> row.add(item.system().get(field)));
+            uploadedFields.forEach(field -> row.add(item.uploaded().get(field)));
+            matchedRows.add(Collections.unmodifiableList(new ArrayList<>(row)));
+        }
+        List<List<Object>> systemOnlyRows = comparison.systemOnlyRows().stream()
+                .map(row -> systemFields.stream().map(row::get).toList()).toList();
+        List<List<Object>> uploadedOnlyRows = comparison.uploadedOnlyRows().stream()
+                .map(row -> uploadedFields.stream().map(row::get).toList()).toList();
+        List<SheetData> sheets = List.of(
+                new SheetData("对比摘要", metadata, List.of("分类", "数量"), summaryRows),
+                comparisonSheet("双方都有_" + comparison.bothCount(),
+                        "按匹配字段识别为同一业务记录；字段差异列列出值不一致的字段。",
+                        matchedHeaders, matchedRows),
+                comparisonSheet("仅系统有_" + comparison.systemOnlyCount(),
+                        "当前系统试运行明细中存在、上传文件中未匹配到的记录。",
+                        List.copyOf(systemFields), systemOnlyRows),
+                comparisonSheet("仅上传文件有_" + comparison.uploadedOnlyCount(),
+                        "上传文件中存在、当前系统试运行明细中未匹配到的记录。",
+                        List.copyOf(uploadedFields), uploadedOnlyRows));
+        return write(path, sheets);
+    }
+
+    private static SheetData comparisonSheet(
+            String name,
+            String description,
+            List<String> headers,
+            List<List<Object>> rows) {
+        return new SheetData(
+                safeSheetName(name), Map.of("说明", description), List.copyOf(headers), List.copyOf(rows));
     }
 
     private Path write(Path path, List<SheetData> sheets) {

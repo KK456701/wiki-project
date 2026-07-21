@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import { useAgentStore } from '../stores/agent'
+import { createUploadComparisonExport, downloadIndicatorExport } from '../api/agent'
 
 const store = useAgentStore()
 const accountId = ref('user_001')
@@ -15,6 +16,7 @@ const selectedTraceId = ref('')
 const selectedDetailRunId = ref('')
 const uploadInput = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLElement | null>(null)
+const exportingComparison = ref('')
 
 const activeEvidence = computed(() => store.latestAgentMessage?.evidence || [])
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
@@ -70,6 +72,21 @@ async function uploadFile(event: Event) {
 
 function openTrace(traceId?: string) {
   if (traceId) selectedTraceId.value = traceId
+}
+
+async function exportComparison(runId?: string, fileToken?: string) {
+  if (!runId || !fileToken || exportingComparison.value) return
+  if (!window.confirm('差异表可能包含患者级业务明细。确认仅在授权范围内使用并立即下载吗？')) return
+  exportingComparison.value = runId
+  store.error = ''
+  try {
+    const created = await createUploadComparisonExport(store.token, runId, fileToken, true)
+    await downloadIndicatorExport(store.token, created)
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '逐条差异表导出失败。'
+  } finally {
+    exportingComparison.value = ''
+  }
 }
 </script>
 
@@ -131,6 +148,13 @@ function openTrace(traceId?: string) {
             <header><strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong><span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span></header>
             <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
             <button v-if="message.detailRunId" type="button" class="detail-link" @click="selectedDetailRunId = message.detailRunId">查看明细并导出 Excel →</button>
+            <button
+              v-if="message.comparisonRunId && message.comparisonFileToken && canExportDetails"
+              type="button"
+              class="detail-link"
+              :disabled="exportingComparison === message.comparisonRunId"
+              @click="exportComparison(message.comparisonRunId, message.comparisonFileToken)"
+            >{{ exportingComparison === message.comparisonRunId ? '正在生成差异表…' : '导出逐条差异 Excel →' }}</button>
             <button v-if="message.traceId" type="button" class="trace-link" @click="openTrace(message.traceId)">查看链路 →</button>
           </div>
         </article>

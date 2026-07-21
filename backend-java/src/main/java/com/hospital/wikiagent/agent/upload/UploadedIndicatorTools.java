@@ -9,10 +9,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
+import com.hospital.wikiagent.details.IndicatorDetailException;
+import com.hospital.wikiagent.details.IndicatorDetailService;
+import com.hospital.wikiagent.details.UploadDetailComparator;
+import com.hospital.wikiagent.details.UploadDetailComparator.RowComparison;
 import com.hospital.wikiagent.upload.UploadStorage;
 import com.hospital.wikiagent.upload.UploadStorage.UploadAccessException;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
@@ -32,10 +37,23 @@ public class UploadedIndicatorTools {
 
     private final UploadStorage storage;
     private final XlsxWorkbookReader reader;
+    private final IndicatorDetailService detailService;
+    private final UploadDetailComparator detailComparator;
 
     public UploadedIndicatorTools(UploadStorage storage, XlsxWorkbookReader reader) {
+        this(storage, reader, null, null);
+    }
+
+    @Autowired
+    public UploadedIndicatorTools(
+            UploadStorage storage,
+            XlsxWorkbookReader reader,
+            IndicatorDetailService detailService,
+            UploadDetailComparator detailComparator) {
         this.storage = storage;
         this.reader = reader;
+        this.detailService = detailService;
+        this.detailComparator = detailComparator;
     }
 
     public ToolResult analyze(Input input, ToolExecutionContext context) {
@@ -60,6 +78,7 @@ public class UploadedIndicatorTools {
         TrialValues systemValues = latestTrial(context);
         FileIdentity identity = fileIdentity(workbook);
         Comparison comparison = compare(identity, uploadedValues, systemValues);
+        RowComparison rowComparison = rowComparison(workbook, systemValues, context);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("file_key", upload.fileKey());
@@ -87,11 +106,26 @@ public class UploadedIndicatorTools {
         data.put("comparison_metrics", comparison.metrics());
         data.put("matched_count", comparison.matchedCount());
         data.put("different_count", comparison.differentCount());
-        data.put("row_level_comparison_available", false);
-        data.put("cause_analysis_available", false);
-        data.put("cause_analysis_note", comparison.note());
+        if (rowComparison == null) {
+            data.put("row_level_comparison_available", false);
+            data.put("cause_analysis_available", false);
+            data.put("cause_analysis_note", comparison.note());
+        } else {
+            Map<String, Object> safeRowComparison = rowComparison.safeData();
+            data.putAll(safeRowComparison);
+            data.put("row_comparison", safeRowComparison);
+            data.put("cause_analysis_available", rowComparison.available());
+            data.put("cause_analysis_note", rowComparison.message());
+        }
 
-        String summary = comparison.summary();
+        String summary = rowComparison == null
+                ? comparison.summary()
+                : rowComparison.available()
+                        ? "已完成上传文件与系统明细逐条对比：双方都有 "
+                                + rowComparison.bothCount() + " 条，仅系统有 "
+                                + rowComparison.systemOnlyCount() + " 条，仅上传文件有 "
+                                + rowComparison.uploadedOnlyCount() + " 条。"
+                        : rowComparison.message();
         if (summary == null || summary.isBlank()) {
             summary = String.valueOf(data.get("summary"));
         }
@@ -142,6 +176,7 @@ public class UploadedIndicatorTools {
             }
             Map<String, Object> data = result.data();
             return new TrialValues(
+                    text(data.get("run_id")),
                     text(data.get("rule_id")),
                     period(data.get("stat_start"), data.get("stat_end")),
                     number(data.get("numerator_count")),
@@ -149,6 +184,24 @@ public class UploadedIndicatorTools {
                     number(data.get("result_value")));
         }
         return TrialValues.empty();
+    }
+
+    private RowComparison rowComparison(
+            WorkbookPreview workbook,
+            TrialValues systemValues,
+            ToolExecutionContext context) {
+        boolean hasDetailSheet = workbook.sheets().stream().anyMatch(SheetPreview::detailExport);
+        if (!hasDetailSheet || systemValues.runId() == null
+                || detailService == null || detailComparator == null) {
+            return null;
+        }
+        try {
+            var dataset = detailService.comparisonDataset(
+                    context.agentContext().principal(), systemValues.runId());
+            return detailComparator.compare(workbook, dataset);
+        } catch (IndicatorDetailException exception) {
+            return null;
+        }
     }
 
     private static FileIdentity fileIdentity(WorkbookPreview workbook) {
@@ -322,13 +375,14 @@ public class UploadedIndicatorTools {
     }
 
     private record TrialValues(
+            String runId,
             String ruleId,
             String statPeriod,
             Double numerator,
             Double denominator,
             Double rate) {
         static TrialValues empty() {
-            return new TrialValues(null, null, null, null, null);
+            return new TrialValues(null, null, null, null, null, null);
         }
 
         boolean hasValues() {

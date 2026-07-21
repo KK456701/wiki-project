@@ -27,6 +27,8 @@ export interface ChatMessage {
   status: 'complete' | 'running' | 'failed'
   traceId?: string
   detailRunId?: string
+  comparisonRunId?: string
+  comparisonFileToken?: string
   evidence: EvidenceStep[]
 }
 
@@ -55,10 +57,17 @@ function restoreUser(): HospitalUser | null {
 }
 
 function setAgentContent(message: ChatMessage, value: string) {
-  const marker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
-  const match = marker.exec(value)
-  if (match) message.detailRunId = match[1]
-  message.content = value.replace(marker, '').replace(/\n{3,}/g, '\n\n').trim()
+  const detailMarker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
+  const comparisonMarker = /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\}\}/g
+  const detailMatch = detailMarker.exec(value)
+  const comparisonMatch = comparisonMarker.exec(value)
+  if (detailMatch) message.detailRunId = detailMatch[1]
+  if (comparisonMatch) {
+    message.comparisonRunId = comparisonMatch[1]
+    message.comparisonFileToken = comparisonMatch[2]
+  }
+  message.content = value.replace(detailMarker, '').replace(comparisonMarker, '')
+    .replace(/\n{3,}/g, '\n\n').trim()
 }
 
 export const useAgentStore = defineStore('agent', {

@@ -51,6 +51,7 @@ import com.hospital.wikiagent.details.DetailContracts.SnapshotPayload;
 import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
 import com.hospital.wikiagent.details.IndicatorDetailRepository.ExportRecord;
 import com.hospital.wikiagent.details.IndicatorDetailRepository.SnapshotRecord;
+import com.hospital.wikiagent.details.UploadDetailComparator.SystemDetailDataset;
 import com.hospital.wikiagent.runtime.WorkspacePaths;
 
 import tools.jackson.core.type.TypeReference;
@@ -127,6 +128,20 @@ public class IndicatorDetailService {
     public SnapshotSummary ensureSnapshot(HospitalPrincipal principal, String runId) {
         requirePermission(principal, DETAIL_VIEW_PERMISSION);
         return ensureSnapshotInternal(principal, requiredId(runId, "试运行编号无效"));
+    }
+
+    /**
+     * 为服务端逐条比较提供原始快照。该方法不暴露为 HTTP 接口，调用方不得把 rows
+     * 传入 LLM、Evidence、Trace 或会话记忆。
+     */
+    public SystemDetailDataset comparisonDataset(HospitalPrincipal principal, String runId) {
+        requirePermission(principal, DETAIL_VIEW_PERMISSION);
+        String normalizedRunId = requiredId(runId, "试运行编号无效");
+        SnapshotSummary summary = ensureSnapshotInternal(principal, normalizedRunId);
+        SnapshotRecord snapshot = repository.snapshotByRun(normalizedRunId)
+                .orElseThrow(() -> error("DETAIL_NOT_FOUND", "明细快照不存在。", HttpStatus.NOT_FOUND));
+        requireSnapshotScope(snapshot, principal);
+        return new SystemDetailDataset(summary, readRows(snapshot));
     }
 
     private SnapshotSummary ensureSnapshotInternal(HospitalPrincipal principal, String runId) {

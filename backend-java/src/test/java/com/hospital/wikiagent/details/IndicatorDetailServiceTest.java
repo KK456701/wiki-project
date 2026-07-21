@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
@@ -26,6 +30,7 @@ import com.hospital.wikiagent.auth.HospitalAuthRepository;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.upload.UploadProperties;
 import com.hospital.wikiagent.upload.UploadStorage.StoredUpload;
+import com.hospital.wikiagent.upload.UploadStorage;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
 
 import tools.jackson.databind.ObjectMapper;
@@ -141,6 +146,36 @@ class IndicatorDetailServiceTest {
     }
 
     @Test
+    void exportsFourSheetRowComparisonFromOwnedDetailWorkbook() throws Exception {
+        var sourceExport = service.createExport(principal, "RUN_001", true);
+        var sourceDownload = service.resolveDownload(principal, sourceExport.exportId());
+        UploadProperties uploadProperties = new UploadProperties();
+        uploadProperties.setRoot(temp.resolve("uploads"));
+        uploadProperties.setMaxRowsPerSheet(5001);
+        UploadStorage uploads = new UploadStorage(uploadProperties);
+        var uploaded = uploads.store(new MockMultipartFile(
+                "file", sourceExport.fileName(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Files.readAllBytes(sourceDownload.path())), principal);
+        XlsxWorkbookReader reader = new XlsxWorkbookReader(uploadProperties);
+        UploadComparisonExportService comparisons = new UploadComparisonExportService(
+                service, repository, uploads, reader, new UploadDetailComparator(),
+                new XlsxWorkbookWriter(), new HospitalAuthRepository(jdbc),
+                detailProperties(), Clock.fixed(NOW, ZoneOffset.UTC));
+        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                uploaded.fileKey().getBytes(StandardCharsets.UTF_8));
+
+        var exported = comparisons.create(principal, "RUN_001", token, true);
+        var download = service.resolveDownload(principal, exported.exportId());
+        var workbook = reader.read(new StoredUpload(
+                "comparison.xlsx", exported.fileName(), Files.size(download.path()), download.path()));
+
+        assertThat(exported.rowCount()).isEqualTo(2);
+        assertThat(workbook.sheets()).extracting("name").containsExactly(
+                "对比摘要", "双方都有_2", "仅系统有_0", "仅上传文件有_0");
+    }
+
+    @Test
     void rejectsChangedBusinessCountsAndDoesNotPublishReadySnapshot() throws Exception {
         seedSuccessfulRun("RUN_002", 1, 3);
 
@@ -208,6 +243,15 @@ class IndicatorDetailServiceTest {
                 denominator == 0 ? 0 : numerator * 100.0 / denominator, "", 12, "user_001",
                 numerator, denominator, objectMapper.writeValueAsString(runContext),
                 java.sql.Timestamp.from(NOW));
+    }
+
+    private DetailProperties detailProperties() {
+        DetailProperties properties = new DetailProperties();
+        properties.setExportRoot(temp.resolve("exports"));
+        properties.setExpireHours(24);
+        properties.setMaxRows(100);
+        properties.setDefaultPageSize(50);
+        return properties;
     }
 
     private static Map<String, Object> field(String field, String label, String sensitivity) {
