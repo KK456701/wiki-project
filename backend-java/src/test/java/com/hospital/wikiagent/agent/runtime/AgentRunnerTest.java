@@ -45,12 +45,16 @@ import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.agent.sql.SqlTemplateRenderer;
+import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
+import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
+import com.hospital.wikiagent.agent.validation.ImplementationValidationWorkflow;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
+import static org.mockito.Mockito.mock;
 
 class AgentRunnerTest {
     private ToolGateway gateway;
@@ -81,7 +85,11 @@ class AgentRunnerTest {
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {},
+                  "time_expression": {
+                    "raw_text": "2026年1月至3月",
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-04-01T00:00:00"
+                  },
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
                   "semantic_ambiguities": []
@@ -209,6 +217,90 @@ class AgentRunnerTest {
                     assertThat(value.sourceObjectId()).startsWith("RUN_");
                 });
         assertThat(store.verifications.values()).allMatch(value -> "verified".equals(value.status()));
+    }
+
+    @Test
+    void normalizesExplicitValidationRequestAndUsesFixedWorkflowWithoutFinalAnswerLlm() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        return List.of(Map.of(
+                                "index_value", 25.0,
+                                "numerator_count", 1,
+                                "denominator_count", 4));
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                }, objectMapper);
+        UploadedIndicatorTools uploads = mock(UploadedIndicatorTools.class);
+        ImplementationValidationTools validationTools = new ImplementationValidationTools(
+                new ImplementationValidationWorkflow(sqlTools, uploads));
+        ToolRegistry tools = new ToolRegistry(
+                fixture.rules(), sqlTools, null, uploads, validationTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker(
+                """
+                {
+                  "schema_version": "request-plan-v1",
+                  "intent": "rule_explanation",
+                  "goal": "解释急会诊及时到位率",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {},
+                  "requested_outputs": ["definition", "formula"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """);
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper),
+                capabilities,
+                new AgentStateController(capabilities),
+                new DeterministicDispatch(),
+                gateway,
+                verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper));
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "对2026年1月至3月急会诊及时到位率做全面实施验收", "session_001",
+                "ollama-test", null, "request_001", "trace_001", "business_test", "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
+                events::add);
+
+        assertThat(result.stopReason()).isEqualTo("final_answer");
+        assertThat(result.answer()).contains("指标全面实施验收报告", "L1", "L4", "L5", "L6", "总体结论");
+        assertThat(result.requestPlan().intent().name()).isEqualTo("IMPLEMENTATION_VALIDATION");
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .containsExactly(
+                        "search_indicator_rules", "get_effective_rule",
+                        "inspect_indicator_implementation", "validate_indicator_implementation");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("implementation_validation_l1", "implementation_validation_l4",
+                        "implementation_validation_l5", "implementation_validation_l6",
+                        "implementation_validation_answer")
+                .doesNotContain("final_answer_llm");
+        assertThat(models.calls).isEqualTo(1);
     }
 
     private static RuleReadRepository ruleRepository(ObjectMapper objectMapper) {

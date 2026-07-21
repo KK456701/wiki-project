@@ -129,7 +129,7 @@ public class AgentStateController {
                 case "DIAGNOSIS_COMPLETED", "INDICATOR_DIAGNOSED" -> facts.add("diagnosis");
                 case "RULE_CHANGE_PREVIEWED" -> facts.add("rule_change_preview");
                 case "UPLOAD_ANALYZED" -> facts.add("file_analysis");
-                case "IMPLEMENTATION_VALIDATED" -> facts.add("implementation_validation_report");
+                case "IMPLEMENTATION_VALIDATION_COMPLETED" -> facts.add("implementation_validation_report");
                 default -> {
                 }
             }

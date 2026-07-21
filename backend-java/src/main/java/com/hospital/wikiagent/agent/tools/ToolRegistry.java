@@ -13,6 +13,7 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.diagnosis.IndicatorDiagnosisTools;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
+import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 @Component
@@ -24,16 +25,17 @@ public class ToolRegistry {
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
-            UploadedIndicatorTools uploadTools) {
-        this(rules, sqlTools, diagnosisTools, uploadTools, true);
+            UploadedIndicatorTools uploadTools,
+            ImplementationValidationTools validationTools) {
+        this(rules, sqlTools, diagnosisTools, uploadTools, validationTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, null, null, true);
+        this(rules, sqlTools, null, null, null, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, null, null, false);
+        this(rules, null, null, null, null, false);
     }
 
     private ToolRegistry(
@@ -41,6 +43,7 @@ public class ToolRegistry {
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
             UploadedIndicatorTools uploadTools,
+            ImplementationValidationTools validationTools,
             boolean migrateSqlTools) {
         Map<String, AgentTool> values = new LinkedHashMap<>();
         register(values, new AgentTool(
@@ -127,6 +130,18 @@ public class ToolRegistry {
                     (context, state) -> state.currentUploadFileKey() != null,
                     (input, context) -> uploadTools.analyze(
                             (UploadedIndicatorTools.Input) input, context)));
+        }
+        if (validationTools != null) {
+            register(values, new AgentTool(
+                    "validate_indicator_implementation",
+                    ImplementationValidationTools.Input.class,
+                    Set.of(),
+                    Duration.ofSeconds(150),
+                    AgentTool.RiskLevel.CONTROLLED_EXECUTION,
+                    true,
+                    (context, state) -> state.currentRuleId() != null,
+                    (input, context) -> validationTools.validate(
+                            (ImplementationValidationTools.Input) input, context)));
         }
 
         for (String name : List.of(

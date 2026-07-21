@@ -15,7 +15,10 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier.VerificationExpectations;
 import com.hospital.wikiagent.agent.ir.CompiledPlanIR;
+import com.hospital.wikiagent.agent.ir.FailureClass;
+import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.agent.ir.RequestedOutput;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationSnapshot;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer;
@@ -134,7 +137,8 @@ public class AgentRunner {
             throw exception;
         }
         long compileStarted = TraceEvents.started();
-        RequestPlan enrichedPlan = enrichFromConversation(modelPlan.plan(), conversation);
+        RequestPlan enrichedPlan = normalizeExplicitImplementationValidation(
+                request.query(), enrichFromConversation(modelPlan.plan(), conversation));
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
         CompiledPlanIR compiled = compiler.compile(planned.plan());
@@ -239,6 +243,7 @@ public class AgentRunner {
                         "cache_reused", result.cacheReused(),
                         "rule_id", state.currentRuleId());
             }
+            emitImplementationValidationStages(observer, traceId, subtaskId, result);
             updateState(state, result);
             if (!result.ok()) {
                 AgentRunResult failure = finishFailure(
@@ -290,6 +295,29 @@ public class AgentRunner {
                         "evidence_ids", state.evidenceIds()), eventValues(
                         "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
+        String validationAnswer = composeImplementationValidationAnswer(plan, state);
+        if (validationAnswer != null) {
+            long answerStarted = TraceEvents.started();
+            TraceEvents.completed(observer, traceId, "implementation_validation_answer", "code",
+                    answerStarted, state.subtaskId(), Map.of(
+                            "verified_evidence_count", evidence.size()), Map.of(
+                            "answer_length", validationAnswer.length()),
+                    "workflow_version", "implementation-validation-mvp-v1");
+            long guardStarted = TraceEvents.started();
+            String answerContent = appendExportMarker(validationAnswer, state, request.principal());
+            TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
+                    state.subtaskId(), Map.of("answer_length", validationAnswer.length()), Map.of(
+                            "accepted", true, "export_marker_added",
+                            !answerContent.equals(validationAnswer)));
+            emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
+                    "message", answerContent, "status", "completed"));
+            emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
+                    "stop_reason", "final_answer", "status", "completed",
+                    "step_count", state.stepCount()));
+            return new AgentRunResult(
+                    answerContent, "final_answer", traceId, sessionId,
+                    state.stepCount(), plan, compiled);
+        }
         emit(observer, "model_start", traceId, state.stepCount(), Map.of("message", "生成最终回答"));
         long finalStarted = TraceEvents.started();
         var answer = finalAnswer.compose(new FinalAnswerInput(
@@ -431,6 +459,134 @@ public class AgentRunner {
         return new RequestPlan(
                 plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+    }
+
+    private static RequestPlan normalizeExplicitImplementationValidation(
+            String query,
+            RequestPlan plan) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        boolean explicit = List.of("全面实施验收", "全面实施验证", "上线验收", "迁移核对", "全链路验收")
+                .stream().anyMatch(compact::contains);
+        if (!explicit) return plan;
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        if (target.rawName().isBlank() && target.ruleId() == null && query != null) {
+            target = new RequestPlan.TargetIndicator(query, null);
+        }
+        RequestPlan.TimeExpression time = plan.timeExpression();
+        if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
+                && query != null) {
+            time = new RequestPlan.TimeExpression(query, null, null);
+        }
+        return new RequestPlan(
+                plan.schemaVersion(),
+                PlanIntent.IMPLEMENTATION_VALIDATION,
+                plan.goal(),
+                target,
+                time,
+                List.of(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT),
+                plan.constraints(),
+                plan.semanticAmbiguities());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void emitImplementationValidationStages(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            ToolResult result) {
+        if (!result.ok() || !"IMPLEMENTATION_VALIDATION_COMPLETED".equals(result.code())
+                || !(result.data().get("stages") instanceof List<?> stages)) {
+            return;
+        }
+        for (Object raw : stages) {
+            if (!(raw instanceof Map<?, ?> rawStage)) continue;
+            Map<String, Object> stage = (Map<String, Object>) rawStage;
+            String stageId = String.valueOf(stage.getOrDefault("stage_id", "stage")).toLowerCase();
+            String stageStatus = String.valueOf(stage.getOrDefault("status", "failed"));
+            String traceStatus = switch (stageStatus) {
+                case "passed", "skipped" -> "success";
+                case "warning" -> "warning";
+                default -> "failed";
+            };
+            long duration = stage.get("duration_ms") instanceof Number number ? number.longValue() : 0;
+            List<?> findings = stage.get("finding_codes") instanceof List<?> values ? values : List.of();
+            String failureCode = findings.isEmpty()
+                    ? "IMPLEMENTATION_VALIDATION_FAILED"
+                    : String.valueOf(findings.get(0));
+            TraceEvents.recorded(observer, traceId,
+                    "implementation_validation_" + stageId, "code", traceStatus,
+                    duration, subtaskId,
+                    Map.of("workflow_version", "implementation-validation-mvp-v1"),
+                    stage,
+                    "capability", "validate_implementation",
+                    "error_code", "failed".equals(traceStatus) ? failureCode : null,
+                    "failure_class", "failed".equals(traceStatus)
+                            ? FailureClass.classify(failureCode).value()
+                            : null);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String composeImplementationValidationAnswer(
+            RequestPlan plan,
+            AgentRunState state) {
+        if (!plan.requestedOutputs().contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)) {
+            return null;
+        }
+        ToolResult report = null;
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (candidate.ok() && "IMPLEMENTATION_VALIDATION_COMPLETED".equals(candidate.code())) {
+                report = candidate;
+                break;
+            }
+        }
+        if (report == null) return null;
+        Map<String, Object> data = report.data();
+        String overall = switch (String.valueOf(data.get("overall_status"))) {
+            case "passed" -> "通过";
+            case "warning" -> "有警告";
+            case "failed" -> "未通过";
+            default -> "已完成";
+        };
+        StringBuilder answer = new StringBuilder("# 指标全面实施验收报告\n\n");
+        answer.append("- 报告编号：").append(data.get("report_id")).append('\n');
+        answer.append("- 指标：").append(data.getOrDefault("rule_name", ""))
+                .append("（").append(data.get("rule_id")).append("）\n");
+        answer.append("- 统计区间：").append(data.get("stat_start"))
+                .append(" 至 ").append(data.get("stat_end")).append('\n');
+        answer.append("- 总体结论：").append(overall).append("\n\n");
+        answer.append("| 阶段 | 状态 | 结论 |\n|---|---|---|\n");
+        if (data.get("stages") instanceof List<?> stages) {
+            for (Object raw : stages) {
+                if (!(raw instanceof Map<?, ?> stage)) continue;
+                answer.append("| ").append(markdown(stage.get("stage_id"))).append(' ')
+                        .append(markdown(stage.get("stage_name"))).append(" | ")
+                        .append(stageStatus(stage.get("status"))).append(" | ")
+                        .append(markdown(stage.get("summary"))).append(" |\n");
+            }
+        }
+        if (data.get("run_id") != null) {
+            answer.append("\n试运行结果：分子 ").append(data.getOrDefault("numerator_count", "—"))
+                    .append("，分母 ").append(data.getOrDefault("denominator_count", "—"))
+                    .append("，指标值 ").append(data.getOrDefault("result_value", "—"))
+                    .append("%。\n");
+        }
+        return answer.toString().stripTrailing();
+    }
+
+    private static String stageStatus(Object value) {
+        return switch (String.valueOf(value)) {
+            case "passed" -> "通过";
+            case "warning" -> "警告";
+            case "failed" -> "未通过";
+            case "skipped" -> "已跳过";
+            default -> "未知";
+        };
+    }
+
+    private static String markdown(Object value) {
+        return value == null ? "" : String.valueOf(value).replace("|", "\\|").replace("\n", " ");
     }
 
     private static void emit(

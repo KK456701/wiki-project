@@ -79,6 +79,39 @@ final class TraceEvents {
         observer.onEvent(Map.copyOf(event));
     }
 
+    static void recorded(
+            AgentRunObserver observer,
+            String traceId,
+            String nodeName,
+            String nodeType,
+            String status,
+            long durationMs,
+            String subtaskId,
+            Map<String, Object> input,
+            Map<String, Object> output,
+            Object... attributes) {
+        long endedAt = System.currentTimeMillis();
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("event", "trace_node");
+        event.put("trace_id", traceId);
+        event.put("node_id", id("NODE_"));
+        event.put("node_name", nodeName);
+        event.put("node_type", nodeType);
+        event.put("status", status == null || status.isBlank() ? "success" : status);
+        event.put("started_at_epoch_ms", endedAt - Math.max(0, durationMs));
+        event.put("ended_at_epoch_ms", endedAt);
+        event.put("duration_ms", Math.max(0, durationMs));
+        event.put("subtask_id", subtaskId == null ? "root" : subtaskId);
+        event.put("input", input == null ? Map.of() : input);
+        event.put("output", output == null ? Map.of() : output);
+        for (int index = 0; index + 1 < attributes.length; index += 2) {
+            if (attributes[index + 1] != null) {
+                event.put(String.valueOf(attributes[index]), attributes[index + 1]);
+            }
+        }
+        observer.onEvent(Map.copyOf(event));
+    }
+
     private static String id(String prefix) {
         return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }

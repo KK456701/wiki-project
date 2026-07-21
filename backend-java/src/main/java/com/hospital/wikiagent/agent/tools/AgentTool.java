@@ -25,6 +25,7 @@ public record AgentTool(
 
     public enum RiskLevel {
         READ_ONLY,
+        CONTROLLED_EXECUTION,
         CONTROLLED_WRITE,
         PRIVILEGED
     }

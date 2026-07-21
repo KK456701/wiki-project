@@ -146,7 +146,7 @@ public class EvidenceLedger implements EvidenceRecorder {
     }
 
     private static String sourceObjectId(Map<String, Object> data) {
-        for (String key : List.of("run_id", "sql_id", "result_id", "file_key", "report_id")) {
+        for (String key : List.of("report_id", "run_id", "sql_id", "result_id", "file_key")) {
             String value = text(data.get(key));
             if (value != null) {
                 return value;
