@@ -138,7 +138,7 @@ def diagnose_indicator_issue(
             status="error",
             code="DIAGNOSIS_FAILED",
             summary="诊断执行失败，未获得可用结论。",
-            retryable=True,
+            retryable=False,
         )
 
     report_id = str(result.get("report_id") or "") or None

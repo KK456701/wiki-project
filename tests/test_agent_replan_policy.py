@@ -35,6 +35,12 @@ def test_database_outage_is_operator_fallback_not_replan():
     assert policy.fallback_for("DATABASE_UNAVAILABLE").value == "SYSTEM_OPERATOR"
 
 
+def test_diagnosis_tool_failure_does_not_trigger_replan():
+    policy = ReplanPolicy(max_replan_count=1)
+
+    assert policy.can_replan(AgentRunState(), "DIAGNOSIS_FAILED") is False
+
+
 def test_unauthorized_patient_detail_is_security_denial():
     policy = ReplanPolicy(max_replan_count=1)
 

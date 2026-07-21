@@ -188,7 +188,10 @@ class AgentPlanningRuntime:
         now: datetime,
     ) -> None:
         """将“怎么算 + 明确统计周期”确定性纠偏为指标结果试运行。"""
-        if request_plan.intent is not PlanIntent.RULE_EXPLANATION:
+        if request_plan.intent not in {
+            PlanIntent.RULE_EXPLANATION,
+            PlanIntent.INDICATOR_DIAGNOSIS,
+        }:
             return
         outputs = set(request_plan.requested_outputs)
         if RequestedOutput.PREPARED_SQL_HANDLE in outputs:
@@ -201,6 +204,23 @@ class AgentPlanningRuntime:
             "不查数据库",
             "不执行数据库",
         )):
+            return
+        if request_plan.intent is PlanIntent.INDICATOR_DIAGNOSIS and any(
+            term in compact
+            for term in (
+                "异常",
+                "诊断",
+                "排查",
+                "原因",
+                "算不对",
+                "算错",
+                "不准确",
+                "不一致",
+                "不一样",
+                "有问题",
+                "问题在哪",
+            )
+        ):
             return
         if not any(term in compact for term in (
             "怎么算",
@@ -224,6 +244,11 @@ class AgentPlanningRuntime:
             return
         request_plan.intent = PlanIntent.INDICATOR_TRIAL_RUN
         request_plan.goal = "按用户指定统计周期计算当前指标的本院实际结果"
+        request_plan.requested_outputs = [
+            output
+            for output in request_plan.requested_outputs
+            if output is not RequestedOutput.DIAGNOSIS
+        ]
         if RequestedOutput.TRIAL_RESULT not in request_plan.requested_outputs:
             request_plan.requested_outputs.append(RequestedOutput.TRIAL_RESULT)
 

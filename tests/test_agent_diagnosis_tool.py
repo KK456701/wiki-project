@@ -230,6 +230,7 @@ def test_diagnosis_service_failure_returns_fixed_summary_without_evidence() -> N
 
     assert not result.ok
     assert result.code == "DIAGNOSIS_FAILED"
+    assert result.retryable is False
     assert "secret" not in result.summary
     assert "internal" not in result.summary
     assert result.evidence == []

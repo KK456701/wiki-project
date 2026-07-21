@@ -145,6 +145,7 @@ class AgentStateController:
     def _blocking_failure(state: AgentRunState) -> ControllerDecision | None:
         categories = {
             "TRIAL_RUN_FAILED": FallbackCategory.SYSTEM_OPERATOR,
+            "DIAGNOSIS_FAILED": FallbackCategory.SYSTEM_OPERATOR,
             "TOOL_TIMEOUT": FallbackCategory.SYSTEM_OPERATOR,
             "TOOL_EXECUTION_FAILED": FallbackCategory.SYSTEM_OPERATOR,
             "FIELD_PRECHECK_FAILED": FallbackCategory.IMPLEMENTATION_SUPPORT,

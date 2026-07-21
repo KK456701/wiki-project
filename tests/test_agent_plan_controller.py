@@ -242,6 +242,23 @@ def test_trial_run_infrastructure_failure_routes_to_system_operator():
     assert decision.code == "TRIAL_RUN_FAILED"
 
 
+def test_diagnosis_failure_stops_instead_of_repeating_tool_call():
+    compiled, validation = _trial_runtime()
+    state = AgentRunState(last_tool_results=[{
+        "ok": False,
+        "status": "error",
+        "code": "DIAGNOSIS_FAILED",
+        "summary": "诊断执行失败，未获得可用结论。",
+        "retryable": False,
+    }])
+
+    decision = AgentStateController().next_decision(compiled, validation, state)
+
+    assert decision.action is ControllerAction.FALLBACK
+    assert decision.fallback_category.value == "SYSTEM_OPERATOR"
+    assert decision.code == "DIAGNOSIS_FAILED"
+
+
 def test_upload_analysis_legacy_evidence_completes_without_repeated_tool_call():
     plan = RequestPlan.model_validate({
         "intent": "upload_analysis",

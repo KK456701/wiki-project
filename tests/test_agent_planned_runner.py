@@ -533,6 +533,64 @@ def test_runtime_upgrades_formula_plan_with_resolvable_period_to_trial_run():
     assert execution.validation.resolved_time.end_time.isoformat() == NOW.isoformat()
 
 
+def test_runtime_upgrades_misclassified_diagnosis_to_trial_run():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_diagnosis",
+        "goal": "计算患者入院48小时内转科的比例",
+        "target_indicator": {"raw_name": "患者入院48小时内转科比例"},
+        "time_expression": {"raw_text": "从一月份到现在"},
+        "requested_outputs": ["diagnosis"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "患者入院 48 小时内转科的比例怎么算，从一月份到现在",
+        _context(),
+        AgentRunState(),
+    ))
+
+    assert execution.request_plan.intent.value == "indicator_trial_run"
+    assert {item.value for item in execution.request_plan.requested_outputs} == {
+        "trial_result"
+    }
+    assert [node.capability.value for node in execution.compiled_plan.nodes] == [
+        "resolve_indicator",
+        "resolve_effective_rule",
+        "resolve_time_range",
+        "prepare_verified_sql",
+        "execute_trial_run",
+        "compose_answer",
+    ]
+
+
+def test_runtime_keeps_explicit_diagnosis_with_time_range():
+    plan = RequestPlan.model_validate({
+        "intent": "indicator_diagnosis",
+        "goal": "排查指标结果不一致的原因",
+        "target_indicator": {"raw_name": "患者入院48小时内转科比例"},
+        "time_expression": {"raw_text": "从一月份到现在"},
+        "requested_outputs": ["diagnosis"],
+    })
+    runtime = AgentPlanningRuntime(
+        planner=StaticPlanner(plan),
+        now_provider=lambda: NOW,
+    )
+
+    execution = asyncio.run(runtime.prepare(
+        "从一月份到现在的结果不一致，排查一下原因",
+        _context(),
+        AgentRunState(),
+    ))
+
+    assert execution.request_plan.intent.value == "indicator_diagnosis"
+    assert {item.value for item in execution.request_plan.requested_outputs} == {
+        "diagnosis"
+    }
+
+
 def test_runtime_keeps_formula_plan_when_query_only_mentions_time_field():
     plan = RequestPlan.model_validate({
         "intent": "rule_explanation",
