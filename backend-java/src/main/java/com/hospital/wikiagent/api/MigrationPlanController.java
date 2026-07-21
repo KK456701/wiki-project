@@ -21,7 +21,7 @@ import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 
 @RestController
-@RequestMapping("/api/migration/agent")
+@RequestMapping({"/api/migration/agent", "/api/agent"})
 public class MigrationPlanController {
     private final HospitalAuthService auth;
     private final PlanValidator validator;

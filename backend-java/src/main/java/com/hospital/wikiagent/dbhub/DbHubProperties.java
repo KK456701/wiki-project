@@ -9,6 +9,8 @@ public class DbHubProperties {
     private String mcpUrl = "http://127.0.0.1:8080/mcp";
     private String sourceId = "win60_qa_991827";
     private String executeTool = "execute_sql_win60_qa_991827";
+    private String databaseName = "WIN60_QA_991827";
+    private String schemaName = "WINDBA";
     private int timeoutSeconds = 10;
 
     public String getApiUrl() {
@@ -41,6 +43,22 @@ public class DbHubProperties {
 
     public void setExecuteTool(String executeTool) {
         this.executeTool = executeTool;
+    }
+
+    public String getDatabaseName() {
+        return databaseName;
+    }
+
+    public void setDatabaseName(String databaseName) {
+        this.databaseName = databaseName;
+    }
+
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
     }
 
     public int getTimeoutSeconds() {

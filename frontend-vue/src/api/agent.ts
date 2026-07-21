@@ -131,6 +131,34 @@ export interface AgentRunMetrics {
   thresholds: Record<string, number>
 }
 
+export interface MetadataChange {
+  table_name: string
+  field_name: string
+  change_type: string
+  change_desc: string
+}
+
+export interface MetadataAffectedRule {
+  rule_id: string
+  matched_columns: string[]
+  business_fields: string[]
+}
+
+export interface MetadataOverview {
+  hospital_id: string
+  db_name: string
+  source_id?: string
+  has_snapshot: boolean
+  metadata_source?: string
+  batch_id?: string
+  synced_at?: string
+  table_count: number
+  column_count: number
+  changes: MetadataChange[]
+  affected_rules: MetadataAffectedRule[]
+  trace_id?: string
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -217,6 +245,29 @@ export async function loadAgentRunMetrics(
     headers: authHeaders(token),
   })
   return readJson(response)
+}
+
+export async function loadMetadataOverview(
+  token: string,
+  hospitalId: string,
+): Promise<MetadataOverview> {
+  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const response = await fetch(`/api/metadata/overview?${query}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<MetadataOverview>(response)
+}
+
+export async function syncMetadata(
+  token: string,
+  hospitalId: string,
+): Promise<MetadataOverview> {
+  const response = await fetch('/api/metadata/sync', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hospital_id: hospitalId, db_name: '', source: 'dbhub' }),
+  })
+  return readJson<MetadataOverview>(response)
 }
 
 export async function ensureIndicatorDetails(token: string, runId: string): Promise<DetailSnapshot> {

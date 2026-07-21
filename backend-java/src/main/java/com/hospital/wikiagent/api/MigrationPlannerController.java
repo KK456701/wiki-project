@@ -23,7 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 @RestController
-@RequestMapping("/api/migration/agent")
+@RequestMapping({"/api/migration/agent", "/api/agent"})
 public class MigrationPlannerController {
     private final HospitalAuthService auth;
     private final ModelRequestPlanner planner;

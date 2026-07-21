@@ -135,6 +135,18 @@ CREATE TABLE med_field_mapping (
   status VARCHAR(32) NOT NULL
 );
 
+CREATE TABLE med_metadata_table (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  table_name VARCHAR(128) NOT NULL,
+  table_comment CLOB,
+  table_type VARCHAR(32),
+  sync_batch_id VARCHAR(64) NOT NULL,
+  sync_time TIMESTAMP NOT NULL,
+  UNIQUE (hospital_id, db_name, table_name)
+);
+
 CREATE TABLE med_metadata_column (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   hospital_id VARCHAR(64) NOT NULL,
@@ -150,6 +162,28 @@ CREATE TABLE med_metadata_column (
   sync_batch_id VARCHAR(64) NOT NULL,
   sync_time TIMESTAMP NOT NULL,
   UNIQUE (hospital_id, db_name, table_name, column_name)
+);
+
+CREATE TABLE med_metadata_sync_log (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  table_name VARCHAR(128),
+  field_name VARCHAR(128),
+  change_type VARCHAR(32),
+  change_desc CLOB,
+  sync_batch_id VARCHAR(64) NOT NULL,
+  sync_time TIMESTAMP NOT NULL
+);
+
+CREATE TABLE med_metadata_snapshot (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  db_name VARCHAR(128) NOT NULL,
+  metadata_source VARCHAR(32) NOT NULL,
+  sync_batch_id VARCHAR(64) NOT NULL,
+  snapshot_json CLOB NOT NULL,
+  created_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE med_table_relation (

@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2、阶段 3，以及阶段 4 的受控 SQL、三层诊断、上传汇总/逐条对比、指标明细导出、复合任务和全面实施验收 MVP 已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器仍调用 `8765` 的现有 Agent 接口。
+> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2、阶段 3，阶段 4 的 Agent 主链，以及阶段 5 的 Trace、运行观察和元数据工作台子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器默认仍调用 `8765` 以维持双栈回退。
 
 ## 1. 迁移目标与约束
 
@@ -70,7 +70,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已迁移医院账号、令牌、密码更新、权限读取与医院隔离；Java 与 Python 共用 PBKDF2 和令牌摘要契约，可复用同一 MySQL 会话表。
 - 已迁移医院范围内的规则搜索和本院生效口径；医院编号只从认证主体注入，客户端冒充其他医院会返回 403。
 - 已增加跨语言密码测试向量、H2 仓储测试和 `scripts/compare_java_python_read_api.py` 双跑脚本。
-- 待迁移术语和只读元数据接口，并在入口切流前使用真实登录会话完成验收。
+- 待迁移术语接口，并在入口切流前使用真实登录会话完成验收；元数据概览与同步已在阶段 5 子批次迁移。
 - Nginx/启动入口暂不切流；FastAPI 仍是权威实现。
 
 本子批次验收结果：Java 单元与仓储测试 13 项通过，Python 认证契约测试 8 项通过；影子服务使用同一 MySQL 临时会话对“急会诊及时到位率”执行双跑，安全规则字段返回一致。临时会话已清理，`8766` 已停止，现有 `8765` FastAPI 与 `8080` DBHub 未受影响。
@@ -147,7 +147,10 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - Vue 新增 `/runs`“Agent 运行观察”，展示请求量、成功/未完成率、平均与 p50/p95/p99、按日请求趋势、工具/模型表现、复合请求、重复调用停止率和 Replan 率，并可下钻到同医院单轮链路。
 - 慢请求、慢 LLM、工具失败率和模型超时率阈值保存在现有 `application.yml`；页面只做轻量提示，不引入告警服务。保留期清理在每 100 次新运行后最多删除 1000 条过期 Trace，不增加 Scheduler、消息队列或中间件。
 - 当前 Java 测试共 59 项、Python/Java 迁移契约 5 项、Vue 生产构建通过；覆盖 Trace 安全字段、节点增强、运行聚合、保留期清理和跨医院拒绝，现有 Runner/SSE 事件保持兼容。
-- 待迁移：审批、实施、监控、元数据和术语页面，以及 Vue 构建入 JAR 与正式切流。
+- 已迁移 `GET /api/metadata/overview` 与 `POST /api/metadata/sync`。医院范围只取认证主体，客户端不能切换到未配置数据库；业务库结构只经 DBHub 的固定 `INFORMATION_SCHEMA` SQL 读取，不接受客户端 SQL，不直连 SQL Server。
+- Java 元数据同步保存现有 `med_metadata_snapshot/table/column/sync_log`，全库采集表目录，但列信息只采集 `med_field_mapping` 中已确认映射依赖的表；结构差异与受影响指标完全由代码计算。同步另写入 `metadata_sync_dbhub` Trace 节点，输入输出不包含 SQL 正文或患者数据。
+- Vue 新增 `/metadata` 工作台，显示加载、空快照、同步成功、DBHub 失败、结构变化和受影响指标，并提供对话、运行观察之间的导航。当前 Java 测试共 67 项且 Vue 生产构建通过。
+- 待迁移：审批、实施、监控和术语页面，以及 Vue 构建入 JAR 与正式切流。
 - Vue 构建产物进入 Spring Boot JAR。
 - 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
@@ -173,6 +176,10 @@ mvn -s maven-settings.xml spring-boot:run
 # Vue 开发验证（FastAPI 需运行在 8765）
 cd F:\A-wiki-project\frontend-vue
 npm install
+npm run dev
+
+# 整体验证 Java 影子链（另一个终端先启动 8766）
+$env:VITE_API_TARGET = "http://127.0.0.1:8766"
 npm run dev
 
 # 两个服务均已由用户启动后，手工双跑规则解释（token 不会被脚本打印）

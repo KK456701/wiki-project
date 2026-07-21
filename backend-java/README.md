@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察，以及固定 L1/L4/L5/可选 L6 的全面实施验收 MVP。规则写入与审批仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP，以及元数据概览与 DBHub 同步工作台。规则写入与审批仍由 Python 负责。
 
 ## 本地运行
 
@@ -23,6 +23,7 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/kb/rules/{rule_id}/effective`：读取本院生效口径；客户端传入其他医院会被拒绝。
 - `POST /api/migration/agent/compile`：认证后的影子编译接口，只返回计划校验、版本化 IR 和第一步确定性决策，不执行工具。
 - `POST /api/migration/agent/chat`、`POST /api/migration/agent/chat/stream`：执行 Java 影子 Agent，支持规则解释、受控 SQL 试运行、诊断、上传汇总分析和全面实施验收。
+- `/api/agent/capabilities`、`/api/agent/chat`、`/api/agent/chat/stream`：上述影子接口的前端兼容别名，供 Vue 整体切到 `8766` 时使用。
 - `POST /api/sql-runs/{run_id}/details`：基于已成功试运行生成或复用数量一致的短期明细快照。
 - `GET /api/sql-runs/{run_id}/details/{denominator|numerator|unmatched}`：分页返回脱敏明细。
 - `POST /api/sql-runs/{run_id}/exports`：在有导出权限且显式确认后生成三工作表 `.xlsx`。
@@ -31,6 +32,8 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/agent/runs/{trace_id}`：按当前登录医院读取 Java/Python 共用 Trace 表中的安全节点、Evidence 来源和耗时汇总。
 - `GET /api/agent/runs`：按时间、状态、模型、工具和 FailureClass 查询当前医院安全运行摘要。
 - `GET /api/agent/runs/metrics`：聚合当前医院成功率、p50/p95/p99、工具/模型性能、复合任务和稳定性指标。
+- `GET /api/metadata/overview`：按当前登录医院读取最近一次元数据快照、结构变化和受影响指标。
+- `POST /api/metadata/sync`：只经 DBHub 读取已配置 SQL Server 的表目录与指标映射依赖字段，保存本院快照并生成 Trace。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -53,5 +56,9 @@ Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、Pla
 Java Trace 复用现有 `med_agent_trace` 和 `med_agent_trace_node`，不部署外部可观测服务。新运行记录 `memory_load`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`，复合请求另含拆分、子任务和合并节点。节点包含真实开始偏移、耗时、父子关系、`subtask_id`、工具、模型、能力、FailureClass、缓存及安全输入输出；密码、认证令牌、SQL 正文与患者原始行不会落入 Trace。Vue 链路抽屉以中英文节点名、类型颜色、瀑布条、泳道、筛选和 Evidence 来源显示这些数据，历史 Python Trace 缺少新字段时仍按顺序降级展示。
 
 Vue `/runs` 页面直接使用 Trace 汇总接口展示请求量、成功/未完成率、平均与 p50/p95/p99、按日趋势、工具/模型耗时、超时、复合请求、重复调用停止率和 Replan 率。阈值来自 `wiki.agent.trace-*` 配置；页面提示不发送外部通知。Java 每新增 100 次运行最多清理 1000 条超过保留期的 Trace，不增加定时任务或调度中间件。
+
+Vue `/metadata` 页面展示当前医院的快照批次、表数、映射字段数、结构变化和受影响规则。Java 固定查询 `INFORMATION_SCHEMA`，不接受客户端 SQL，也不允许客户端切换到未配置数据库；全库只采集表目录，列信息仅采集 `med_field_mapping` 已确认映射实际依赖的表，避免把无关的大量字段写入运行库。
+
+Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 
 后续批次会按照 `docs/migration/java-vue-migration.md` 继续迁移剩余业务工作台与正式切流。只有同一接口通过契约对比后，才允许在入口层切流。

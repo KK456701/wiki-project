@@ -88,6 +88,15 @@ public class AgentTraceService {
         finish(traceId, "failed", null, message, 1, 0);
     }
 
+    public void recordStandaloneNode(String traceId, Map<String, Object> event) {
+        recordNode(traceId, event);
+    }
+
+    public void finishStandalone(
+            String traceId, String status, String intent, String summary, int errors) {
+        finish(traceId, status, intent, summary, errors, 0);
+    }
+
     public Map<String, Object> get(String traceId, HospitalPrincipal principal) {
         Map<String, Object> trace = repository.get(traceId, principal.hospitalId());
         if (trace.isEmpty()) {
@@ -395,6 +404,7 @@ public class AgentTraceService {
             case "compound_split" -> "拆分复合指标请求";
             case "compound_subtask" -> "执行指标子任务";
             case "compound_merge" -> "按输入顺序合并结果";
+            case "metadata_sync_dbhub" -> "同步数据库元数据";
             default -> safeName.isBlank() ? "未命名节点" : safeName;
         };
     }
@@ -406,6 +416,7 @@ public class AgentTraceService {
             case "deterministic_tool_dispatch" -> "服务端按 CapabilitySpec 编译工具与参数。";
             case "plan_verify" -> "只接受医院、规则、周期和对象链一致的 Evidence。";
             case "final_answer_llm" -> "LLM 只根据 VerifiedEvidence 组织回答。";
+            case "metadata_sync_dbhub" -> "经 DBHub 只读采集表目录和指标映射依赖字段。";
             default -> title(name);
         };
     }

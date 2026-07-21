@@ -28,7 +28,7 @@ import jakarta.annotation.PreDestroy;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/migration/agent")
+@RequestMapping({"/api/migration/agent", "/api/agent"})
 public class MigrationAgentRunController {
     private final HospitalAuthService auth;
     private final CompoundAgentRuntime runner;

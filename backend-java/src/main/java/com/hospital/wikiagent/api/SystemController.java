@@ -21,7 +21,7 @@ public class SystemController {
     @GetMapping("/migration/status")
     public Map<String, Object> migrationStatus() {
         return Map.of(
-                "phase", "implementation_validation_shadow",
+                "phase", "metadata_workbench_shadow",
                 "authority_runtime", "python",
                 "java_runtime", "compatibility_shadow",
                 "completed", List.of(
@@ -30,7 +30,7 @@ public class SystemController {
                         "spring_ai_model_adapters", "evidence_ledger", "agent_shadow_runner",
                         "controlled_sql_trial", "diagnosis", "upload_comparison",
                         "detail_export", "compound_runtime", "trace_observability",
-                        "implementation_validation_mvp"),
-                "next", List.of("business_workbenches", "vue_bundle_in_jar", "contract_cutover"));
+                        "implementation_validation_mvp", "metadata_workbench"),
+                "next", List.of("remaining_business_workbenches", "vue_bundle_in_jar", "contract_cutover"));
     }
 }
