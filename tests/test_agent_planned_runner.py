@@ -22,6 +22,7 @@ from app.agent_runtime.runner import (
     _request_kind_from_plan,
     _split_compound_indicator_query,
 )
+from app.agent_understanding import IndicatorResolution, ResolvedIndicator
 from app.agent_tools.contracts import AgentTool, ToolEvidence, ToolResult, ToolRiskLevel
 from app.agent_tools.gateway import ToolGateway
 from app.agent_tools.registry import ToolRegistry
@@ -62,6 +63,33 @@ class ReplanningStaticPlanner(StaticPlanner):
 class FailingPlanner:
     async def plan(self, **kwargs):
         raise AgentPlanningError("2 validation errors with internal schema details")
+
+
+class StaticIndicatorResolver:
+    async def resolve(self, query, hospital_id):
+        del query, hospital_id
+        return IndicatorResolution(indicators=[
+            ResolvedIndicator(
+                mention="患者入院 48 小时内转科的比例",
+                canonical_name="患者入院 48 小时内转科的比例",
+                rule_id="MQSI2025_001",
+                concept_code="C1",
+                source="rule",
+                confidence=1.0,
+                start=0,
+                end=20,
+            ),
+            ResolvedIndicator(
+                mention="急会诊及时到位率",
+                canonical_name="急会诊及时到位率",
+                rule_id="MQSI2025_005",
+                concept_code="C2",
+                source="rule",
+                confidence=1.0,
+                start=21,
+                end=30,
+            ),
+        ])
 
 
 class CompoundProbeRunner(AgentRunner):
@@ -258,6 +286,33 @@ def test_compound_indicator_request_is_split_and_uses_one_common_period():
     assert "{{detail_export:RUN_1}}" in result.answer
     assert "{{detail_export:RUN_2}}" in result.answer
     assert result.state.current_rule_ids == ["RULE_1", "RULE_2"]
+
+
+def test_hybrid_resolution_splits_comma_only_multi_indicator_request():
+    query = "患者入院 48 小时内转科的比例，急会诊及时到位率怎么算？"
+    assert _split_compound_indicator_query(query) == []
+    registry = _registry()
+    runner = CompoundProbeRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+        indicator_resolver=StaticIndicatorResolver(),
+    )
+
+    result = asyncio.run(runner.run(query, _context()))
+
+    assert result.stop_reason == "final_answer"
+    assert len(runner.subtasks) == 2
+    assert [item[2].target_indicator.rule_id for item in runner.subtasks] == [
+        "MQSI2025_001",
+        "MQSI2025_005",
+    ]
+    assert all(item[2].intent.value == "rule_explanation" for item in runner.subtasks)
+    assert result.state.current_rule_ids == ["MQSI2025_001", "MQSI2025_005"]
 
 
 def test_compound_sql_followup_reuses_all_rule_ids_and_common_period():

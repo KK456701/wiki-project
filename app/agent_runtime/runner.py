@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextvars import ContextVar
+from difflib import SequenceMatcher
 import json
 import logging
 import re
@@ -32,6 +33,11 @@ from app.agent_runtime.response_guard import (
     missing_fact_types,
     normalize_agent_answer,
 )
+from app.agent_understanding import (
+    HybridIndicatorResolver,
+    IndicatorResolution,
+    ResolvedIndicator,
+)
 from app.agent_planning.dispatch import (
     DeterministicDispatchError,
     build_deterministic_tool_call,
@@ -54,6 +60,10 @@ logger = logging.getLogger("wiki_agent.agent_runtime")
 _ACTIVE_SUBTASK_ID: ContextVar[str] = ContextVar(
     "agent_active_subtask_id",
     default="root",
+)
+_ACTIVE_INDICATOR_RESOLUTION: ContextVar[IndicatorResolution | None] = ContextVar(
+    "agent_active_indicator_resolution",
+    default=None,
 )
 
 
@@ -90,6 +100,32 @@ _TRIAL_RUN_TERMS = (
     "算一下",
 )
 
+_SQL_PREPARE_TERMS = (
+    "sql",
+    "脚本",
+    "查询语句",
+    "怎么写",
+)
+
+_RULE_EXPLANATION_TERMS = (
+    "定义",
+    "公式",
+    "口径",
+    "怎么算",
+    "如何计算",
+    "分子",
+    "分母",
+    "含义",
+    "什么意思",
+)
+
+_SEMANTIC_INTENT_EXAMPLES = {
+    "sql_prepare": ("生成查询脚本", "给出数据库查询语句", "如何写取数脚本"),
+    "diagnosis": ("为什么结果对不上", "排查数值异常原因", "结果算错了"),
+    "trial_run": ("计算实际指标值", "查出这段时间的数值", "给我统计结果"),
+    "rule_explanation": ("解释指标口径", "说明分子分母", "这个比例如何计算"),
+}
+
 _COMPOUND_INDICATOR_SPLIT = re.compile(
     r"(?:[,，;；]\s*)?(?:还有|以及|另外(?:再|还|也)?|同时(?:还|也)?(?:查询|计算|查看|看看)?)"
 )
@@ -121,6 +157,44 @@ def _classify_request_kind(user_message: str) -> str | None:
         return "diagnosis"
     if any(term in compact for term in _TRIAL_RUN_TERMS):
         return "trial_run"
+    return None
+
+
+def _classify_business_plan_kind(user_message: str) -> str | None:
+    """规则高置信优先，语义近似次之，无法确认时交给 Planner。"""
+    compact = re.sub(r"\s+", "", str(user_message or "")).lower()
+    if any(term in compact for term in _SQL_PREPARE_TERMS):
+        return "sql_prepare"
+    if any(term in compact for term in _DIAGNOSIS_TERMS):
+        return "diagnosis"
+    if any(term in compact for term in _TRIAL_RUN_TERMS):
+        return "trial_run"
+    if any(term in compact for term in _RULE_EXPLANATION_TERMS):
+        return "rule_explanation"
+    semantic_query = re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", compact)
+    if not semantic_query:
+        return None
+    ranked = sorted(
+        (
+            (
+                max(
+                    SequenceMatcher(
+                        None,
+                        semantic_query,
+                        re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", example.lower()),
+                    ).ratio()
+                    for example in examples
+                ),
+                kind,
+            )
+            for kind, examples in _SEMANTIC_INTENT_EXAMPLES.items()
+        ),
+        reverse=True,
+    )
+    if ranked[0][0] >= 0.72 and (
+        len(ranked) == 1 or ranked[0][0] - ranked[1][0] >= 0.08
+    ):
+        return ranked[0][1]
     return None
 
 
@@ -165,6 +239,47 @@ def _compound_result_plan(clause: str) -> RequestPlan:
         goal=f"查询{target_name}在服务端统一统计周期内的具体结果",
         target_indicator=TargetIndicator(raw_name=target_name),
         requested_outputs=[RequestedOutput.TRIAL_RESULT],
+    )
+
+
+def _compound_indicator_plan(
+    indicator: ResolvedIndicator,
+    kind: str,
+) -> RequestPlan:
+    target = TargetIndicator(
+        raw_name=indicator.canonical_name,
+        rule_id=indicator.rule_id,
+    )
+    if kind == "sql_prepare":
+        return RequestPlan(
+            intent=PlanIntent.INDICATOR_SQL_PREPARE,
+            goal=f"生成{indicator.canonical_name}在统一统计周期内的受控 SQL",
+            target_indicator=target,
+            requested_outputs=[RequestedOutput.PREPARED_SQL_HANDLE],
+        )
+    if kind == "diagnosis":
+        return RequestPlan(
+            intent=PlanIntent.INDICATOR_DIAGNOSIS,
+            goal=f"诊断{indicator.canonical_name}的异常或差异原因",
+            target_indicator=target,
+            requested_outputs=[RequestedOutput.DIAGNOSIS],
+        )
+    if kind == "trial_run":
+        return RequestPlan(
+            intent=PlanIntent.INDICATOR_TRIAL_RUN,
+            goal=f"查询{indicator.canonical_name}在统一统计周期内的具体结果",
+            target_indicator=target,
+            requested_outputs=[RequestedOutput.TRIAL_RESULT],
+        )
+    return RequestPlan(
+        intent=PlanIntent.RULE_EXPLANATION,
+        goal=f"解释{indicator.canonical_name}的定义、公式和本院口径",
+        target_indicator=target,
+        requested_outputs=[
+            RequestedOutput.DEFINITION,
+            RequestedOutput.FORMULA,
+            RequestedOutput.EXPLANATION,
+        ],
     )
 
 
@@ -783,6 +898,7 @@ class AgentRunner:
         event_callback: AgentEventCallback | None = None,
         trace_callback: AgentEventCallback | None = None,
         planning_runtime: AgentPlanningRuntime | None = None,
+        indicator_resolver: HybridIndicatorResolver | None = None,
         compound_concurrency: int = 1,
         model_provider: str = "ollama",
     ) -> None:
@@ -795,6 +911,7 @@ class AgentRunner:
         self.event_callback = event_callback
         self.trace_callback = trace_callback
         self.planning_runtime = planning_runtime
+        self.indicator_resolver = indicator_resolver
         self.compound_concurrency = max(1, int(compound_concurrency))
         self.model_provider = model_provider
         self.compound_semaphore = asyncio.Semaphore(self.compound_concurrency)
@@ -871,7 +988,17 @@ class AgentRunner:
         context: AgentRuntimeContext,
         run_state: AgentRunState,
     ) -> AgentRunResult | None:
-        subqueries = _split_compound_indicator_query(user_message)
+        resolution = _ACTIVE_INDICATOR_RESOLUTION.get()
+        resolved_indicators = (
+            list(resolution.indicators)
+            if resolution is not None and len(resolution.indicators) >= 2
+            else []
+        )
+        subqueries = (
+            [item.canonical_name for item in resolved_indicators]
+            if resolved_indicators
+            else _split_compound_indicator_query(user_message)
+        )
         followup_kind = _compound_followup_kind(user_message, run_state)
         followup_rule_ids = (
             list(run_state.current_rule_ids)
@@ -922,12 +1049,15 @@ class AgentRunner:
                 "subqueries": subqueries,
                 "followup_kind": followup_kind,
                 "followup_rule_ids": followup_rule_ids,
+                "resolved_indicators": [
+                    item.model_dump(mode="json") for item in resolved_indicators
+                ],
                 "common_time_range": forced_time_range,
             },
             processing_data={
-                "description": "按明确并列连接词或已保存的复数指标指代拆分子任务，并绑定同一统计周期。"
+                "description": "按规则、语义与候选消歧结果，或已保存的复数指标指代拆分子任务，并绑定同一统计周期。"
             },
-            config_data={"splitter": "deterministic_compound_indicator", "max_tasks": 3},
+            config_data={"splitter": "hybrid_indicator_resolution", "max_tasks": 3},
         )
 
         base_state = self._compound_subtask_state(run_state)
@@ -939,6 +1069,16 @@ class AgentRunner:
                 plan_override = _compound_followup_plan(
                     followup_rule_ids[index - 1],
                     str(followup_kind),
+                )
+            elif resolved_indicators:
+                plan_kind = _classify_business_plan_kind(user_message)
+                plan_override = (
+                    _compound_indicator_plan(
+                        resolved_indicators[index - 1],
+                        plan_kind,
+                    )
+                    if plan_kind is not None
+                    else None
                 )
             else:
                 plan_override = (
@@ -1060,7 +1200,11 @@ class AgentRunner:
 
         stop_reason = "final_answer" if successful_count else failure_reason
 
-        active_rule_ids = followup_rule_ids or list(dict.fromkeys(resolved_rule_ids))
+        active_rule_ids = (
+            followup_rule_ids
+            or [item.rule_id for item in resolved_indicators]
+            or list(dict.fromkeys(resolved_rule_ids))
+        )
         run_state.current_rule_ids = active_rule_ids[:3] if len(active_rule_ids) >= 2 else []
         self._trace(
             node_name="compound_result_merge",
@@ -1103,12 +1247,43 @@ class AgentRunner:
             )
             self._emit_terminal(result)
             return result
+        resolution_token = None
         try:
+            indicator_resolution = None
+            if self.indicator_resolver is not None:
+                try:
+                    indicator_resolution = await self.indicator_resolver.resolve(
+                        user_message,
+                        context.hospital_id,
+                    )
+                except Exception:
+                    logger.exception("hybrid indicator resolution failed")
+                    self._trace(
+                        node_name="indicator_resolution",
+                        node_type="code",
+                        status="warning",
+                        duration_ms=1,
+                        input_data={"user_message": user_message},
+                        output_data={"fallback": "existing_planner_and_splitter"},
+                        processing_data={
+                            "description": "指标理解层异常时回退现有 Planner 与复合拆分链路。"
+                        },
+                        config_data={"resolver": "HybridIndicatorResolver"},
+                    )
+            resolution_token = _ACTIVE_INDICATOR_RESOLUTION.set(
+                indicator_resolution
+            )
             compound_count = 1
             if self.planning_runtime is not None:
                 explicit_count = len(_split_compound_indicator_query(user_message))
                 compound_count = (
-                    explicit_count
+                    (
+                        len(indicator_resolution.indicators)
+                        if indicator_resolution is not None
+                        and len(indicator_resolution.indicators) >= 2
+                        else 0
+                    )
+                    or explicit_count
                     or (
                         len(run_state.current_rule_ids)
                         if _compound_followup_kind(user_message, run_state)
@@ -1133,6 +1308,9 @@ class AgentRunner:
                 stop_reason="request_timeout",
                 state=run_state,
             )
+        finally:
+            if resolution_token is not None:
+                _ACTIVE_INDICATOR_RESOLUTION.reset(resolution_token)
         self._emit_terminal(result)
         return result
 
@@ -1175,6 +1353,30 @@ class AgentRunner:
         if not run_state.subtask_id:
             run_state.subtask_id = context.request_id
         _ACTIVE_SUBTASK_ID.set(run_state.subtask_id)
+        resolution = _ACTIVE_INDICATOR_RESOLUTION.get()
+        if allow_compound and resolution is not None and resolution.needs_clarification:
+            descriptions = []
+            for ambiguity in resolution.ambiguities:
+                candidates = "、".join(
+                    str(item.get("canonical_name") or item.get("rule_id") or "")
+                    for item in ambiguity.candidates
+                    if item.get("canonical_name") or item.get("rule_id")
+                )
+                if candidates:
+                    descriptions.append(f"“{ambiguity.mention}”可能指：{candidates}")
+            run_state.stop_reason = "need_clarification"
+            return AgentRunResult(
+                answer=(
+                    "检测到指标名称存在歧义，请明确选择具体指标。"
+                    + (
+                        "\n\n" + "\n".join(descriptions)
+                        if descriptions
+                        else ""
+                    )
+                ),
+                stop_reason="need_clarification",
+                state=run_state,
+            )
         if allow_compound and self.planning_runtime is not None:
             compound_result = await self._run_compound_request(
                 user_message,
@@ -1214,6 +1416,16 @@ class AgentRunner:
                     context,
                     run_state,
                     forced_time_range=forced_time_range,
+                    forced_indicator=(
+                        TargetIndicator(
+                            raw_name=resolution.indicators[0].canonical_name,
+                            rule_id=resolution.indicators[0].rule_id,
+                        )
+                        if allow_compound
+                        and resolution is not None
+                        and len(resolution.indicators) == 1
+                        else None
+                    ),
                     request_plan_override=request_plan_override,
                 )
             except AgentPlanningError:

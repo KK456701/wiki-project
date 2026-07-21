@@ -3,7 +3,7 @@
 本目录只使用项目现有的 PyYAML、Pydantic 和 pytest，不引入新的运行依赖。
 
 - `cases.yaml`：业务语义与安全样例。
-- `run_model_matrix.py`：按需调用指定模型生成 RequestPlan，并输出同口径矩阵；没有显式传入 `--models` 时不会调用任何模型。
+- `run_model_matrix.py`：按需调用指定模型生成 RequestPlan，并用当前术语库的混合指标识别器核对复合请求；没有显式传入 `--models` 时不会调用任何模型。
 - `test_eval_dataset.py`：只校验数据集结构和覆盖面，不调用模型。
 
 手动运行模型矩阵：

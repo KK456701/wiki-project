@@ -422,6 +422,7 @@ class AgentRuntimeService:
             ensure_evidence_schema,
         )
         from app.agent_planning import PlanVerifier
+        from app.agent_understanding import HybridIndicatorResolver
 
         engine = create_runtime_engine()
         ensure_agent_sql_object_schema(engine)
@@ -512,6 +513,15 @@ class AgentRuntimeService:
             if self.planning_enabled
             else None
         )
+        indicator_resolver = (
+            HybridIndicatorResolver(
+                orchestrator.terminology_normalizer,
+                adapter=planner_adapter,
+                trace_callback=event_callback,
+            )
+            if self.planning_enabled
+            else None
+        )
         return AgentRunner(
             adapter,
             registry,
@@ -523,6 +533,7 @@ class AgentRuntimeService:
             event_callback=event_callback,
             trace_callback=event_callback,
             planning_runtime=planning_runtime,
+            indicator_resolver=indicator_resolver,
             compound_concurrency=(
                 max(1, get_int("compound_ollama_concurrency", 1))
                 if model_info.provider == "ollama"

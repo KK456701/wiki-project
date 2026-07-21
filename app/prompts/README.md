@@ -14,6 +14,7 @@
 | `agent_final_answer_context.txt` | Final Answer / 会话上下文包装器 | `AgentConversationMemory` | 注入当前日期、结构化状态和最多 8 轮最近对话 |
 | `agent_final_answer_step.txt` | Final Answer / 最终回答约束 | `AgentPlanningRuntime.instruction` | 声明目标指标、规则、统计周期以及当前阶段禁止调用工具 |
 | `agent_final_answer_corrections.txt` | Final Answer / 回答纠错器 | `AgentRunner` | 最终回答为空、非中文、缺少证据、事实不一致或误输出工具协议时最多纠正一次 |
+| `indicator_candidate_disambiguator.txt` | Indicator Disambiguator / 指标候选消歧器 | `app.agent_understanding.HybridIndicatorResolver` | 正式名称和本地语义召回仍留下多个接近候选时，只在服务端候选 `rule_id` 内选择；证据不足返回 `null` |
 
 ## 指标实施草稿
 

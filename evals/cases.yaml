@@ -46,6 +46,12 @@ cases:
     expected:
       compound: true
       indicator_count: 2
+  - id: multi_indicator_comma_only
+    category: compound_request
+    query: 急会诊及时到位率，患者入院48小时内转科的比例怎么算
+    expected:
+      compound: true
+      indicator_count: 2
   - id: sql_only_not_trial
     category: sql_vs_trial
     query: 只生成急会诊及时到位率今年的SQL，不要执行

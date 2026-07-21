@@ -20,6 +20,7 @@ def test_all_production_llm_prompts_are_loadable_from_one_directory() -> None:
         "indicator_draft_repair",
         "diagnosis_evidence",
         "diagnosis_compose",
+        "indicator_candidate_disambiguator",
     }
 
     assert callable(getattr(prompts, "load_prompt", None))

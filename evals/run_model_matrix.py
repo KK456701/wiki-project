@@ -16,9 +16,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.agent_planning import ModelRequestPlanner  # noqa: E402
+from app.agent_understanding import HybridIndicatorResolver  # noqa: E402
 from app.agent_runtime.contracts import AgentRunState, AgentRuntimeContext  # noqa: E402
-from app.agent_runtime.runner import _split_compound_indicator_query  # noqa: E402
+from app.db.engine import create_runtime_engine  # noqa: E402
 from app.llm.model_registry import get_model_registry  # noqa: E402
+from app.terminology.normalizer import TerminologyNormalizer  # noqa: E402
+from app.terminology.repository import TerminologyRepository  # noqa: E402
 
 
 def _load_cases() -> list[dict[str, Any]]:
@@ -63,18 +66,31 @@ async def _run(models: list[str]) -> dict[str, Any]:
     cases = _load_cases()
     matrix: dict[str, Any] = {"generated_at": datetime.now().isoformat(), "models": {}}
     for model_id in models:
-        planner = ModelRequestPlanner(registry.build_adapter(model_id, role="planner"))
+        planner_adapter = registry.build_adapter(model_id, role="planner")
+        planner = ModelRequestPlanner(planner_adapter)
+        indicator_resolver = HybridIndicatorResolver(
+            TerminologyNormalizer(TerminologyRepository(create_runtime_engine())),
+            adapter=planner_adapter,
+        )
         results = []
         for case in cases:
             if case.get("expected", {}).get("compound"):
-                subqueries = _split_compound_indicator_query(case["query"])
+                resolution = await indicator_resolver.resolve(
+                    case["query"],
+                    "hospital_001",
+                )
                 expected_count = int(case["expected"].get("indicator_count") or 0)
                 results.append({
                     "id": case["id"],
-                    "passed": len(subqueries) == expected_count,
-                    "checks": {"indicator_count": len(subqueries) == expected_count},
-                    "subqueries": subqueries,
-                    "execution": "deterministic_server_splitter",
+                    "passed": len(resolution.indicators) == expected_count,
+                    "checks": {
+                        "indicator_count": len(resolution.indicators) == expected_count
+                    },
+                    "indicators": [
+                        item.model_dump(mode="json")
+                        for item in resolution.indicators
+                    ],
+                    "execution": "hybrid_indicator_resolver",
                 })
                 continue
             state = AgentRunState.model_validate(case.get("state") or {})

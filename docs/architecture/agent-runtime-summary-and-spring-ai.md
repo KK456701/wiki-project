@@ -25,7 +25,11 @@
 ```mermaid
 flowchart LR
     UI["Web 对话页<br/>模型选择、上传文件、SSE"] --> API["AgentRuntimeService<br/>鉴权、医院上下文、会话、超时"]
-    API --> SEM["语义层<br/>Planner LLM 或确定性复合子计划"]
+    API --> IDENTIFY["指标理解层<br/>规则匹配 + 本地语义召回"]
+    IDENTIFY --> AMBIG{"候选唯一？"}
+    AMBIG -->|"否"| IDLLM["候选消歧 LLM<br/>只选给定 rule_id 或 null"]
+    AMBIG -->|"是"| SEM["业务语义层<br/>Planner LLM 或确定性复合子计划"]
+    IDLLM --> SEM
     SEM --> IR["计划层<br/>RequestPlan -> CompiledPlan IR"]
     IR --> EXEC["执行层<br/>Controller -> Dispatch -> PDP/PEP"]
     EXEC --> DOMAIN["领域层<br/>规则、SQL、诊断、预览、Excel"]
@@ -47,8 +51,8 @@ flowchart LR
     classDef code fill:#e8f3ff,stroke:#3979a8,color:#153b57;
     classDef tool fill:#fff1df,stroke:#c87924,color:#5c330e;
     classDef storage fill:#e6f5ed,stroke:#3d8b68,color:#16462f;
-    class SEM,REPLAN,OUT,DRAFT,DIAG llm;
-    class API,IR,EXEC code;
+    class SEM,IDLLM,REPLAN,OUT,DRAFT,DIAG llm;
+    class API,IDENTIFY,AMBIG,IR,EXEC code;
     class DOMAIN tool;
     class MEM,DB,EV,TRACE storage;
 ```
@@ -144,12 +148,13 @@ DeepSeek 名称是当前部署传给兼容 API 的模型标识，不代表本文
 | 所属链路 | LLM 节点 | 做什么 | 什么时候执行 | 不做什么 |
 |---|---|---|---|---|
 | 主 Agent | Planner | 把自然语言转换成 `RequestPlan`：意图、指标原文、时间原文、输出目标和歧义 | 普通单任务请求；复合子任务已有确定性计划时可跳过 | 不输出工具名、不生成执行步骤、不计算日期边界、不写 SQL |
+| 主 Agent | 指标候选消歧 | 从服务端提供的相近指标候选中选择 `rule_id` 或返回空 | 规则和本地语义无法唯一确认指标时 | 不创造指标、不决定工具或 SQL、不扩大候选范围 |
 | 主 Agent | Replanner | 重新生成 `RequestPlan` | 只有失败 ToolResult 被归类为语义计划错误、任务类型错误、用户改变目标或存在合法替代方向时，最多执行一次 | 不处理数据库错误、权限错误、对象过期、缺时间、Evidence 冲突和普通工具异常 |
 | 主 Agent | Final Answer | 根据当前子任务已验证结果组织中文回答 | 证据完整且没有确定性模板答案时 | 不调用工具、不访问数据库、不从历史回答回忆数值 |
 | 独立指标草稿管理 API | `IndicatorDraftParser` | 把新增指标描述解析成结构化草稿；结构校验失败时允许一次修复 | 调用指标草稿 API 时，使用固定 `OllamaClient()`，不跟随聊天页模型选择 | 不发布规则、不执行 SQL；不属于主对话 Runtime |
 | 粘贴 SQL 诊断子链 | 诊断证据补充解析与 `DiagnosisNarrator` | 在确定性解析基础上补充无法直接确认的描述，并把已验证比较结果组织成业务说明 | 用户诊断材料中确实包含 SQL 且进入粘贴 SQL 对比路径时；模型失败则使用确定性解析和模板 | 不替代 SQL 安全检查；与确定性证据冲突时采用确定性结果；不补造数据或原因 |
 
-主 Agent 的 Planner、Replanner 和 Final Answer 都收到空工具列表。工具名、调用顺序和参数由服务端代码决定。后两项是独立业务子链中的 LLM 调用，不是每轮对话都会经过的 Agent 节点。
+主 Agent 的指标候选消歧、Planner、Replanner 和 Final Answer 都收到空工具列表。工具名、调用顺序和参数由服务端代码决定。指标候选消歧只在低置信候选场景出现；指标草稿与诊断说明是独立业务子链中的 LLM 调用，不是每轮对话都会经过的 Agent 节点。
 
 当前聊天 Runtime 虽然在工具目录中注册了 `create_indicator_draft`，但 `CapabilitySpecRegistry` 尚未为它定义可编译 Capability，而且聊天 Runtime 装配的 `IndicatorGenerationAgent` 没有注入 draft parser/repository。因此当前可用的 LLM 草稿解析入口是独立指标草稿 API，不能把它画成主对话链中的可执行节点。
 

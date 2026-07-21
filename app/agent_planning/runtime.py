@@ -14,6 +14,7 @@ from .contracts import (
     PlanIntent,
     RequestPlan,
     RequestedOutput,
+    TargetIndicator,
     TimeExpression,
 )
 from .controller import AgentStateController, ControllerDecision
@@ -286,6 +287,7 @@ class AgentPlanningRuntime:
         state: AgentRunState,
         *,
         forced_time_range: tuple[str, str] | None = None,
+        forced_indicator: TargetIndicator | None = None,
         request_plan_override: RequestPlan | None = None,
     ) -> PlanningExecution:
         now = self.now_provider()
@@ -299,6 +301,8 @@ class AgentPlanningRuntime:
                 now=now,
             )
         request_plan = request_plan.model_copy(deep=True)
+        if forced_indicator is not None:
+            request_plan.target_indicator = forced_indicator.model_copy(deep=True)
         if (
             not request_plan.target_indicator.rule_id
             and not request_plan.target_indicator.raw_name

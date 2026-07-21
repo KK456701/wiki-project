@@ -1,6 +1,6 @@
 # 当前 Agent 框架、模型、工具与架构决策
 
-> 更新日期：2026-07-20。本文以当前生产配置和代码为准，描述旧稳定流程和 Shadow 删除后的 Agent Runtime。
+> 更新日期：2026-07-21。本文以当前生产配置和代码为准，描述旧稳定流程和 Shadow 删除后的 Agent Runtime。
 >
 > 更适合快速阅读、打印和评审的分图版本，以及附件 PDF 的逐项核对和 Spring AI/Java 迁移方案，见 [`agent-runtime-summary-and-spring-ai.md`](agent-runtime-summary-and-spring-ai.md)。
 
@@ -21,7 +21,12 @@ flowchart TD
     U["医院用户"] --> WEB["Web 对话页<br/>选择模型、上传文件"]
     WEB -->|"POST /api/agent/chat/stream"| AUTH["登录、医院与权限校验"]
     AUTH --> MEM["读取会话状态<br/>结构化状态 + 最近 8 轮"]
-    MEM --> SPLIT{"复合指标请求？"}
+    MEM --> MATCH["指标规则匹配<br/>正式名称、简称、已审核别名"]
+    MATCH --> SEMANTIC["本地语义召回<br/>字符相似度与唯一阈值"]
+    SEMANTIC --> AMBIG{"候选仍接近？"}
+    AMBIG -->|"是"| DISAMBIG["指标候选消歧 LLM<br/>只能选择给定 rule_id 或 null"]
+    AMBIG -->|"否"| SPLIT{"识别到多个指标？"}
+    DISAMBIG --> SPLIT
     SPLIT -->|"是"| SUB["确定性拆分 2 至 3 个隔离子任务<br/>公共统计周期只解析一次"]
     SPLIT -->|"否"| ONE["单一业务子任务"]
     SUB --> ENTRY{"可确定性构造计划？"}
@@ -61,8 +66,8 @@ flowchart TD
     classDef code fill:#e8f3ff,stroke:#3979a8,color:#153b57;
     classDef tool fill:#fff1df,stroke:#c87924,color:#5c330e;
     classDef storage fill:#e6f5ed,stroke:#3d8b68,color:#16462f;
-    class PLAN,REPLAN,FINAL llm;
-    class AUTH,SPLIT,SUB,ONE,ENTRY,FAST,REG,COMPILE,CTRL,DISPATCH,PDP,VERIFY,CLARIFY,ANSWER,TEMPLATE,GUARD,MERGE,SSE code;
+    class PLAN,REPLAN,FINAL,DISAMBIG llm;
+    class AUTH,MATCH,SEMANTIC,AMBIG,SPLIT,SUB,ONE,ENTRY,FAST,REG,COMPILE,CTRL,DISPATCH,PDP,VERIFY,CLARIFY,ANSWER,TEMPLATE,GUARD,MERGE,SSE code;
     class GATE,TOOLS,RULE,SQL,OTHER,EVIDENCE tool;
     class MEM,SAVE storage;
 ```
@@ -94,12 +99,13 @@ flowchart TD
 | 场景 | 模型职责 | 是否能调用工具 | 失败控制 |
 |---|---|---:|---|
 | Planner | 把自然语言转换为 `RequestPlan`：意图、指标原文、时间原文、需要的输出和歧义 | 否 | 严格 JSON/Pydantic 校验；最多修复一次 |
+| 指标候选消歧 | 仅在规则和本地语义仍留下多个接近候选时，从服务端给定的 `rule_id` 中选择或返回空 | 否 | 严格 JSON；越界或虚构 `rule_id` 直接拒绝并要求用户澄清 |
 | Replanner | 仅在原计划方向被证据证明错误时重规划 | 否 | 默认最多 1 次，并携带失败指纹防止重复路径 |
 | Final Answer | 根据本轮已验证证据组织中文回答 | 否 | 空回答、缺证据和工具协议泄漏最多纠正一次 |
 | 指标草稿解析 | 把新增指标描述解析为结构化草稿 | 否 | 严格结构校验，失败最多修复一次 |
 | 诊断证据抽取/说明 | 从用户诊断材料提取结构化信息，或把已验证结论转成医生可读说明 | 否 | 安全守卫失败时使用确定性模板 |
 
-统计周期解析、复合指标拆分、候选指标选择、工具选择、工具参数、SQL 生成、只读校验、数值复算和患者明细导出都不是由 LLM 自由完成。
+统计周期解析、复合指标拆分、工具选择、工具参数、SQL 生成、只读校验、数值复算和患者明细导出都不是由 LLM 自由完成。指标识别以规则和本地语义为主；LLM 只拥有候选内消歧权，不拥有新增候选或执行工具的权限。
 
 ## 当前工具目录
 
@@ -125,7 +131,8 @@ flowchart TD
 |---|---|---|---|---|
 | `AgentRuntimeService` | 代码 | 登录主体、问题、会话、模型和文件引用 | 运行上下文、SSE、Trace | 统一鉴权、医院隔离、超时和生命周期 |
 | `AgentConversationMemory` | 存储 | 当前会话及本轮结果 | 结构化指标/周期状态和最近 8 轮 | 解决“这个、这两个、从刚才时间算”等跨轮指代 |
-| `CompoundRequestSplitter` | 代码 | 多指标自然语言 | 2 至 3 个隔离子任务 | 防止一个模型计划只处理第一个指标或串用证据 |
+| `HybridIndicatorResolver` | 代码 + 可选 LLM | 用户原话、术语库、当前医院 | 有序指标列表、来源、置信度或歧义候选 | 支持非精确名称和只用标点并列的多指标问法；LLM 只能候选内消歧 |
+| `CompoundRequestSplitter` | 代码 | 已识别指标列表或复数指代 | 2 至 3 个隔离子任务 | 防止单值 Planner 只处理第一个指标或串用证据 |
 | `ModelRequestPlanner` | LLM | 当前问题、结构化状态、压缩历史 | 不含工具名的 `RequestPlan` | 让模型只做擅长的语义理解，不承担工具路由 |
 | `PlanCompiler` | 代码 | `RequestPlan` | 有前置事实和产出事实的 `CompiledPlan` | 工具改名或实现重构不需要修改 Planner 提示词 |
 | `CapabilitySpecRegistry` | 代码 | 能力规范与工具注册表 | 版本化依赖图、工具、参数编译器、策略、验证器 | 消除 Compiler、Controller、Dispatch、Verifier 中的重复能力映射，并在启动时拒绝非法图 |
@@ -141,7 +148,7 @@ flowchart TD
 
 ## 全阶段 Trace
 
-每轮对话按真实执行顺序记录 `memory_load`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_gateway`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`。复合请求额外记录拆分、排队、隔离执行与合并节点。`executor_llm` 只作为历史 Trace 别名保留，新运行不再产生该节点。
+每轮对话按真实执行顺序记录 `memory_load`、`indicator_rule_match`、`indicator_semantic_retrieval`、可选 `indicator_llm_disambiguation`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_gateway`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`。复合请求额外记录拆分、排队、隔离执行与合并节点。`executor_llm` 只作为历史 Trace 别名保留，新运行不再产生该节点。
 
 节点类型为 `llm`、`code`、`tool`、`storage`，前端分别使用紫、蓝、橙、绿显示。每个节点包含中英文名称、耗时、完整安全 `input_data`、`output_data`、`processing_data` 和 `config_data`。完整安全数据保留 system prompt、最近会话、结构化状态、工具 schema、SQL 相关参数和聚合结果，但递归移除密码、令牌、Authorization、连接串、患者标识和患者行级明细；隐藏思维链从不进入运行契约。
 
@@ -177,6 +184,15 @@ flowchart TD
 成功的 `TRIAL_RUN_COMPLETED` 会返回经过校验的 `RUN_ID`。Runner 只检查本轮新增工具结果，并确定性追加 `detail_export` UI 标记；模型不能指定或复用其他运行编号。前端将该标记渲染为“查看明细并导出 Excel”，随后调用现有明细 API 创建短期快照。明细边界的 `RunContext` 会把新版 Agent SQL 快照中的 `effective_rule`、`field_mapping`、`db_source_id` 和统计区间确定性转换为明细契约，同时继续接受旧版平铺快照；不修改原快照和聚合结果。快照生成时再次核对规则、医院、统计区间及分子分母数量，页面预览和 Excel 下载分别要求 `indicator_detail_view`、`indicator_detail_export` 权限，患者行级数据不进入 LLM、SSE 或 Trace。上下文校验失败只返回 `DETAIL_CONTEXT_INVALID` 中文提示，内部 Pydantic 字段和值不发送到浏览器。
 
 ## 生产环境中的 LLM 调用点
+
+### 0. 指标候选消歧
+
+- 位置：`app/agent_understanding/indicator_resolver.py`。
+- 提示词：`app/prompts/indicator_candidate_disambiguator.txt`。
+- 触发：正式名称、简称、医院别名没有唯一命中，且本地字符语义召回得到多个相近候选时；精确或高置信唯一命中不调用模型。
+- 输入：用户原话和最多 3 个服务端候选，候选包含固定 `group_id`、`rule_id`、标准名称与相似度。
+- 输出：严格 JSON，只能为每组返回候选中的 `rule_id` 或 `null`。虚构、越界或非法 JSON 一律拒绝，不重试工具、不扩大搜索范围，转为用户澄清。
+- 工具：空列表；该节点不决定意图、计划、工具、日期或 SQL。
 
 ### 1. 对话 Planner
 
