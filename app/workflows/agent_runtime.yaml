@@ -3,6 +3,48 @@ name: 工具调用型 Agent 运行链路
 description: 记录从会话读取、业务规划、状态控制、模型执行、工具观察、证据校验到会话保存的真实阶段。
 
 nodes:
+  - id: indicator_rule_match
+    agent_owner: human_interaction
+    title: 规则识别指标
+    type: code
+    description: 在完整用户文本中扫描正式名称、简称和已审核医院别名，并映射到权威 rule_id。
+    inputs: [query, hospital_id]
+    outputs: [matches, normalization_ambiguities]
+    required: false
+    on_failure: continue
+    required_inputs: [query, hospital_id]
+    required_outputs: [matches]
+    config: {resolver_layer: rule, llm_calls: 0}
+    failure_hint: 检查术语发布版本、别名审核状态和规则关联。
+
+  - id: indicator_semantic_retrieval
+    agent_owner: human_interaction
+    title: 语义召回指标
+    type: code
+    description: 对规则未命中的疑似指标片段做本地相似度召回，产生唯一结果或有限候选。
+    inputs: [segments]
+    outputs: [resolved, candidate_groups]
+    required: false
+    on_failure: continue
+    required_inputs: [segments]
+    required_outputs: [resolved, candidate_groups]
+    config: {resolver_layer: local_semantic, llm_calls: 0}
+    failure_hint: 检查疑似指标片段、相似度阈值和候选分差。
+
+  - id: indicator_llm_disambiguation
+    agent_owner: human_interaction
+    title: 模型消歧指标候选
+    type: llm
+    description: 仅在本地候选无法唯一确认时，让当前模型从服务端候选 rule_id 中选择或返回 null。
+    inputs: [messages, tools, temperature]
+    outputs: [raw_content, resolved, remaining_groups]
+    required: false
+    on_failure: continue
+    required_inputs: [messages]
+    required_outputs: []
+    config: {prompt_file: indicator_candidate_disambiguator.txt, tools: none, candidate_only: true}
+    failure_hint: 检查候选组、模型 JSON 和返回的 rule_id 是否属于候选。
+
   - id: compound_request_split
     agent_owner: human_interaction
     title: 拆分复合指标任务

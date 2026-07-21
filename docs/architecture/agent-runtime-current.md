@@ -148,9 +148,11 @@ flowchart TD
 
 ## 全阶段 Trace
 
-每轮对话按真实执行顺序记录 `memory_load`、`indicator_rule_match`、`indicator_semantic_retrieval`、可选 `indicator_llm_disambiguation`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_gateway`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`。复合请求额外记录拆分、排队、隔离执行与合并节点。`executor_llm` 只作为历史 Trace 别名保留，新运行不再产生该节点。
+每轮对话按真实执行顺序记录 `memory_load`、`indicator_rule_match`、`indicator_semantic_retrieval`、可选 `indicator_llm_disambiguation`、可选 `planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_gateway`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`。规则或本地语义已经唯一确认指标时不调用 `indicator_llm_disambiguation`；复合指标能够由服务端生成确定性子计划时不调用 `planner_llm`。复合请求额外记录拆分、排队、隔离执行与合并节点，每个实际最终回答模型调用仍记录在对应子任务泳道。`executor_llm` 只作为历史 Trace 别名保留，新运行不再产生该节点。
 
 节点类型为 `llm`、`code`、`tool`、`storage`，前端分别使用紫、蓝、橙、绿显示。每个节点包含中英文名称、耗时、完整安全 `input_data`、`output_data`、`processing_data` 和 `config_data`。完整安全数据保留 system prompt、最近会话、结构化状态、工具 schema、SQL 相关参数和聚合结果，但递归移除密码、令牌、Authorization、连接串、患者标识和患者行级明细；隐藏思维链从不进入运行契约。
+
+Token 数量字段（`prompt_tokens`、`completion_tokens`、`input_tokens`、`output_tokens` 和 `total_tokens`）属于安全性能指标，不按认证令牌处理；认证 token、Authorization 和业务密钥仍严格脱敏。这样既不会丢失 LLM 节点，也不会把访问凭据写入 Trace。
 
 公开 SSE 仍只投影业务摘要。完整节点只通过同医院登录态校验后的 `/api/agent/runs/{trace_id}` 返回。新节点包含 `node_id`、父节点、`subtask_id`、序号、真实开始偏移、总/独占耗时、能力、工具、模型、FailureClass、Token、缓存和重试；旧记录缺字段时按历史顺序降级展示。
 

@@ -349,6 +349,42 @@ def test_compound_sql_followup_reuses_all_rule_ids_and_common_period():
     )
 
 
+def test_compound_plural_pronoun_followup_reuses_all_indicator_rule_ids():
+    registry = _registry()
+    runner = CompoundProbeRunner(
+        SequenceAdapter([]),
+        registry,
+        ToolGateway(registry),
+        planning_runtime=AgentPlanningRuntime(
+            planner=StaticPlanner(_rule_plan()),
+            now_provider=lambda: NOW,
+        ),
+    )
+    state = AgentRunState(
+        current_rule_id="MQSI2025_001",
+        current_rule_ids=["MQSI2025_005", "MQSI2025_001"],
+    )
+
+    result = asyncio.run(runner.run(
+        "计算一下他们的具体结果从一月份到现在的",
+        _context(),
+        state,
+    ))
+
+    assert result.stop_reason == "final_answer"
+    assert len(runner.subtasks) == 2
+    plans = [item[2] for item in runner.subtasks]
+    assert [plan.target_indicator.rule_id for plan in plans] == [
+        "MQSI2025_005",
+        "MQSI2025_001",
+    ]
+    assert all(plan.intent.value == "indicator_trial_run" for plan in plans)
+    assert runner.subtasks[0][1] == runner.subtasks[1][1] == (
+        "2026-01-01T00:00:00+08:00",
+        "2026-07-16T12:00:00+08:00",
+    )
+
+
 def test_compound_rule_components_followup_reuses_all_rule_ids():
     registry = _registry()
     runner = CompoundProbeRunner(

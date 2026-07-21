@@ -5,7 +5,7 @@ def test_agent_runtime_trace_manifest_is_valid() -> None:
     result = validate_workflow_manifest("agent_runtime")
 
     assert result["ok"] is True
-    assert result["node_count"] == 19
+    assert result["node_count"] == 22
 
 
 def test_agent_runtime_manifest_separates_dispatch_from_final_answer_model() -> None:

@@ -147,7 +147,10 @@ _INDICATOR_CLAUSE_HINTS = (
 )
 
 _COMPOUND_FOLLOWUP_REFERENCE = re.compile(
-    r"(?:这|上述|上面|前面)(?:两|2|几|多|些)个|这两个|它们|二者|分别"
+    r"(?:这|上述|上面|前面|以上)(?:两|2|几|多|些)个(?:指标)?"
+    r"|这两个(?:指标)?|这些指标|以上指标"
+    r"|它们|他们|它俩|他俩|二者|两者|分别"
+    r"|(?:都|全部)(?:计算|查询|统计|查看|看看|生成|解释)"
 )
 
 
@@ -923,7 +926,10 @@ class AgentRunner:
             payload.setdefault("subtask_id", _ACTIVE_SUBTASK_ID.get())
             self.trace_callback({"event": "trace_node", **payload})
         except Exception:
-            return
+            logger.exception(
+                "agent trace callback failed for node %s",
+                payload.get("node_name") or "agent_stage",
+            )
 
     @staticmethod
     def _compound_subtask_state(parent: AgentRunState) -> AgentRunState:

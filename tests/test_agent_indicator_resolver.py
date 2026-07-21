@@ -144,6 +144,19 @@ def test_semantic_layer_splits_two_imprecise_names_joined_by_and():
     assert not result.needs_clarification
 
 
+def test_long_paragraph_resolves_multiple_imprecise_indicator_mentions():
+    resolver = HybridIndicatorResolver(FakeTerminology(FakeRepository()))
+
+    result = asyncio.run(resolver.resolve(
+        "我们准备做季度复盘，请帮我核对急会诊到位率；"
+        "同时看看48小时转科比例的结果，最后按原顺序说明。",
+        "hospital_001",
+    ))
+
+    assert [item.rule_id for item in result.indicators] == ["RULE_1", "RULE_2"]
+    assert all(item.source == "semantic" for item in result.indicators)
+
+
 def test_llm_can_only_select_rule_id_from_semantic_candidate_group():
     adapter = StaticAdapter(
         '{"selections":[{"group_id":"candidate_1","rule_id":"RULE_1"}]}'

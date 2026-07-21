@@ -11,10 +11,21 @@ _TRACE_SECRET_KEY_PARTS = (
     "姓名", "身份证", "病历", "住院号", "手机号", "地址",
 )
 
+_TRACE_SAFE_TOKEN_METRIC_KEYS = frozenset({
+    "prompt_tokens",
+    "completion_tokens",
+    "input_tokens",
+    "output_tokens",
+    "total_tokens",
+})
+
 
 def redact_trace_payload(value: Any, key: str = "") -> Any:
     normalized_key = key.lower()
-    if any(part in normalized_key for part in _TRACE_SECRET_KEY_PARTS):
+    if (
+        normalized_key not in _TRACE_SAFE_TOKEN_METRIC_KEYS
+        and any(part in normalized_key for part in _TRACE_SECRET_KEY_PARTS)
+    ):
         return "[REDACTED]"
     if isinstance(value, dict):
         return {str(item_key): redact_trace_payload(item_value, str(item_key)) for item_key, item_value in value.items()}
@@ -127,8 +138,10 @@ class AgentTraceBridge:
         subtask_id = str(safe.get("subtask_id") or "root")
         output_data = dict(safe.get("output_data") or {})
         config_data = dict(safe.get("config_data") or {})
-        usage = output_data.get("usage") or {}
-        decision = output_data.get("decision") or {}
+        raw_usage = output_data.get("usage") or {}
+        usage = raw_usage if isinstance(raw_usage, dict) else {}
+        raw_decision = output_data.get("decision") or {}
+        decision = raw_decision if isinstance(raw_decision, dict) else {}
         capability = str(safe.get("capability") or decision.get("capability") or config_data.get("capability") or "")
         model_id = str(safe.get("model_id") or output_data.get("model") or config_data.get("model_id") or config_data.get("model_name") or "")
         attempt = int(output_data.get("attempt") or 1)
@@ -157,12 +170,24 @@ class AgentTraceBridge:
             capability=capability,
             model_id=model_id,
             failure_class=str(safe.get("failure_class") or ""),
-            input_tokens=int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0) or None,
-            output_tokens=int(usage.get("completion_tokens") or usage.get("output_tokens") or 0) or None,
+            input_tokens=self._safe_metric_int(
+                usage.get("prompt_tokens") or usage.get("input_tokens")
+            ),
+            output_tokens=self._safe_metric_int(
+                usage.get("completion_tokens") or usage.get("output_tokens")
+            ),
             cache_reused=bool(safe.get("cache_reused")),
             retry_count=max(0, int(safe.get("retry_count") or attempt - 1)),
         )
         self._last_node_by_subtask[subtask_id] = node_id
+
+    @staticmethod
+    def _safe_metric_int(value: Any) -> int | None:
+        try:
+            parsed = int(value or 0)
+        except (TypeError, ValueError):
+            return None
+        return parsed or None
 
     def record_memory_failure(self, message: str) -> None:
         del message

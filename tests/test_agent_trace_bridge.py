@@ -111,6 +111,35 @@ def test_trace_bridge_records_typed_stage_with_complete_safe_payload() -> None:
     assert node["config_data"]["prompt_file"] == "agent_planner.txt"
 
 
+def test_trace_bridge_preserves_safe_token_counts_for_llm_node() -> None:
+    recorder = FakeRecorder()
+    bridge = AgentTraceBridge(recorder, "TRACE_FINAL")
+
+    bridge.handle({
+        "event": "trace_node",
+        "node_name": "final_answer_llm",
+        "node_type": "llm",
+        "status": "success",
+        "duration_ms": 1200,
+        "input_data": {"messages": [], "authorization": "Bearer secret"},
+        "output_data": {
+            "model": "qwen3:8b",
+            "content": "已完成。",
+            "usage": {"prompt_tokens": 321, "completion_tokens": 45},
+        },
+    })
+
+    node = recorder.nodes[0][1]
+    assert node["node_name"] == "final_answer_llm"
+    assert node["input_tokens"] == 321
+    assert node["output_tokens"] == 45
+    assert node["output_data"]["usage"] == {
+        "prompt_tokens": 321,
+        "completion_tokens": 45,
+    }
+    assert node["input_data"]["authorization"] == "[REDACTED]"
+
+
 def test_trace_bridge_records_memory_failure_without_sensitive_details() -> None:
     recorder = FakeRecorder()
     bridge = AgentTraceBridge(recorder, "TRACE_002")
