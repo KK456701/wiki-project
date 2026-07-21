@@ -1,0 +1,32 @@
+package com.hospital.wikiagent.monitoring;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+import org.springframework.stereotype.Component;
+
+@Component
+public class MonitoringWaveDetector {
+    public Wave detect(Double current, Double mom, Double yoy, boolean momEnabled, double momThreshold,
+            boolean yoyEnabled, double yoyThreshold, boolean noSample) {
+        if (noSample) return new Wave("no_sample", false, null, null);
+        if (current == null) return new Wave("baseline_insufficient", false, null, null);
+        Double momRate = momEnabled ? rate(current, mom) : null;
+        Double yoyRate = yoyEnabled ? rate(current, yoy) : null;
+        boolean momExceeded = momRate != null && Math.abs(momRate) > momThreshold;
+        boolean yoyExceeded = yoyRate != null && Math.abs(yoyRate) > yoyThreshold;
+        String code = momExceeded && yoyExceeded ? "mom_yoy_threshold_exceeded"
+                : momExceeded ? "mom_threshold_exceeded"
+                : yoyExceeded ? "yoy_threshold_exceeded"
+                : momRate != null || yoyRate != null ? "within_threshold" : "baseline_insufficient";
+        return new Wave(code, code.endsWith("threshold_exceeded"), momRate, yoyRate);
+    }
+
+    private static Double rate(double current, Double baseline) {
+        if (baseline == null || baseline == 0) return null;
+        return BigDecimal.valueOf((current - baseline) / Math.abs(baseline) * 100)
+                .setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
+    public record Wave(String conclusionCode, boolean abnormal, Double momChangeRate, Double yoyChangeRate) { }
+}

@@ -234,6 +234,13 @@ export interface MonitoringAlert {
   created_at?: string
 }
 
+export interface MonitoringSchedulerStatus {
+  enabled: boolean
+  status: string
+  last_scan_at?: string
+  last_error_code?: string
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -455,6 +462,25 @@ export async function setMonitoringPlanStatus(
   return readJson(response)
 }
 
+export async function runMonitoringPlan(
+  adminToken: string, hospitalToken: string, hospitalId: string, planId: string, statPeriod = '',
+): Promise<MonitoringResult & { trace_id?: string }> {
+  const response = await fetch(`/api/monitoring/plans/${encodeURIComponent(planId)}/run`, {
+    method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
+    body: JSON.stringify({ hospital_id: hospitalId, stat_period: statPeriod || null }),
+  })
+  return readJson(response)
+}
+
+export async function loadMonitoringSchedulerStatus(
+  adminToken: string,
+): Promise<MonitoringSchedulerStatus> {
+  const response = await fetch('/api/monitoring/scheduler/status', {
+    headers: authHeaders(adminToken),
+  })
+  return readJson(response)
+}
+
 export async function loadMonitoringResults(
   adminToken: string, hospitalToken: string, hospitalId: string,
 ): Promise<{ items: MonitoringResult[] }> {
@@ -480,6 +506,16 @@ export async function transitionMonitoringAlert(
   alertId: string, action: 'acknowledge' | 'close',
 ): Promise<MonitoringAlert> {
   const response = await fetch(`/api/monitoring/alerts/${encodeURIComponent(alertId)}/${action}`, {
+    method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
+    body: JSON.stringify({ hospital_id: hospitalId, actor_id: actorId }),
+  })
+  return readJson(response)
+}
+
+export async function diagnoseMonitoringAlert(
+  adminToken: string, hospitalToken: string, hospitalId: string, actorId: string, alertId: string,
+): Promise<MonitoringAlert> {
+  const response = await fetch(`/api/monitoring/alerts/${encodeURIComponent(alertId)}/diagnose`, {
     method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
     body: JSON.stringify({ hospital_id: hospitalId, actor_id: actorId }),
   })

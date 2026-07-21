@@ -23,7 +23,9 @@ import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.monitoring.MonitoringException;
+import com.hospital.wikiagent.monitoring.MonitoringExecutionService;
 import com.hospital.wikiagent.monitoring.MonitoringRepository;
+import com.hospital.wikiagent.monitoring.MonitoringScheduler;
 import com.hospital.wikiagent.monitoring.MonitoringService;
 import com.hospital.wikiagent.monitoring.MonitoringService.PlanCommand;
 
@@ -34,13 +36,18 @@ public class MonitoringController {
     private final HospitalAuthService hospitals;
     private final MonitoringRepository repository;
     private final MonitoringService service;
+    private final MonitoringExecutionService execution;
+    private final MonitoringScheduler scheduler;
 
     public MonitoringController(AdminSessionService admins, HospitalAuthService hospitals,
-            MonitoringRepository repository, MonitoringService service) {
+            MonitoringRepository repository, MonitoringService service,
+            MonitoringExecutionService execution, MonitoringScheduler scheduler) {
         this.admins = admins;
         this.hospitals = hospitals;
         this.repository = repository;
         this.service = service;
+        this.execution = execution;
+        this.scheduler = scheduler;
     }
 
     @PostMapping("/plans")
@@ -86,6 +93,15 @@ public class MonitoringController {
             @PathVariable String planId, @RequestParam("hospital_id") String hospitalId) {
         authorize(authorization, hospitalAuthorization, hospitalId);
         return service.status(planId, hospitalId, "disabled");
+    }
+
+    @PostMapping("/plans/{planId}/run")
+    public Map<String, Object> runPlan(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @PathVariable String planId, @RequestBody RunRequest request) {
+        HospitalPrincipal principal = authorize(authorization, hospitalAuthorization, request.hospitalId());
+        return execution.runManual(planId, request.hospitalId(), request.statPeriod(), principal);
     }
 
     @GetMapping("/results")
@@ -139,6 +155,29 @@ public class MonitoringController {
                 LocalDateTime.now().withNano(0));
     }
 
+    @PostMapping("/alerts/{alertId}/diagnose")
+    public Map<String, Object> diagnose(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
+            @PathVariable String alertId, @RequestBody AlertActionRequest request) {
+        HospitalPrincipal principal = authorize(authorization, hospitalAuthorization, request.hospitalId());
+        return execution.diagnoseAlert(alertId, request.hospitalId(), principal);
+    }
+
+    @GetMapping("/scheduler/status")
+    public Map<String, Object> schedulerStatus(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        admins.require(authorization);
+        return scheduler.status();
+    }
+
+    @PostMapping("/scheduler/scan")
+    public Map<String, Object> schedulerScan(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        admins.require(authorization);
+        return scheduler.scanDue();
+    }
+
     private HospitalPrincipal authorize(String adminAuthorization, String hospitalAuthorization, String hospitalId) {
         admins.require(adminAuthorization);
         HospitalPrincipal principal = hospitals.authenticate(BearerTokens.require(hospitalAuthorization));
@@ -180,4 +219,8 @@ public class MonitoringController {
     public record AlertActionRequest(
             @JsonProperty("hospital_id") String hospitalId,
             @JsonProperty("actor_id") String actorId) { }
+
+    public record RunRequest(
+            @JsonProperty("hospital_id") String hospitalId,
+            @JsonProperty("stat_period") String statPeriod) { }
 }

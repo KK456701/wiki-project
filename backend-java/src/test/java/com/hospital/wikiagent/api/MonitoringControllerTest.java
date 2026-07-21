@@ -18,12 +18,16 @@ import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.monitoring.MonitoringRepository;
+import com.hospital.wikiagent.monitoring.MonitoringExecutionService;
+import com.hospital.wikiagent.monitoring.MonitoringScheduler;
 import com.hospital.wikiagent.monitoring.MonitoringService;
 
 class MonitoringControllerTest {
     private AdminSessionService admins;
     private HospitalAuthService hospitals;
     private MonitoringRepository repository;
+    private MonitoringExecutionService execution;
+    private MonitoringScheduler scheduler;
     private MonitoringController controller;
 
     @BeforeEach
@@ -31,8 +35,10 @@ class MonitoringControllerTest {
         admins = Mockito.mock(AdminSessionService.class);
         hospitals = Mockito.mock(HospitalAuthService.class);
         repository = Mockito.mock(MonitoringRepository.class);
+        execution = Mockito.mock(MonitoringExecutionService.class);
+        scheduler = Mockito.mock(MonitoringScheduler.class);
         controller = new MonitoringController(admins, hospitals, repository,
-                Mockito.mock(MonitoringService.class));
+                Mockito.mock(MonitoringService.class), execution, scheduler);
         when(hospitals.authenticate("hospital-token")).thenReturn(new HospitalPrincipal(
                 "user_001", "doctor", "hospital_001", Set.of("indicator:view"), false, "SESSION_1"));
     }
@@ -57,5 +63,19 @@ class MonitoringControllerTest {
                 .hasMessageContaining("其他医院");
         verify(admins).require("Bearer admin-token");
         Mockito.verifyNoInteractions(repository);
+    }
+
+    @Test
+    void manualRunUsesAuthenticatedHospitalPrincipal() {
+        HospitalPrincipal principal = hospitals.authenticate("hospital-token");
+        when(execution.runManual("PLAN_1", "hospital_001", "2026-01-01~2026-01-31", principal))
+                .thenReturn(Map.of("run_status", "success"));
+
+        Map<String, Object> response = controller.runPlan(
+                "Bearer admin-token", "Bearer hospital-token", "PLAN_1",
+                new MonitoringController.RunRequest("hospital_001", "2026-01-01~2026-01-31"));
+
+        assertThat(response).containsEntry("run_status", "success");
+        verify(execution).runManual("PLAN_1", "hospital_001", "2026-01-01~2026-01-31", principal);
     }
 }

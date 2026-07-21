@@ -91,3 +91,7 @@ wiki:
     database-name: ${BUSINESS_DB_DATABASE:WIN60_QA_991827}
     schema-name: ${BUSINESS_DB_SCHEMA:WINDBA}
     timeout-seconds: 10
+  monitoring:
+    scheduler-enabled: ${MONITORING_SCHEDULER_ENABLED:false}
+    scan-delay-ms: ${MONITORING_SCAN_DELAY_MS:60000}
+    lease-seconds: ${MONITORING_LEASE_SECONDS:600}

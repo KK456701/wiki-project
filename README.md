@@ -55,6 +55,8 @@
 
 - **Java / Vue 迁移第十九批**：Java 已迁移指标监控的治理与审阅子集，复用现有 MySQL 计划、运行结果和预警表，提供计划新增/修改/启停、结果列表/详情以及预警确认/关闭。所有监控接口同时校验独立管理员 token 与当前医院 token，避免管理员会话被当作跨院身份。Vue 新增 `/monitoring` 工作台；手动运算、定时调度、租约幂等和自动诊断仍由 FastAPI 权威运行时负责，待对应契约迁移后再开放 Java 写入口。本批 Java 全量测试 84 项及 Vue 生产构建通过。
 
+- **Java / Vue 迁移第二十批**：Java 已迁移监控实际执行闭环，手工运行和到期扫描统一复用 `get_effective_rule → prepare_indicator_sql → trial_run_indicator_sql` 受控工具链，经 DBHub 只读取数后写入现有运行结果表。统计周期、环比/同比基线、严格阈值波动判断、计划租约、稳定运行键、局部失败和异常后自动三层诊断均由服务端确定性实现，不交给 LLM。Vue 监控页新增可选统计周期的“立即运行”和预警“重新诊断”。为避免迁移期 Python/Java 双调度，Java 自动扫描默认关闭；正式切换后只需设置 `MONITORING_SCHEDULER_ENABLED=true`。本批 Java 全量测试 92 项、Vue 生产构建和单 JAR 打包通过。
+
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL；医院业务源为 SQL Server，只通过 DBHub 只读访问
