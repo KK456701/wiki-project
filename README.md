@@ -51,6 +51,8 @@
 
 - **Java / Vue 迁移第十七批**：Java 已迁移 `/api/admin/login|logout` 轻量管理员会话和术语治理写链，候选词、本院编码映射、审批、发布与历史回退均进入 MySQL 事务和 `med_term_audit_log`。普通医院 token 只限定医院范围，管理员 token 只授权写操作；医院级写入必须同时通过两种会话，客户端不能借管理员 token 冒充其他医院。发布拒绝未审核公司词，内容未变化时复用既有版本，回退从不可变快照重建公司投影且保留医院映射。Vue 术语页新增独立维护模式、候选/映射表单、逐条审批、发布和回退；管理员密码仅从 `WIKI_ADMIN_PASSWORD` 注入，默认占位值不可登录。
 
+- **Java / Vue 迁移第十八批**：新增 `bundle-vue` Maven 构建 Profile 与 [`scripts/build-java-vue.ps1`](scripts/build-java-vue.ps1)。脚本先完成 Vue 类型检查和生产构建，再把 `dist/` 复制到 Spring Boot `BOOT-INF/classes/static/`，最终只交付一个可执行 JAR；医院部署机不需要 Node.js、Nginx 或额外前端服务。Spring MVC 对 `/`、`/runs`、`/metadata` 和 `/terminology` 执行 SPA 入口回退，`/api/**` 与 Actuator 不参与前端转发。本机即使 PATH 没有 `jar.exe` 也不影响 Maven 打包或 `java -jar` 运行。
+
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL；医院业务源为 SQL Server，只通过 DBHub 只读访问

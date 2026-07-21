@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2、阶段 3，阶段 4 的 Agent 主链，以及阶段 5 的 Trace、运行观察、元数据和医学术语治理工作台子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器默认仍调用 `8765` 以维持双栈回退。
+> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2、阶段 3，阶段 4 的 Agent 主链，以及阶段 5 的 Trace、运行观察、元数据、医学术语治理和单 JAR 构建子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器默认仍调用 `8765` 以维持双栈回退。
 
 ## 1. 迁移目标与约束
 
@@ -157,7 +157,8 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - Vue 术语页新增管理员维护模式、候选词和映射表单、逐条审批、发布与历史恢复。管理员密码仅通过 `WIKI_ADMIN_PASSWORD` 提供，仓库默认 `CHANGE_ME` 会被服务端拒绝，不形成可用默认密码。
 - 本子批次完成后 Java 全量测试共 79 项、Python/Java 迁移契约 5 项及 Vue 生产构建通过；新增覆盖管理员 token 签发/撤销、占位密码拒绝、候选冲突、医院范围、映射版本、发布复用与恢复。
 - 待迁移：审批、实施和监控页面，以及 Vue 构建入 JAR 与正式切流。
-- Vue 构建产物进入 Spring Boot JAR。
+- Vue 构建产物已通过 `bundle-vue` Maven Profile 进入 Spring Boot JAR。`scripts/build-java-vue.ps1` 在构建机依次执行 npm 和 Maven，部署机不需要 Node.js 常驻；Spring MVC 只对四个已知 Vue History 路由回退到 `index.html`，不会吞掉 `/api/**` 错误。
+- 一键脚本已在 Windows PowerShell 5.1 兼容模式下实跑通过，可识别当前仅显示为 `java version "17"` 的早期 JDK 17；构建后 Java 测试共 80 项通过，JAR 已核验包含 Vue 的 `index.html`、JS 和 CSS 三类入口资源。
 - 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
 
