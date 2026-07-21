@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步，以及医学术语只读工作台。规则写入、术语审批与发布仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理，以及指标监控治理与审阅工作台。监控的实际试运行、定时调度和自动诊断仍由 Python 权威运行时负责。
 
 ## 本地运行
 
@@ -42,6 +42,9 @@ mvn -s maven-settings.xml spring-boot:run
 - `POST /api/terminology/aliases` 及其审批接口：创建、校验并审批公司或本院候选词。
 - `POST /api/terminology/hospital-mappings` 及其审批接口：仅在管理员会话和当前医院会话同时通过时维护本院编码和值。
 - `GET /api/terminology/releases`、`POST /api/terminology/releases/publish`、`POST /api/terminology/releases/{release_id}/restore`：读取、发布和恢复不可变术语版本。
+- `GET|POST|PUT /api/monitoring/plans` 及启停接口：在管理员和当前医院双重认证下维护监控计划。
+- `GET /api/monitoring/results`、`GET /api/monitoring/results/{result_id}`：按当前医院审阅历史聚合结果。
+- `GET /api/monitoring/alerts` 及确认/关闭接口：按当前医院处置指标预警并记录操作者；Java 暂不提供手动运行、调度扫描和重新诊断写入口。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -68,6 +71,8 @@ Vue `/runs` 页面直接使用 Trace 汇总接口展示请求量、成功/未完
 Vue `/metadata` 页面展示当前医院的快照批次、表数、映射字段数、结构变化和受影响规则。Java 固定查询 `INFORMATION_SCHEMA`，不接受客户端 SQL，也不允许客户端切换到未配置数据库；全库只采集表目录，列信息仅采集 `med_field_mapping` 已确认映射实际依赖的表，避免把无关的大量字段写入运行库。
 
 Vue `/terminology` 页面展示标准概念、已审核同义词、当前医院编码映射、关联指标和发布版本，并提供确定性识别测试。Java 识别链不调用 Spring AI：先做最长词匹配，同跨度多概念直接返回歧义，同长度时优先本院映射；`related`、`forbidden` 或未标记 SQL 安全的临床值会阻止结果直接进入 SQL 条件。独立管理员维护模式支持候选词、本院映射、审批、发布和历史回退；所有医院级写入同时校验医院人员 token 和管理员 token，并记录版本及审计日志。
+
+Vue `/monitoring` 页面复用现有 `med_indicator_run_plan`、`med_index_run_result` 和 `med_indicator_alert` 表，提供计划新增/启停、历史结果审阅以及预警确认/关闭。所有接口同时校验管理员 token 与当前医院 token，查询条件由服务端固定绑定医院。页面明确标记 Java 当前只接管治理与审阅，防止在调度器尚未迁移时误以为 Java 已执行计划。
 
 Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 

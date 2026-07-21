@@ -70,6 +70,7 @@ function duration(value?: number) {
         <RouterLink class="quiet-button" to="/">返回对话</RouterLink>
         <RouterLink class="quiet-button" to="/metadata">数据库元数据</RouterLink>
         <RouterLink class="quiet-button" to="/terminology">医学术语</RouterLink>
+        <RouterLink class="quiet-button" to="/monitoring">指标监控</RouterLink>
         <button class="primary-button" type="button" :disabled="loading" @click="refresh">{{ loading ? '刷新中…' : '刷新数据' }}</button>
       </div>
     </header>

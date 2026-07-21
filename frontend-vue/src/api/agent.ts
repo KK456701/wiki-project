@@ -189,6 +189,51 @@ export interface TerminologyNormalization {
   sql_eligible: boolean
 }
 
+export interface MonitoringPlan {
+  plan_id: string
+  hospital_id: string
+  rule_id: string
+  plan_name: string
+  frequency: 'daily' | 'monthly'
+  run_time: string
+  day_of_month: number
+  timezone: string
+  mom_enabled: boolean
+  mom_threshold_pct: number
+  yoy_enabled: boolean
+  yoy_threshold_pct: number
+  status: 'enabled' | 'disabled'
+  next_run_at?: string
+  last_run_at?: string
+}
+
+export interface MonitoringResult {
+  id: number
+  rule_id: string
+  stat_period: string
+  result_value?: number
+  run_status?: string
+  trigger_type?: string
+  duration_ms?: number
+  is_abnormal?: boolean
+  created_at?: string
+  error_message?: string
+}
+
+export interface MonitoringAlert {
+  alert_id: string
+  rule_id: string
+  alert_type: string
+  alert_level: string
+  conclusion_code: string
+  current_value?: number
+  mom_change_rate?: number
+  yoy_change_rate?: number
+  diagnose_status: string
+  status: 'open' | 'acknowledged' | 'closed'
+  created_at?: string
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -369,6 +414,76 @@ function terminologyAdminHeaders(adminToken: string, hospitalToken: string): Hea
     'X-Hospital-Authorization': `Bearer ${hospitalToken}`,
     'Content-Type': 'application/json',
   }
+}
+
+function monitoringHeaders(adminToken: string, hospitalToken: string, json = false): HeadersInit {
+  return {
+    Authorization: `Bearer ${adminToken}`,
+    'X-Hospital-Authorization': `Bearer ${hospitalToken}`,
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+  }
+}
+
+export async function loadMonitoringPlans(
+  adminToken: string, hospitalToken: string, hospitalId: string,
+): Promise<{ items: MonitoringPlan[] }> {
+  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const response = await fetch(`/api/monitoring/plans?${query}`, {
+    headers: monitoringHeaders(adminToken, hospitalToken),
+  })
+  return readJson(response)
+}
+
+export async function saveMonitoringPlan(
+  adminToken: string, hospitalToken: string, payload: Record<string, unknown>, planId = '',
+): Promise<MonitoringPlan> {
+  const response = await fetch(planId ? `/api/monitoring/plans/${encodeURIComponent(planId)}` : '/api/monitoring/plans', {
+    method: planId ? 'PUT' : 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
+    body: JSON.stringify(payload),
+  })
+  return readJson(response)
+}
+
+export async function setMonitoringPlanStatus(
+  adminToken: string, hospitalToken: string, hospitalId: string, planId: string, enabled: boolean,
+): Promise<MonitoringPlan> {
+  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const response = await fetch(
+    `/api/monitoring/plans/${encodeURIComponent(planId)}/${enabled ? 'enable' : 'disable'}?${query}`,
+    { method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken) },
+  )
+  return readJson(response)
+}
+
+export async function loadMonitoringResults(
+  adminToken: string, hospitalToken: string, hospitalId: string,
+): Promise<{ items: MonitoringResult[] }> {
+  const query = new URLSearchParams({ hospital_id: hospitalId, limit: '100' })
+  const response = await fetch(`/api/monitoring/results?${query}`, {
+    headers: monitoringHeaders(adminToken, hospitalToken),
+  })
+  return readJson(response)
+}
+
+export async function loadMonitoringAlerts(
+  adminToken: string, hospitalToken: string, hospitalId: string,
+): Promise<{ items: MonitoringAlert[] }> {
+  const query = new URLSearchParams({ hospital_id: hospitalId, limit: '100' })
+  const response = await fetch(`/api/monitoring/alerts?${query}`, {
+    headers: monitoringHeaders(adminToken, hospitalToken),
+  })
+  return readJson(response)
+}
+
+export async function transitionMonitoringAlert(
+  adminToken: string, hospitalToken: string, hospitalId: string, actorId: string,
+  alertId: string, action: 'acknowledge' | 'close',
+): Promise<MonitoringAlert> {
+  const response = await fetch(`/api/monitoring/alerts/${encodeURIComponent(alertId)}/${action}`, {
+    method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
+    body: JSON.stringify({ hospital_id: hospitalId, actor_id: actorId }),
+  })
+  return readJson(response)
 }
 
 export async function createTerminologyAlias(

@@ -197,7 +197,7 @@ function bool(value: unknown) { return value === true || value === 1 }
   <main class="term-shell">
     <header class="term-head">
       <div><p class="eyebrow">Medical language contract</p><h1>医学术语工作台</h1><p>标准概念、同义词、本院编码和指标引用在这里保持可审阅。</p></div>
-      <nav><RouterLink class="quiet-button" to="/">返回对话</RouterLink><RouterLink class="quiet-button" to="/metadata">数据库元数据</RouterLink><RouterLink class="quiet-button" to="/runs">运行观察</RouterLink></nav>
+      <nav><RouterLink class="quiet-button" to="/">返回对话</RouterLink><RouterLink class="quiet-button" to="/metadata">数据库元数据</RouterLink><RouterLink class="quiet-button" to="/runs">运行观察</RouterLink><RouterLink class="quiet-button" to="/monitoring">指标监控</RouterLink></nav>
     </header>
 
     <section class="term-toolbar">

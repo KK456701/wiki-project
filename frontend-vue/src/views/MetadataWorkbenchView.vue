@@ -84,6 +84,7 @@ function time(value?: string) {
         <RouterLink class="quiet-button" to="/">返回对话</RouterLink>
         <RouterLink class="quiet-button" to="/runs">运行观察</RouterLink>
         <RouterLink class="quiet-button" to="/terminology">医学术语</RouterLink>
+        <RouterLink class="quiet-button" to="/monitoring">指标监控</RouterLink>
         <button class="primary-button" type="button" :disabled="syncing" @click="synchronize">
           {{ syncing ? '正在经 DBHub 同步…' : '同步元数据' }}
         </button>
