@@ -47,6 +47,8 @@
 
 - **Java / Vue 迁移第十五批**：Java 已接管 `GET /api/metadata/overview` 与 `POST /api/metadata/sync`，医院范围只取登录身份，业务库只接受当前 DBHub 配置。同步固定读取全库表目录与已确认指标映射依赖表的字段，结构差异和受影响指标由代码计算，不向模型或 Trace 暴露 SQL 正文。Vue 3 新增 `/metadata` 数据库元数据工作台，覆盖空快照、同步、结构变化、受影响指标和 DBHub 失败状态。
 
+- **Java / Vue 迁移第十六批**：Java 已迁移医学术语只读链路，提供标准概念检索、当前医院术语详情、术语版本和确定性识别测试；医院编号只取登录主体，模型不参与术语替换。识别规则与 Python 保持最长词优先、本院词优先、歧义拒绝和 SQL 安全边界一致。Vue 3 新增 `/terminology` 医学术语工作台，可审阅同义词、本院编码、指标引用和版本，并直接测试标准化结果。候选新增、审批、发布和回退仍由 Python 权威接口负责，待后续批次迁移策略与审批链后再切流。
+
 ## 技术栈
 
 - 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL；医院业务源为 SQL Server，只通过 DBHub 只读访问

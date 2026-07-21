@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP，以及元数据概览与 DBHub 同步工作台。规则写入与审批仍由 Python 负责。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步，以及医学术语只读工作台。规则写入、术语审批与发布仍由 Python 负责。
 
 ## 本地运行
 
@@ -34,6 +34,10 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/agent/runs/metrics`：聚合当前医院成功率、p50/p95/p99、工具/模型性能、复合任务和稳定性指标。
 - `GET /api/metadata/overview`：按当前登录医院读取最近一次元数据快照、结构变化和受影响指标。
 - `POST /api/metadata/sync`：只经 DBHub 读取已配置 SQL Server 的表目录与指标映射依赖字段，保存本院快照并生成 Trace。
+- `GET /api/terminology/concepts`：检索已生效标准概念、同义词和指标关联。
+- `GET /api/terminology/concepts/{concept_code}`：按登录医院读取概念、同义词、本院映射与指标引用详情。
+- `POST /api/terminology/test`：执行不调用 LLM 的确定性术语识别，返回歧义和 SQL 可用性。
+- `GET /api/terminology/releases`：读取术语发布版本；候选、审批、发布和回退尚未切到 Java。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -58,6 +62,8 @@ Java Trace 复用现有 `med_agent_trace` 和 `med_agent_trace_node`，不部署
 Vue `/runs` 页面直接使用 Trace 汇总接口展示请求量、成功/未完成率、平均与 p50/p95/p99、按日趋势、工具/模型耗时、超时、复合请求、重复调用停止率和 Replan 率。阈值来自 `wiki.agent.trace-*` 配置；页面提示不发送外部通知。Java 每新增 100 次运行最多清理 1000 条超过保留期的 Trace，不增加定时任务或调度中间件。
 
 Vue `/metadata` 页面展示当前医院的快照批次、表数、映射字段数、结构变化和受影响规则。Java 固定查询 `INFORMATION_SCHEMA`，不接受客户端 SQL，也不允许客户端切换到未配置数据库；全库只采集表目录，列信息仅采集 `med_field_mapping` 已确认映射实际依赖的表，避免把无关的大量字段写入运行库。
+
+Vue `/terminology` 页面展示标准概念、已审核同义词、当前医院编码映射、关联指标和发布版本，并提供确定性识别测试。Java 识别链不调用 Spring AI：先做最长词匹配，同跨度多概念直接返回歧义，同长度时优先本院映射；`related`、`forbidden` 或未标记 SQL 安全的临床值会阻止结果直接进入 SQL 条件。当前批次只读，不允许通过 Java 创建或审批术语。
 
 Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 

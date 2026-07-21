@@ -159,6 +159,36 @@ export interface MetadataOverview {
   trace_id?: string
 }
 
+export interface TerminologyConcept {
+  concept_code: string
+  canonical_name: string
+  concept_type: string
+  definition: string
+  standard_code?: string
+  source_level: string
+  source_reference: string
+  alias_count?: number
+  aliases_preview?: string[]
+}
+
+export interface TerminologyConceptDetail extends TerminologyConcept {
+  hospital_id: string
+  aliases: Array<Record<string, unknown>>
+  rule_links: Array<Record<string, unknown>>
+  hospital_mappings: Array<Record<string, unknown>>
+  active_release: Record<string, unknown>
+}
+
+export interface TerminologyNormalization {
+  original_text: string
+  normalized_text: string
+  matches: Array<Record<string, unknown>>
+  ambiguities: Array<Record<string, unknown>>
+  release_version: string
+  duration_ms: number
+  sql_eligible: boolean
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -268,6 +298,53 @@ export async function syncMetadata(
     body: JSON.stringify({ hospital_id: hospitalId, db_name: '', source: 'dbhub' }),
   })
   return readJson<MetadataOverview>(response)
+}
+
+export async function loadTerminologyConcepts(
+  token: string,
+  filters: { query?: string; conceptType?: string; ruleId?: string } = {},
+): Promise<{ items: TerminologyConcept[]; total: number }> {
+  const query = new URLSearchParams()
+  if (filters.query) query.set('query', filters.query)
+  if (filters.conceptType) query.set('concept_type', filters.conceptType)
+  if (filters.ruleId) query.set('rule_id', filters.ruleId)
+  const response = await fetch(`/api/terminology/concepts${query.size ? `?${query}` : ''}`, {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
+}
+
+export async function loadTerminologyConcept(
+  token: string,
+  conceptCode: string,
+  hospitalId: string,
+): Promise<TerminologyConceptDetail> {
+  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const response = await fetch(
+    `/api/terminology/concepts/${encodeURIComponent(conceptCode)}?${query}`,
+    { headers: authHeaders(token) },
+  )
+  return readJson(response)
+}
+
+export async function testTerminologyRecognition(
+  token: string,
+  hospitalId: string,
+  text: string,
+): Promise<TerminologyNormalization> {
+  const response = await fetch('/api/terminology/test', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hospital_id: hospitalId, text }),
+  })
+  return readJson(response)
+}
+
+export async function loadTerminologyReleases(
+  token: string,
+): Promise<{ items: Array<Record<string, unknown>> }> {
+  const response = await fetch('/api/terminology/releases', { headers: authHeaders(token) })
+  return readJson(response)
 }
 
 export async function ensureIndicatorDetails(token: string, runId: string): Promise<DetailSnapshot> {

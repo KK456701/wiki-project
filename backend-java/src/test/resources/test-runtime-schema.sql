@@ -186,6 +186,79 @@ CREATE TABLE med_metadata_snapshot (
   created_at TIMESTAMP NOT NULL
 );
 
+CREATE TABLE med_term_concept (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  concept_code VARCHAR(96) NOT NULL UNIQUE,
+  canonical_name VARCHAR(255) NOT NULL,
+  concept_type VARCHAR(32) NOT NULL,
+  definition CLOB NOT NULL,
+  standard_code VARCHAR(128),
+  source_level VARCHAR(32) NOT NULL,
+  source_reference CLOB NOT NULL,
+  version INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE med_term_alias (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL DEFAULT '',
+  concept_code VARCHAR(96) NOT NULL,
+  alias_text VARCHAR(255) NOT NULL,
+  relation_type VARCHAR(32) NOT NULL,
+  retrieval_enabled TINYINT NOT NULL DEFAULT 1,
+  sql_safe TINYINT NOT NULL DEFAULT 0,
+  ambiguity_group VARCHAR(96),
+  source_reference CLOB NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  version INT NOT NULL,
+  created_by VARCHAR(64),
+  approved_by VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  approved_at TIMESTAMP
+);
+
+CREATE TABLE med_term_rule_link (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  concept_code VARCHAR(96) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  usage_section VARCHAR(32) NOT NULL,
+  business_field_key VARCHAR(128),
+  source_reference CLOB NOT NULL,
+  version INT NOT NULL
+);
+
+CREATE TABLE med_hospital_term_mapping (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  concept_code VARCHAR(96) NOT NULL,
+  code_system VARCHAR(64) NOT NULL,
+  local_code VARCHAR(128) NOT NULL DEFAULT '',
+  local_name VARCHAR(255) NOT NULL,
+  local_value VARCHAR(255) NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  effective_from TIMESTAMP,
+  effective_to TIMESTAMP,
+  version INT NOT NULL,
+  created_by VARCHAR(64),
+  approved_by VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  approved_at TIMESTAMP
+);
+
+CREATE TABLE med_term_release (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  release_id VARCHAR(64) NOT NULL UNIQUE,
+  version INT NOT NULL UNIQUE,
+  status VARCHAR(32) NOT NULL,
+  checksum VARCHAR(64) NOT NULL UNIQUE,
+  snapshot_json CLOB NOT NULL,
+  change_summary CLOB NOT NULL,
+  published_by VARCHAR(64) NOT NULL,
+  published_at TIMESTAMP NOT NULL
+);
+
 CREATE TABLE med_table_relation (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   hospital_id VARCHAR(64) NOT NULL,
