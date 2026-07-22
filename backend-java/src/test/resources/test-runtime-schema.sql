@@ -123,6 +123,52 @@ CREATE TABLE med_index_hospital_defined (
   UNIQUE (hospital_id, index_code)
 );
 
+CREATE TABLE med_indicator_draft (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  draft_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  base_index_code VARCHAR(64),
+  proposed_index_code VARCHAR(64) NOT NULL,
+  index_name VARCHAR(128) NOT NULL,
+  index_type VARCHAR(64) NOT NULL,
+  index_desc CLOB NOT NULL,
+  stat_cycle VARCHAR(32) NOT NULL,
+  numerator_rule CLOB NOT NULL,
+  denominator_rule CLOB NOT NULL,
+  filter_rule CLOB,
+  exclude_rule CLOB,
+  metric_type VARCHAR(32) NOT NULL,
+  metadata_requirements CLOB NOT NULL,
+  field_mapping CLOB NOT NULL,
+  sql_plan CLOB NOT NULL,
+  current_sql CLOB,
+  sql_params CLOB NOT NULL,
+  sql_id VARCHAR(64),
+  trial_result CLOB NOT NULL,
+  trial_draft_version INT,
+  status VARCHAR(32) NOT NULL,
+  current_version INT NOT NULL,
+  formal_index_code VARCHAR(64),
+  generated_by VARCHAR(64),
+  created_by VARCHAR(64) NOT NULL,
+  updated_by VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  UNIQUE (hospital_id, proposed_index_code)
+);
+
+CREATE TABLE med_indicator_draft_version (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  draft_id VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  snapshot_json CLOB NOT NULL,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  UNIQUE (draft_id, version)
+);
+
 CREATE TABLE med_field_mapping (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   hospital_id VARCHAR(64) NOT NULL,

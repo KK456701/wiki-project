@@ -129,6 +129,7 @@ async function exportComparison(runId?: string, fileToken?: string) {
         <RouterLink class="quiet-button" to="/terminology">医学术语</RouterLink>
         <RouterLink class="quiet-button" to="/runs">运行观察</RouterLink>
         <RouterLink class="quiet-button" to="/monitoring">指标监控</RouterLink>
+        <RouterLink class="quiet-button" to="/implementation">指标实施</RouterLink>
         <button type="button" class="quiet-button" @click="store.newSession()">新会话</button>
         <div class="identity"><span>医院人员</span><strong>{{ store.user?.accountId }}</strong><small>{{ store.user?.hospitalId }}</small></div>
         <button type="button" class="quiet-button" @click="store.logout()">退出</button>

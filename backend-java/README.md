@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理，以及指标监控治理、执行和预警闭环。迁移期 Java 自动调度默认关闭，FastAPI 仍是权威运行时。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理、指标监控闭环，以及指标实施任务治理。迁移期 Java 自动调度默认关闭，FastAPI 仍是权威运行时。
 
 ## 本地运行
 
@@ -47,6 +47,9 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/monitoring/results`、`GET /api/monitoring/results/{result_id}`：按当前医院审阅历史聚合结果。
 - `GET /api/monitoring/alerts` 及确认/关闭/重新诊断接口：按当前医院处置指标预警并记录操作者。
 - `GET /api/monitoring/scheduler/status`、`POST /api/monitoring/scheduler/scan`：查看 Java 调度状态并由管理员扫描到期计划；关闭状态下扫描不会执行计划。
+- `GET /api/indicator-drafts`、`GET /api/indicator-drafts/{draft_id}` 及版本接口：按医院人员登录范围读取实施任务和不可变版本快照。
+- `PUT /api/indicator-drafts/{draft_id}`：使用 `expected_version` 乐观锁编辑设计字段，并使旧 SQL 与试运行证据失效。
+- `POST /api/indicator-drafts/{draft_id}/requirements-confirm|submit`：推进取数要求确认，或在当前版本试运行证据有效时提交审批。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -85,6 +88,8 @@ $env:MONITORING_LEASE_SECONDS = '600'
 ```
 
 关闭时仍可从 Vue 或 `POST /api/monitoring/plans/{plan_id}/run` 手工验证单个计划；只有自动到期扫描受开关约束。
+
+Vue `/implementation` 页面展示当前医院实施任务、版本、状态阶段、设计字段、映射、SQL 和试运行证据。Java 当前只接管任务治理边界；字段建议/确认、SQL 生成/试运行、管理员批准/驳回、正式发布和历史恢复仍由后续子批次迁移。编辑请求中的 `actor_id` 仅为兼容旧契约，服务端始终使用医院登录用户作为真实操作者。
 
 Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 

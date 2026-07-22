@@ -241,6 +241,34 @@ export interface MonitoringSchedulerStatus {
   last_error_code?: string
 }
 
+export interface IndicatorDraft {
+  draft_id: string
+  hospital_id: string
+  base_index_code?: string
+  proposed_index_code: string
+  index_name: string
+  index_type: string
+  index_desc: string
+  stat_cycle: string
+  numerator_rule: string
+  denominator_rule: string
+  filter_rule?: string
+  exclude_rule?: string
+  metric_type: 'ratio' | 'count'
+  metadata_requirements: string[]
+  field_mapping: Record<string, unknown>
+  sql_plan: Record<string, unknown>
+  current_sql?: string
+  sql_params: Record<string, unknown>
+  sql_id?: string
+  trial_result: Record<string, unknown>
+  trial_draft_version?: number
+  status: string
+  current_version: number
+  formal_index_code?: string
+  updated_at?: string
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -518,6 +546,37 @@ export async function diagnoseMonitoringAlert(
   const response = await fetch(`/api/monitoring/alerts/${encodeURIComponent(alertId)}/diagnose`, {
     method: 'POST', headers: monitoringHeaders(adminToken, hospitalToken, true),
     body: JSON.stringify({ hospital_id: hospitalId, actor_id: actorId }),
+  })
+  return readJson(response)
+}
+
+export async function loadIndicatorDrafts(
+  hospitalToken: string, hospitalId: string, status = '',
+): Promise<IndicatorDraft[]> {
+  const query = new URLSearchParams({ hospital_id: hospitalId })
+  if (status) query.set('status', status)
+  const response = await fetch(`/api/indicator-drafts?${query}`, { headers: authHeaders(hospitalToken) })
+  return readJson(response)
+}
+
+export async function updateIndicatorDraft(
+  hospitalToken: string, draftId: string, expectedVersion: number,
+  changes: Record<string, unknown>, actorId: string,
+): Promise<IndicatorDraft> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}`, {
+    method: 'PUT', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_version: expectedVersion, changes, actor_id: actorId }),
+  })
+  return readJson(response)
+}
+
+export async function advanceIndicatorDraft(
+  hospitalToken: string, draftId: string, expectedVersion: number,
+  action: 'requirements-confirm' | 'submit', actorId: string,
+): Promise<IndicatorDraft> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/${action}`, {
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_version: expectedVersion, actor_id: actorId }),
   })
   return readJson(response)
 }
