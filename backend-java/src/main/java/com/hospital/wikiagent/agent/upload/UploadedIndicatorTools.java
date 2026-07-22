@@ -27,6 +27,9 @@ import com.hospital.wikiagent.upload.XlsxWorkbookReader.WorkbookPreview;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader.XlsxParseException;
 
 @Component
+/**
+ * 提供 {@code UploadedIndicatorTools} 对应的受控 Agent 工具能力。
+ */
 public class UploadedIndicatorTools {
     private static final Set<String> NUMERATOR_ALIASES = Set.of(
             "分子", "numerator", "numeratorcount", "num");

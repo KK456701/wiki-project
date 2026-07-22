@@ -12,6 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 编排 {@code AdminSessionService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class AdminSessionService {
     private final byte[] configuredPassword;
     private final boolean configured;

@@ -21,6 +21,9 @@ import javax.xml.stream.XMLStreamReader;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 实现 {@code XlsxWorkbookReader} 对应的领域职责。
+ */
 public class XlsxWorkbookReader {
     private static final String OFFICE_RELATIONSHIP_NAMESPACE =
             "http://schemas.openxmlformats.org/officeDocument/2006/relationships";

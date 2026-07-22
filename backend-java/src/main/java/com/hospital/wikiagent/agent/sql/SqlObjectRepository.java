@@ -16,6 +16,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
+/**
+ * 封装 {@code SqlObjectRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class SqlObjectRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;

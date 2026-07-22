@@ -3,6 +3,9 @@ package com.hospital.wikiagent.auth;
 import java.time.LocalDateTime;
 import java.util.Set;
 
+/**
+ * 实现 {@code AuthRecords} 对应的领域职责。
+ */
 final class AuthRecords {
     private AuthRecords() {
     }

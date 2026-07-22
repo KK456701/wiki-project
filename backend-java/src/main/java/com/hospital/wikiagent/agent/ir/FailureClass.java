@@ -4,6 +4,9 @@ import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 
+/**
+ * 枚举 {@code FailureClass} 允许的有限业务状态。
+ */
 public enum FailureClass {
     SEMANTIC_PLAN_ERROR("semantic_plan_error"),
     TASK_TYPE_ERROR("task_type_error"),

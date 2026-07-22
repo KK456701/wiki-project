@@ -10,6 +10,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 编排 {@code DraftMetadataService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class DraftMetadataService {
     private final JdbcTemplate jdbc;
     private final IndicatorDraftRepository drafts;

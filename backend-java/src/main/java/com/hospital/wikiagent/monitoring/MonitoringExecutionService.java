@@ -19,6 +19,9 @@ import com.hospital.wikiagent.monitoring.MonitoringPeriodResolver.Period;
 import com.hospital.wikiagent.monitoring.MonitoringWaveDetector.Wave;
 
 @Service
+/**
+ * 编排 {@code MonitoringExecutionService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class MonitoringExecutionService {
     private final MonitoringRepository repository;
     private final MonitoringPeriodResolver periods;

@@ -1,6 +1,6 @@
-# Agent Runtime 架构总结与 Spring AI 迁移指南
+# Agent Runtime 架构总结与 Spring AI 迁移指南（历史评审稿）
 
-> 更新日期：2026-07-21
+> 更新日期：2026-07-21。Java/Vue 迁移已经完成，本文保留迁移前评审内容；当前架构以 `agent-runtime-current.md` 为准。
 >
 > 代码基线：`28fb392` 及其后的当前工作区
 >

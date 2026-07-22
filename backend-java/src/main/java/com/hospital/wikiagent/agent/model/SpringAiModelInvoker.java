@@ -19,6 +19,9 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PreDestroy;
 
 @Component
+/**
+ * 实现 {@code SpringAiModelInvoker} 对应的领域职责。
+ */
 public class SpringAiModelInvoker implements AgentModelInvoker {
     public static final String VERSION = "spring-ai-model-adapter-v1";
     private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiModelInvoker.class);

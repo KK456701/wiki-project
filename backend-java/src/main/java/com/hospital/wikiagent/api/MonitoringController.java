@@ -31,6 +31,9 @@ import com.hospital.wikiagent.monitoring.MonitoringService.PlanCommand;
 
 @RestController
 @RequestMapping("/api/monitoring")
+/**
+ * 提供 {@code MonitoringController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class MonitoringController {
     private final AdminSessionService admins;
     private final HospitalAuthService hospitals;

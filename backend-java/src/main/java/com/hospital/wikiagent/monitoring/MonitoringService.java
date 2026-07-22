@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
+/**
+ * 编排 {@code MonitoringService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class MonitoringService {
     private static final DateTimeFormatter RUN_TIME = DateTimeFormatter.ofPattern("HH:mm");
     private final MonitoringRepository repository;

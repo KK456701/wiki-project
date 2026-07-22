@@ -2,6 +2,9 @@ package com.hospital.wikiagent.agent.ir;
 
 import java.util.List;
 
+/**
+ * 定义 {@code RequestPlan} 的不可变数据载体。
+ */
 public record RequestPlan(
         String schemaVersion,
         PlanIntent intent,

@@ -1,5 +1,8 @@
 package com.hospital.wikiagent.agent.validation;
 
+/**
+ * 枚举 {@code ValidationStageStatus} 允许的有限业务状态。
+ */
 public enum ValidationStageStatus {
     PASSED("passed"),
     WARNING("warning"),

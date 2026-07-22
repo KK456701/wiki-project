@@ -6,6 +6,9 @@ import java.util.Set;
 import com.hospital.wikiagent.agent.ir.PlanCapability;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 
+/**
+ * 定义 {@code CapabilitySpec} 的不可变数据载体。
+ */
 public record CapabilitySpec(
         PlanCapability capability,
         String version,

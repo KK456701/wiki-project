@@ -5,6 +5,9 @@ import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "wiki.agent.upload")
+/**
+ * 承载 {@code UploadProperties} 对应的类型化配置，避免业务代码直接读取环境变量。
+ */
 public class UploadProperties {
     private Path root = Path.of("runtime", "uploads");
     private long maxBytes = 10L * 1024L * 1024L;

@@ -5,6 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 定义 {@code ValidationStageResult} 的不可变数据载体。
+ */
 public record ValidationStageResult(
         String stageId,
         String stageName,

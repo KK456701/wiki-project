@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.ir;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+/**
+ * 枚举 {@code PlanCapability} 允许的有限业务状态。
+ */
 public enum PlanCapability {
     RESOLVE_INDICATOR("resolve_indicator"),
     RESOLVE_EFFECTIVE_RULE("resolve_effective_rule"),

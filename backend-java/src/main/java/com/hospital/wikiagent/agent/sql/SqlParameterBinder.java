@@ -7,6 +7,9 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 实现 {@code SqlParameterBinder} 对应的领域职责。
+ */
 public class SqlParameterBinder {
     private static final Pattern PARAMETER = Pattern.compile(":([A-Za-z_][A-Za-z0-9_]*)");
 

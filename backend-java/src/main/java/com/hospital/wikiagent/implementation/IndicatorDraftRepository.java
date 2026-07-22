@@ -22,6 +22,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
+/**
+ * 封装 {@code IndicatorDraftRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class IndicatorDraftRepository {
     private static final Set<String> EDITABLE = Set.of(
             "base_index_code", "proposed_index_code", "index_name", "index_type", "index_desc",

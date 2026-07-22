@@ -2,6 +2,9 @@ package com.hospital.wikiagent.agent.tools;
 
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
+/**
+ * 定义 {@code AgentRuntimeContext} 的不可变数据载体。
+ */
 public record AgentRuntimeContext(
         HospitalPrincipal principal,
         String requestId,

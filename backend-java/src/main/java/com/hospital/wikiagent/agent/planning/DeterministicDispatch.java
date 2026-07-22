@@ -8,6 +8,7 @@ import com.hospital.wikiagent.agent.ir.PlanCapability;
 import com.hospital.wikiagent.agent.planning.ControllerDecision.ControllerAction;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 
+/** 把已批准的业务能力编译成唯一工具调用，模型不能直接指定工具名或参数。 */
 @Component
 public class DeterministicDispatch {
 

@@ -19,6 +19,9 @@ import com.hospital.wikiagent.metadata.MetadataRepository.FieldMapping;
 import com.hospital.wikiagent.metadata.MetadataRepository.Snapshot;
 
 @Service
+/**
+ * 编排 {@code MetadataSyncService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class MetadataSyncService {
     private final MetadataCatalogClient catalog;
     private final MetadataRepository repository;

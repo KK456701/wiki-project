@@ -18,6 +18,9 @@ import tools.jackson.databind.JsonNode;
 
 @RestController
 @RequestMapping("/api/mcp/dbhub")
+/**
+ * 提供 {@code DbHubController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class DbHubController {
 
     private final DbHubMcpClient client;

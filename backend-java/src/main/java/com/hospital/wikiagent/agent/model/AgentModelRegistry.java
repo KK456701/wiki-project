@@ -18,6 +18,9 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.model.AgentModelProperties.ModelDefinition;
 
 @Component
+/**
+ * 集中注册和查询 {@code AgentModelRegistry} 管理的类型化能力。
+ */
 public class AgentModelRegistry {
     public static final String VERSION = "model-registry-v1";
 

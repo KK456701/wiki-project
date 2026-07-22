@@ -6,6 +6,9 @@ import java.math.RoundingMode;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 实现 {@code MonitoringWaveDetector} 对应的领域职责。
+ */
 public class MonitoringWaveDetector {
     public Wave detect(Double current, Double mom, Double yoy, boolean momEnabled, double momThreshold,
             boolean yoyEnabled, double yoyThreshold, boolean noSample) {

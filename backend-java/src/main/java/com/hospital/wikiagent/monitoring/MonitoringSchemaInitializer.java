@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-/** 复用 Python 监控表，并支持在空的 Java 运行库中初始化。 */
+/** 初始化指标监控表，并支持对已有 SQLite 运行库执行幂等补齐。 */
 @Component
 public class MonitoringSchemaInitializer {
     private final JdbcTemplate jdbc;

@@ -34,10 +34,6 @@ management:
 wiki:
   knowledge:
     root: ${WIKI_KNOWLEDGE_ROOT:core-rules-wiki}
-  migration:
-    authority-runtime: ${MIGRATION_AUTHORITY_RUNTIME:python}
-    cutover-approved: ${MIGRATION_CUTOVER_APPROVED:false}
-    readiness-report-id: ${MIGRATION_READINESS_REPORT_ID:}
   admin:
     password: ${WIKI_ADMIN_PASSWORD:CHANGE_ME}
   auth:
@@ -97,8 +93,8 @@ wiki:
         api-key: ${DEEPSEEK_API_KEY:}
         thinking: true
   dbhub:
-    api-url: http://127.0.0.1:8080
-    mcp-url: http://127.0.0.1:8080/mcp
+    api-url: ${DBHUB_API_URL:http://127.0.0.1:8080}
+    mcp-url: ${DBHUB_MCP_URL:http://127.0.0.1:8080/mcp}
     source-id: ${DBHUB_SOURCE_ID_WIN60_QA_991827:win60_qa_991827}
     execute-tool: ${DBHUB_EXECUTE_TOOL_WIN60_QA_991827:execute_sql_win60_qa_991827}
     database-name: ${BUSINESS_DB_DATABASE:WIN60_QA_991827}

@@ -17,6 +17,10 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.EvidenceFact;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 
+/**
+ * 根据计划所需事实和当前已验证状态选择下一项业务能力。
+ * 缺时间、权限拒绝和工具故障在此进入明确兜底，不交给模型猜测下一步。
+ */
 @Component
 public class AgentStateController {
     private static final Map<String, FallbackCategory> BLOCKING = Map.of(

@@ -7,6 +7,9 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 实现 {@code PromptCatalog} 对应的领域职责。
+ */
 public class PromptCatalog {
     public static final String VERSION = "java-agent-prompts-v5";
 

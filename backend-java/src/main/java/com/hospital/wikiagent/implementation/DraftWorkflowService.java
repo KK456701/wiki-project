@@ -16,6 +16,9 @@ import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 
 @Service
+/**
+ * 编排 {@code DraftWorkflowService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class DraftWorkflowService {
     private static final DateTimeFormatter SQL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 

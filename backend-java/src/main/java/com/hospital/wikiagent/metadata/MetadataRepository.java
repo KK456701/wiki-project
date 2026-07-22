@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
+/**
+ * 封装 {@code MetadataRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class MetadataRepository {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;

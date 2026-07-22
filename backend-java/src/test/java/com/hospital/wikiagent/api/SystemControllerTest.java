@@ -6,29 +6,27 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.hospital.wikiagent.migration.MigrationProperties;
-
 class SystemControllerTest {
 
     @Test
-    void healthMatchesCurrentFastApiContract() {
-        Map<String, Object> response = new SystemController(new MigrationProperties()).health();
+    void healthIdentifiesTheJavaRuntime() {
+        Map<String, Object> response = new SystemController().health();
 
         assertThat(response).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "status", "ok",
-                "agent_orchestration", "plan_compile_control"));
+                "runtime", "java",
+                "agent_orchestration", "compiled_plan"));
     }
 
     @Test
-    void migrationDefaultsRemainShadowedAndGateClosed() {
-        SystemController controller = new SystemController(new MigrationProperties());
+    void runtimeStatusDescribesTheSingleJavaDeployment() {
+        SystemController controller = new SystemController();
 
-        assertThat(controller.migrationStatus())
-                .containsEntry("authority_runtime", "python")
-                .containsEntry("java_runtime", "compatibility_shadow")
-                .containsEntry("cutover_gate", "closed");
-        assertThat(controller.readiness())
-                .containsEntry("serving_authority", false)
-                .containsEntry("cutover_approved", false);
+        assertThat(controller.runtimeStatus())
+                .containsEntry("runtime", "java")
+                .containsEntry("frontend", "vue3")
+                .containsEntry("rule_source", "wiki")
+                .containsEntry("runtime_store", "sqlite")
+                .containsEntry("business_database_access", "dbhub");
     }
 }

@@ -11,6 +11,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
+/**
+ * 封装 {@code TerminologyRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class TerminologyRepository {
     private final JdbcTemplate jdbc;
 

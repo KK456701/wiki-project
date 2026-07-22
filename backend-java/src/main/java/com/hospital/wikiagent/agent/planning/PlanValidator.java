@@ -11,6 +11,7 @@ import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 import com.hospital.wikiagent.agent.planning.PlanValidation.ResolvedTimeRange;
 
+/** 校验业务目标冲突并确定性解析统计时间，阻止不完整计划进入工具层。 */
 @Component
 public class PlanValidator {
     private final TimeRangeResolver timeResolver;

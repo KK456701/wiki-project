@@ -23,6 +23,9 @@ import com.hospital.wikiagent.implementation.ImplementationException;
 
 @RestController
 @RequestMapping("/api/indicator-drafts")
+/**
+ * 提供 {@code IndicatorDraftWorkflowController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class IndicatorDraftWorkflowController {
     private final HospitalAuthService hospitals;
     private final DraftMetadataService metadata;

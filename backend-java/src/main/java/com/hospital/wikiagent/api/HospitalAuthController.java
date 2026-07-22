@@ -24,6 +24,9 @@ import jakarta.validation.constraints.Size;
 @Validated
 @RestController
 @RequestMapping("/api/auth/hospital")
+/**
+ * 提供 {@code HospitalAuthController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class HospitalAuthController {
     private final HospitalAuthService service;
 

@@ -22,6 +22,10 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 import jakarta.annotation.PreDestroy;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 工具调用的策略执行点：完成权限、类型校验、超时、数据库并发、重复调用、
+ * 缓存和 Evidence 记录。任何模型输出都必须经过本类才能触达业务工具。
+ */
 @Component
 public class ToolGateway {
     private final ToolRegistry registry;

@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-/** 复用 Python Trace 表；空环境可由 Java 独立初始化。 */
+/** 初始化 Java Trace 表；已有 SQLite 运行库会以兼容方式补齐缺失字段。 */
 @Component
 public class AgentTraceSchemaInitializer {
     private final JdbcTemplate jdbc;

@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.sql;
 import java.time.Instant;
 import java.util.Map;
 
+/**
+ * 定义 {@code PreparedSqlObject} 的不可变数据载体。
+ */
 public record PreparedSqlObject(
         String sqlId,
         String hospitalId,

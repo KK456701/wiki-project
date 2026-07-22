@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.ir;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+/**
+ * 枚举 {@code PlanIntent} 允许的有限业务状态。
+ */
 public enum PlanIntent {
     GENERAL_CHAT("general_chat"),
     RULE_EXPLANATION("rule_explanation"),

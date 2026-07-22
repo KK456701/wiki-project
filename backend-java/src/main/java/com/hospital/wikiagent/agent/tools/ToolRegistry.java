@@ -16,6 +16,7 @@ import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
+/** 注册运行时允许调用的工具及其输入类型、风险等级、权限前置条件和超时。 */
 @Component
 public class ToolRegistry {
     private final Map<String, AgentTool> tools;

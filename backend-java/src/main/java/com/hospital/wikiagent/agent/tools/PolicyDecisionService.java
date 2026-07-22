@@ -6,6 +6,9 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.tools.PolicyDecision.Decision;
 
 @Component
+/**
+ * 编排 {@code PolicyDecisionService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class PolicyDecisionService {
     public static final String VERSION = "agent-tool-policy-v1";
 

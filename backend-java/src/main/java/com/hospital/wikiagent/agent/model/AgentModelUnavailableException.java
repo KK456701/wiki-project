@@ -1,5 +1,8 @@
 package com.hospital.wikiagent.agent.model;
 
+/**
+ * 表示 {@code AgentModelUnavailableException} 对应的业务失败，供上层统一处理错误语义。
+ */
 public class AgentModelUnavailableException extends RuntimeException {
     private final String code;
 

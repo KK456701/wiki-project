@@ -6,6 +6,7 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
+/** 对生成 SQL 执行只读、单语句、危险关键字和结果规模约束校验。 */
 @Component
 public class ReadOnlySqlValidator {
     private static final List<String> FORBIDDEN = List.of(

@@ -17,6 +17,10 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.ir.RequestPlan.TimeExpression;
 import com.hospital.wikiagent.agent.planning.PlanValidation.ResolvedTimeRange;
 
+/**
+ * 将“今年一月到现在”等中文表达解析成左闭右开的确定时间区间。
+ * 用户原文优先于模型补写日期，避免小模型把当前年份或边界计算错误。
+ */
 @Component
 public class TimeRangeResolver {
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");

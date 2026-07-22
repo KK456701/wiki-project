@@ -24,6 +24,9 @@ import com.hospital.wikiagent.implementation.IndicatorDraftPublisher;
 
 @RestController
 @RequestMapping("/api")
+/**
+ * 提供 {@code IndicatorGovernanceController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class IndicatorGovernanceController {
     private final AdminSessionService admins;
     private final HospitalAuthService hospitals;

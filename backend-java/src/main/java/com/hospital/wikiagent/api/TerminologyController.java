@@ -30,6 +30,9 @@ import com.hospital.wikiagent.terminology.TerminologyService.TerminologyNotFound
 
 @RestController
 @RequestMapping("/api/terminology")
+/**
+ * 提供 {@code TerminologyController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class TerminologyController {
     private final HospitalAuthService auth;
     private final TerminologyService terminology;

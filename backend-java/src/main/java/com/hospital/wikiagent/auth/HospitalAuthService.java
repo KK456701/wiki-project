@@ -21,6 +21,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 编排 {@code HospitalAuthService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class HospitalAuthService {
     public static final int PBKDF2_ITERATIONS = 310_000;
     private static final int LOCK_AFTER_FAILURES = 5;

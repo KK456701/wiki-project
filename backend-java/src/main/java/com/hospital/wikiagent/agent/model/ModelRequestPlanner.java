@@ -10,6 +10,10 @@ import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 把自然语言请求转换为 RequestPlan；仅允许模型描述业务目标，
+ * 实际工具、依赖顺序和 SQL 均由后续 Java 编译器决定。
+ */
 @Component
 public class ModelRequestPlanner {
     public static final String VERSION = "model-request-planner-v2";

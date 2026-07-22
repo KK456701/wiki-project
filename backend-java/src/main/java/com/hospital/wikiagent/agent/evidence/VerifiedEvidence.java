@@ -1,5 +1,8 @@
 package com.hospital.wikiagent.agent.evidence;
 
+/**
+ * 定义 {@code VerifiedEvidence} 的不可变数据载体。
+ */
 public record VerifiedEvidence(
         EvidenceEnvelope evidence,
         EvidenceVerification verification) {

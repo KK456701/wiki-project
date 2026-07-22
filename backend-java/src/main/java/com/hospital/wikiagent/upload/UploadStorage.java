@@ -16,6 +16,9 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.runtime.WorkspacePaths;
 
 @Component
+/**
+ * 实现 {@code UploadStorage} 对应的领域职责。
+ */
 public class UploadStorage {
     private final Path root;
     private final long maxBytes;

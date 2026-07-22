@@ -7,6 +7,9 @@ import java.util.function.BiPredicate;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 
+/**
+ * 定义 {@code AgentTool} 的不可变数据载体。
+ */
 public record AgentTool(
         String name,
         Class<?> inputType,

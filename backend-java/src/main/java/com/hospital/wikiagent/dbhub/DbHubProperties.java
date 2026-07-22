@@ -3,6 +3,9 @@ package com.hospital.wikiagent.dbhub;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "wiki.dbhub")
+/**
+ * 承载 {@code DbHubProperties} 对应的类型化配置，避免业务代码直接读取环境变量。
+ */
 public class DbHubProperties {
 
     private String apiUrl = "http://127.0.0.1:8080";

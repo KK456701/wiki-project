@@ -26,6 +26,9 @@ import com.hospital.wikiagent.implementation.IndicatorDraftRepository;
 
 @RestController
 @RequestMapping("/api/indicator-drafts")
+/**
+ * 提供 {@code IndicatorDraftController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class IndicatorDraftController {
     private final HospitalAuthService hospitals;
     private final IndicatorDraftRepository drafts;

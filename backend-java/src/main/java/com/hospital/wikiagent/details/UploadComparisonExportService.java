@@ -32,6 +32,9 @@ import com.hospital.wikiagent.upload.UploadStorage.UploadAccessException;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
 
 @Service
+/**
+ * 编排 {@code UploadComparisonExportService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class UploadComparisonExportService {
     private static final Pattern SAFE_ID = Pattern.compile("[A-Za-z0-9_-]+");
 

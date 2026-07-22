@@ -8,6 +8,9 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 将结构化输入渲染为 {@code SqlTemplateRenderer} 所需的确定性结果。
+ */
 public class SqlTemplateRenderer {
     private static final Pattern IF_FIELD = Pattern.compile(
             "\\{%\\s*if\\s+fields\\.get\\('([A-Za-z0-9_]+)'\\)\\s*%}(.*?)\\{%\\s*endif\\s*%}",

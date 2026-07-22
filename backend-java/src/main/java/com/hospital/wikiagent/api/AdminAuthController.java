@@ -13,6 +13,9 @@ import com.hospital.wikiagent.auth.AdminSessionService;
 
 @RestController
 @RequestMapping("/api/admin")
+/**
+ * 提供 {@code AdminAuthController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class AdminAuthController {
     private final AdminSessionService sessions;
 

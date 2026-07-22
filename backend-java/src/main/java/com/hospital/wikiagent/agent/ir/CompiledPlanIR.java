@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.ir;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 定义 {@code CompiledPlanIR} 的不可变数据载体。
+ */
 public record CompiledPlanIR(
         String planId,
         String schemaVersion,

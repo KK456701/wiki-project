@@ -27,6 +27,9 @@ import com.hospital.wikiagent.details.IndicatorDetailService;
 import com.hospital.wikiagent.details.UploadComparisonExportService;
 
 @RestController
+/**
+ * 提供 {@code IndicatorDetailController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class IndicatorDetailController {
     private static final MediaType XLSX = MediaType.parseMediaType(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");

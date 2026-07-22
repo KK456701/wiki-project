@@ -55,7 +55,7 @@ class HospitalAuthContractTest {
     }
 
     @Test
-    void cryptoMatchesPythonFrozenVector() throws Exception {
+    void cryptoMatchesFrozenCompatibilityVector() throws Exception {
         Path fixture = Path.of("..", "contracts", "migration", "v1", "auth-crypto-vector.json").normalize();
         @SuppressWarnings("unchecked")
         Map<String, Object> vector = new ObjectMapper().readValue(Files.readString(fixture), Map.class);

@@ -12,6 +12,9 @@ import java.time.format.DateTimeParseException;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 解析并规范化 {@code MonitoringPeriodResolver} 对应的业务输入。
+ */
 public class MonitoringPeriodResolver {
     private static final DateTimeFormatter TEXT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final DateTimeFormatter RUN_TIME = DateTimeFormatter.ofPattern("HH:mm");

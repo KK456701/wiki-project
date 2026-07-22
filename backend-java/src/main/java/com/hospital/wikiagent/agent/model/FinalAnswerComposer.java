@@ -11,6 +11,7 @@ import com.hospital.wikiagent.agent.evidence.VerifiedEvidence;
 
 import tools.jackson.databind.ObjectMapper;
 
+/** 使用已验证 Evidence 组织中文回答，并在协议泄漏时执行受控修复或确定性降级。 */
 @Component
 public class FinalAnswerComposer {
     public static final String VERSION = "final-answer-composer-v2";

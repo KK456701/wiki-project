@@ -1,10 +1,7 @@
 # 复制本文件为 config.yaml，并按本地环境修改。
 
 # 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
-runtime_db_url: "sqlite+pysqlite:///runtime/wiki_agent_runtime.db"
-
-# 公司包交换和审批状态：单机部署与运行库共用内嵌 SQLite。
-company_db_url: "sqlite+pysqlite:///runtime/wiki_agent_runtime.db"
+runtime_db_url: "jdbc:sqlite:runtime/wiki_agent_runtime.db"
 
 # 规则正文、医院口径、字段映射和 SQL 规格直接从 core-rules-wiki 读取。
 # 患者业务数据只通过 DBHub 只读访问 SQL Server，应用不保存其账号密码。

@@ -17,6 +17,9 @@ import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 @Component
+/**
+ * 提供 {@code IndicatorDiagnosisTools} 对应的受控 Agent 工具能力。
+ */
 public class IndicatorDiagnosisTools {
     private final RuleReadRepository rules;
     private final IndicatorSqlTools sqlTools;

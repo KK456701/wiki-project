@@ -22,6 +22,10 @@ import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 把工具结果转换为最小化 EvidenceEnvelope；SQL 正文和患者级数据只保存对象引用，
+ * 不进入模型上下文、Trace 或普通会话。
+ */
 @Component
 public class EvidenceLedger implements EvidenceRecorder {
     private static final Set<String> SAFE_DATA_KEYS = Set.of(

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 
+/** 校验 Evidence 的医院、子任务、规则、周期和 SQL 链一致性后生成 VerifiedEvidence。 */
 @Component
 public class EvidenceVerifier {
     public static final String VERSION = "plan-verifier-v1";

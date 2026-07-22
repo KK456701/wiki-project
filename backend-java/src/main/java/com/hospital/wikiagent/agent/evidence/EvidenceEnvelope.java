@@ -5,6 +5,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 定义 {@code EvidenceEnvelope} 的不可变数据载体。
+ */
 public record EvidenceEnvelope(
         String schemaVersion,
         String evidenceId,

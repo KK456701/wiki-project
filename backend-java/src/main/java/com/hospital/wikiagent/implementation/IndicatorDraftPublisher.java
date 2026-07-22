@@ -14,6 +14,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+/**
+ * 实现 {@code IndicatorDraftPublisher} 对应的领域职责。
+ */
 public class IndicatorDraftPublisher {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;

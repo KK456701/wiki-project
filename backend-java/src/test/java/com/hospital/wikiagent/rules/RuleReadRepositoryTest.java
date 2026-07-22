@@ -61,7 +61,7 @@ class RuleReadRepositoryTest {
     }
 
     @Test
-    void searchIsHospitalScopedAndKeepsPythonShape() {
+    void searchIsHospitalScopedAndKeepsPublicContractShape() {
         Map<String, Object> response = repository.searchForHospital("转科", "hospital_001", 5);
 
         assertThat(response).containsKeys("query", "resolved_rule_id", "matches");

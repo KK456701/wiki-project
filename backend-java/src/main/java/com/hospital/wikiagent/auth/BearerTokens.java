@@ -2,6 +2,9 @@ package com.hospital.wikiagent.auth;
 
 import org.springframework.http.HttpStatus;
 
+/**
+ * 实现 {@code BearerTokens} 对应的领域职责。
+ */
 public final class BearerTokens {
     private BearerTokens() {
     }

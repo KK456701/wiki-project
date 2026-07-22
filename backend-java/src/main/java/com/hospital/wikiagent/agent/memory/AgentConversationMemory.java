@@ -18,6 +18,10 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import jakarta.annotation.PostConstruct;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 保存最近多轮对话以及当前指标、统计区间和运行对象引用。
+ * 存储键包含医院和用户，防止相同 session_id 在租户之间串用。
+ */
 @Component
 public class AgentConversationMemory {
     private static final int MAX_MESSAGES = 16;

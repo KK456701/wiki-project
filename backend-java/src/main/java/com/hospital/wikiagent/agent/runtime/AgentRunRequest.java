@@ -2,6 +2,9 @@ package com.hospital.wikiagent.agent.runtime;
 
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
+/**
+ * 定义 {@code AgentRunRequest} 的不可变数据载体。
+ */
 public record AgentRunRequest(
         String query,
         String sessionId,

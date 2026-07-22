@@ -5,6 +5,9 @@ import java.util.List;
 import com.hospital.wikiagent.agent.ir.FailureClass;
 import com.hospital.wikiagent.agent.ir.PlanCapability;
 
+/**
+ * 定义 {@code ControllerDecision} 的不可变数据载体。
+ */
 public record ControllerDecision(
         ControllerAction action,
         PlanCapability capability,

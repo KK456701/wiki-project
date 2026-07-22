@@ -22,6 +22,9 @@ import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/kb/rules")
+/**
+ * 提供 {@code RuleReadController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class RuleReadController {
     private final HospitalAuthService authService;
     private final RuleReadRepository repository;

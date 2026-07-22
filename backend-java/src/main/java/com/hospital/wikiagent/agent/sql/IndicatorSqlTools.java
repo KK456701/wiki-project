@@ -27,6 +27,10 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 根据 Wiki 中的规则规格确定性准备 SQL 对象，并仅通过 DBHub 执行受控只读试运行。
+ * 浏览器和模型均不能向这里提交任意 SQL 正文。
+ */
 @Component
 public class IndicatorSqlTools {
     private static final DateTimeFormatter SQL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");

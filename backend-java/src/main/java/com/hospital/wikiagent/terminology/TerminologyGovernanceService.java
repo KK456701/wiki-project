@@ -27,6 +27,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+/**
+ * 编排 {@code TerminologyGovernanceService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class TerminologyGovernanceService {
     private static final Set<String> RELATIONS = Set.of(
             "exact", "abbreviation", "colloquial", "related", "forbidden");

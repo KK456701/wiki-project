@@ -23,6 +23,10 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 记录单轮节点、父子关系、耗时和安全输入输出，并提供当前医院范围内的性能汇总。
+ * 密码、令牌、SQL 正文和患者原始行不得写入 Trace。
+ */
 @Service
 public class AgentTraceService {
     public static final String VERSION = "java-agent-trace-v1";

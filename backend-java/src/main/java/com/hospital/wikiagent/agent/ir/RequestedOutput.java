@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.ir;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 
+/**
+ * 枚举 {@code RequestedOutput} 允许的有限业务状态。
+ */
 public enum RequestedOutput {
     DEFINITION("definition"),
     FORMULA("formula"),

@@ -20,6 +20,9 @@ import com.hospital.wikiagent.auth.HospitalAuthService;
 
 @RestController
 @RequestMapping("/api/agent/runs")
+/**
+ * 提供 {@code AgentTraceController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class AgentTraceController {
     private final HospitalAuthService auth;
     private final AgentTraceService traces;

@@ -1,5 +1,8 @@
 package com.hospital.wikiagent.agent.model;
 
+/**
+ * 实现 {@code ModelJsonExtractor} 对应的领域职责。
+ */
 public final class ModelJsonExtractor {
     private ModelJsonExtractor() {
     }

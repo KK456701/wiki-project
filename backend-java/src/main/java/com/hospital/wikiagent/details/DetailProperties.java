@@ -5,6 +5,9 @@ import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "wiki.agent.details")
+/**
+ * 承载 {@code DetailProperties} 对应的类型化配置，避免业务代码直接读取环境变量。
+ */
 public class DetailProperties {
     private Path exportRoot = Path.of("runtime", "exports");
     private int expireHours = 24;

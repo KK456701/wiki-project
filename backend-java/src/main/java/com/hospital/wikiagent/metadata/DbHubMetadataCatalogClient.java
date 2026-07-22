@@ -9,6 +9,9 @@ import com.hospital.wikiagent.dbhub.DbHubMcpClient;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 
 @Component
+/**
+ * 定义或实现 {@code DbHubMetadataCatalogClient} 对外部服务的受控访问边界。
+ */
 public class DbHubMetadataCatalogClient implements MetadataCatalogClient {
     private final DbHubMcpClient client;
     private final DbHubProperties properties;

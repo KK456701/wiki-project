@@ -3,6 +3,9 @@ package com.hospital.wikiagent.agent.validation;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * 定义 {@code ImplementationValidationReport} 的不可变数据载体。
+ */
 public record ImplementationValidationReport(
         String schemaVersion,
         String reportId,

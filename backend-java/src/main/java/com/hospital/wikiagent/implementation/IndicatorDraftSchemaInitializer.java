@@ -6,6 +6,9 @@ import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
 
 @Component
+/**
+ * 初始化 {@code IndicatorDraftSchemaInitializer} 所需的运行结构，并保证重复启动时可安全执行。
+ */
 public class IndicatorDraftSchemaInitializer {
     private final JdbcTemplate jdbc;
 

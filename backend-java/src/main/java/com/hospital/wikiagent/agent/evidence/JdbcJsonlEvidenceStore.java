@@ -20,6 +20,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
+/**
+ * 实现 {@code JdbcJsonlEvidenceStore} 对应的领域职责。
+ */
 public class JdbcJsonlEvidenceStore implements EvidenceStore {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;

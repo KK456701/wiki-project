@@ -11,6 +11,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 实现 {@code MonitoringScheduler} 对应的领域职责。
+ */
 public class MonitoringScheduler {
     private final MonitoringRepository repository;
     private final MonitoringExecutionService execution;

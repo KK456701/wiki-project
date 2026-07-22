@@ -2,6 +2,9 @@ package com.hospital.wikiagent.auth;
 
 import org.springframework.http.HttpStatus;
 
+/**
+ * 表示 {@code HospitalAuthException} 对应的业务失败，供上层统一处理错误语义。
+ */
 public class HospitalAuthException extends RuntimeException {
     private final String code;
     private final HttpStatus status;

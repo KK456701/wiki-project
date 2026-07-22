@@ -10,6 +10,9 @@ import java.util.Set;
 import org.springframework.stereotype.Component;
 
 @Component
+/**
+ * 将结构化输入渲染为 {@code DraftSqlPlanRenderer} 所需的确定性结果。
+ */
 public class DraftSqlPlanRenderer {
     private static final Set<String> OPERATORS = Set.of(
             "eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in",

@@ -24,6 +24,9 @@ import com.hospital.wikiagent.metadata.MetadataSyncService;
 
 @RestController
 @RequestMapping("/api/metadata")
+/**
+ * 提供 {@code MetadataController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class MetadataController {
     private final HospitalAuthService auth;
     private final MetadataSyncService metadata;

@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 
 import com.hospital.wikiagent.agent.ir.FailureClass;
 
+/**
+ * 定义 {@code PlanValidation} 的不可变数据载体。
+ */
 public record PlanValidation(
         boolean ok,
         String code,

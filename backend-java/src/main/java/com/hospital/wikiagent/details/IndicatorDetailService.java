@@ -58,6 +58,9 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
+/**
+ * 编排 {@code IndicatorDetailService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class IndicatorDetailService {
     static final String DETAIL_VIEW_PERMISSION = "indicator_detail_view";
     static final String DETAIL_EXPORT_PERMISSION = "indicator_detail_export";

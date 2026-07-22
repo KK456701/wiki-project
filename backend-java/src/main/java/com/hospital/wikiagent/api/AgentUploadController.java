@@ -16,6 +16,9 @@ import com.hospital.wikiagent.upload.UploadStorage;
 
 @RestController
 @RequestMapping("/api/agent")
+/**
+ * 提供 {@code AgentUploadController} 对应的 HTTP 接口，并保持鉴权与业务编排边界。
+ */
 public class AgentUploadController {
     private final HospitalAuthService auth;
     private final UploadStorage storage;

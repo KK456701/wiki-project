@@ -5,6 +5,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 定义 {@code ToolResult} 的不可变数据载体。
+ */
 public record ToolResult(
         boolean ok,
         String status,

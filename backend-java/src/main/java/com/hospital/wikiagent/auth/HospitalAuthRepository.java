@@ -13,6 +13,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
+/**
+ * 封装 {@code HospitalAuthRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class HospitalAuthRepository {
     private final JdbcTemplate jdbc;
 

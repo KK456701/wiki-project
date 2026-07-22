@@ -11,6 +11,9 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 
 @Component
+/**
+ * 提供 {@code ImplementationValidationTools} 对应的受控 Agent 工具能力。
+ */
 public class ImplementationValidationTools {
     private final ImplementationValidationWorkflow workflow;
 

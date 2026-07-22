@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 实现 {@code AgentRunState} 对应的领域职责。
+ */
 public class AgentRunState {
     private String currentRuleId;
     private String currentUploadFileKey;

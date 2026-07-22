@@ -2,6 +2,9 @@ package com.hospital.wikiagent.agent.evidence;
 
 import java.time.Instant;
 
+/**
+ * 定义 {@code EvidenceVerification} 的不可变数据载体。
+ */
 public record EvidenceVerification(
         String schemaVersion,
         String verificationId,

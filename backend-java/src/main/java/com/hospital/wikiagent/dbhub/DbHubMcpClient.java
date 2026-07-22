@@ -18,6 +18,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
+/**
+ * 定义或实现 {@code DbHubMcpClient} 对外部服务的受控访问边界。
+ */
 public class DbHubMcpClient {
 
     private final DbHubProperties properties;

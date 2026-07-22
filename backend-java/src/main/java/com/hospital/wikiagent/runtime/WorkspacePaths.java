@@ -3,6 +3,9 @@ package com.hospital.wikiagent.runtime;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+/**
+ * 实现 {@code WorkspacePaths} 对应的领域职责。
+ */
 public final class WorkspacePaths {
     private WorkspacePaths() {
     }

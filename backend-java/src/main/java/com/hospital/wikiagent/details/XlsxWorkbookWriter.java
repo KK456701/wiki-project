@@ -25,6 +25,9 @@ import com.hospital.wikiagent.details.UploadDetailComparator.MatchedRow;
 import com.hospital.wikiagent.details.UploadDetailComparator.RowComparison;
 
 @Component
+/**
+ * 负责生成 {@code XlsxWorkbookWriter} 对应的输出内容。
+ */
 public class XlsxWorkbookWriter {
     public Path writeIndicatorWorkbook(
             Path path,

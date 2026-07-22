@@ -1,5 +1,8 @@
 package com.hospital.wikiagent.implementation;
 
+/**
+ * 表示 {@code ImplementationException} 对应的业务失败，供上层统一处理错误语义。
+ */
 public class ImplementationException extends RuntimeException {
     private final String code;
     private final int status;

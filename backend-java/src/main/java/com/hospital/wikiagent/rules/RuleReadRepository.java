@@ -24,6 +24,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
+/**
+ * 封装 {@code RuleReadRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ */
 public class RuleReadRepository {
     private static final Pattern MINUTES = Pattern.compile("(\\d+)\\s*分钟");
     private static final Set<String> PATCH_ROOTS = Set.of(

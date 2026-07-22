@@ -13,6 +13,9 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 编排 {@code TerminologyService} 对应的业务流程，并集中维护事务与安全边界。
+ */
 public class TerminologyService {
     private final TerminologyRepository repository;
 

@@ -41,6 +41,10 @@ import com.hospital.wikiagent.agent.planning.ReplanPolicy;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 
+/**
+ * 执行单指标 Compiled Plan：装载会话、调用 Planner、按状态机调用受控工具、
+ * 校验证据并生成最终回答。模型不能在这里绕过 Controller 自由调用工具。
+ */
 @Component
 public class AgentRunner {
     public static final String VERSION = "java-agent-runner-v1";

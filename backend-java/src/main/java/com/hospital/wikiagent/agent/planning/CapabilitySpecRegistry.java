@@ -23,6 +23,10 @@ import com.hospital.wikiagent.agent.runtime.EvidenceFact;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.ToolRegistry;
 
+/**
+ * 所有业务能力的单一注册表，集中声明事实依赖、唯一工具、参数编译器和验证器。
+ * 启动时检查循环依赖、重复事实生产者以及未知工具，避免多处映射漂移。
+ */
 @Component
 public class CapabilitySpecRegistry {
     public static final String VERSION = "capability-registry-v1";

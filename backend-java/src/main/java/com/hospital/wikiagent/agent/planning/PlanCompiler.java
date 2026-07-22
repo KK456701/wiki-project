@@ -20,6 +20,7 @@ import com.hospital.wikiagent.agent.model.SpringAiModelInvoker;
 
 import tools.jackson.databind.ObjectMapper;
 
+/** 将模型给出的业务 RequestPlan 编译成拓扑有序、可校验的 CompiledPlan IR。 */
 @Component
 public class PlanCompiler {
     private final CapabilitySpecRegistry registry;

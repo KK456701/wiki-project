@@ -12,12 +12,12 @@
 
 ## 允许保留英文的场景
 
-- Python/JavaScript 函数名、变量名、类名、模块名。
+- Java/TypeScript/JavaScript 函数名、变量名、类名、模块名。
 - API 路径、JSON 字段名、HTTP header、MCP tool 名称。
 - SQL 关键字、数据库字段名、表名、索引名。
-- 第三方库名称，例如 FastAPI、LangGraph、Ollama、DBHub、SQLAlchemy。
+- 第三方库名称，例如 Spring Boot、Spring AI、Vue、Ollama、DBHub。
 - 配置项名称和环境变量，例如 `runtime_db_url`、`OLLAMA_BASE_URL`。
-- 命令行命令，例如 `python -B -m uvicorn app.api.main:app`。
+- 命令行命令，例如 `mvn test`、`java -jar wiki-agent-java.jar`。
 
 ## 文档风格
 
@@ -41,6 +41,7 @@
 3. 生成文件前先确认是否已有同类文件，避免重复造目录或重复定义概念。
 4. 涉及数据库密码、管理员密码、医院真实连接串的内容不得写入 Git；只提交示例配置。
 5. 涉及 SQL 执行必须保持只读、安全校验、行数限制和超时控制。
+6. 生成或修改 Java 代码时必须添加必要的中文注释：公开类型说明职责，复杂分支说明业务原因，安全边界说明禁止事项；不得为显而易见的 getter、赋值或语法逐行堆砌无信息注释。
 
 ## 产品工程原则
 

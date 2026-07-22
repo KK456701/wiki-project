@@ -16,6 +16,9 @@ import com.hospital.wikiagent.agent.model.PlannerOutputException;
 import com.hospital.wikiagent.details.IndicatorDetailException;
 
 @RestControllerAdvice
+/**
+ * 实现 {@code ApiExceptionHandler} 对应的领域职责。
+ */
 public class ApiExceptionHandler {
 
     @ExceptionHandler(HospitalAuthException.class)
