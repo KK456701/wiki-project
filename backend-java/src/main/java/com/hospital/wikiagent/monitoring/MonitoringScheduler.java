@@ -10,10 +10,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-@Component
 /**
  * 实现 {@code MonitoringScheduler} 对应的领域职责。
+ *
+ * <p>调度器只触发已配置且具备租约的任务，避免多实例重复执行。单次失败会记录稳定状态，但不会无限重试或扩大数据访问范围。</p>
  */
+@Component
 public class MonitoringScheduler {
     private final MonitoringRepository repository;
     private final MonitoringExecutionService execution;

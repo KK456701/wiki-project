@@ -17,7 +17,7 @@ import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class AgentTraceServiceTest {
     @Test

@@ -13,14 +13,16 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Component
 /**
  * 定义或实现 {@code DbHubMcpClient} 对外部服务的受控访问边界。
+ *
+ * <p>客户端统一处理连接、超时和协议错误，并向上层返回稳定领域异常。认证信息、SQL 明文和患者数据不得出现在普通日志中。</p>
  */
+@Component
 public class DbHubMcpClient {
 
     private final DbHubProperties properties;
@@ -44,7 +46,7 @@ public class DbHubMcpClient {
                     .retrieve()
                     .body(String.class);
             return objectMapper.readTree(body == null ? "{}" : body);
-        } catch (RestClientException | JacksonException exception) {
+        } catch (RestClientException | JsonProcessingException exception) {
             throw new DbHubMcpException("无法访问 DBHub API。", exception);
         }
     }
@@ -83,12 +85,12 @@ public class DbHubMcpClient {
             return rows;
         } catch (DbHubMcpException exception) {
             throw exception;
-        } catch (RestClientException | JacksonException exception) {
+        } catch (RestClientException | JsonProcessingException exception) {
             throw new DbHubMcpException("无法访问 DBHub MCP。", exception);
         }
     }
 
-    static JsonNode parseJsonOrSse(ObjectMapper objectMapper, String body) throws JacksonException {
+    static JsonNode parseJsonOrSse(ObjectMapper objectMapper, String body) throws JsonProcessingException {
         String stripped = body.strip();
         if (stripped.isEmpty()) {
             return objectMapper.createObjectNode();
@@ -147,7 +149,7 @@ public class DbHubMcpClient {
                     if (rows != null) {
                         return rows;
                     }
-                } catch (JacksonException ignored) {
+                } catch (JsonProcessingException ignored) {
                     // 非 JSON 文本由 extractError 负责生成安全错误说明。
                 }
             }
@@ -177,7 +179,7 @@ public class DbHubMcpClient {
                 if (!nested.isBlank()) {
                     return nested;
                 }
-            } catch (JacksonException ignored) {
+            } catch (JsonProcessingException ignored) {
                 return text.asText().strip();
             }
         }

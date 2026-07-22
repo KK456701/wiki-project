@@ -18,10 +18,14 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PreDestroy;
 
-@Component
 /**
- * 实现 {@code SpringAiModelInvoker} 对应的领域职责。
+ * Spring AI 模型适配器：统一调用 Ollama 与 OpenAI 兼容 API，并返回最小化文本结果。
+ *
+ * <p>本地 Ollama 强制单并发，外部 API 最多双并发，防止 8B 模型或远程配额被复合任务压垮。
+ * 超时由 CompletableFuture 在调用边界统一处理；本类不注册 Spring AI 自动工具调用，
+ * Planner 和 Final Answer 始终只能生成文本。</p>
  */
+@Component
 public class SpringAiModelInvoker implements AgentModelInvoker {
     public static final String VERSION = "spring-ai-model-adapter-v1";
     private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiModelInvoker.class);
@@ -34,6 +38,9 @@ public class SpringAiModelInvoker implements AgentModelInvoker {
         this.registry = registry;
     }
 
+    /**
+     * 在指定超时内完成一次纯文本模型调用，并把底层异常归一化为安全错误。
+     */
     @Override
     public ModelCompletion complete(
             String modelId,

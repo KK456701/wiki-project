@@ -1,12 +1,15 @@
 # 当前 Java Agent Runtime 架构
 
-> 更新日期：2026-07-22。本文描述当前唯一生产实现：Java 17 + Spring Boot + Spring AI + Vue 3。
+> 更新日期：2026-07-22。本文描述当前唯一生产实现：Java 17 + Spring Boot 3.5.16 + Spring AI 1.1.8 + Vue 3。
 
 ## 一句话总结
 
 当前框架是 **Compiled Plan + Deterministic Execution + Evidence Verification**：LLM 理解业务目标，Java 编译和执行计划，工具产生证据，Verifier 校验证据，LLM 最后只负责把已验证事实组织成业务回答。
 
 系统没有使用 LangChain 或 LangGraph，也不让模型进行无限 ReAct 工具循环。
+
+Spring Boot 3.5 与 Spring AI 1.1 是一组受官方兼容关系约束的版本组合。Spring AI 2.0
+只支持 Spring Boot 4.0/4.1，因此当前项目不能单独把 Spring AI 升级到 2.x。
 
 ## 分层总图
 

@@ -11,7 +11,13 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 
-/** 校验 Evidence 的医院、子任务、规则、周期和 SQL 链一致性后生成 VerifiedEvidence。 */
+/**
+ * 校验 Evidence 的医院、子任务、规则、周期和 SQL 链一致性后生成 VerifiedEvidence。
+ *
+ * <p>验证由确定性代码完成，至少检查医院、子任务、过期时间、规则、统计周期、SQL 对象和
+ * 本轮结果指纹。任一维度不一致都会保存独立的 rejected 验证记录并终止回答，模型无权覆盖
+ * 验证结论或把未验证 Evidence 当作事实。</p>
+ */
 @Component
 public class EvidenceVerifier {
     public static final String VERSION = "plan-verifier-v1";
@@ -24,6 +30,9 @@ public class EvidenceVerifier {
         this.ledger = ledger;
     }
 
+    /**
+     * 按输入顺序验证本轮全部 Evidence，并返回不可变的已验证列表。
+     */
     public List<VerifiedEvidence> verifyMany(
             List<String> evidenceIds,
             AgentRuntimeContext context,

@@ -20,10 +20,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-@Service
 /**
  * 编排 {@code HospitalAuthService} 对应的业务流程，并集中维护事务与安全边界。
+ *
+ * <p>该服务负责按业务顺序组合依赖，并把可预期失败转换为稳定错误语义。它不允许模型直接访问数据库，也不允许上层绕过策略、Evidence 或医院隔离边界。</p>
  */
+@Service
 public class HospitalAuthService {
     public static final int PBKDF2_ITERATIONS = 310_000;
     private static final int LOCK_AFTER_FAILURES = 5;

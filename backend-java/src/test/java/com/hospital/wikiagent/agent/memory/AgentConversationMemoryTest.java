@@ -16,7 +16,7 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class AgentConversationMemoryTest {
     @Test

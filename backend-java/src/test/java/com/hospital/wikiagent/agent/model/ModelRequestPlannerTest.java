@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class ModelRequestPlannerTest {
     @Test

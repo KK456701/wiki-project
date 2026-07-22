@@ -26,6 +26,8 @@ import com.hospital.wikiagent.agent.tools.ToolRegistry;
 /**
  * 所有业务能力的单一注册表，集中声明事实依赖、唯一工具、参数编译器和验证器。
  * 启动时检查循环依赖、重复事实生产者以及未知工具，避免多处映射漂移。
+ *
+ * <p>注册内容在启动阶段完成校验并在运行期只读使用，重复 ID、未知实现或不完整配置会快速失败。调用方不得根据模型文本动态注册新的生产能力。</p>
  */
 @Component
 public class CapabilitySpecRegistry {

@@ -18,13 +18,15 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Repository
 /**
  * 封装 {@code IndicatorDraftRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ *
+ * <p>所有存储语句、JSON 转换和对象有效期检查集中在此处，调用方只传递类型化条件。实现不得绕过医院隔离，也不得把患者级明细写入日志或通用 Trace。</p>
  */
+@Repository
 public class IndicatorDraftRepository {
     private static final Set<String> EDITABLE = Set.of(
             "base_index_code", "proposed_index_code", "index_name", "index_type", "index_desc",
@@ -252,12 +254,12 @@ public class IndicatorDraftRepository {
     private Object read(String value, Object fallback) {
         if (value == null || value.isBlank()) return fallback;
         try { return json.readValue(value, new TypeReference<Object>() { }); }
-        catch (RuntimeException exception) { return fallback; }
+        catch (Exception exception) { return fallback; }
     }
 
     private String write(Object value) {
         try { return json.writeValueAsString(value); }
-        catch (RuntimeException exception) {
+        catch (Exception exception) {
             throw new ImplementationException("DRAFT_JSON_INVALID", "设计字段不是有效 JSON 数据。", 400);
         }
     }

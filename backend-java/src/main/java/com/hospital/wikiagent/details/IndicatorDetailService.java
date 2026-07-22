@@ -54,13 +54,15 @@ import com.hospital.wikiagent.details.IndicatorDetailRepository.SnapshotRecord;
 import com.hospital.wikiagent.details.UploadDetailComparator.SystemDetailDataset;
 import com.hospital.wikiagent.runtime.WorkspacePaths;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Service
 /**
  * 编排 {@code IndicatorDetailService} 对应的业务流程，并集中维护事务与安全边界。
+ *
+ * <p>该服务负责按业务顺序组合依赖，并把可预期失败转换为稳定错误语义。它不允许模型直接访问数据库，也不允许上层绕过策略、Evidence 或医院隔离边界。</p>
  */
+@Service
 public class IndicatorDetailService {
     static final String DETAIL_VIEW_PERMISSION = "indicator_detail_view";
     static final String DETAIL_EXPORT_PERMISSION = "indicator_detail_export";

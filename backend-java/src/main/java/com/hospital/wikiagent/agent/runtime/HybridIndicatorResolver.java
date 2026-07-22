@@ -23,11 +23,13 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 import com.hospital.wikiagent.terminology.TerminologyRepository;
 import com.hospital.wikiagent.terminology.TerminologyService;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 指标身份识别边界：规则精确匹配、本地语义召回、候选内 LLM 消歧。
  * 不决定业务意图、工具、SQL 或数据库执行。
+ *
+ * <p>解析过程优先使用确定性规则并保留原始输入，无法唯一确定时返回歧义而不是猜测。模型结果只能作为候选，仍需经过类型和业务约束校验。</p>
  */
 @Component
 public class HybridIndicatorResolver {
@@ -76,6 +78,10 @@ public class HybridIndicatorResolver {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 按“规则精确匹配 → 本地语义召回 → 候选内 LLM 消歧”识别一到三个指标。
+     * 每一层都会写入独立 Trace 节点，调用方可以确认指标身份是如何得到的。
+     */
     public Resolution resolve(
             String query,
             String hospitalId,
@@ -91,6 +97,7 @@ public class HybridIndicatorResolver {
         String releaseVersion = "unreleased";
         List<CatalogItem> catalog = catalog(hospitalId);
 
+        // 第一层：医院术语映射和正式指标名精确匹配，结果可直接审计和复现。
         long ruleStarted = TraceEvents.started();
         List<ResolvedIndicator> resolved = new ArrayList<>();
         List<Span> occupied = new ArrayList<>();
@@ -109,6 +116,7 @@ public class HybridIndicatorResolver {
                         "release_version", releaseVersion,
                         "resolver_version", VERSION));
 
+        // 第二层：只在未占用文本片段内做本地相似度召回，阈值和领先幅度均固定。
         long semanticStarted = TraceEvents.started();
         List<Ambiguity> ambiguities = new ArrayList<>();
         Set<String> knownRules = new LinkedHashSet<>();
@@ -140,6 +148,7 @@ public class HybridIndicatorResolver {
                         "threshold", SEMANTIC_THRESHOLD,
                         "margin", SEMANTIC_MARGIN));
 
+        // 第三层：LLM 只能在最多三个候选中消歧，不能创造目录外的指标或 ruleId。
         boolean usedLlm = false;
         if (!ambiguities.isEmpty()) {
             usedLlm = true;
@@ -339,7 +348,7 @@ public class HybridIndicatorResolver {
                             "remaining_groups", remaining.size()),
                     "model_id", modelId, "prompt_version", PromptCatalog.VERSION);
             return new Disambiguation(resolved, remaining);
-        } catch (RuntimeException exception) {
+        } catch (Exception exception) {
             TraceEvents.failed(observer, traceId, "indicator_llm_disambiguation", "llm",
                     started, subtaskId, "INDICATOR_DISAMBIGUATION_FAILED", exception.getMessage(),
                     "model_id", modelId, "prompt_version", PromptCatalog.VERSION);

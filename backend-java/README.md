@@ -1,6 +1,6 @@
 # Java 运行时
 
-`backend-java` 是项目唯一后端，基于 Java 17、Spring Boot 和 Spring AI。Vue 3 生产资源会打包到同一个 JAR；运行库使用内嵌 SQLite，医院业务数据只通过 DBHub sidecar 只读访问。
+`backend-java` 是项目唯一后端，基于 Java 17、Spring Boot 3.5.16 和 Spring AI 1.1.8。Vue 3 生产资源会打包到同一个 JAR；运行库使用内嵌 SQLite，医院业务数据只通过 DBHub sidecar 只读访问。
 
 ## 模块职责
 
@@ -15,7 +15,7 @@
 - `metadata`、`terminology`、`monitoring`：元数据、医学术语和指标监控工作台。
 - `api`：供 Vue 使用的 HTTP/SSE 接口。
 
-每个生产包都有 `package-info.java` 中文职责说明；核心状态机、安全边界和非直观业务分支使用中文 Javadoc 或行内注释。不要为简单赋值和 getter 添加无信息注释。
+每个生产包都有 `package-info.java` 中文职责与边界说明，每个顶层类型至少说明职责和禁止事项；核心状态机、安全边界和非直观业务分支使用方法 Javadoc 或原因型行内注释。`DocumentationConventionTest` 会阻止缺失、过短或放置位置错误的类型注释。不要为简单赋值和 getter 添加无信息注释。
 
 ## 测试
 

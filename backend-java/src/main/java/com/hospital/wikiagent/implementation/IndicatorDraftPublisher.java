@@ -10,13 +10,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Service
 /**
  * 实现 {@code IndicatorDraftPublisher} 对应的领域职责。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
+@Service
 public class IndicatorDraftPublisher {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -288,13 +290,13 @@ public class IndicatorDraftPublisher {
 
     private String write(Object value) {
         try { return json.writeValueAsString(value == null ? Map.of() : value); }
-        catch (RuntimeException exception) { throw new ImplementationException(
+        catch (Exception exception) { throw new ImplementationException(
                 "DRAFT_JSON_INVALID", "实施数据无法序列化。", 500); }
     }
 
     private Map<String, Object> readMap(String value) {
         try { return new LinkedHashMap<>(json.readValue(value, new TypeReference<Map<String, Object>>() { })); }
-        catch (RuntimeException exception) { throw new ImplementationException(
+        catch (Exception exception) { throw new ImplementationException(
                 "DRAFT_VERSION_CORRUPTED", "本院指标版本快照损坏。", 500); }
     }
 

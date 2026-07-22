@@ -24,10 +24,12 @@ import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
 import com.hospital.wikiagent.details.UploadDetailComparator.MatchedRow;
 import com.hospital.wikiagent.details.UploadDetailComparator.RowComparison;
 
-@Component
 /**
  * 负责生成 {@code XlsxWorkbookWriter} 对应的输出内容。
+ *
+ * <p>输出由结构化输入确定性生成，禁止拼接未校验的标识符或执行任意 SQL。生成结果必须保留来源对象和版本，便于审计与复现。</p>
  */
+@Component
 public class XlsxWorkbookWriter {
     public Path writeIndicatorWorkbook(
             Path path,

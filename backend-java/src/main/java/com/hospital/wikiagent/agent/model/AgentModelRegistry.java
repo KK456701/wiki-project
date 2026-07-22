@@ -1,6 +1,5 @@
 package com.hospital.wikiagent.agent.model;
 
-import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,14 +12,17 @@ import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.model.AgentModelProperties.ModelDefinition;
 
-@Component
 /**
  * 集中注册和查询 {@code AgentModelRegistry} 管理的类型化能力。
+ *
+ * <p>注册内容在启动阶段完成校验并在运行期只读使用，重复 ID、未知实现或不完整配置会快速失败。调用方不得根据模型文本动态注册新的生产能力。</p>
  */
+@Component
 public class AgentModelRegistry {
     public static final String VERSION = "model-registry-v1";
 
@@ -48,14 +50,19 @@ public class AgentModelRegistry {
 
     public String defaultModelId() { return properties.getDefaultModel(); }
 
+    /** 返回可展示给前端的模型元数据，不包含 API Key。 */
     public List<AgentModelInfo> listModels() {
         return definitions.values().stream().map(this::toInfo).toList();
     }
 
+    /** 查找模型元数据；未知模型 ID 会返回稳定领域异常。 */
     public AgentModelInfo requireInfo(String modelId) {
         return toInfo(requireDefinition(normalizeId(modelId)));
     }
 
+    /**
+     * 延迟创建并缓存 ChatModel。外部 API 模型缺少密钥时不会构造客户端。
+     */
     public ChatModel requireModel(String modelId) {
         String id = normalizeId(modelId);
         ModelDefinition definition = requireDefinition(id);
@@ -81,19 +88,20 @@ public class AgentModelRegistry {
                 .model(definition.getModel())
                 .temperature(0.0)
                 .build();
-        return OllamaChatModel.builder().ollamaApi(api).options(options).build();
+        return OllamaChatModel.builder().ollamaApi(api).defaultOptions(options).build();
     }
 
     private ChatModel buildOpenAiCompatible(ModelDefinition definition) {
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
+        // Spring AI 1.1.x 把地址和密钥放在 OpenAiApi，ChatOptions 只保存模型推理参数。
+        OpenAiApi api = OpenAiApi.builder()
                 .baseUrl(stripTrailingSlash(definition.getBaseUrl()))
                 .apiKey(definition.getApiKey())
+                .build();
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(definition.getModel())
                 .temperature(0.0)
-                .timeout(Duration.ofSeconds(120))
-                .maxRetries(0)
                 .build();
-        return OpenAiChatModel.builder().options(options).build();
+        return OpenAiChatModel.builder().openAiApi(api).defaultOptions(options).build();
     }
 
     private AgentModelInfo toInfo(ModelDefinition definition) {

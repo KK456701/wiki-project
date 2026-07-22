@@ -21,8 +21,8 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 import com.hospital.wikiagent.terminology.TerminologyRepository;
 import com.hospital.wikiagent.terminology.TerminologyService;
 
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 class HybridIndicatorResolverTest {
     private static final String TRANSFER = "患者入院 48 小时内转科的比例";

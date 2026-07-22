@@ -13,10 +13,12 @@ import com.hospital.wikiagent.details.DetailContracts.DetailColumn;
 import com.hospital.wikiagent.details.DetailContracts.DetailQuery;
 import com.hospital.wikiagent.details.DetailContracts.RunContext;
 
-@Component
 /**
  * 按受控规则构建 {@code DetailQueryBuilder} 对应的业务对象。
+ *
+ * <p>输出由结构化输入确定性生成，禁止拼接未校验的标识符或执行任意 SQL。生成结果必须保留来源对象和版本，便于审计与复现。</p>
  */
+@Component
 public class DetailQueryBuilder {
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
 

@@ -7,10 +7,12 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
-@Component
 /**
  * 将结构化输入渲染为 {@code SqlTemplateRenderer} 所需的确定性结果。
+ *
+ * <p>输出由结构化输入确定性生成，禁止拼接未校验的标识符或执行任意 SQL。生成结果必须保留来源对象和版本，便于审计与复现。</p>
  */
+@Component
 public class SqlTemplateRenderer {
     private static final Pattern IF_FIELD = Pattern.compile(
             "\\{%\\s*if\\s+fields\\.get\\('([A-Za-z0-9_]+)'\\)\\s*%}(.*?)\\{%\\s*endif\\s*%}",

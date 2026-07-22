@@ -20,11 +20,13 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 把工具结果转换为最小化 EvidenceEnvelope；SQL 正文和患者级数据只保存对象引用，
  * 不进入模型上下文、Trace 或普通会话。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
 @Component
 public class EvidenceLedger implements EvidenceRecorder {

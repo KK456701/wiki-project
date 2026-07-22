@@ -26,10 +26,12 @@ import com.hospital.wikiagent.upload.XlsxWorkbookReader.SheetPreview;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader.WorkbookPreview;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader.XlsxParseException;
 
-@Component
 /**
  * 提供 {@code UploadedIndicatorTools} 对应的受控 Agent 工具能力。
+ *
+ * <p>能力只能经 ToolGateway 的权限、参数和重复调用检查后执行，不能由模型绕过网关直接调用。返回值必须形成可验证 Evidence，再交给最终答案使用。</p>
  */
+@Component
 public class UploadedIndicatorTools {
     private static final Set<String> NUMERATOR_ALIASES = Set.of(
             "分子", "numerator", "numeratorcount", "num");

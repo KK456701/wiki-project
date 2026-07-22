@@ -25,11 +25,13 @@ import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 根据 Wiki 中的规则规格确定性准备 SQL 对象，并仅通过 DBHub 执行受控只读试运行。
  * 浏览器和模型均不能向这里提交任意 SQL 正文。
+ *
+ * <p>能力只能经 ToolGateway 的权限、参数和重复调用检查后执行，不能由模型绕过网关直接调用。返回值必须形成可验证 Evidence，再交给最终答案使用。</p>
  */
 @Component
 public class IndicatorSqlTools {

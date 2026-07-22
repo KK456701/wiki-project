@@ -16,11 +16,13 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
 import jakarta.annotation.PostConstruct;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 保存最近多轮对话以及当前指标、统计区间和运行对象引用。
  * 存储键包含医院和用户，防止相同 session_id 在租户之间串用。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
 @Component
 public class AgentConversationMemory {

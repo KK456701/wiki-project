@@ -13,7 +13,7 @@ import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 class AgentContractJacksonTest {

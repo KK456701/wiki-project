@@ -8,11 +8,15 @@ import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 把自然语言请求转换为 RequestPlan；仅允许模型描述业务目标，
  * 实际工具、依赖顺序和 SQL 均由后续 Java 编译器决定。
+ *
+ * <p>输入只包含当前问题、受控轮数的会话摘要和当前日期；输出必须通过 Jackson 反序列化为
+ * 版本匹配的 {@link RequestPlan}。模型不能输出工具名或执行顺序，格式修复最多一次，第二次失败
+ * 立即返回稳定错误，避免陷入“让模型继续修模型”的循环。</p>
  */
 @Component
 public class ModelRequestPlanner {
@@ -37,6 +41,9 @@ public class ModelRequestPlanner {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 将本轮自然语言和安全会话上下文规划为业务目标。
+     */
     public PlannerResult plan(PlannerInput input) {
         String modelId = input.modelId() == null || input.modelId().isBlank()
                 ? registry.defaultModelId() : input.modelId();
@@ -47,6 +54,9 @@ public class ModelRequestPlanner {
         return generate(modelId, userPrompt);
     }
 
+    /**
+     * 在服务端策略允许时，根据原计划、失败原因和已确认事实生成唯一一次替代计划。
+     */
     public PlannerResult replan(ReplannerInput input) {
         String modelId = input.modelId() == null || input.modelId().isBlank()
                 ? registry.defaultModelId() : input.modelId();
@@ -73,6 +83,7 @@ public class ModelRequestPlanner {
         try {
             return new PlannerResult(parseAndValidate(raw), raw, modelId, false);
         } catch (RuntimeException firstFailure) {
+            // 修复提示只纠正 JSON/Schema，不改变用户目标，也不暴露工具实现。
             String repair = prompts.plannerRepair()
                     .replace("{{validation_error}}", safe(firstFailure.getMessage()))
                     .replace("{{raw_output}}", raw == null ? "" : raw);

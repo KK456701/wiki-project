@@ -9,9 +9,13 @@ import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.evidence.VerifiedEvidence;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-/** 使用已验证 Evidence 组织中文回答，并在协议泄漏时执行受控修复或确定性降级。 */
+/**
+ * 使用已验证 Evidence 组织中文回答，并在协议泄漏时执行受控修复或确定性降级。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
+ */
 @Component
 public class FinalAnswerComposer {
     public static final String VERSION = "final-answer-composer-v2";

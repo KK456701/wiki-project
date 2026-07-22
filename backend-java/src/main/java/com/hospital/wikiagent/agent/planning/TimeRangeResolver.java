@@ -20,6 +20,8 @@ import com.hospital.wikiagent.agent.planning.PlanValidation.ResolvedTimeRange;
 /**
  * 将“今年一月到现在”等中文表达解析成左闭右开的确定时间区间。
  * 用户原文优先于模型补写日期，避免小模型把当前年份或边界计算错误。
+ *
+ * <p>解析过程优先使用确定性规则并保留原始输入，无法唯一确定时返回歧义而不是猜测。模型结果只能作为候选，仍需经过类型和业务约束校验。</p>
  */
 @Component
 public class TimeRangeResolver {

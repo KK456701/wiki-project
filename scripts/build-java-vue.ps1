@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $frontend = Join-Path $projectRoot 'frontend-vue'
@@ -47,7 +47,8 @@ try {
 
 Push-Location $backend
 try {
-    Invoke-Checked 'mvn.cmd' '-q' '-Pbundle-vue' 'clean' 'package'
+    # 使用项目内 Maven settings，避免开发机全局镜像配置不同导致同一提交构建结果不一致。
+    Invoke-Checked 'mvn.cmd' '-q' '-s' (Join-Path $backend 'maven-settings.xml') '-Pbundle-vue' 'clean' 'package'
 } finally {
     Pop-Location
 }

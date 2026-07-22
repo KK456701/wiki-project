@@ -17,7 +17,11 @@ import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 
-/** L1/L4/L5/可选 L6 固定顺序实施验收，模型不参与阶段选择。 */
+/**
+ * L1/L4/L5/可选 L6 固定顺序实施验收，模型不参与阶段选择。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
+ */
 @Component
 public class ImplementationValidationWorkflow {
     public static final String VERSION = "implementation-validation-mvp-v1";

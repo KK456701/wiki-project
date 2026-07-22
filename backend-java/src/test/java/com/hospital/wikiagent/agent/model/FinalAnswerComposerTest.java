@@ -15,7 +15,7 @@ import com.hospital.wikiagent.agent.evidence.EvidenceEnvelope;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerification;
 import com.hospital.wikiagent.agent.evidence.VerifiedEvidence;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class FinalAnswerComposerTest {
     @Test

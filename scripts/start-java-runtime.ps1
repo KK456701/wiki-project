@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$JarPath = '',
     [string]$ConfigPath = '',
     [int]$Port = 8765
@@ -52,12 +52,13 @@ function Resolve-JavaExecutable {
         if (Test-Path -LiteralPath $candidate) { return $candidate }
     }
     $temurinRoot = 'F:\kaifa\temurin17'
-    $home = Get-ChildItem -LiteralPath $temurinRoot -Directory -Filter 'jdk-17*' -ErrorAction SilentlyContinue |
+    # PowerShell 变量名不区分大小写，不能使用 $home，否则会与只读的 $HOME 冲突。
+    $javaHomeDirectory = Get-ChildItem -LiteralPath $temurinRoot -Directory -Filter 'jdk-17*' -ErrorAction SilentlyContinue |
         Sort-Object Name -Descending |
         Select-Object -First 1
-    if ($home) {
-        $env:JAVA_HOME = $home.FullName
-        return Join-Path $home.FullName 'bin\java.exe'
+    if ($javaHomeDirectory) {
+        $env:JAVA_HOME = $javaHomeDirectory.FullName
+        return Join-Path $javaHomeDirectory.FullName 'bin\java.exe'
     }
     return 'java.exe'
 }

@@ -16,10 +16,12 @@ import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
-@Component
 /**
  * 提供 {@code IndicatorDiagnosisTools} 对应的受控 Agent 工具能力。
+ *
+ * <p>能力只能经 ToolGateway 的权限、参数和重复调用检查后执行，不能由模型绕过网关直接调用。返回值必须形成可验证 Evidence，再交给最终答案使用。</p>
  */
+@Component
 public class IndicatorDiagnosisTools {
     private final RuleReadRepository rules;
     private final IndicatorSqlTools sqlTools;

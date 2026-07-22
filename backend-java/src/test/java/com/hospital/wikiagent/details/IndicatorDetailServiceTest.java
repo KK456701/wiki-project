@@ -33,9 +33,9 @@ import com.hospital.wikiagent.upload.UploadStorage.StoredUpload;
 import com.hospital.wikiagent.upload.UploadStorage;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
 
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.PropertyNamingStrategies;
-import tools.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 class IndicatorDetailServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-21T08:00:00Z");

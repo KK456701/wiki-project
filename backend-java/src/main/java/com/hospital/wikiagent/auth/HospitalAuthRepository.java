@@ -12,10 +12,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-@Repository
 /**
  * 封装 {@code HospitalAuthRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ *
+ * <p>所有存储语句、JSON 转换和对象有效期检查集中在此处，调用方只传递类型化条件。实现不得绕过医院隔离，也不得把患者级明细写入日志或通用 Trace。</p>
  */
+@Repository
 public class HospitalAuthRepository {
     private final JdbcTemplate jdbc;
 

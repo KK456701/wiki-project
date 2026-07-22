@@ -27,6 +27,8 @@ import com.hospital.wikiagent.upload.XlsxWorkbookReader.WorkbookPreview;
  *
  * <p>原始行只存在于该对象和受保护的导出流程中；调用方必须使用
  * {@link RowComparison#safeData()} 向 LLM、Evidence 或 Trace 暴露结果。</p>
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
 @Component
 public class UploadDetailComparator {

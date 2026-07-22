@@ -6,10 +6,12 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
-@Component
 /**
  * 实现 {@code SqlParameterBinder} 对应的领域职责。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
+@Component
 public class SqlParameterBinder {
     private static final Pattern PARAMETER = Pattern.compile(":([A-Za-z_][A-Za-z0-9_]*)");
 

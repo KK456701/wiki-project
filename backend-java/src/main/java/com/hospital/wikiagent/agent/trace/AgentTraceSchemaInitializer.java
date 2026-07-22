@@ -5,7 +5,11 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-/** 初始化 Java Trace 表；已有 SQLite 运行库会以兼容方式补齐缺失字段。 */
+/**
+ * 初始化 Java Trace 表；已有 SQLite 运行库会以兼容方式补齐缺失字段。
+ *
+ * <p>初始化过程使用幂等 DDL，允许应用重复启动，但不会覆盖已有业务数据。这里只维护运行时结构，不读取或复制医院患者数据。</p>
+ */
 @Component
 public class AgentTraceSchemaInitializer {
     private final JdbcTemplate jdbc;

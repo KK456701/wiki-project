@@ -13,7 +13,11 @@ import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
-/** 服务端确定性拆分 2～3 个并列指标；不让 Planner 决定子任务数量。 */
+/**
+ * 服务端确定性拆分 2～3 个并列指标；不让 Planner 决定子任务数量。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
+ */
 @Component
 public class CompoundRequestSplitter {
     public static final String VERSION = "compound-splitter-v2";

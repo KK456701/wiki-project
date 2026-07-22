@@ -23,13 +23,15 @@ import com.hospital.wikiagent.details.DetailContracts.DetailColumn;
 import com.hospital.wikiagent.details.DetailContracts.RunContext;
 
 import jakarta.annotation.PostConstruct;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Repository
 /**
  * 封装 {@code IndicatorDetailRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ *
+ * <p>所有存储语句、JSON 转换和对象有效期检查集中在此处，调用方只传递类型化条件。实现不得绕过医院隔离，也不得把患者级明细写入日志或通用 Trace。</p>
  */
+@Repository
 public class IndicatorDetailRepository {
     private static final DateTimeFormatter SQL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 

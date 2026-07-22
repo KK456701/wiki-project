@@ -21,11 +21,13 @@ import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 记录单轮节点、父子关系、耗时和安全输入输出，并提供当前医院范围内的性能汇总。
  * 密码、令牌、SQL 正文和患者原始行不得写入 Trace。
+ *
+ * <p>该服务负责按业务顺序组合依赖，并把可预期失败转换为稳定错误语义。它不允许模型直接访问数据库，也不允许上层绕过策略、Evidence 或医院隔离边界。</p>
  */
 @Service
 public class AgentTraceService {

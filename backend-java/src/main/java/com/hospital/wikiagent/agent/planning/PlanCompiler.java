@@ -18,9 +18,15 @@ import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
 import com.hospital.wikiagent.agent.model.PromptCatalog;
 import com.hospital.wikiagent.agent.model.SpringAiModelInvoker;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-/** 将模型给出的业务 RequestPlan 编译成拓扑有序、可校验的 CompiledPlan IR。 */
+/**
+ * 将模型给出的业务 RequestPlan 编译成拓扑有序、可校验的 CompiledPlan IR。
+ *
+ * <p>编译过程不调用模型：它从请求输出事实递归补齐 Capability 依赖，并把工具、策略动作、
+ * 参数编译器、Verifier 和重试规则冻结到 IR 节点。相同 RequestPlan 会生成相同 planId，便于
+ * Trace 对比并阻止 Replanner 重复已经失败的路径。</p>
+ */
 @Component
 public class PlanCompiler {
     private final CapabilitySpecRegistry registry;
@@ -31,6 +37,9 @@ public class PlanCompiler {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 将已通过 Schema 校验的业务计划编译为拓扑有序 IR。
+     */
     public CompiledPlanIR compile(RequestPlan plan) {
         Set<String> outputFacts = registry.requiredOutputFacts(plan);
         List<PlanCapability> capabilities = registry.compileCapabilities(outputFacts);

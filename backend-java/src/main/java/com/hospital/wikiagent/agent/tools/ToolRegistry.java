@@ -16,7 +16,11 @@ import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
-/** 注册运行时允许调用的工具及其输入类型、风险等级、权限前置条件和超时。 */
+/**
+ * 注册运行时允许调用的工具及其输入类型、风险等级、权限前置条件和超时。
+ *
+ * <p>注册内容在启动阶段完成校验并在运行期只读使用，重复 ID、未知实现或不完整配置会快速失败。调用方不得根据模型文本动态注册新的生产能力。</p>
+ */
 @Component
 public class ToolRegistry {
     private final Map<String, AgentTool> tools;

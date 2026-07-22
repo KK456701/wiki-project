@@ -20,9 +20,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-/** 直接读取 core-rules-wiki 的规则、医院口径、字段映射和 SQL 规格。 */
+/**
+ * 直接读取 core-rules-wiki 的规则、医院口径、字段映射和 SQL 规格。
+ *
+ * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
+ */
 @Component
 public class WikiRuleKnowledgeSource {
     private static final Pattern MINUTES = Pattern.compile("(\\d+)\\s*分钟");
@@ -301,7 +305,7 @@ public class WikiRuleKnowledgeSource {
     private Object json(String relative) {
         try {
             return objectMapper.readValue(root.resolve(relative).toFile(), Object.class);
-        } catch (RuntimeException exception) {
+        } catch (IOException | RuntimeException exception) {
             throw new IllegalStateException("无法读取 Wiki 索引: " + relative, exception);
         }
     }

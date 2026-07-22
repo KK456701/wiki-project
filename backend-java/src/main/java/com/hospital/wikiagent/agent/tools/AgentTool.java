@@ -9,6 +9,8 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 
 /**
  * 定义 {@code AgentTool} 的不可变数据载体。
+ *
+ * <p>能力只能经 ToolGateway 的权限、参数和重复调用检查后执行，不能由模型绕过网关直接调用。返回值必须形成可验证 Evidence，再交给最终答案使用。</p>
  */
 public record AgentTool(
         String name,

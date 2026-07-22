@@ -5,10 +5,12 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 
-@Component
 /**
  * 初始化 {@code EvidenceSchemaInitializer} 所需的运行结构，并保证重复启动时可安全执行。
+ *
+ * <p>初始化过程使用幂等 DDL，允许应用重复启动，但不会覆盖已有业务数据。这里只维护运行时结构，不读取或复制医院患者数据。</p>
  */
+@Component
 public class EvidenceSchemaInitializer {
     private final JdbcTemplate jdbc;
 

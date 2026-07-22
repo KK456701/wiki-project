@@ -19,7 +19,7 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.metadata.MetadataRepository.Snapshot;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class MetadataSyncServiceTest {
     private JdbcTemplate jdbc;

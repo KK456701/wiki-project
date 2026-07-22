@@ -18,10 +18,12 @@ import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.metadata.MetadataRepository.FieldMapping;
 import com.hospital.wikiagent.metadata.MetadataRepository.Snapshot;
 
-@Service
 /**
  * 编排 {@code MetadataSyncService} 对应的业务流程，并集中维护事务与安全边界。
+ *
+ * <p>该服务负责按业务顺序组合依赖，并把可预期失败转换为稳定错误语义。它不允许模型直接访问数据库，也不允许上层绕过策略、Evidence 或医院隔离边界。</p>
  */
+@Service
 public class MetadataSyncService {
     private final MetadataCatalogClient catalog;
     private final MetadataRepository repository;

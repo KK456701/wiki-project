@@ -17,7 +17,7 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class EvidenceLedgerTest {
     @Test

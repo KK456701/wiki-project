@@ -21,7 +21,7 @@ import com.hospital.wikiagent.agent.planning.ControllerDecision.ControllerAction
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class CapabilityPlanningTest {
     private CapabilitySpecRegistry registry;

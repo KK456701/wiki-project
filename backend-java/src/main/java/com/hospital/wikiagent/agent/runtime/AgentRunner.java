@@ -44,6 +44,10 @@ import com.hospital.wikiagent.agent.tools.ToolGateway;
 /**
  * 执行单指标 Compiled Plan：装载会话、调用 Planner、按状态机调用受控工具、
  * 校验证据并生成最终回答。模型不能在这里绕过 Controller 自由调用工具。
+ *
+ * <p>每轮执行严格遵循“加载会话 → 规划 → 编译与校验 → 状态控制 → 工具网关 →
+ * Evidence 校验 → 回答”的顺序。只有 {@link ReplanPolicy} 认定为语义计划错误时才允许一次
+ * Replan；权限、数据库、缺时间和证据冲突等执行错误会直接终止，避免重复走同一失败路径。</p>
  */
 @Component
 public class AgentRunner {
@@ -118,14 +122,28 @@ public class AgentRunner {
                 gateway, verifier, finalAnswer, AgentConversationMemory.noop());
     }
 
+    /**
+     * 使用空观察器执行一次完整请求，适合不需要实时 Trace 的内部调用。
+     */
     public AgentRunResult run(AgentRunRequest request) {
         return run(request, AgentRunObserver.noop(), null);
     }
 
+    /**
+     * 执行请求并把每个确定性节点、模型节点和工具节点发送给观察器。
+     */
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
         return run(request, observer, null);
     }
 
+    /**
+     * 执行单指标子任务。
+     *
+     * @param request 已完成身份注入的请求；医院编号只能来自登录主体
+     * @param observer Trace/SSE 观察器，传入 {@code null} 时由调用方使用空实现
+     * @param resolvedIndicator 复合请求拆分阶段已经确认的指标身份，可为空
+     * @return 包含最终回答、停止原因、计划和 Trace 编号的执行结果
+     */
     public AgentRunResult run(
             AgentRunRequest request,
             AgentRunObserver observer,
@@ -133,6 +151,7 @@ public class AgentRunner {
         String requestId = blankTo(request.requestId(), id("REQ_"));
         String traceId = blankTo(request.traceId(), id("TRACE_"));
         long memoryStarted = TraceEvents.started();
+        // 先固定会话快照，再把本轮消息写入；Planner 只能看到受控轮数的历史。
         ConversationSnapshot conversation = conversations.open(
                 request.principal(), request.sessionId());
         request = withConversationContext(request, conversation);
@@ -148,6 +167,7 @@ public class AgentRunner {
         emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
 
         long plannerStarted = TraceEvents.started();
+        // Planner 只产出业务 RequestPlan，不接收工具 schema，也不能决定 SQL。
         PlannerResult modelPlan;
         try {
             modelPlan = planner.plan(new PlannerInput(
@@ -173,6 +193,7 @@ public class AgentRunner {
                         enrichFromConversation(modelPlan.plan(), conversation), resolvedIndicator));
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
+        // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
         CompiledPlanIR compiled = compiler.compile(planned.plan());
         TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
                 subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
@@ -195,6 +216,7 @@ public class AgentRunner {
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId());
 
+        // 有界循环只推进尚未满足的事实；MAX_STEPS 是最后一道失控保护。
         while (state.stepCount() < MAX_STEPS) {
             long controllerStarted = TraceEvents.started();
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
@@ -314,6 +336,9 @@ public class AgentRunner {
         return failure;
     }
 
+    /**
+     * 仅为可恢复的语义计划错误生成一次替代计划，并拒绝重复失败的 planId。
+     */
     private ReplanOutcome tryReplan(
             AgentRunRequest request,
             AgentRunObserver observer,
@@ -386,6 +411,7 @@ public class AgentRunner {
             CompiledPlanIR compiled,
             PlanValidation validation,
             AgentRuntimeContext context) {
+        // 最终回答前重新绑定本轮 ToolResult，防止旧 SQL 或其他子任务的 Evidence 被复用。
         Map<String, ToolResult> currentResults = new LinkedHashMap<>();
         for (ToolResult result : state.lastToolResults()) {
             for (String evidenceId : result.evidenceIds()) {
@@ -408,6 +434,7 @@ public class AgentRunner {
                         "evidence_ids", state.evidenceIds()), eventValues(
                         "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
+        // SQL 展示和实施验收可由确定性代码直接回答，避免模型改写已校验 SQL 或状态。
         String deterministicAnswer = composeImplementationValidationAnswer(plan, state);
         String deterministicNode = "implementation_validation_answer";
         if (deterministicAnswer == null) {

@@ -20,13 +20,17 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-@Repository
 /**
- * 封装 {@code RuleReadRepository} 对应数据的持久化与查询，避免上层依赖具体存储实现。
+ * 核心制度规则只读仓储：优先从版本化 Wiki 知识库搜索指标并合成本院生效口径。
+ *
+ * <p>生产构造器始终注入 {@link WikiRuleKnowledgeSource}；JDBC 分支仅保留给历史契约测试，
+ * 不能作为生产知识源。规则查询只处理制度与口径数据，不读取患者业务表；医院自定义覆盖必须
+ * 与已认证 hospitalId 一致。</p>
  */
+@Repository
 public class RuleReadRepository {
     private static final Pattern MINUTES = Pattern.compile("(\\d+)\\s*分钟");
     private static final Set<String> PATCH_ROOTS = Set.of(
@@ -51,6 +55,7 @@ public class RuleReadRepository {
         this.wiki = null;
     }
 
+    /** 搜索当前医院可见的正式规则与已审批本院规则。 */
     public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
         if (wiki != null) {
             return wiki.searchForHospital(query, hospitalId, limit);
@@ -114,6 +119,9 @@ public class RuleReadRepository {
         return unique.values().stream().limit(safeLimit).toList();
     }
 
+    /**
+     * 读取指定指标在当前医院的生效口径；本院覆盖不存在时回退到国家标准。
+     */
     public Map<String, Object> effectiveRule(String query, String hospitalId) {
         if (wiki != null) {
             return wiki.effectiveRule(query, hospitalId);

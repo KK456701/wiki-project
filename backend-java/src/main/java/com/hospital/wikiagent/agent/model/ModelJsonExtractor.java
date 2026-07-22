@@ -2,6 +2,8 @@ package com.hospital.wikiagent.agent.model;
 
 /**
  * 实现 {@code ModelJsonExtractor} 对应的领域职责。
+ *
+ * <p>解析过程优先使用确定性规则并保留原始输入，无法唯一确定时返回歧义而不是猜测。模型结果只能作为候选，仍需经过类型和业务约束校验。</p>
  */
 public final class ModelJsonExtractor {
     private ModelJsonExtractor() {

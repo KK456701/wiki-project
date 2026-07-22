@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 class DocumentationConventionTest {
 
+    private static final int MIN_TYPE_DOCUMENTATION_CHARS = 80;
     private static final Pattern TOP_LEVEL_TYPE = Pattern.compile(
             "(?m)^[\\t ]*(?:(?:public|protected|private|static|final|abstract|sealed|non-sealed)[\\t ]+)*"
                     + "(?:class|record|interface|enum)[\\t ]+[A-Za-z0-9_]+");
@@ -51,6 +52,24 @@ class DocumentationConventionTest {
                 .isEmpty();
     }
 
+    @Test
+    void everyProductionTypeHasSubstantialJavadocInConventionalPosition() throws IOException {
+        Path sourceRoot = Path.of("src", "main", "java");
+        List<Path> invalid;
+        try (var paths = Files.walk(sourceRoot)) {
+            invalid = paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".java"))
+                    .filter(path -> !path.getFileName().toString().equals("package-info.java"))
+                    .filter(this::hasBriefOrMisplacedTypeJavadoc)
+                    .toList();
+        }
+
+        assertThat(invalid)
+                .as("顶层类型注释至少说明职责和边界，并且 Javadoc 必须放在类型注解之前")
+                .isEmpty();
+    }
+
     private boolean containsJavaSource(Path directory) {
         try (var files = Files.list(directory)) {
             return files.anyMatch(path -> path.getFileName().toString().endsWith(".java")
@@ -73,6 +92,33 @@ class DocumentationConventionTest {
             return commentStart < 0 || commentEnd < commentStart;
         } catch (IOException exception) {
             throw new IllegalStateException("无法检查 Java 类型注释：" + source, exception);
+        }
+    }
+
+    private boolean hasBriefOrMisplacedTypeJavadoc(Path source) {
+        try {
+            String text = Files.readString(source);
+            var matcher = TOP_LEVEL_TYPE.matcher(text);
+            if (!matcher.find()) {
+                return false;
+            }
+            String prefix = text.substring(0, matcher.start());
+            int commentStart = prefix.lastIndexOf("/**");
+            int commentEnd = prefix.lastIndexOf("*/");
+            if (commentStart < 0 || commentEnd < commentStart) {
+                return true;
+            }
+            String plainText = prefix.substring(commentStart + 3, commentEnd)
+                    .replaceAll("(?m)^\\s*\\*\\s?", "")
+                    .replaceAll("<[^>]+>", "")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+            String beforeComment = prefix.substring(0, commentStart).stripTrailing();
+            String previousLine = beforeComment.substring(beforeComment.lastIndexOf('\n') + 1).strip();
+            return plainText.length() < MIN_TYPE_DOCUMENTATION_CHARS
+                    || previousLine.startsWith("@");
+        } catch (IOException exception) {
+            throw new IllegalStateException("无法检查 Java 类型注释质量：" + source, exception);
         }
     }
 }
