@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0 至阶段 4、阶段 5 的业务工作台与单 JAR 构建，以及正式切流前的只读双跑验收和启动门禁均已实现。FastAPI 仍是权威运行时；本批没有实际切流，Java 默认仍在 `8766` 影子端口验证兼容性。
+> 更新日期：2026-07-22。阶段 0 至阶段 5、业务工作台、单 JAR 构建、真实只读双跑、正式切流、回退演练和稳定观察均已完成。Java 当前是 `8765` 权威运行时并直接提供 Vue 3 页面；FastAPI 保留为显式回退入口。
 
 ## 1. 迁移目标与约束
 
@@ -71,7 +71,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已迁移医院范围内的规则搜索和本院生效口径；医院编号只从认证主体注入，客户端冒充其他医院会返回 403。
 - 已增加跨语言密码测试向量、H2 仓储测试和 `scripts/compare_java_python_read_api.py` 双跑脚本。
 - 术语概念检索、详情、版本、确定性识别、候选、审批、发布和回退已在阶段 5 子批次迁移，并需在入口切流前使用真实登录会话完成验收。元数据概览与同步也已迁移。
-- Nginx/启动入口暂不切流；FastAPI 仍是权威实现。
+- 当时 Nginx/启动入口暂不切流、FastAPI 仍是权威实现；该历史状态已由 2026-07-22 正式切流取代。
 
 本子批次验收结果：Java 单元与仓储测试 13 项通过，Python 认证契约测试 8 项通过；影子服务使用同一 MySQL 临时会话对“急会诊及时到位率”执行双跑，安全规则字段返回一致。临时会话已清理，`8766` 已停止，现有 `8765` FastAPI 与 `8080` DBHub 未受影响。
 
@@ -84,7 +84,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已迁移不可变 ToolExecutionContext、PolicyDecisionService 与 ToolGateway；登录主体只能由服务端注入，PEP 在参数绑定和工具执行前生效。
 - 工具网关已具备参数类型转换、超时、数据库并发 2、调用指纹和成功结果复用；规则读取工具可执行，未迁移工具明确返回 `TOOL_NOT_MIGRATED`。
 - 新增认证影子接口 `POST /api/migration/agent/compile`，只展示校验、IR 和第一步决策，不执行任何工具。
-- Agent 影子 Runner、模型调用和 VerifiedEvidence 属于下一子批次，尚未切流。
+- 当时 Agent 影子 Runner、模型调用和 VerifiedEvidence 属于下一子批次；这些能力现已完成并正式切流。
 
 本子批次 Java 测试 22 项通过，覆盖 IR JSON 契约、依赖拓扑、能力环、重复 Fact Producer、未知工具、非法目标、中文时间范围、受控 Dispatch、权限拒绝、参数校验和重复调用缓存。影子编译接口不执行工具，现有 Python 服务未切换。
 
@@ -100,7 +100,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - Runner 每个成功工具结果都必须取得 Evidence；规则搜索结果会确定性写入当前 `rule_id`。任何未迁移或不可重试工具失败立即停止，不会再次调用同一工具直至触发重复调用保护。
 - 新增 `scripts/compare_java_python_agent_rule.py`，可在用户主动启动两个服务并提供现有医院登录 token 后双跑规则解释，比较响应字段、停止原因和步骤数；脚本不打印 token。
 - 当前 Java 测试 28 项通过。测试覆盖模型配置、Planner 单次修复、Evidence 允许列表、跨医院拒绝、结果指纹、Final Answer 工具协议防护、规则解释完整工具顺序和 REST 响应形状。
-- 待迁移：一次语义 Replan、ResponseGuard 的确定性模板降级、会话/Trace 持久化和跨模型离线 Eval；完成前不会把聊天入口切到 Java。
+- 当时待迁移一次语义 Replan、ResponseGuard 的确定性模板降级、会话/Trace 持久化和跨模型离线 Eval；这些门禁项现已完成并用于 Java 权威链。
 
 ### 阶段 4：SQL、诊断、文件与复合任务（自适应复合任务子批次已完成）
 
@@ -178,8 +178,11 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已实现正式切流前的轻量只读双跑：`contracts/migration/v1/cutover-suite.json` 冻结必需功能和样例，`scripts/cutover_readiness.py` 对两个运行时核对健康、功能清单、模型注册、规则安全字段、元数据、指标实施任务、术语、监控计划和可选 Agent 完成契约。报告只含安全摘要，不保存认证令牌、SQL 正文或患者数据。
 - 医院会话使用共用运行库，可同时访问双栈；管理员会话由各运行时独立签发，因此脚本分别接受 `MIGRATION_PYTHON_ADMIN_TOKEN` 与 `MIGRATION_JAVA_ADMIN_TOKEN`，避免错误复用进程内令牌。未运行 Agent 或缺少任一管理员令牌会形成跳过项，不能作为正式权威切流报告。
 - Java 配置新增 `MIGRATION_AUTHORITY_RUNTIME`、`MIGRATION_CUTOVER_APPROVED` 和 `MIGRATION_READINESS_REPORT_ID`。默认值保持 Python 权威；若要求 Java 权威但没有显式批准或报告编号，Spring Boot 在启动阶段直接拒绝。`scripts/start-java-runtime.ps1` 还会验证报告 schema、零失败、零跳过、状态和 24 小时有效期，并要求 `-ConfirmCutover`；它不会结束占用端口的现有服务。
-- `scripts/start-python-runtime.ps1` 提供前台回退入口，同样不会抢占端口。由此切流与回退都是可审计的人工操作，不由代码提交、应用自检或模型自动触发。本批只交付门禁，不改变当前 `8765` FastAPI 权威入口。
-- 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
+- `scripts/start-python-runtime.ps1` 提供前台回退入口，同样不会抢占端口。由此切流与回退都是可审计的人工操作，不由代码提交、应用自检或模型自动触发。
+- 2026-07-22 使用最终 JAR 完成真实双跑门禁：12 项通过、0 项失败、0 项跳过，报告 `CUTOVER_20260722T023503Z`。Java 正式接管 `8765` 后，Vue 首页、医院登录、规则解释和 DBHub 受控 SQL 试运行均通过。
+- 回退演练实际停止 Java 并在同一 `8765` 恢复 FastAPI，约 41.13 秒后健康检查、登录、规则查询、解释和试运行全部通过；随后使用同一未过期门禁报告恢复 Java 权威运行时。FastAPI 回退代码和启动器继续保留。
+- DeepSeek 在本机网络下需要现有 HTTP 代理。`scripts/java_runtime_launcher.py` 从 `config.yaml` 的可选 `java_http_proxy_url` 生成 JVM 代理参数，同时把 localhost、DBHub、MySQL 和 Ollama 保持为直连；凭据不会写入启动日志或门禁报告。
+- Planner 可能删除指标名中的空格、虚词或主语。Java 规则读取仅在普通精确/包含搜索无结果后，使用去空白、去“的”的包含式归一化兜底；空结果由 StateController 立即停止，不会重复搜索到最大步骤。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
 
 ## 5. 当前目录与命令
@@ -228,7 +231,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-java-runtime.ps1 `
 powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 ```
 
-当前本机 JDK 17 可以继续开发，不需要为了迁移先下载 Java 21。现有 JDK 是较早的 17.0 初始构建，正式部署前应升级到最新 Java 17 安全补丁，但不改变语言级别。
+当前本机已使用 Temurin `17.0.19+10` 构建和运行，不需要 Java 21。下载包 SHA-256 已与 Adoptium 元数据核对；旧 `F:\kaifa\jdk` 仍保留为环境级回退，启动器和构建脚本在未显式设置 `JAVA_HOME` 时优先选择 `F:\kaifa\temurin17\jdk-17*`。
 
 ## 6. 每阶段验收门槛
 

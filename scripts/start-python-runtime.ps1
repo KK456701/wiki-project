@@ -19,7 +19,7 @@ function Test-PortAvailable {
 }
 
 if (-not (Test-PortAvailable $Port)) {
-    throw "端口 $Port 已被占用；脚本不会停止现有服务。"
+    throw "Port $Port is already in use. Existing services will not be stopped."
 }
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $projectRoot

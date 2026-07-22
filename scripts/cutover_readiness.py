@@ -14,6 +14,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SUITE = ROOT / "contracts" / "migration" / "v1" / "cutover-suite.json"
@@ -102,6 +104,7 @@ def canonical_plan_ids(payload: Any) -> list[str]:
 def safe_agent_result(payload: dict[str, Any]) -> dict[str, Any]:
     answer = str(payload.get("answer") or "").strip()
     return {
+        "trace_id": payload.get("trace_id"),
         "contract_ok": all(
             key in payload for key in ("answer", "stop_reason", "trace_id", "session_id", "step_count")
         ),
@@ -317,13 +320,23 @@ class ReadinessRunner:
         )
         python_safe = safe_agent_result(python)
         java_safe = safe_agent_result(java)
-        for result in (python_safe, java_safe):
-            if not all((
-                result["contract_ok"], result["answer_present"],
-                result["protocol_clean"], result["step_count_valid"],
-                result["stop_reason"] == "final_answer",
-            )):
-                raise CheckFailure("AGENT_CONTRACT_OR_COMPLETION_FAILED")
+        for runtime, result in (("PYTHON", python_safe), ("JAVA", java_safe)):
+            failed_fields = [
+                field for field, valid in (
+                    ("CONTRACT", result["contract_ok"]),
+                    ("ANSWER", result["answer_present"]),
+                    ("PROTOCOL", result["protocol_clean"]),
+                    ("STEP_COUNT", result["step_count_valid"]),
+                    ("STOP_REASON", result["stop_reason"] == "final_answer"),
+                ) if not valid
+            ]
+            if failed_fields:
+                stop_reason = str(result.get("stop_reason") or "missing").upper()
+                trace_id = str(result.get("trace_id") or "NO_TRACE")
+                raise CheckFailure(
+                    f"{runtime}_AGENT_" + "_".join(failed_fields)
+                    + f"_FAILED_STOP_{stop_reason}_TRACE_{trace_id}"
+                )
         return {"python": python_safe, "java": java_safe}
 
 
@@ -372,11 +385,75 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--include-agent", action="store_true")
     parser.add_argument("--allow-skips", action="store_true")
+    parser.add_argument(
+        "--local-login-config", type=Path,
+        help="仅本机验收：从现有 config.yaml 在内存中登录，令牌不写入报告",
+    )
+    parser.add_argument("--hospital-account", default="user_001")
     return parser.parse_args()
+
+
+def local_login(args: argparse.Namespace) -> dict[str, str]:
+    config = yaml.safe_load(args.local_login_config.read_text(encoding="utf-8-sig")) or {}
+    admin_password = str(config.get("admin_password") or "")
+    hospital_password = os.environ.get("MIGRATION_HOSPITAL_PASSWORD", admin_password)
+    if not admin_password or not hospital_password:
+        raise CheckFailure("LOCAL_LOGIN_PASSWORD_MISSING")
+    try:
+        hospital = request_json(
+            "POST", args.python_url.rstrip("/") + "/api/auth/hospital/login",
+            body={"account_id": args.hospital_account, "password": hospital_password},
+        )
+    except CheckFailure as exception:
+        raise CheckFailure(f"LOCAL_HOSPITAL_LOGIN_{exception}") from exception
+    try:
+        python_admin = request_json(
+            "POST", args.python_url.rstrip("/") + "/api/admin/login",
+            body={"password": admin_password},
+        )
+    except CheckFailure as exception:
+        raise CheckFailure(f"LOCAL_PYTHON_ADMIN_LOGIN_{exception}") from exception
+    try:
+        java_admin = request_json(
+            "POST", args.java_url.rstrip("/") + "/api/admin/login",
+            body={"password": admin_password},
+        )
+    except CheckFailure as exception:
+        raise CheckFailure(f"LOCAL_JAVA_ADMIN_LOGIN_{exception}") from exception
+    return {
+        "hospital_id": str(hospital.get("hospital_id") or ""),
+        "hospital_token": str(hospital.get("token") or ""),
+        "python_admin_token": str(python_admin.get("token") or ""),
+        "java_admin_token": str(java_admin.get("token") or ""),
+    }
+
+
+def local_logout(args: argparse.Namespace, tokens: dict[str, str]) -> None:
+    calls = (
+        (args.python_url.rstrip("/") + "/api/auth/hospital/logout", tokens["hospital_token"]),
+        (args.python_url.rstrip("/") + "/api/admin/logout", tokens["python_admin_token"]),
+        (args.java_url.rstrip("/") + "/api/admin/logout", tokens["java_admin_token"]),
+    )
+    for url, token in calls:
+        try:
+            request_json("POST", url, token=token)
+        except CheckFailure:
+            pass
 
 
 def main() -> int:
     args = parse_args()
+    local_tokens: dict[str, str] | None = None
+    if args.local_login_config:
+        try:
+            local_tokens = local_login(args)
+        except CheckFailure as exception:
+            print(f"本机登录失败：{exception}", file=sys.stderr)
+            return 2
+        args.hospital_id = local_tokens["hospital_id"]
+        args.token = local_tokens["hospital_token"]
+        args.python_admin_token = local_tokens["python_admin_token"]
+        args.java_admin_token = local_tokens["java_admin_token"]
     if not args.hospital_id or not args.token:
         print("请设置 MIGRATION_HOSPITAL_ID 和 MIGRATION_HOSPITAL_TOKEN。", file=sys.stderr)
         return 2
@@ -402,6 +479,8 @@ def main() -> int:
         "report_id": report["report_id"], "status": report["status"],
         "summary": report["summary"], "output": str(args.output.resolve()),
     }, ensure_ascii=False))
+    if local_tokens:
+        local_logout(args, local_tokens)
     return 0 if report["status"] == "ready" else 1
 
 

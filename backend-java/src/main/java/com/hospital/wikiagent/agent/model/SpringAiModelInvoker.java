@@ -12,6 +12,8 @@ import java.util.List;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PreDestroy;
@@ -19,6 +21,7 @@ import jakarta.annotation.PreDestroy;
 @Component
 public class SpringAiModelInvoker implements AgentModelInvoker {
     public static final String VERSION = "spring-ai-model-adapter-v1";
+    private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiModelInvoker.class);
     private final AgentModelRegistry registry;
     private final ExecutorService executor = Executors.newFixedThreadPool(3);
     private final Semaphore ollama = new Semaphore(1);
@@ -44,6 +47,7 @@ public class SpringAiModelInvoker implements AgentModelInvoker {
                     .join();
         } catch (RuntimeException exception) {
             Throwable cause = exception.getCause() == null ? exception : exception.getCause();
+            LOGGER.warn("Agent model call failed for model {}: {}", resolvedId, cause.toString(), cause);
             throw new AgentModelUnavailableException(
                     "MODEL_CALL_FAILED", "模型调用失败：" + cause.getClass().getSimpleName());
         }

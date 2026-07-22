@@ -4,6 +4,17 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $frontend = Join-Path $projectRoot 'frontend-vue'
 $backend = Join-Path $projectRoot 'backend-java'
 
+if (-not $env:JAVA_HOME) {
+    $temurinRoot = 'F:\kaifa\temurin17'
+    $temurin = Get-ChildItem -LiteralPath $temurinRoot -Directory -Filter 'jdk-17*' -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending |
+        Select-Object -First 1
+    if ($temurin) {
+        $env:JAVA_HOME = $temurin.FullName
+        $env:Path = (Join-Path $env:JAVA_HOME 'bin') + ';' + $env:Path
+    }
+}
+
 function Invoke-Checked {
     param(
         [Parameter(Mandatory = $true)][string]$Command,

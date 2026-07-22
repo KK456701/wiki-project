@@ -49,6 +49,11 @@ public class RuleReadRepository {
         List<Map<String, Object>> standard = searchStandard(normalized, pattern, limit);
         List<Map<String, Object>> matches = new ArrayList<>(local);
         matches.addAll(standard);
+        if (matches.isEmpty() && !normalized.isEmpty()) {
+            String compact = compact(normalized);
+            matches.addAll(searchLocalCompact(compact, hospitalId, now, limit));
+            matches.addAll(searchStandardCompact(compact, limit));
+        }
         if (matches.size() > limit) {
             matches = new ArrayList<>(matches.subList(0, limit));
         }
@@ -234,6 +239,28 @@ public class RuleReadRepository {
                         + "ORDER BY CASE WHEN index_code=? OR index_name=? THEN 0 ELSE 1 END,index_code LIMIT ?",
                 (rs, rowNum) -> match(rs, "mysql_standard"),
                 query, query, pattern, pattern, query, query, limit);
+    }
+
+    private List<Map<String, Object>> searchLocalCompact(
+            String query, String hospitalId, LocalDateTime now, int limit) {
+        return jdbc.query(
+                "SELECT index_code,index_name,index_type,index_desc FROM med_index_hospital_defined "
+                        + "WHERE hospital_id=? AND status=1 AND approval_status='approved' "
+                        + "AND (effective_from IS NULL OR effective_from<=?) "
+                        + "AND (effective_to IS NULL OR effective_to>=?) "
+                        + "AND REPLACE(REPLACE(REPLACE(index_name,' ',''),'　',''),'的','') LIKE ? "
+                        + "ORDER BY index_code LIMIT ?",
+                (rs, rowNum) -> match(rs, "mysql_hospital_defined"),
+                hospitalId, now, now, "%" + query + "%", limit);
+    }
+
+    private List<Map<String, Object>> searchStandardCompact(String query, int limit) {
+        return jdbc.query(
+                "SELECT index_code,index_name,index_type,index_desc FROM med_index_standard "
+                        + "WHERE status=1 AND REPLACE(REPLACE(REPLACE(index_name,' ',''),'　',''),'的','') LIKE ? "
+                        + "ORDER BY index_code LIMIT ?",
+                (rs, rowNum) -> match(rs, "mysql_standard"),
+                "%" + query + "%", limit);
     }
 
     private Map<String, Object> findStandard(String query) {
@@ -436,5 +463,12 @@ public class RuleReadRepository {
 
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private static String compact(String value) {
+        return value.codePoints()
+                .filter(codePoint -> !Character.isWhitespace(codePoint) && codePoint != '的')
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 }

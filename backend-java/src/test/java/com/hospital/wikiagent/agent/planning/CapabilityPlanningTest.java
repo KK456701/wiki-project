@@ -113,6 +113,25 @@ class CapabilityPlanningTest {
         assertThat(AgentStateController.stateFacts(state, validation)).contains("diagnosis");
     }
 
+    @Test
+    void controllerStopsAfterAnEmptyIndicatorSearch() {
+        RequestPlan plan = trialPlan();
+        CompiledPlanIR ir = compiler.compile(plan);
+        PlanValidation validation = PlanValidation.valid(new PlanValidation.ResolvedTimeRange(
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 4, 1, 0, 0), "2026年1月至3月"));
+        AgentRunState state = new AgentRunState();
+        state.lastToolResults().add(ToolResult.success(
+                "RULE_SEARCHED", "找到 0 个匹配指标。",
+                new java.util.LinkedHashMap<>(Map.of("matches", List.of()))));
+
+        ControllerDecision decision = new AgentStateController(registry)
+                .nextDecision(ir, validation, state);
+
+        assertThat(decision.action()).isEqualTo(ControllerAction.FALLBACK);
+        assertThat(decision.code()).isEqualTo("INDICATOR_NOT_FOUND");
+    }
+
     private static RequestPlan trialPlan() {
         return new RequestPlan(
                 null,

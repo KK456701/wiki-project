@@ -35,7 +35,7 @@ if (-not $JarPath) {
         Where-Object { $_.Name -notlike '*.original' } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
-    if (-not $jar) { throw '未找到 Java 单 JAR，请先执行 scripts\build-java-vue.ps1。' }
+    if (-not $jar) { throw 'Java JAR not found. Run scripts\build-java-vue.ps1 first.' }
     $JarPath = $jar.FullName
 }
 $JarPath = (Resolve-Path -LiteralPath $JarPath).Path
@@ -44,22 +44,22 @@ $saved = @{}
 try {
     if ($Mode -eq 'Authority') {
         if (-not $ConfirmCutover) {
-            throw '权威模式必须显式提供 -ConfirmCutover。'
+            throw 'Authority mode requires -ConfirmCutover.'
         }
         if (-not $ReadinessReport) {
-            throw '权威模式必须提供 -ReadinessReport。'
+            throw 'Authority mode requires -ReadinessReport.'
         }
         $reportPath = (Resolve-Path -LiteralPath $ReadinessReport).Path
         $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($report.schema_version -ne 'java-cutover-readiness-v1' -or $report.status -ne 'ready') {
-            throw 'Readiness 报告未通过，拒绝启动 Java 权威模式。'
+            throw 'Readiness report is not ready. Java authority start rejected.'
         }
         if ($report.summary.failed -ne 0 -or $report.summary.skipped -ne 0) {
-            throw 'Readiness 报告仍有失败或跳过项，拒绝切流。'
+            throw 'Readiness report contains failed or skipped checks.'
         }
         $generatedAt = [DateTimeOffset]::Parse([string]$report.generated_at)
         if ([DateTimeOffset]::UtcNow.Subtract($generatedAt).TotalHours -gt $MaxReportAgeHours) {
-            throw "Readiness 报告已超过 $MaxReportAgeHours 小时，请重新双跑。"
+            throw "Readiness report is older than $MaxReportAgeHours hours."
         }
         if (-not $Port) { $Port = 8765 }
         Set-ProcessEnvironment 'MIGRATION_AUTHORITY_RUNTIME' 'java' $saved
@@ -72,7 +72,7 @@ try {
         Set-ProcessEnvironment 'MIGRATION_READINESS_REPORT_ID' '' $saved
     }
     if (-not (Test-PortAvailable $Port)) {
-        throw "端口 $Port 已被占用；脚本不会停止现有服务，请先人工确认当前权威进程。"
+        throw "Port $Port is already in use. Existing services will not be stopped."
     }
     Set-ProcessEnvironment 'SERVER_PORT' ([string]$Port) $saved
     Write-Output "Starting Java runtime: mode=$Mode port=$Port jar=$JarPath"

@@ -33,7 +33,7 @@ class RuleReadRepositoryTest {
                         + "(index_code,index_name,index_type,index_desc,stat_cycle,numerator_rule,denominator_rule,"
                         + "filter_rule,exclude_rule,rely_table_field,calculation_definition,standard_sql,rule_params,"
                         + "source_path,version,status,create_time,update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                "MQSI2025_001", "患者入院48小时内转科的比例", "三级查房制度", "标准定义", "month",
+                "MQSI2025_001", "患者入院 48 小时内转科的比例", "三级查房制度", "标准定义", "month",
                 "标准分子", "标准分母", "", "", "{\"business_fields\":{}}",
                 "{\"schema_version\":1,\"numerator\":{\"conditions\":[]}}", "SELECT 1",
                 "{\"threshold\":48}", "rules/source.yml", "2025", 1, now, now);
@@ -69,5 +69,29 @@ class RuleReadRepositoryTest {
         List<Map<String, Object>> matches = (List<Map<String, Object>>) response.get("matches");
         assertThat(matches).extracting(item -> item.get("rule_id")).containsExactly("MQSI2025_001");
         assertThat(matches.get(0)).containsKeys("rule_name", "category", "content", "type");
+    }
+
+    @Test
+    void searchTreatsPlannerWhitespaceNormalizationAsEquivalent() {
+        Map<String, Object> response = repository.searchForHospital(
+                "患者入院48小时内转科的比例", "hospital_001", 5);
+
+        assertThat(response.get("resolved_rule_id")).isEqualTo("MQSI2025_001");
+    }
+
+    @Test
+    void searchTreatsPlannerFunctionWordOmissionAsEquivalent() {
+        Map<String, Object> response = repository.searchForHospital(
+                "患者入院48小时内转科比例", "hospital_001", 5);
+
+        assertThat(response.get("resolved_rule_id")).isEqualTo("MQSI2025_001");
+    }
+
+    @Test
+    void searchTreatsPlannerSubjectOmissionAsEquivalent() {
+        Map<String, Object> response = repository.searchForHospital(
+                "入院48小时内转科比例", "hospital_001", 5);
+
+        assertThat(response.get("resolved_rule_id")).isEqualTo("MQSI2025_001");
     }
 }

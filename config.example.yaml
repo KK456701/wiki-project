@@ -70,6 +70,8 @@ admin_password: "CHANGE_ME"
 # Ollama 本地模型。
 ollama_model: "qwen3:4B-instruct"
 ollama_base_url: "http://127.0.0.1:11434"
+# Java/Spring AI 访问外部模型 API 时的可选 HTTP 代理；本地部署不需要时留空。
+java_http_proxy_url: ""
 ollama_timeout_seconds: 60
 ollama_num_ctx: 16384
 ollama_history_turns: 8

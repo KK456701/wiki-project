@@ -31,7 +31,7 @@
 - **全阶段运行 Trace 与运行观察**：成功和失败消息都可打开“查看链路”；认证后的 `/api/agent/runs/{trace_id}` 返回父子关系、子任务泳道、真实时间偏移、节点类型、模型与 Token、缓存、重试、FailureClass、版本和 Evidence 来源。规则命中与本地语义唯一命中时不会额外调用指标消歧 LLM；复合请求可确定性生成子计划时也会跳过 Planner，但每个实际调用的 `final_answer_llm` 都独立落在对应子任务泳道。页面提供瀑布图、调用树、筛选、最慢节点和证据定位；“Agent 运行观察”通过 `/api/agent/runs` 与 `/api/agent/runs/metrics` 展示当前医院的请求量、成功率、p50/p95/p99、工具/模型性能和轻量阈值提示。全部使用现有 MySQL/JSONL 与原生 HTML/CSS/JavaScript。
 - **自适应复合任务并行**：不同指标使用独立 child state、Evidence namespace、Trace 泳道和 `subtask_id`。OpenAI 兼容 API 默认并发 2，本地 Ollama 默认并发 1，DBHub 只读工具默认并发 2；上传对比、规则变更、发布审批等任务保持串行，最终按用户输入顺序合并并允许局部失败。
 - **轻量离线 Eval**：`evals/` 使用现有 PyYAML、Pydantic 和 pytest 覆盖别名/错别字、时间、跨轮、多指标、SQL 与试运行、文件对比、诊断边界和 Prompt Injection；模型矩阵只在用户显式运行脚本时调用 4B、8B 或 DeepSeek。
-- **Java 切流安全门禁**：Java 默认始终以 `compatibility_shadow` 运行。`scripts/cutover_readiness.py` 可在用户主动启动双栈并分别提供医院会话、Python 管理员会话和 Java 管理员会话后，只读核对健康、能力清单、模型、规则、元数据、业务工作台与可选 Agent 契约，报告不保存令牌、SQL 或患者数据。只有零失败、零跳过且未过期的报告，配合 `-ConfirmCutover`，才允许启动 Java 权威模式；否则应用和启动脚本都会拒绝切流。`scripts/start-python-runtime.ps1` 保留显式回退入口，两个脚本均不会结束已有进程。
+- **Java 切流安全门禁**：仓库默认仍以 `compatibility_shadow` 启动 Java；当前本机已使用零失败、零跳过且未过期的真实双跑报告显式切换到 Java 权威模式。`scripts/cutover_readiness.py` 核对健康、能力清单、模型、规则、元数据、业务工作台与 Agent 契约，报告不保存令牌、SQL 或患者数据；没有合格报告和 `-ConfirmCutover` 时应用与脚本都会拒绝接管。`scripts/start-python-runtime.ps1` 已完成真实回退演练并继续保留，两个启动器均不会抢占端口或自动结束现有进程。
 - **最终回答协议防护**：Final Answer 模型没有工具权限；如果模型仍把 DSML、`tool_calls`、`invoke` 或其他内部工具协议写入正文，ResponseGuard 会阻止展示，且在本轮已有完整已验证规则或试运行证据时直接使用确定性模板回答，不再重复请求模型输出同一种非法协议。没有足够证据时才返回安全错误，任何模型虚构工具都不会被执行。
 - **提示词集中管理**：所有仍在使用的生产 LLM 提示词统一位于 `app/prompts/`；[`app/prompts/README.md`](app/prompts/README.md) 按 Planner、Final Answer、指标草稿和诊断列明每个文件的角色、调用者和触发时机。旧聊天意图识别与答案生成提示词及其加载分支已删除，Trace 配置显示当前 Agent 实际使用的提示词文件和短版本号。
 - **恢复中心**：关键任务会写入恢复记录，服务异常中断后可在管理界面查看上次中断、可重试或已完成的任务。
@@ -44,7 +44,9 @@
 - **类型化 Agent 契约**：Agent 之间通过 `app/agents/contracts.py` 中的 Pydantic 模型校验意图、规则检索、口径、字段映射、SQL、元数据预检查和诊断结果；API 与 SSE 边界继续输出兼容的 JSON 字典。
 - **元数据预检查边界**：SQL 生成前由元数据解析 Agent 校验字段映射和运行库元数据，未通过时停止流程；指标生成 Agent 只消费已校验结果，不直接读取元数据。
 - **业务工作台前端**：单页 HTML 前端以 AI 指标助手为主入口，并提供指标实施、指标监控、数据库与元数据、医学术语、审批和离线包交换等业务操作入口。
-- **Java / Vue 渐进迁移前十四批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE、DBHub MCP、医院认证、规则只读、Plan IR 和 Evidence 契约；`backend-java/` 现已提供 Java 17 + Spring Boot 4.1 影子服务、DBHub 客户端、兼容 Python 的医院认证与规则读取、版本化 IR、确定性 Controller/Dispatch、策略 PEP、工具网关，以及 Spring AI 2.0 的 Ollama/OpenAI 兼容模型注册、集中式 Planner/Final Answer 提示词、MySQL + JSONL Evidence Ledger 和独立 Verifier。Java 影子 Runner 已打通规则解释、受控 SQL、三层异常诊断、`.xlsx` 上传汇总/逐条对比、成功试运行后的分子/分母明细快照与 Excel 导出，以及固定 L1/L4/L5/可选 L6 的全面实施验收。明细 SQL 只允许两个已经核验的 SQL Server Profile，由服务端固定模板生成并再次只读校验，经 DBHub 取数后必须与原 `RUN_*` 的聚合分子分母完全一致；跨院、权限、用途确认、快照过期、文件摘要或计数不一致都会停止。上传明细与系统快照按稳定业务键执行多重集合比较，确定性输出双方都有、仅系统有、仅上传有和字段/达标判定差异，并生成四工作表差异 Excel；原始患者行只保存在短期受保护快照/导出对象中，不进入 ToolResult 安全载荷、Evidence、Trace、会话或 LLM 上下文。Java 外层现可确定性拆分 2 至 3 个并列指标，为每个子任务建立独立会话、RunState、Evidence namespace、Trace 子标识和请求 ID；OpenAI 兼容 API 最多并发 2，本地 Ollama 保持串行，DBHub 只读调用最多并发 2，上传对比、规则变更与审批类请求强制串行。子任务允许局部失败，最终严格按用户输入顺序合并；Vue 可同时解析并展示多个明细和差异导出入口。Java 运行同步写入现有 `med_agent_trace` / `med_agent_trace_node`，记录 Planner、IR、Controller、Dispatch、工具、Verifier、Final Answer、会话、复合任务和实施验收阶段节点，并通过同医院鉴权的 `/api/agent/runs/{trace_id}` 读取；Vue 链路抽屉提供类型/状态筛选、瀑布时间轴、子任务泳道、最慢节点、输入输出、版本引用和 Evidence 来源。新增 `/api/agent/runs` 与 `/api/agent/runs/metrics` 后，可按时间、模型、状态、工具和 FailureClass 查询当前医院运行摘要，统计成功率、p50/p95/p99、工具/模型表现、复合请求、重复停止和 Replan；Vue 新增“Agent 运行观察”页面并根据本地配置显示慢请求、慢模型、工具失败率和超时率提示。密码、令牌、SQL 正文与患者原始行继续脱敏或只保留对象引用。上传解析与 Excel 生成仍使用 JDK 原生 OOXML，不增加 Excel 生产依赖；Java 会话记忆按医院、用户和会话隔离保存最近 8 轮与结构化对象引用。用户明确要求全面实施验收时，服务端固定运行 L1 字段来源、L4 规则口径、L5 只读试运行和可选 L6 报表核对，形成结构化报告并由确定性模板回答，不让模型选择阶段或在失败后自由 Replan。用户粘贴任意 SQL 的高级诊断仍属于后续批次。模型调用不注册自动工具循环，复合任务数量与调度也不交给模型决定。当前 FastAPI 仍是权威运行时，Java 接口仅用于影子双跑；后续按单接口验收、切流和可回退方式迁移。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
+> 以下“迁移批次”保留各批完成时的历史状态；当前权威状态以第二十四批和迁移文档顶部为准。
+
+- **Java / Vue 渐进迁移前十四批**：已在 `contracts/migration/v1/` 冻结 Agent REST、SSE、DBHub MCP、医院认证、规则只读、Plan IR 和 Evidence 契约；`backend-java/` 现已提供 Java 17 + Spring Boot 4.1 影子服务、DBHub 客户端、兼容 Python 的医院认证与规则读取、版本化 IR、确定性 Controller/Dispatch、策略 PEP、工具网关，以及 Spring AI 2.0 的 Ollama/OpenAI 兼容模型注册、集中式 Planner/Final Answer 提示词、MySQL + JSONL Evidence Ledger 和独立 Verifier。Java 影子 Runner 已打通规则解释、受控 SQL、三层异常诊断、`.xlsx` 上传汇总/逐条对比、成功试运行后的分子/分母明细快照与 Excel 导出，以及固定 L1/L4/L5/可选 L6 的全面实施验收。明细 SQL 只允许两个已经核验的 SQL Server Profile，由服务端固定模板生成并再次只读校验，经 DBHub 取数后必须与原 `RUN_*` 的聚合分子分母完全一致；跨院、权限、用途确认、快照过期、文件摘要或计数不一致都会停止。上传明细与系统快照按稳定业务键执行多重集合比较，确定性输出双方都有、仅系统有、仅上传有和字段/达标判定差异，并生成四工作表差异 Excel；原始患者行只保存在短期受保护快照/导出对象中，不进入 ToolResult 安全载荷、Evidence、Trace、会话或 LLM 上下文。Java 外层现可确定性拆分 2 至 3 个并列指标，为每个子任务建立独立会话、RunState、Evidence namespace、Trace 子标识和请求 ID；OpenAI 兼容 API 最多并发 2，本地 Ollama 保持串行，DBHub 只读调用最多并发 2，上传对比、规则变更与审批类请求强制串行。子任务允许局部失败，最终严格按用户输入顺序合并；Vue 可同时解析并展示多个明细和差异导出入口。Java 运行同步写入现有 `med_agent_trace` / `med_agent_trace_node`，记录 Planner、IR、Controller、Dispatch、工具、Verifier、Final Answer、会话、复合任务和实施验收阶段节点，并通过同医院鉴权的 `/api/agent/runs/{trace_id}` 读取；Vue 链路抽屉提供类型/状态筛选、瀑布时间轴、子任务泳道、最慢节点、输入输出、版本引用和 Evidence 来源。新增 `/api/agent/runs` 与 `/api/agent/runs/metrics` 后，可按时间、模型、状态、工具和 FailureClass 查询当前医院运行摘要，统计成功率、p50/p95/p99、工具/模型表现、复合请求、重复停止和 Replan；Vue 新增“Agent 运行观察”页面并根据本地配置显示慢请求、慢模型、工具失败率和超时率提示。密码、令牌、SQL 正文与患者原始行继续脱敏或只保留对象引用。上传解析与 Excel 生成仍使用 JDK 原生 OOXML，不增加 Excel 生产依赖；Java 会话记忆按医院、用户和会话隔离保存最近 8 轮与结构化对象引用。用户明确要求全面实施验收时，服务端固定运行 L1 字段来源、L4 规则口径、L5 只读试运行和可选 L6 报表核对，形成结构化报告并由确定性模板回答，不让模型选择阶段或在失败后自由 Replan。用户粘贴任意 SQL 的高级诊断仍属于后续批次。模型调用不注册自动工具循环，复合任务数量与调度也不交给模型决定。该段为当时影子阶段记录；当前已由第二十四批完成正式切流。完整计划见 [`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)。
 
 - **Java / Vue 迁移第十五批**：Java 已接管 `GET /api/metadata/overview` 与 `POST /api/metadata/sync`，医院范围只取登录身份，业务库只接受当前 DBHub 配置。同步固定读取全库表目录与已确认指标映射依赖表的字段，结构差异和受影响指标由代码计算，不向模型或 Trace 暴露 SQL 正文。Vue 3 新增 `/metadata` 数据库元数据工作台，覆盖空快照、同步、结构变化、受影响指标和 DBHub 失败状态。
 
@@ -62,13 +64,15 @@
 
 - **Java / Vue 迁移第二十二批**：Java 已接管指标实施剩余闭环。字段建议和确认只读取当前医院最近一次 `med_metadata_column` 快照，第一版严格限制单主表；服务端把结构化 `sql_plan` 编译成参数化 SQL Server 聚合 SQL，经过两次只读校验后仅通过现有 DBHub sidecar 试运行。成功的 `sql_id/run_id`、周期、分子、分母和指标值与设计稿版本绑定，设计变更后不能复用。管理员批准/驳回同时要求管理员会话和医院会话，正式规则、不可变版本、字段映射和设计稿状态在同一事务提交；本院新增指标支持把历史快照恢复为新的生效版本。Vue `/implementation` 已补齐字段选择、SQL 生成、试运行、提交、审批、驳回和版本恢复操作。本批定向 Java 测试 6 项、Vue 生产构建和单 JAR 打包通过。
 
-- **Java / Vue 迁移第二十三批**：新增轻量只读双跑验收套件、Java 权威模式双重启动门禁和 Python 回退启动器。验收报告固定核对 Java 功能清单、模型注册、两项核心规则、元数据、指标实施、术语、监控以及可选 Agent 契约；医院 token 可跨双栈复用，两个运行时各自签发的管理员 token 必须分别提供。Java 仍默认影子运行，代码提交不会自动切换 `8765` 权威入口；只有一份零失败、零跳过且 24 小时内的报告，加显式人工确认，才允许权威启动。
+- **Java / Vue 迁移第二十三批**：新增轻量只读双跑验收套件、Java 权威模式双重启动门禁和 Python 回退启动器。验收报告固定核对 Java 功能清单、模型注册、两项核心规则、元数据、指标实施、术语、监控以及 Agent 契约；医院 token 可跨双栈复用，两个运行时各自签发的管理员 token 必须分别提供。代码提交不会自动切换 `8765` 权威入口；只有一份零失败、零跳过且 24 小时内的报告，加显式人工确认，才允许权威启动。
+
+- **Java / Vue 迁移第二十四批（正式切流）**：2026-07-22 在真实 MySQL、SQL Server/DBHub、Ollama 和 DeepSeek 环境完成 Python `8765` 与 Java `8766` 双跑，最终报告 `CUTOVER_20260722T023503Z` 为 12 项通过、0 失败、0 跳过。Java 使用 Temurin `17.0.19+10` 和本机可选外部 API 代理正式接管 `8765`，Vue、登录、规则解释、受控 SQL 与 Trace 均通过；实际回退到 FastAPI 后约 41.13 秒恢复，再次切回 Java 后多轮观察无 Java WARN/ERROR。规则搜索同时补齐 Planner 删除空格、虚词或主语时的确定性归一化兜底。
 
 ## 技术栈
 
-- 后端：FastAPI、Pydantic、SQLAlchemy、PyMySQL；医院业务源为 SQL Server，只通过 DBHub 只读访问
-- Agent：`/api/agent/chat` 提供非流式调用，主前端使用 `/api/agent/chat/stream` 接收 SSE 事件
-- 编排：`app/agent_planning` 编译业务计划，`app/agent_runtime` 执行状态循环，`app/agent_tools` 提供受控工具、权限网关和 SQL 对象
+- 当前权威后端：Java 17、Spring Boot 4.1、Spring AI 2.0；FastAPI、Pydantic、SQLAlchemy 和 PyMySQL 作为回退栈保留。医院业务源为 SQL Server，只通过 DBHub 只读访问
+- Agent：`/api/agent/chat` 提供非流式调用，Vue 主前端使用 `/api/agent/chat/stream` 接收 SSE 事件
+- 编排：Java `CompiledPlanIR / CapabilitySpecRegistry / StateController / DeterministicDispatch / ToolGateway / Verifier` 执行当前权威链；Python 对应实现保留用于回退
 - LLM：支持本地 Ollama 与 OpenAI 兼容 API；页面可选择 Qwen3 4B、Qwen3 8B 思考模式、DeepSeek V4 Flash 或 DeepSeek V4 Pro
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2

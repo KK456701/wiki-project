@@ -57,6 +57,13 @@ public class AgentStateController {
                     ambiguity,
                     FallbackCategory.USER_CLARIFICATION);
         }
+        if (indicatorNotFound(state)) {
+            return fallback(
+                    PlanCapability.RESOLVE_INDICATOR,
+                    "INDICATOR_NOT_FOUND",
+                    "未找到匹配指标，请确认指标名称。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
 
         Set<String> facts = stateFacts(state, validation);
         for (PlanNode node : plan.nodes()) {
@@ -183,6 +190,21 @@ public class AgentStateController {
             return "找到多个可能的指标，请明确选择：" + String.join("、", names);
         }
         return "";
+    }
+
+    private static boolean indicatorNotFound(AgentRunState state) {
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult result = state.lastToolResults().get(index);
+            if (!"RULE_SEARCHED".equals(result.code())) {
+                continue;
+            }
+            if (result.data().get("resolved_rule_id") != null) {
+                return false;
+            }
+            Object rawMatches = result.data().get("matches");
+            return rawMatches instanceof List<?> matches && matches.isEmpty();
+        }
+        return false;
     }
 
     private static ControllerDecision fallback(
