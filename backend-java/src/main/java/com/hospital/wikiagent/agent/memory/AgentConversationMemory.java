@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,7 @@ public class AgentConversationMemory {
     private final Map<String, List<Message>> fallback = new ConcurrentHashMap<>();
     private final Map<String, ContextValues> fallbackContext = new ConcurrentHashMap<>();
 
+    @Autowired
     public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;

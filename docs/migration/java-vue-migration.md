@@ -254,3 +254,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - `indicator_sql_prepare` 的确定性回答升级为 `prepared-sql-answer-v2`，在已校验 SQL 前同步展示本院生效定义、公式、分子、分母、纳入和排除口径。
 - Trace 的 `memory_save` 节点增加安全的 `rule_id`、`stat_start`、`stat_end`，便于判断多轮上下文是否正确落盘。
 - 后续加固：明确的“这个 SQL/脚本怎么写”追问在上一轮规则与统计区间完整、且本轮未指定新时间时，由 `followup_plan_resolve` 代码节点直接生成 `indicator_sql_prepare` 业务计划。本地 8B 不再为重复事实二次生成 JSON；若本轮出现新时间，仍回到正常 Planner 与确定性时间解析链路。
+- 会话组件的 `JdbcTemplate + ObjectMapper` 构造器已显式标注为 Spring 注入入口，避免框架误选仅供单元测试使用的私有 `noop` 构造器；生产会话现在真实写入 SQLite，并继续保留进程内降级缓存。
