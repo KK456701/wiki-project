@@ -2,13 +2,17 @@ package com.hospital.wikiagent.agent.runtime;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Base64;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
@@ -54,6 +58,15 @@ public class AgentRunner {
     public static final String VERSION = "java-agent-runner-v1";
     private static final int MAX_STEPS = 12;
     private static final DateTimeFormatter EVIDENCE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final Pattern ISO_HISTORY_TIME = Pattern.compile(
+            "(20\\d{2}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2})");
+    private static final Pattern CHINESE_HISTORY_TIME = Pattern.compile(
+            "(20\\d{2})年(1[0-2]|0?[1-9])月(3[01]|[12]?\\d)日"
+                    + "(?:\\s*(2[0-3]|[01]?\\d):(\\d{2})(?::(\\d{2}))?)?");
+    private static final Pattern CURRENT_QUERY_TIME = Pattern.compile(
+            "20\\d{2}[-年]|(?:\\d{2}|[一二三四五六七八九十]{2,4})年|"
+                    + "(?:1[0-2]|0?[1-9]|[一二三四五六七八九十]{1,3})月份?|"
+                    + "至今|到现在|本月|这个月|上月|今年|去年|今天|昨天");
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -164,28 +177,44 @@ public class AgentRunner {
                 subtaskId, Map.of("session_id", safe(request.sessionId())), Map.of(
                         "history_length", request.recentHistory().length(),
                         "structured_state_length", request.structuredState().length()));
-        emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
-
-        long plannerStarted = TraceEvents.started();
-        // Planner 只产出业务 RequestPlan，不接收工具 schema，也不能决定 SQL。
         PlannerResult modelPlan;
-        try {
-            modelPlan = planner.plan(new PlannerInput(
-                    request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
-                    request.structuredState(), request.recentHistory()));
-            TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
-                    subtaskId, Map.of(
+        RequestPlan followupPlan = deterministicSqlFollowup(
+                request.query(), conversation, request.recentHistory(), resolvedIndicator);
+        if (followupPlan != null) {
+            // “这个 SQL 怎么写”已由上一轮结构化状态给出指标与周期，无需再次让小模型猜测。
+            long followupStarted = TraceEvents.started();
+            modelPlan = new PlannerResult(
+                    followupPlan, "deterministic-sql-followup", request.modelId(), false);
+            TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
+                    followupStarted, subtaskId, Map.of(
                             "query", request.query(),
-                            "structured_state", request.structuredState(),
-                            "recent_history", request.recentHistory()), Map.of(
-                            "intent", modelPlan.plan().intent().name(),
-                            "repaired", modelPlan.repaired()),
-                    "model_id", modelPlan.modelId());
-        } catch (RuntimeException exception) {
-            TraceEvents.failed(observer, traceId, "planner_llm", "llm", plannerStarted,
-                    subtaskId, "PLANNER_FAILED", exception.getMessage(),
-                    "model_id", request.modelId());
-            throw exception;
+                            "context_rule_id", followupPlan.targetIndicator().ruleId(),
+                            "context_stat_start", followupPlan.timeExpression().startTime(),
+                            "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
+                            "intent", followupPlan.intent().name(),
+                            "requested_outputs", followupPlan.requestedOutputs()));
+        } else {
+            emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
+            long plannerStarted = TraceEvents.started();
+            // Planner 只产出业务 RequestPlan，不接收工具 schema，也不能决定 SQL。
+            try {
+                modelPlan = planner.plan(new PlannerInput(
+                        request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                        request.structuredState(), request.recentHistory()));
+                TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
+                        subtaskId, Map.of(
+                                "query", request.query(),
+                                "structured_state", request.structuredState(),
+                                "recent_history", request.recentHistory()), Map.of(
+                                "intent", modelPlan.plan().intent().name(),
+                                "repaired", modelPlan.repaired()),
+                        "model_id", modelPlan.modelId());
+            } catch (RuntimeException exception) {
+                TraceEvents.failed(observer, traceId, "planner_llm", "llm", plannerStarted,
+                        subtaskId, "PLANNER_FAILED", exception.getMessage(),
+                        "model_id", request.modelId());
+                throw exception;
+            }
         }
         long compileStarted = TraceEvents.started();
         RequestPlan enrichedPlan = normalizeExplicitImplementationValidation(
@@ -623,6 +652,68 @@ public class AgentRunner {
                 new RequestPlan.TargetIndicator(resolved.canonicalName(), resolved.ruleId()),
                 plan.timeExpression(), plan.requestedOutputs(), plan.constraints(),
                 plan.semanticAmbiguities());
+    }
+
+    /**
+     * 将具备完整上一轮事实的 SQL 追问确定性转换为业务计划。
+     *
+     * <p>该分支只接受明确出现 SQL/脚本的追问，并要求指标身份和完整统计区间都已存在；
+     * 任何事实缺失仍交给 Planner 或用户澄清，不能从历史回答猜造规则或日期。</p>
+     */
+    private static RequestPlan deterministicSqlFollowup(
+            String query,
+            ConversationSnapshot conversation,
+            String recentHistory,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (!compact.contains("sql") && !compact.contains("脚本")) return null;
+        // 当前问题提供了新时间时必须重新走正常解析，不能被上一轮区间覆盖。
+        if (CURRENT_QUERY_TIME.matcher(compact).find()) return null;
+        String ruleId = first(
+                resolvedIndicator == null ? null : resolvedIndicator.ruleId(), conversation.ruleId());
+        String ruleName = first(
+                resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
+                conversation.ruleName(), ruleId);
+        String statStart = conversation.statStart();
+        String statEnd = conversation.statEnd();
+        if (statStart == null || statEnd == null) {
+            List<String> historyTimes = historyTimes(recentHistory);
+            if (historyTimes.size() >= 2) {
+                statStart = historyTimes.get(historyTimes.size() - 2);
+                statEnd = historyTimes.get(historyTimes.size() - 1);
+            }
+        }
+        if (ruleId == null || statStart == null || statEnd == null) return null;
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_SQL_PREPARE,
+                query == null ? "生成上一轮指标的受控 SQL" : query,
+                new RequestPlan.TargetIndicator(ruleName, ruleId),
+                new RequestPlan.TimeExpression("沿用上一轮统计区间", statStart, statEnd),
+                List.of(RequestedOutput.PREPARED_SQL_HANDLE),
+                List.of(),
+                List.of());
+    }
+
+    private static List<String> historyTimes(String history) {
+        List<String> values = new ArrayList<>();
+        Matcher iso = ISO_HISTORY_TIME.matcher(safe(history));
+        while (iso.find()) {
+            values.add(iso.group(1).replace('T', ' '));
+        }
+        if (values.size() >= 2) return values;
+        values.clear();
+        Matcher chinese = CHINESE_HISTORY_TIME.matcher(safe(history));
+        while (chinese.find()) {
+            int hour = chinese.group(4) == null ? 0 : Integer.parseInt(chinese.group(4));
+            int minute = chinese.group(5) == null ? 0 : Integer.parseInt(chinese.group(5));
+            int second = chinese.group(6) == null ? 0 : Integer.parseInt(chinese.group(6));
+            LocalDateTime parsed = LocalDateTime.of(
+                    Integer.parseInt(chinese.group(1)), Integer.parseInt(chinese.group(2)),
+                    Integer.parseInt(chinese.group(3)), hour, minute, second);
+            values.add(parsed.format(EVIDENCE_TIME));
+        }
+        return values;
     }
 
     private static RequestPlan normalizeExplicitImplementationValidation(

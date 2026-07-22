@@ -36,6 +36,7 @@ public class AgentConversationMemory {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final Map<String, List<Message>> fallback = new ConcurrentHashMap<>();
+    private final Map<String, ContextValues> fallbackContext = new ConcurrentHashMap<>();
 
     public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
@@ -98,15 +99,28 @@ public class AgentConversationMemory {
                 break;
             }
         }
+        // 消息和结构化上下文采用两份进程内索引。即使某条助手消息因存储降级只恢复了文本，
+        // 当前指标和统计区间仍可从 context 索引恢复，避免跨轮 SQL 追问重新询问时间。
+        ContextValues cached = fallbackContext.get(key);
+        String ruleId = first(latestContext == null ? null : latestContext.ruleId(),
+                cached == null ? null : cached.ruleId());
+        String ruleName = first(latestContext == null ? null : latestContext.ruleName(),
+                cached == null ? null : cached.ruleName());
+        String statStart = first(latestContext == null ? null : latestContext.statStart(),
+                cached == null ? null : cached.statStart());
+        String statEnd = first(latestContext == null ? null : latestContext.statEnd(),
+                cached == null ? null : cached.statEnd());
+        String runId = first(latestContext == null ? null : latestContext.runId(),
+                cached == null ? null : cached.runId());
+        String uploadFileKey = first(latestContext == null ? null : latestContext.uploadFileKey(),
+                cached == null ? null : cached.uploadFileKey());
         Map<String, Object> structured = new LinkedHashMap<>();
-        if (latestContext != null) {
-            put(structured, "active_rule_id", latestContext.ruleId());
-            put(structured, "active_rule_name", latestContext.ruleName());
-            put(structured, "stat_start", latestContext.statStart());
-            put(structured, "stat_end", latestContext.statEnd());
-            put(structured, "last_run_id", latestContext.runId());
-            put(structured, "current_upload_file_key", latestContext.uploadFileKey());
-        }
+        put(structured, "active_rule_id", ruleId);
+        put(structured, "active_rule_name", ruleName);
+        put(structured, "stat_start", statStart);
+        put(structured, "stat_end", statEnd);
+        put(structured, "last_run_id", runId);
+        put(structured, "current_upload_file_key", uploadFileKey);
         String structuredSummary;
         try {
             structuredSummary = objectMapper == null || structured.isEmpty()
@@ -119,12 +133,7 @@ public class AgentConversationMemory {
                 sessionId,
                 history(messages),
                 structuredSummary,
-                latestContext == null ? null : latestContext.ruleId(),
-                latestContext == null ? null : latestContext.ruleName(),
-                latestContext == null ? null : latestContext.statStart(),
-                latestContext == null ? null : latestContext.statEnd(),
-                latestContext == null ? null : latestContext.runId(),
-                latestContext == null ? null : latestContext.uploadFileKey());
+                ruleId, ruleName, statStart, statEnd, runId, uploadFileKey);
     }
 
     public void appendUser(
@@ -146,6 +155,7 @@ public class AgentConversationMemory {
             String content,
             AgentRunState state) {
         ContextValues values = contextValues(state, conversation);
+        fallbackContext.put(conversation.storageKey(), values);
         append(new Message(
                 conversation.storageKey(), principal.hospitalId(), principal.userId(),
                 "assistant", limited(content, 12_000), values.ruleId(), values.ruleName(),

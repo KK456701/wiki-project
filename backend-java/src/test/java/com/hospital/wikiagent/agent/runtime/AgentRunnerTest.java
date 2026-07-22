@@ -23,6 +23,7 @@ import com.hospital.wikiagent.agent.evidence.EvidenceLedger;
 import com.hospital.wikiagent.agent.evidence.EvidenceStore;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerification;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
+import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.model.AgentModelInvoker;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.model.AgentModelProperties.ModelDefinition;
@@ -289,6 +290,70 @@ class AgentRunnerTest {
                 .contains("已校验 SQL", "2026-01-01 00:00:00", "2026-04-01 00:00:00")
                 .contains("该请求只生成并校验 SQL，不执行数据库");
         assertThat(models.calls).isEqualTo(1);
+    }
+
+    @Test
+    void resolvesSqlFollowupFromStructuredContextWithoutCallingUnreliableLocalPlanner() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        throw new AssertionError("SQL follow-up must only prepare SQL");
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                }, objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker();
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentConversationMemory memory = AgentConversationMemory.noop();
+        HospitalPrincipal principal = new HospitalPrincipal(
+                "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
+        var conversation = memory.open(principal, "session_followup");
+        AgentRunState previousState = new AgentRunState();
+        previousState.currentRuleId("MQSI2025_005");
+        previousState.statPeriod("2026-01-01 00:00:00", "2026-07-22 19:48:59");
+        memory.appendAssistant(conversation, principal,
+                "急会诊及时到位率统计区间为2026-01-01 00:00:00至2026-07-22 19:48:59。",
+                previousState);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper), capabilities,
+                new AgentStateController(capabilities), new DeterministicDispatch(), gateway, verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                memory);
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "这个SQL是怎么写的，分子分母具体是什么口径？",
+                "session_followup", "ollama-test", null, "request_followup", "trace_followup",
+                "business_test", "{}", "", principal), events::add);
+
+        assertThat(result.stopReason()).isEqualTo("final_answer");
+        assertThat(result.answer())
+                .contains("分子口径：及时到位次数", "分母口径：急会诊总次数")
+                .contains("2026-01-01 00:00:00", "2026-07-22 19:48:59", "已校验 SQL");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("followup_plan_resolve")
+                .doesNotContain("planner_llm");
+        assertThat(models.calls).isZero();
     }
 
     @Test
