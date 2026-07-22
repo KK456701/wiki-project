@@ -7,9 +7,16 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.hospital.wikiagent.migration.MigrationProperties;
+
 @RestController
 @RequestMapping("/api")
 public class SystemController {
+    private final MigrationProperties migration;
+
+    public SystemController(MigrationProperties migration) {
+        this.migration = migration;
+    }
 
     @GetMapping("/health")
     public Map<String, Object> health() {
@@ -21,9 +28,11 @@ public class SystemController {
     @GetMapping("/migration/status")
     public Map<String, Object> migrationStatus() {
         return Map.of(
-                "phase", "single_jar_shadow",
-                "authority_runtime", "python",
-                "java_runtime", "compatibility_shadow",
+                "phase", migration.javaAuthority() ? "java_authority" : "single_jar_shadow",
+                "authority_runtime", migration.getAuthorityRuntime(),
+                "java_runtime", migration.mode(),
+                "cutover_gate", migration.isCutoverApproved() ? "open" : "closed",
+                "readiness_report_id", migration.getReadinessReportId(),
                 "completed", List.of(
                         "agent_contract_v1", "dbhub_mcp_client", "hospital_auth", "rule_read_api",
                         "compiled_plan_ir", "deterministic_dispatch", "policy_tool_gateway",
@@ -32,8 +41,19 @@ public class SystemController {
                         "detail_export", "compound_runtime", "trace_observability",
                         "implementation_validation_mvp", "metadata_workbench",
                         "terminology_read_workbench", "terminology_admin_workflow",
-                        "vue_bundle_in_jar", "indicator_implementation_workflow"),
-                "next", List.of("remaining_business_workbenches",
-                        "contract_cutover"));
+                        "vue_bundle_in_jar", "indicator_implementation_workflow",
+                        "cutover_readiness_gate"),
+                "next", List.of("real_environment_readiness_execution",
+                        "explicit_contract_cutover"));
+    }
+
+    @GetMapping("/migration/readiness")
+    public Map<String, Object> readiness() {
+        return Map.of(
+                "mode", migration.mode(),
+                "authority_runtime", migration.getAuthorityRuntime(),
+                "cutover_approved", migration.isCutoverApproved(),
+                "readiness_report_id", migration.getReadinessReportId(),
+                "serving_authority", migration.javaAuthority() && migration.isCutoverApproved());
     }
 }

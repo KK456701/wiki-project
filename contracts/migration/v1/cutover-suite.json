@@ -1,0 +1,46 @@
+{
+  "schema_version": "java-cutover-suite-v1",
+  "required_java_features": [
+    "agent_contract_v1",
+    "dbhub_mcp_client",
+    "hospital_auth",
+    "rule_read_api",
+    "compiled_plan_ir",
+    "deterministic_dispatch",
+    "policy_tool_gateway",
+    "spring_ai_model_adapters",
+    "evidence_ledger",
+    "agent_shadow_runner",
+    "controlled_sql_trial",
+    "diagnosis",
+    "upload_comparison",
+    "detail_export",
+    "compound_runtime",
+    "trace_observability",
+    "implementation_validation_mvp",
+    "metadata_workbench",
+    "terminology_read_workbench",
+    "terminology_admin_workflow",
+    "vue_bundle_in_jar",
+    "indicator_implementation_workflow",
+    "cutover_readiness_gate"
+  ],
+  "rule_queries": [
+    "急会诊及时到位率",
+    "患者入院 48 小时内转科的比例"
+  ],
+  "agent_cases": [
+    {
+      "id": "rule_explanation",
+      "query": "急会诊及时到位率怎么算？"
+    },
+    {
+      "id": "controlled_trial",
+      "query": "患者入院 48 小时内转科的比例从2026年1月到3月的结果"
+    },
+    {
+      "id": "compound_explanation",
+      "query": "急会诊及时到位率、患者入院 48 小时内转科的比例怎么算？"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+param(
+    [ValidateSet('Shadow', 'Authority')]
+    [string]$Mode = 'Shadow',
+    [string]$JarPath = '',
+    [string]$ReadinessReport = '',
+    [int]$Port = 0,
+    [int]$MaxReportAgeHours = 24,
+    [switch]$ConfirmCutover
+)
+
+$ErrorActionPreference = 'Stop'
+
+function Test-PortAvailable {
+    param([int]$TargetPort)
+    $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $TargetPort)
+    try {
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        try { $listener.Stop() } catch { }
+    }
+}
+
+function Set-ProcessEnvironment {
+    param([string]$Name, [string]$Value, [hashtable]$Saved)
+    $Saved[$Name] = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    [Environment]::SetEnvironmentVariable($Name, $Value, 'Process')
+}
+
+$projectRoot = Split-Path -Parent $PSScriptRoot
+if (-not $JarPath) {
+    $jar = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'backend-java\target') -Filter 'wiki-agent-java-*.jar' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike '*.original' } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if (-not $jar) { throw '未找到 Java 单 JAR，请先执行 scripts\build-java-vue.ps1。' }
+    $JarPath = $jar.FullName
+}
+$JarPath = (Resolve-Path -LiteralPath $JarPath).Path
+
+$saved = @{}
+try {
+    if ($Mode -eq 'Authority') {
+        if (-not $ConfirmCutover) {
+            throw '权威模式必须显式提供 -ConfirmCutover。'
+        }
+        if (-not $ReadinessReport) {
+            throw '权威模式必须提供 -ReadinessReport。'
+        }
+        $reportPath = (Resolve-Path -LiteralPath $ReadinessReport).Path
+        $report = Get-Content -LiteralPath $reportPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($report.schema_version -ne 'java-cutover-readiness-v1' -or $report.status -ne 'ready') {
+            throw 'Readiness 报告未通过，拒绝启动 Java 权威模式。'
+        }
+        if ($report.summary.failed -ne 0 -or $report.summary.skipped -ne 0) {
+            throw 'Readiness 报告仍有失败或跳过项，拒绝切流。'
+        }
+        $generatedAt = [DateTimeOffset]::Parse([string]$report.generated_at)
+        if ([DateTimeOffset]::UtcNow.Subtract($generatedAt).TotalHours -gt $MaxReportAgeHours) {
+            throw "Readiness 报告已超过 $MaxReportAgeHours 小时，请重新双跑。"
+        }
+        if (-not $Port) { $Port = 8765 }
+        Set-ProcessEnvironment 'MIGRATION_AUTHORITY_RUNTIME' 'java' $saved
+        Set-ProcessEnvironment 'MIGRATION_CUTOVER_APPROVED' 'true' $saved
+        Set-ProcessEnvironment 'MIGRATION_READINESS_REPORT_ID' ([string]$report.report_id) $saved
+    } else {
+        if (-not $Port) { $Port = 8766 }
+        Set-ProcessEnvironment 'MIGRATION_AUTHORITY_RUNTIME' 'python' $saved
+        Set-ProcessEnvironment 'MIGRATION_CUTOVER_APPROVED' 'false' $saved
+        Set-ProcessEnvironment 'MIGRATION_READINESS_REPORT_ID' '' $saved
+    }
+    if (-not (Test-PortAvailable $Port)) {
+        throw "端口 $Port 已被占用；脚本不会停止现有服务，请先人工确认当前权威进程。"
+    }
+    Set-ProcessEnvironment 'SERVER_PORT' ([string]$Port) $saved
+    Write-Output "Starting Java runtime: mode=$Mode port=$Port jar=$JarPath"
+    & java -jar $JarPath
+    if ($LASTEXITCODE -ne 0) { throw "Java runtime exited with code $LASTEXITCODE" }
+} finally {
+    foreach ($name in $saved.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
+    }
+}

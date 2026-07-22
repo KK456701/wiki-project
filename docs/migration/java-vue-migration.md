@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0、阶段 1、阶段 2、阶段 3，阶段 4 的 Agent 主链，以及阶段 5 的 Trace、运行观察、元数据、医学术语治理、监控执行闭环、实施任务治理和单 JAR 构建子批次已完成。FastAPI 仍是权威运行时，Java 服务只在 `8766` 影子端口验证兼容性，Vue 开发服务器默认仍调用 `8765` 以维持双栈回退。
+> 更新日期：2026-07-22。阶段 0 至阶段 4、阶段 5 的业务工作台与单 JAR 构建，以及正式切流前的只读双跑验收和启动门禁均已实现。FastAPI 仍是权威运行时；本批没有实际切流，Java 默认仍在 `8766` 影子端口验证兼容性。
 
 ## 1. 迁移目标与约束
 
@@ -175,6 +175,10 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已迁移指标实施完整执行链：字段建议只查询当前医院、已确认主表的最近元数据列，确认时逐项复核医院、数据库、表和字段，缺失字段、跨表字段或快照外字段均被拒绝。草稿 SQL 不接受客户端文本，而是由固定操作符集合的 `sql_plan` 和确认映射确定性编译成 SQL Server 聚合查询，再经参数完整性与只读安全校验后通过 DBHub sidecar 执行。
 - 试运行把 `sql_id`、`run_id`、统计周期、DBHub 来源、分子、分母和指标值绑定到当前草稿版本。只有当前版本成功证据可以提交；任何设计修改仍会清除整条旧证据链。管理员批准/驳回必须同时验证独立管理员会话和当前医院会话，正式规则、不可变规则版本、字段映射和草稿状态在一个 MySQL 事务中提交。
 - 本院新增指标发布到 `med_index_hospital_defined`，基于国标的本院口径发布到 `med_index_hospital_custom`；本院新增指标历史恢复不会覆盖旧快照，而是创建新的递增版本并同步恢复字段映射。Vue `/implementation` 已提供字段候选选择、SQL 生成、DBHub 试运行、审批、驳回和版本恢复。本子批次定向 Java 测试 6 项、Java 编译、Vue 生产构建及单 JAR 打包通过。
+- 已实现正式切流前的轻量只读双跑：`contracts/migration/v1/cutover-suite.json` 冻结必需功能和样例，`scripts/cutover_readiness.py` 对两个运行时核对健康、功能清单、模型注册、规则安全字段、元数据、指标实施任务、术语、监控计划和可选 Agent 完成契约。报告只含安全摘要，不保存认证令牌、SQL 正文或患者数据。
+- 医院会话使用共用运行库，可同时访问双栈；管理员会话由各运行时独立签发，因此脚本分别接受 `MIGRATION_PYTHON_ADMIN_TOKEN` 与 `MIGRATION_JAVA_ADMIN_TOKEN`，避免错误复用进程内令牌。未运行 Agent 或缺少任一管理员令牌会形成跳过项，不能作为正式权威切流报告。
+- Java 配置新增 `MIGRATION_AUTHORITY_RUNTIME`、`MIGRATION_CUTOVER_APPROVED` 和 `MIGRATION_READINESS_REPORT_ID`。默认值保持 Python 权威；若要求 Java 权威但没有显式批准或报告编号，Spring Boot 在启动阶段直接拒绝。`scripts/start-java-runtime.ps1` 还会验证报告 schema、零失败、零跳过、状态和 24 小时有效期，并要求 `-ConfirmCutover`；它不会结束占用端口的现有服务。
+- `scripts/start-python-runtime.ps1` 提供前台回退入口，同样不会抢占端口。由此切流与回退都是可审计的人工操作，不由代码提交、应用自检或模型自动触发。本批只交付门禁，不改变当前 `8765` FastAPI 权威入口。
 - 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
 
@@ -208,6 +212,20 @@ npm run dev
 # 两个服务均已由用户启动后，手工双跑规则解释（token 不会被脚本打印）
 cd F:\A-wiki-project
 python scripts\compare_java_python_agent_rule.py --token <医院登录令牌> --model-id deepseek-v4-flash
+
+# 完整只读验收（Python/Java 管理员令牌必须分别登录取得）
+$env:MIGRATION_HOSPITAL_ID = 'hospital_001'
+$env:MIGRATION_HOSPITAL_TOKEN = '<医院登录令牌>'
+$env:MIGRATION_PYTHON_ADMIN_TOKEN = '<Python 管理员令牌>'
+$env:MIGRATION_JAVA_ADMIN_TOKEN = '<Java 管理员令牌>'
+python scripts\cutover_readiness.py --include-agent
+
+# 报告零失败、零跳过后仍需人工显式确认；此命令前台运行，不停止原服务
+powershell -ExecutionPolicy Bypass -File .\scripts\start-java-runtime.ps1 `
+  -Mode Authority -ReadinessReport .\runtime\cutover-readiness.json -ConfirmCutover
+
+# Java 回退后，在已确认空闲的 8765 端口恢复 Python
+powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 ```
 
 当前本机 JDK 17 可以继续开发，不需要为了迁移先下载 Java 21。现有 JDK 是较早的 17.0 初始构建，正式部署前应升级到最新 Java 17 安全补丁，但不改变语言级别。

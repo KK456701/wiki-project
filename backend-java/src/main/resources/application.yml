@@ -25,6 +25,10 @@ management:
         include: health,info
 
 wiki:
+  migration:
+    authority-runtime: ${MIGRATION_AUTHORITY_RUNTIME:python}
+    cutover-approved: ${MIGRATION_CUTOVER_APPROVED:false}
+    readiness-report-id: ${MIGRATION_READINESS_REPORT_ID:}
   admin:
     password: ${WIKI_ADMIN_PASSWORD:CHANGE_ME}
   auth:
