@@ -9,7 +9,7 @@
 ## 核心能力
 
 - **Wiki 规则主存储**：Markdown/YAML/JSON 直接保存国标、本院 override、不可变版本、字段映射和 SQL 规格；Python 与 Java 共用同一知识源。
-- **SQLite 内嵌运行库**：`runtime/wiki_agent_runtime.db` 保存可变运行状态，无需单独服务、账号或端口；JSONL 继续作为 Evidence 降级通道。
+- **SQLite 内嵌运行库**：`runtime/wiki_agent_runtime.db` 保存可变运行状态，无需单独服务、账号或端口；JSONL 继续作为 Evidence 降级通道。Java 仓储统一兼容 SQLite 毫秒时间戳、迁移后的文本时间和标准 JDBC Timestamp，明细快照与导出不会因存储格式差异返回 500。
 - **确定性工具直调 Agent 对话**：Planner 只生成不含工具名的业务语义计划，服务端编译并校验计划，由 StateController 与确定性参数编译器直接调用当前能力对应的受控工具；Verifier 校验规则、SQL、统计周期和数值链路后，最终回答模型只负责组织中文答案。
 - **合成本院生效口径**：以国标为基础，查询时只合入本院已审批且处于生效期的差异项，不修改国标原始记录；没有有效本院差异时直接使用国标。
 - **反馈与审批**：医院用户反馈口径不一致时先生成差异预览，用户确认后进入 Pending，管理员审批通过后才生效。

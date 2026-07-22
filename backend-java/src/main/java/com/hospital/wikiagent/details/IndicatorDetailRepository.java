@@ -254,8 +254,8 @@ public class IndicatorDetailRepository {
                 integer(result.getObject("denominator_count")), integer(result.getObject("numerator_count")),
                 integer(result.getObject("unmatched_count")),
                 columns(result.getString("column_schema_json")), result.getString("status"),
-                result.getString("created_by"), instant(result.getTimestamp("created_at")),
-                instant(result.getTimestamp("expires_at")), result.getString("error_message"));
+                result.getString("created_by"), instant(result.getObject("created_at")),
+                instant(result.getObject("expires_at")), result.getString("error_message"));
     }
 
     private static ExportRecord export(ResultSet result) throws SQLException {
@@ -265,8 +265,8 @@ public class IndicatorDetailRepository {
                 result.getString("rule_id"), result.getString("relative_path"),
                 result.getString("file_name"), result.getString("file_sha256"),
                 result.getString("status"), result.getInt("row_count"),
-                result.getString("created_by"), instant(result.getTimestamp("created_at")),
-                instant(result.getTimestamp("expires_at")), result.getInt("download_count"),
+                result.getString("created_by"), instant(result.getObject("created_at")),
+                instant(result.getObject("expires_at")), result.getInt("download_count"),
                 result.getString("error_message"));
     }
 
@@ -334,11 +334,27 @@ public class IndicatorDetailRepository {
         if (value instanceof LocalDateTime time) {
             return time.format(SQL_TIME);
         }
+        if (value instanceof Number number) {
+            return LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(number.longValue()), ZoneOffset.UTC).format(SQL_TIME);
+        }
         return text(value);
     }
 
-    private static Instant instant(Timestamp value) {
-        return value == null ? null : value.toInstant();
+    private static Instant instant(Object value) {
+        if (value == null) return null;
+        if (value instanceof Timestamp timestamp) return timestamp.toInstant();
+        if (value instanceof java.util.Date date) return date.toInstant();
+        if (value instanceof LocalDateTime time) return time.toInstant(ZoneOffset.UTC);
+        if (value instanceof Number number) return Instant.ofEpochMilli(number.longValue());
+        String raw = text(value);
+        if (raw.isBlank()) return null;
+        if (raw.matches("-?\\d+")) return Instant.ofEpochMilli(Long.parseLong(raw));
+        try {
+            return Instant.parse(raw);
+        } catch (java.time.format.DateTimeParseException ignored) {
+            return Timestamp.valueOf(raw).toInstant();
+        }
     }
 
     private static String first(String... values) {
