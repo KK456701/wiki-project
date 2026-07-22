@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理、指标监控闭环，以及指标实施任务治理。迁移期 Java 自动调度默认关闭，FastAPI 仍是权威运行时。
+这是渐进迁移影子服务，不会替换当前 `8765` 端口上的 FastAPI。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理、指标监控闭环，以及指标实施与审批发布完整闭环。迁移期 Java 自动调度默认关闭，FastAPI 仍是权威运行时。
 
 ## 本地运行
 
@@ -50,6 +50,10 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/indicator-drafts`、`GET /api/indicator-drafts/{draft_id}` 及版本接口：按医院人员登录范围读取实施任务和不可变版本快照。
 - `PUT /api/indicator-drafts/{draft_id}`：使用 `expected_version` 乐观锁编辑设计字段，并使旧 SQL 与试运行证据失效。
 - `POST /api/indicator-drafts/{draft_id}/requirements-confirm|submit`：推进取数要求确认，或在当前版本试运行证据有效时提交审批。
+- `GET /api/indicator-drafts/{draft_id}/metadata-suggestions`、`POST .../metadata-confirm`：只使用当前医院元数据快照建议并确认单主表字段映射。
+- `POST /api/indicator-drafts/{draft_id}/sql-generate|trial-run`：根据结构化计划确定性生成 SQL Server 查询，二次只读校验后仅通过 DBHub 试运行。
+- `POST /api/indicator-drafts/{draft_id}/approve|reject`：在管理员和医院双重认证下发布或驳回当前版本任务。
+- `GET /api/hospital-defined/{hospital_id}/{index_code}/versions`、`POST .../restore`：审阅本院新增指标不可变版本，并把指定快照恢复为新的递增版本。
 
 配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
 
@@ -89,7 +93,7 @@ $env:MONITORING_LEASE_SECONDS = '600'
 
 关闭时仍可从 Vue 或 `POST /api/monitoring/plans/{plan_id}/run` 手工验证单个计划；只有自动到期扫描受开关约束。
 
-Vue `/implementation` 页面展示当前医院实施任务、版本、状态阶段、设计字段、映射、SQL 和试运行证据。Java 当前只接管任务治理边界；字段建议/确认、SQL 生成/试运行、管理员批准/驳回、正式发布和历史恢复仍由后续子批次迁移。编辑请求中的 `actor_id` 仅为兼容旧契约，服务端始终使用医院登录用户作为真实操作者。
+Vue `/implementation` 页面展示当前医院实施任务、版本、状态阶段、设计字段、字段候选、SQL 和试运行证据，并完成提交、管理员审批与历史恢复。SQL 只能由服务端结构化计划编译，浏览器不能提交任意 SQL；医院级审批同时校验管理员 token 与医院 token。编辑请求中的 `actor_id` 仅为兼容旧契约，服务端始终使用医院登录用户作为真实操作者。
 
 Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
 

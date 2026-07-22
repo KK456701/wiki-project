@@ -44,6 +44,31 @@ public class SqlObjectRepository {
                 value.validationMessage(), value.createdAt().toString(), value.expiresAt().toString(), value.dbSourceId());
     }
 
+    public void saveGeneratedDraft(
+            String sqlId, String hospitalId, String ruleId, String dialect, String sqlText,
+            String validationMessage, String generatedBy) {
+        jdbc.update(
+                "INSERT INTO med_generated_sql "
+                        + "(sql_id,hospital_id,rule_id,dialect,sql_text,sql_status,validation_message,generated_by,generated_at) "
+                        + "VALUES (?,?,?,?,?,'validated',?,?,?)",
+                sqlId, hospitalId, ruleId, dialect, sqlText, validationMessage, generatedBy,
+                Timestamp.from(Instant.now()));
+    }
+
+    public void saveDraftRun(
+            String runId, String sqlId, String hospitalId, String ruleId, String statStart,
+            String statEnd, String status, Number resultValue, Long numerator, Long denominator,
+            String errorMessage, long durationMs, String runBy, Map<String, Object> runContext) {
+        jdbc.update(
+                "INSERT INTO med_sql_run_log "
+                        + "(run_id,sql_id,hospital_id,rule_id,stat_start_time,stat_end_time,run_status,result_value,"
+                        + "error_message,duration_ms,run_by,numerator_count,denominator_count,run_context_json,run_time) "
+                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                runId, sqlId, hospitalId, ruleId, statStart, statEnd, status, resultValue,
+                errorMessage == null ? "" : errorMessage, durationMs, runBy, numerator, denominator,
+                json(runContext), Timestamp.from(Instant.now()));
+    }
+
     public PreparedSqlObject loadForExecution(String sqlId, AgentRuntimeContext context, Instant now) {
         List<PreparedSqlObject> values = jdbc.query(
                 "SELECT * FROM med_agent_sql_object WHERE sql_id=?",

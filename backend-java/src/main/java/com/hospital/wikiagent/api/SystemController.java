@@ -32,7 +32,7 @@ public class SystemController {
                         "detail_export", "compound_runtime", "trace_observability",
                         "implementation_validation_mvp", "metadata_workbench",
                         "terminology_read_workbench", "terminology_admin_workflow",
-                        "vue_bundle_in_jar"),
+                        "vue_bundle_in_jar", "indicator_implementation_workflow"),
                 "next", List.of("remaining_business_workbenches",
                         "contract_cutover"));
     }

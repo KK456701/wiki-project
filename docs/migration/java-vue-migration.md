@@ -156,7 +156,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 已迁移独立管理员会话和术语治理写链。Java 不把管理员 token 当作医院身份：公司级词条只需管理员会话，医院级候选与映射必须同时提交当前医院会话并通过范围检查。候选、批准、映射版本、发布和回退均在事务内写入审计；发布前阻止未审核公司词，相同快照复用已有版本，恢复只替换公司投影而不删除医院本地映射。
 - Vue 术语页新增管理员维护模式、候选词和映射表单、逐条审批、发布与历史恢复。管理员密码仅通过 `WIKI_ADMIN_PASSWORD` 提供，仓库默认 `CHANGE_ME` 会被服务端拒绝，不形成可用默认密码。
 - 本子批次完成后 Java 全量测试共 79 项、Python/Java 迁移契约 5 项及 Vue 生产构建通过；新增覆盖管理员 token 签发/撤销、占位密码拒绝、候选冲突、医院范围、映射版本、发布复用与恢复。
-- 待迁移：实施字段映射与 SQL 运行、管理员审批发布/恢复、真实环境双跑验收以及正式切流。
+- 待迁移：真实环境双跑验收以及正式切流。
 - Vue 构建产物已通过 `bundle-vue` Maven Profile 进入 Spring Boot JAR。`scripts/build-java-vue.ps1` 在构建机依次执行 npm 和 Maven，部署机不需要 Node.js 常驻；Spring MVC 只对已登记的 Vue History 路由回退到 `index.html`，不会吞掉 `/api/**` 错误。
 - 一键脚本已在 Windows PowerShell 5.1 兼容模式下实跑通过，可识别当前仅显示为 `java version "17"` 的早期 JDK 17；构建后 Java 测试共 80 项通过，JAR 已核验包含 Vue 的 `index.html`、JS 和 CSS 三类入口资源。
 - 已迁移监控治理和审阅子集：Java 复用 `med_indicator_run_plan`、`med_index_run_result`、`med_indicator_alert`，提供计划新增/修改/启停、结果列表/详情以及预警列表/确认/关闭。所有入口必须同时通过独立管理员会话和当前医院会话，医院编号由服务端复核，不能用管理员 token 越权读取其他医院。
@@ -172,6 +172,9 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 任何设计字段编辑都会把状态退回 `requirements_pending`，并清除 `current_sql`、`sql_params`、`sql_id`、`trial_result` 和 `trial_draft_version`；因此旧版本 SQL 或试运行结果不能被误用于新设计。取数要求确认只允许进入 `metadata_pending`，提交审批只接受与当前版本一致的成功试运行证据。
 - Java 实施 API 只信任医院 token 中的 `hospital_id` 和 `user_id`。客户端传入其他医院会返回 403，兼容请求体中的 `actor_id` 不参与审计归属。Vue `/implementation` 展示阶段进度、可编辑规则、字段要求和现有映射/SQL/试运行证据，移动端降级为单列。
 - 本子批次完成后 Java 全量测试共 96 项、Vue 生产构建通过；新增覆盖医院隔离、伪造操作者忽略、JSON 字段回读、乐观锁冲突、编辑失效旧证据、取数要求状态和试运行证据新鲜度。
+- 已迁移指标实施完整执行链：字段建议只查询当前医院、已确认主表的最近元数据列，确认时逐项复核医院、数据库、表和字段，缺失字段、跨表字段或快照外字段均被拒绝。草稿 SQL 不接受客户端文本，而是由固定操作符集合的 `sql_plan` 和确认映射确定性编译成 SQL Server 聚合查询，再经参数完整性与只读安全校验后通过 DBHub sidecar 执行。
+- 试运行把 `sql_id`、`run_id`、统计周期、DBHub 来源、分子、分母和指标值绑定到当前草稿版本。只有当前版本成功证据可以提交；任何设计修改仍会清除整条旧证据链。管理员批准/驳回必须同时验证独立管理员会话和当前医院会话，正式规则、不可变规则版本、字段映射和草稿状态在一个 MySQL 事务中提交。
+- 本院新增指标发布到 `med_index_hospital_defined`，基于国标的本院口径发布到 `med_index_hospital_custom`；本院新增指标历史恢复不会覆盖旧快照，而是创建新的递增版本并同步恢复字段映射。Vue `/implementation` 已提供字段候选选择、SQL 生成、DBHub 试运行、审批、驳回和版本恢复。本子批次定向 Java 测试 6 项、Java 编译、Vue 生产构建及单 JAR 打包通过。
 - 完成全量契约、Eval、安全和回归对比后，Java 成为权威运行时。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
 

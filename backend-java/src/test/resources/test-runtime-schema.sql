@@ -95,6 +95,23 @@ CREATE TABLE med_index_hospital_custom (
   UNIQUE (hospital_id, index_code)
 );
 
+CREATE TABLE med_index_hospital_custom_version (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  change_id VARCHAR(64) NOT NULL UNIQUE,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  approval_status VARCHAR(32) NOT NULL,
+  snapshot_json CLOB NOT NULL,
+  source_version INT,
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64),
+  approver_id VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  approved_at TIMESTAMP,
+  UNIQUE (hospital_id,index_code,version)
+);
+
 CREATE TABLE med_index_hospital_defined (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   hospital_id VARCHAR(64) NOT NULL,
@@ -121,6 +138,22 @@ CREATE TABLE med_index_hospital_defined (
   create_time TIMESTAMP NOT NULL,
   update_time TIMESTAMP NOT NULL,
   UNIQUE (hospital_id, index_code)
+);
+
+CREATE TABLE med_index_hospital_defined_version (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  hospital_id VARCHAR(64) NOT NULL,
+  index_code VARCHAR(64) NOT NULL,
+  version INT NOT NULL,
+  snapshot_json CLOB NOT NULL,
+  source_version INT,
+  source_draft_id VARCHAR(64),
+  change_type VARCHAR(64) NOT NULL,
+  oper_user VARCHAR(64) NOT NULL,
+  approver_id VARCHAR(64),
+  created_at TIMESTAMP NOT NULL,
+  approved_at TIMESTAMP,
+  UNIQUE (hospital_id,index_code,version)
 );
 
 CREATE TABLE med_indicator_draft (
@@ -178,7 +211,9 @@ CREATE TABLE med_field_mapping (
   table_name VARCHAR(128) NOT NULL,
   column_name VARCHAR(128) NOT NULL,
   data_type VARCHAR(64) NOT NULL,
-  status VARCHAR(32) NOT NULL
+  status VARCHAR(32) NOT NULL,
+  updated_by VARCHAR(64),
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE med_metadata_table (

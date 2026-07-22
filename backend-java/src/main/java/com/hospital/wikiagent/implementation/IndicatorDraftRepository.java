@@ -3,6 +3,7 @@ package com.hospital.wikiagent.implementation;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,6 +29,9 @@ public class IndicatorDraftRepository {
             "metric_type", "metadata_requirements");
     private static final Set<String> JSON_FIELDS = Set.of(
             "metadata_requirements", "field_mapping", "sql_plan", "sql_params", "trial_result");
+    private static final Set<String> WORKFLOW_FIELDS = Set.of(
+            "field_mapping", "current_sql", "sql_params", "sql_id", "trial_result",
+            "trial_draft_version", "formal_index_code");
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -115,6 +119,44 @@ public class IndicatorDraftRepository {
                 "pending_approval", actorId, "submitted", true);
     }
 
+    Map<String, Object> workflowTransition(
+            String draftId, String hospitalId, int expectedVersion, String expectedStatus,
+            String nextStatus, Map<String, Object> changes, String actorId, String changeType) {
+        Map<String, Object> safeChanges = changes == null ? Map.of() : changes;
+        Set<String> unknown = new java.util.HashSet<>(safeChanges.keySet());
+        unknown.removeAll(WORKFLOW_FIELDS);
+        if (!unknown.isEmpty()) {
+            throw new ImplementationException("DRAFT_WORKFLOW_FIELD_INVALID", "实施流程包含非法状态字段。", 400);
+        }
+        return transactions.execute(status -> {
+            Map<String, Object> current = require(draftId, hospitalId);
+            requireVersion(current, expectedVersion);
+            if (!expectedStatus.equals(current.get("status"))) {
+                throw new ImplementationException("DRAFT_STATUS_INVALID", "当前实施任务状态不允许执行该操作。", 409);
+            }
+            int nextVersion = expectedVersion + 1;
+            List<Object> args = new ArrayList<>();
+            StringBuilder assignments = new StringBuilder("status=?,current_version=?,updated_by=?,updated_at=?");
+            LocalDateTime now = now();
+            args.add(nextStatus); args.add(nextVersion); args.add(actorId); args.add(now);
+            for (Map.Entry<String, Object> entry : safeChanges.entrySet()) {
+                assignments.append(',').append(entry.getKey()).append("=?");
+                args.add(JSON_FIELDS.contains(entry.getKey()) ? write(entry.getValue()) : entry.getValue());
+            }
+            args.add(draftId); args.add(hospitalId); args.add(expectedVersion);
+            int changed = jdbc.update("UPDATE med_indicator_draft SET " + assignments
+                    + " WHERE draft_id=? AND hospital_id=? AND current_version=?", args.toArray());
+            if (changed != 1) throw conflict();
+            Map<String, Object> saved = require(draftId, hospitalId);
+            snapshot(saved, changeType, actorId, now);
+            return saved;
+        });
+    }
+
+    Map<String, Object> requireDraft(String draftId, String hospitalId) {
+        return require(draftId, hospitalId);
+    }
+
     public List<Map<String, Object>> versions(String draftId, String hospitalId) {
         require(draftId, hospitalId);
         return jdbc.query("""
@@ -185,9 +227,11 @@ public class IndicatorDraftRepository {
         Map<String, Object> row = new LinkedHashMap<>();
         for (int index = 1; index <= metadata.getColumnCount(); index++) {
             String key = metadata.getColumnLabel(index).toLowerCase(Locale.ROOT);
+            int sqlType = metadata.getColumnType(index);
             Object value = JSON_FIELDS.contains(key)
                     ? read(result.getString(index), defaultJson(key))
-                    : result.getObject(index);
+                    : Set.of(Types.CLOB, Types.NCLOB, Types.LONGVARCHAR, Types.LONGNVARCHAR).contains(sqlType)
+                            ? result.getString(index) : result.getObject(index);
             row.put(key, value);
         }
         return row;

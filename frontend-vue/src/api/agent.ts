@@ -269,6 +269,25 @@ export interface IndicatorDraft {
   updated_at?: string
 }
 
+export interface DraftMetadataCandidate {
+  db_name: string
+  table_name: string
+  column_name: string
+  data_type: string
+  confidence: number
+  reason: string
+}
+
+export interface DraftMetadataSuggestions {
+  draft_id: string
+  hospital_id: string
+  main_table: string
+  suggestions: Record<string, DraftMetadataCandidate[]>
+  missing_fields: string[]
+  ambiguous_fields: string[]
+  ready_for_confirmation: boolean
+}
+
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
@@ -577,6 +596,83 @@ export async function advanceIndicatorDraft(
   const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/${action}`, {
     method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ expected_version: expectedVersion, actor_id: actorId }),
+  })
+  return readJson(response)
+}
+
+export async function loadDraftMetadataSuggestions(
+  hospitalToken: string, draftId: string,
+): Promise<DraftMetadataSuggestions> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/metadata-suggestions`, {
+    headers: authHeaders(hospitalToken),
+  })
+  return readJson(response)
+}
+
+export async function confirmDraftMetadata(
+  hospitalToken: string, draftId: string, expectedVersion: number,
+  mappings: Record<string, DraftMetadataCandidate>,
+): Promise<IndicatorDraft> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/metadata-confirm`, {
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_version: expectedVersion, mappings }),
+  })
+  return readJson(response)
+}
+
+export async function generateDraftSql(
+  hospitalToken: string, draftId: string, expectedVersion: number,
+): Promise<IndicatorDraft> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/sql-generate`, {
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_version: expectedVersion }),
+  })
+  return readJson(response)
+}
+
+export async function trialRunDraftSql(
+  hospitalToken: string, draftId: string, expectedVersion: number,
+  statStartTime: string, statEndTime: string,
+): Promise<IndicatorDraft> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/trial-run`, {
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expected_version: expectedVersion,
+      stat_start_time: statStartTime, stat_end_time: statEndTime }),
+  })
+  return readJson(response)
+}
+
+function indicatorAdminHeaders(adminToken: string, hospitalToken: string): HeadersInit {
+  return { Authorization: `Bearer ${adminToken}`, 'X-Hospital-Authorization': `Bearer ${hospitalToken}`,
+    'Content-Type': 'application/json' }
+}
+
+export async function reviewIndicatorDraft(
+  adminToken: string, hospitalToken: string, hospitalId: string, draftId: string,
+  expectedVersion: number, action: 'approve' | 'reject', reason = '',
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`/api/indicator-drafts/${encodeURIComponent(draftId)}/${action}`, {
+    method: 'POST', headers: indicatorAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify({ hospital_id: hospitalId, expected_version: expectedVersion, reason }),
+  })
+  return readJson(response)
+}
+
+export async function loadHospitalDefinedVersions(
+  adminToken: string, hospitalToken: string, hospitalId: string, indexCode: string,
+): Promise<{ active_version: number; versions: Array<Record<string, unknown>> }> {
+  const response = await fetch(`/api/hospital-defined/${encodeURIComponent(hospitalId)}/${encodeURIComponent(indexCode)}/versions`, {
+    headers: indicatorAdminHeaders(adminToken, hospitalToken),
+  })
+  return readJson(response)
+}
+
+export async function restoreHospitalDefinedVersion(
+  adminToken: string, hospitalToken: string, hospitalId: string, indexCode: string, version: number,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(`/api/hospital-defined/${encodeURIComponent(hospitalId)}/${encodeURIComponent(indexCode)}/restore`, {
+    method: 'POST', headers: indicatorAdminHeaders(adminToken, hospitalToken),
+    body: JSON.stringify({ version }),
   })
   return readJson(response)
 }

@@ -48,6 +48,28 @@ public class IndicatorDraftSchemaInitializer {
                       INDEX idx_draft_version_status (draft_id, status)
                     )
                     """);
+            jdbc.execute("""
+                    CREATE TABLE IF NOT EXISTS med_index_hospital_defined_version (
+                      id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                      hospital_id VARCHAR(64) NOT NULL,index_code VARCHAR(64) NOT NULL,
+                      version INT NOT NULL,snapshot_json JSON NOT NULL,source_version INT,
+                      source_draft_id VARCHAR(64),change_type VARCHAR(64) NOT NULL,
+                      oper_user VARCHAR(64) NOT NULL,approver_id VARCHAR(64),
+                      created_at DATETIME NOT NULL,approved_at DATETIME,
+                      UNIQUE KEY uk_hospital_defined_version (hospital_id,index_code,version)
+                    )
+                    """);
+            jdbc.execute("""
+                    CREATE TABLE IF NOT EXISTS med_index_hospital_custom_version (
+                      id BIGINT PRIMARY KEY AUTO_INCREMENT,change_id VARCHAR(64) NOT NULL,
+                      hospital_id VARCHAR(64) NOT NULL,index_code VARCHAR(64) NOT NULL,
+                      version INT NOT NULL,approval_status VARCHAR(32) NOT NULL,
+                      snapshot_json JSON NOT NULL,source_version INT,change_type VARCHAR(64) NOT NULL,
+                      oper_user VARCHAR(64),approver_id VARCHAR(64),created_at DATETIME NOT NULL,
+                      approved_at DATETIME,UNIQUE KEY uk_custom_change (change_id),
+                      UNIQUE KEY uk_hospital_index_version (hospital_id,index_code,version)
+                    )
+                    """);
         } catch (RuntimeException ignored) {
             // 共享运行库暂不可用时不阻止影子服务启动。
         }

@@ -1,6 +1,8 @@
 # Vue 3 迁移前端
 
-第一批 Vue 3 + TypeScript 前端外壳直接代理当前 FastAPI，因此登录、模型列表、SSE 对话、Excel 上传和 Trace 仍使用现有生产接口。它不会替换 `web/` 原生页面。
+Vue 3 + TypeScript 前端当前可代理 FastAPI，也可切到 Java 影子服务；已经覆盖登录、模型列表、SSE 对话、Excel 上传、Trace、运行观察、元数据、医学术语、指标监控和指标实施完整闭环。它不会在迁移验收前替换 `web/` 原生页面。
+
+`/implementation` 按设计稿版本推进取数要求、字段映射、确定性 SQL、DBHub 试运行、提交审批、批准/驳回和本院新增指标历史恢复。管理员写操作需要页面内单独登录，医院范围仍由当前医院会话限定。
 
 ```powershell
 cd F:\A-wiki-project\frontend-vue
