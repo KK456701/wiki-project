@@ -245,3 +245,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - Trace 能定位实际 LLM、代码、工具和存储节点，不伪造未发生节点。
 - Vue 覆盖加载、空状态、成功、失败、权限失效和移动端布局。
 - 每个已切流接口都有可执行的单接口回退方式。
+
+## 7. 2026-07-22 多轮 SQL 追问修复
+
+- `PlanValidator` 已解析的统计区间会显式写入 `AgentRunState`，不再依赖后续某个工具是否返回时间字段。
+- 会话消息同时写入 SQLite 和当前进程租户隔离缓存；SQLite 写入失败而读取返回空列表时，会合并读取缓存，不再丢失规则和统计区间。
+- SQLite 与 H2 的会话表自增主键使用明确方言，初始化异常会记录不含患者数据的安全日志。
+- `indicator_sql_prepare` 的确定性回答升级为 `prepared-sql-answer-v2`，在已校验 SQL 前同步展示本院生效定义、公式、分子、分母、纳入和排除口径。
+- Trace 的 `memory_save` 节点增加安全的 `rule_id`、`stat_start`、`stat_end`，便于判断多轮上下文是否正确落盘。

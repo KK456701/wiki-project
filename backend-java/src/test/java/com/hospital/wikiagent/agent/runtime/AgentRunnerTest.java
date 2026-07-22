@@ -225,6 +225,73 @@ class AgentRunnerTest {
     }
 
     @Test
+    void preparedSqlAnswerIncludesEffectiveNumeratorAndDenominatorCaliber() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        throw new AssertionError("SQL prepare must not execute the business database");
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                }, objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker(
+                """
+                {
+                  "schema_version": "request-plan-v1",
+                  "intent": "indicator_sql_prepare",
+                  "goal": "解释 SQL 以及分子分母口径",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {
+                    "raw_text": "沿用2026年1月至3月",
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-04-01T00:00:00"
+                  },
+                  "requested_outputs": ["prepared_sql_handle"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """);
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper), capabilities,
+                new AgentStateController(capabilities), new DeterministicDispatch(), gateway, verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper));
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "这个 SQL 是怎么写的，分子分母具体是什么口径",
+                "session_001", "ollama-test", null, "request_sql", "trace_sql",
+                "business_test", "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")));
+
+        assertThat(result.stopReason()).isEqualTo("final_answer");
+        assertThat(result.answer())
+                .contains("本院生效口径", "分子口径：及时到位次数", "分母口径：急会诊总次数")
+                .contains("已校验 SQL", "2026-01-01 00:00:00", "2026-04-01 00:00:00")
+                .contains("该请求只生成并校验 SQL，不执行数据库");
+        assertThat(models.calls).isEqualTo(1);
+    }
+
+    @Test
     void normalizesExplicitValidationRequestAndUsesFixedWorkflowWithoutFinalAnswerLlm() {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)

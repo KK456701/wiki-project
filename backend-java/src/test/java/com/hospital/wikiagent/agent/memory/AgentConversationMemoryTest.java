@@ -35,12 +35,11 @@ class AgentConversationMemoryTest {
         state.currentRuleId("MQSI2025_001");
         state.currentUploadFileKey("hospital_001_file.xlsx");
         state.lastRunId("RUN_001");
+        state.statPeriod("2026-01-01 00:00:00", "2026-07-22 00:00:00");
         state.lastToolResults().add(ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "完成", Map.of(
                         "rule_id", "MQSI2025_001",
                         "rule_name", "患者入院48小时内转科的比例",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-07-22 00:00:00",
                         "run_id", "RUN_001")));
         memory.appendAssistant(first, principal, "结果为2.83%", state);
 
@@ -58,6 +57,35 @@ class AgentConversationMemoryTest {
         assertThat(restored.structuredSummary()).contains("MQSI2025_001", "RUN_001");
         assertThat(otherHospital.recentHistory()).isEmpty();
         assertThat(otherHospital.ruleId()).isNull();
+    }
+
+    @Test
+    void readsProcessFallbackWhenDatabaseWriteFailsButDatabaseReadReturnsEmpty() {
+        DataSource source = new EmbeddedDatabaseBuilder()
+                .setType(EmbeddedDatabaseType.H2)
+                .setName("memory_fallback_" + System.nanoTime())
+                .build();
+        JdbcTemplate jdbc = new JdbcTemplate(source);
+        AgentConversationMemory memory = new AgentConversationMemory(jdbc, new ObjectMapper());
+        memory.initialize();
+        // 模拟 SQLite 短暂写失败：查询仍能成功返回空列表，写入因约束被拒绝。
+        // 旧实现会直接采用数据库空列表，从而错误地忽略已经写入的进程内兜底消息。
+        jdbc.execute("ALTER TABLE med_agent_java_message ADD CONSTRAINT reject_messages "
+                + "CHECK (role = 'blocked')");
+        HospitalPrincipal principal = principal("hospital_001", "user_001");
+        var conversation = memory.open(principal, "session_fallback");
+        memory.appendUser(conversation, principal, "从一月到现在", null);
+        AgentRunState state = new AgentRunState();
+        state.currentRuleId("MQSI2025_001");
+        state.statPeriod("2026-01-01 00:00:00", "2026-07-22 00:00:00");
+        memory.appendAssistant(conversation, principal, "结果为2.81%", state);
+
+        var restored = memory.open(principal, "session_fallback");
+
+        assertThat(restored.recentHistory()).contains("用户：从一月到现在", "助手：结果为2.81%");
+        assertThat(restored.ruleId()).isEqualTo("MQSI2025_001");
+        assertThat(restored.statStart()).isEqualTo("2026-01-01 00:00:00");
+        assertThat(restored.statEnd()).isEqualTo("2026-07-22 00:00:00");
     }
 
     private static HospitalPrincipal principal(String hospitalId, String userId) {

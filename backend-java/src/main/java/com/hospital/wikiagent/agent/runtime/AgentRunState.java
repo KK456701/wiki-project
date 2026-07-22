@@ -17,6 +17,8 @@ public class AgentRunState {
     private String subtaskId;
     private String lastRunId;
     private String lastDiagnosisId;
+    private String statStart;
+    private String statEnd;
     private int stepCount;
     private int replanCount;
     private final List<String> failedPlanIds = new ArrayList<>();
@@ -65,6 +67,26 @@ public class AgentRunState {
 
     public void lastDiagnosisId(String value) {
         lastDiagnosisId = value == null || value.isBlank() ? null : value.strip();
+    }
+
+    /**
+     * 记录本轮已经由 {@code PlanValidator} 确定的统计区间。
+     *
+     * <p>统计区间属于执行事实，不能只依赖某个 SQL 工具是否恰好把它放进返回值。
+     * 将其显式保存在运行状态中，能够保证公式解释、SQL 生成和试运行结束后都可写入
+     * 结构化会话记忆，后续“这个 SQL 怎么写”等追问可以稳定复用同一时间范围。</p>
+     */
+    public void statPeriod(String start, String end) {
+        statStart = start == null || start.isBlank() ? null : start.strip();
+        statEnd = end == null || end.isBlank() ? null : end.strip();
+    }
+
+    public String statStart() {
+        return statStart;
+    }
+
+    public String statEnd() {
+        return statEnd;
     }
 
     public int stepCount() {

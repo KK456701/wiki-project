@@ -213,6 +213,7 @@ public class AgentRunner {
         state.currentRuleId(first(
                 planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
         state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
+        applyResolvedTime(state, validation);
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId());
 
@@ -265,6 +266,7 @@ public class AgentRunner {
                     execution = replanned.execution();
                     compiled = execution.compiledPlan();
                     validation = execution.validation();
+                    applyResolvedTime(state, validation);
                     continue;
                 }
                 AgentRunResult result = finishFailure(
@@ -318,6 +320,7 @@ public class AgentRunner {
                     execution = replanned.execution();
                     compiled = execution.compiledPlan();
                     validation = execution.validation();
+                    applyResolvedTime(state, validation);
                     continue;
                 }
                 AgentRunResult failure = finishFailure(
@@ -448,7 +451,7 @@ public class AgentRunner {
                             "verified_evidence_count", evidence.size()), Map.of(
                             "answer_length", deterministicAnswer.length()),
                     "workflow_version", deterministicNode.equals("prepared_sql_answer")
-                            ? "prepared-sql-answer-v1" : "implementation-validation-mvp-v1");
+                            ? "prepared-sql-answer-v2" : "implementation-validation-mvp-v1");
             long guardStarted = TraceEvents.started();
             String answerContent = appendExportMarker(deterministicAnswer, state, request.principal());
             TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
@@ -573,7 +576,10 @@ public class AgentRunner {
         TraceEvents.completed(observer, traceId, "memory_save", "storage", started,
                 subtaskId, Map.of("session_id", conversation.sessionId()), Map.of(
                         "answer_length", answer == null ? 0 : answer.length(),
-                        "evidence_count", state.evidenceIds().size()));
+                        "evidence_count", state.evidenceIds().size(),
+                        "rule_id", safe(state.currentRuleId()),
+                        "stat_start", safe(state.statStart()),
+                        "stat_end", safe(state.statEnd())));
     }
 
     private static AgentRunRequest withConversationContext(
@@ -749,7 +755,22 @@ public class AgentRunner {
         if (prepared == null) return null;
         Object sql = prepared.data().get("sql_preview");
         if (sql == null || String.valueOf(sql).isBlank()) return null;
-        StringBuilder answer = new StringBuilder("已生成并校验受控只读 SQL：\n\n```sql\n")
+        ToolResult effectiveRule = latestSuccessful(state, "EFFECTIVE_RULE_FOUND",
+                text(prepared.data().get("rule_id")));
+        StringBuilder answer = new StringBuilder();
+        if (effectiveRule != null) {
+            Map<String, Object> rule = effectiveRule.data();
+            answer.append("## 本院生效口径\n\n");
+            appendCaliber(answer, "指标", rule.get("rule_name"));
+            appendCaliber(answer, "定义", rule.get("definition"));
+            appendCaliber(answer, "公式", rule.get("formula"));
+            appendCaliber(answer, "分子口径", rule.get("numerator_rule"));
+            appendCaliber(answer, "分母口径", rule.get("denominator_rule"));
+            appendCaliber(answer, "纳入/过滤条件", rule.get("filter_rule"));
+            appendCaliber(answer, "排除条件", rule.get("exclude_rule"));
+            answer.append('\n');
+        }
+        answer.append("## 已校验 SQL\n\n```sql\n")
                 .append(sql).append("\n```\n\n");
         answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
         answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
@@ -757,6 +778,41 @@ public class AgentRunner {
         answer.append("- 参数：").append(prepared.data().getOrDefault("parameters", Map.of())).append('\n');
         answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
         return answer.toString();
+    }
+
+    private static ToolResult latestSuccessful(
+            AgentRunState state,
+            String code,
+            String expectedRuleId) {
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (!candidate.ok() || !code.equals(candidate.code())) continue;
+            String candidateRuleId = text(candidate.data().get("rule_id"));
+            if (expectedRuleId == null || expectedRuleId.equals(candidateRuleId)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static void appendCaliber(StringBuilder answer, String label, Object rawValue) {
+        String value = text(rawValue);
+        if (value != null) {
+            answer.append("- ").append(label).append("：").append(value).append('\n');
+        }
+    }
+
+    private static void applyResolvedTime(AgentRunState state, PlanValidation validation) {
+        if (validation != null && validation.resolvedTime() != null) {
+            state.statPeriod(
+                    validation.resolvedTime().startTime().format(EVIDENCE_TIME),
+                    validation.resolvedTime().endTime().format(EVIDENCE_TIME));
+        }
+    }
+
+    private static String text(Object value) {
+        return value == null || String.valueOf(value).isBlank()
+                ? null : String.valueOf(value).strip();
     }
 
     private static String stageStatus(Object value) {
