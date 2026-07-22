@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Mapping
 from urllib.parse import unquote, urlparse
@@ -15,6 +16,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 TEMURIN_HOME_ROOT = Path(r"F:\kaifa\temurin17")
 LEGACY_JAVA_HOME = Path(r"F:\kaifa\jdk")
+VUE_INDEX_ENTRY = "BOOT-INF/classes/static/index.html"
 
 
 def preferred_java_home() -> Path:
@@ -103,10 +105,29 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_authority_jar(jar_path: Path) -> Path:
+    """Authority JAR must contain the Vue entry page, not only backend classes."""
+    resolved = jar_path if jar_path.is_absolute() else ROOT / jar_path
+    resolved = resolved.resolve()
+    if not resolved.is_file():
+        raise ValueError(f"Java JAR 不存在: {resolved}")
+    try:
+        with zipfile.ZipFile(resolved) as archive:
+            if VUE_INDEX_ENTRY not in archive.namelist():
+                raise ValueError(
+                    "权威 Java JAR 未包含 Vue 页面，请使用 scripts/build-java-vue.ps1 重新构建。"
+                )
+    except zipfile.BadZipFile as exception:
+        raise ValueError(f"Java JAR 无效: {resolved}") from exception
+    return resolved
+
+
 def main() -> int:
     args = parse_args()
     config = yaml.safe_load(args.config.read_text(encoding="utf-8-sig")) or {}
     environment = build_java_environment(config, os.environ)
+    if args.mode == "Authority" and args.jar:
+        args.jar = validate_authority_jar(args.jar)
     command = [
         "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
         str(ROOT / "scripts" / "start-java-runtime.ps1"), "-Mode", args.mode,

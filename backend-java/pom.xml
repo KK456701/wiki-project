@@ -95,6 +95,9 @@
     <profiles>
         <profile>
             <id>bundle-vue</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
             <build>
                 <plugins>
                     <plugin>

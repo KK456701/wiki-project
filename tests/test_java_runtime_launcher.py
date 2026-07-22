@@ -1,4 +1,12 @@
-from scripts.java_runtime_launcher import build_java_environment
+import zipfile
+
+import pytest
+
+from scripts.java_runtime_launcher import (
+    VUE_INDEX_ENTRY,
+    build_java_environment,
+    validate_authority_jar,
+)
 
 
 def test_build_java_environment_maps_legacy_config_without_overriding_explicit_values() -> None:
@@ -27,3 +35,16 @@ def test_build_java_environment_maps_legacy_config_without_overriding_explicit_v
     assert environment["PATH"].startswith(r"C:\explicit\jdk-17\bin")
     assert "-Dhttps.proxyHost=127.0.0.1" in environment["JAVA_TOOL_OPTIONS"]
     assert "-Dhttps.proxyPort=7897" in environment["JAVA_TOOL_OPTIONS"]
+
+
+def test_authority_jar_requires_bundled_vue_entry(tmp_path) -> None:
+    backend_only = tmp_path / "backend-only.jar"
+    with zipfile.ZipFile(backend_only, "w") as archive:
+        archive.writestr("BOOT-INF/classes/application.yml", "")
+    with pytest.raises(ValueError, match="未包含 Vue 页面"):
+        validate_authority_jar(backend_only)
+
+    bundled = tmp_path / "bundled.jar"
+    with zipfile.ZipFile(bundled, "w") as archive:
+        archive.writestr(VUE_INDEX_ENTRY, '<div id="app"></div>')
+    assert validate_authority_jar(bundled) == bundled.resolve()

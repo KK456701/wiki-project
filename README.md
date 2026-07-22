@@ -54,7 +54,7 @@
 
 - **Java / Vue 迁移第十七批**：Java 已迁移 `/api/admin/login|logout` 轻量管理员会话和术语治理写链，候选词、本院编码映射、审批、发布与历史回退均进入 MySQL 事务和 `med_term_audit_log`。普通医院 token 只限定医院范围，管理员 token 只授权写操作；医院级写入必须同时通过两种会话，客户端不能借管理员 token 冒充其他医院。发布拒绝未审核公司词，内容未变化时复用既有版本，回退从不可变快照重建公司投影且保留医院映射。Vue 术语页新增独立维护模式、候选/映射表单、逐条审批、发布和回退；管理员密码仅从 `WIKI_ADMIN_PASSWORD` 注入，默认占位值不可登录。
 
-- **Java / Vue 迁移第十八批**：新增 `bundle-vue` Maven 构建 Profile 与 [`scripts/build-java-vue.ps1`](scripts/build-java-vue.ps1)。脚本先完成 Vue 类型检查和生产构建，再把 `dist/` 复制到 Spring Boot `BOOT-INF/classes/static/`，最终只交付一个可执行 JAR；医院部署机不需要 Node.js、Nginx 或额外前端服务。Spring MVC 对 `/`、`/runs`、`/metadata`、`/terminology` 和 `/monitoring` 执行 SPA 入口回退，`/api/**` 与 Actuator 不参与前端转发。本机即使 PATH 没有 `jar.exe` 也不影响 Maven 打包或 `java -jar` 运行。
+- **Java / Vue 迁移第十八批**：新增 `bundle-vue` Maven 构建 Profile 与 [`scripts/build-java-vue.ps1`](scripts/build-java-vue.ps1)。脚本先完成 Vue 类型检查和生产构建，再把 `dist/` 复制到 Spring Boot `BOOT-INF/classes/static/`，最终只交付一个可执行 JAR；医院部署机不需要 Node.js、Nginx 或额外前端服务。Spring MVC 对 `/`、`/runs`、`/metadata`、`/terminology` 和 `/monitoring` 执行 SPA 入口回退，`/api/**` 与 Actuator 不参与前端转发。本机即使 PATH 没有 `jar.exe` 也不影响 Maven 打包或 `java -jar` 运行。`bundle-vue` 现默认启用，权威启动器会检查 JAR 中的 Vue 入口，防止纯后端 JAR接管 8765 后出现 Whitelabel 404。
 
 - **Java / Vue 迁移第十九批**：Java 已迁移指标监控的治理与审阅子集，复用现有 MySQL 计划、运行结果和预警表，提供计划新增/修改/启停、结果列表/详情以及预警确认/关闭。所有监控接口同时校验独立管理员 token 与当前医院 token，避免管理员会话被当作跨院身份。Vue 新增 `/monitoring` 工作台；手动运算、定时调度、租约幂等和自动诊断仍由 FastAPI 权威运行时负责，待对应契约迁移后再开放 Java 写入口。本批 Java 全量测试 84 项及 Vue 生产构建通过。
 

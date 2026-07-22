@@ -139,6 +139,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-java-vue.ps1
 
 脚本只在构建机使用现有 Node.js/npm：如果 `frontend-vue/node_modules` 不存在则执行 `npm ci`，随后运行 Vue 生产构建和 `mvn -Pbundle-vue clean package`。输出的 `backend-java/target/wiki-agent-java-*.jar` 已包含 Vue 的 `index.html`、JS 和 CSS，部署机只需 Java 17：
 
+`bundle-vue` Maven Profile 默认启用，避免普通 `mvn package` 意外覆盖成不含页面的后端 JAR；权威启动器还会检查 JAR 内是否存在 Vue 入口，缺失时拒绝接管 8765 并提示使用上述构建脚本。
+
 ```powershell
 $env:WIKI_ADMIN_PASSWORD = '<管理员密码>'
 java -jar .\wiki-agent-java-0.1.0-SNAPSHOT.jar
