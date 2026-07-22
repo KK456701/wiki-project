@@ -183,6 +183,10 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - 回退演练实际停止 Java 并在同一 `8765` 恢复 FastAPI，约 41.13 秒后健康检查、登录、规则查询、解释和试运行全部通过；随后使用同一未过期门禁报告恢复 Java 权威运行时。FastAPI 回退代码和启动器继续保留。
 - DeepSeek 在本机网络下需要现有 HTTP 代理。`scripts/java_runtime_launcher.py` 从 `config.yaml` 的可选 `java_http_proxy_url` 生成 JVM 代理参数，同时把 localhost、DBHub、MySQL 和 Ollama 保持为直连；凭据不会写入启动日志或门禁报告。
 - Planner 可能删除指标名中的空格、虚词或主语。Java 规则读取仅在普通精确/包含搜索无结果后，使用去空白、去“的”的包含式归一化兜底；空结果由 StateController 立即停止，不会重复搜索到最大步骤。
+- 2026-07-22 迁移复核补齐 `HybridIndicatorResolver`：正式名称和已审核别名先做确定性命中，未命中片段再做本地字符语义召回，只有候选接近且不能唯一确认时才调用当前模型在候选 `rule_id` 白名单内消歧。确认后的规范名称和规则编号直接注入单指标或复合子任务，不再依赖 4B/8B Planner 原样抄写指标名称。
+- 同次复核确认并修复两项文档与实现偏差：`preview_rule_change` 已由占位工具改为真实只读字段差异预览；Java 主链已真正实现最多一次的方向性 Replan 和 Final Answer 二次协议校验失败后的 VerifiedEvidence 确定性模板。数据库、权限、缺时间、对象过期、Evidence 冲突及普通工具异常仍禁止 Replan。
+- 门禁用例已改为非精确单指标和非精确双指标问法，功能清单新增 `hybrid_indicator_resolution`、`rule_change_preview`、`semantic_replan` 和 `deterministic_answer_fallback`，避免以后只验证精确名称导致回归漏检。
+- 本批 Java 全量测试 118 项、Vue 生产构建与单 JAR 打包通过；真实双跑报告 `CUTOVER_20260722T035457Z` 为 12 项通过、0 项失败、0 项跳过。Qwen3 8B 思考模型实测原问题已命中 `MQSI2025_001` 并完成 DBHub 试运行，Trace 含规则识别、语义召回、Planner、受控工具和 Final Answer，未再出现 `transfer_within_48h_ratio`。
 - 保留一版 FastAPI 回退窗口，稳定后再删除 Python 生产入口和旧 `web/`。
 
 ## 5. 当前目录与命令
@@ -191,11 +195,11 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 contracts/migration/       跨语言冻结契约
 backend-java/              Spring Boot 迁移服务
 frontend-vue/              Vue 3 迁移前端
-app/ + web/                当前权威实现，迁移完成前保留
+app/ + web/                FastAPI 回退实现与旧前端，稳定窗口结束前保留
 ```
 
 ```powershell
-# Java 影子服务
+# Java 服务（默认配置仍为影子模式）
 cd F:\A-wiki-project\backend-java
 $env:WIKI_RUNTIME_DB_PASSWORD = "<本机 MySQL 密码>"
 $env:DBHUB_SOURCE_ID_WIN60_QA_991827 = "win60_qa_991827"
@@ -203,7 +207,7 @@ $env:DBHUB_EXECUTE_TOOL_WIN60_QA_991827 = "execute_sql_win60_qa_991827"
 mvn -s maven-settings.xml test
 mvn -s maven-settings.xml spring-boot:run
 
-# Vue 开发验证（FastAPI 需运行在 8765）
+# Vue 开发验证（当前 Java 权威服务运行在 8765）
 cd F:\A-wiki-project\frontend-vue
 npm install
 npm run dev

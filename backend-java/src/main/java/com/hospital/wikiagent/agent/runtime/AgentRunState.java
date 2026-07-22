@@ -13,6 +13,8 @@ public class AgentRunState {
     private String lastRunId;
     private String lastDiagnosisId;
     private int stepCount;
+    private int replanCount;
+    private final List<String> failedPlanIds = new ArrayList<>();
     private final List<String> validatedSqlIds = new ArrayList<>();
     private final List<EvidenceFact> evidence = new ArrayList<>();
     private final List<String> evidenceIds = new ArrayList<>();
@@ -66,6 +68,18 @@ public class AgentRunState {
 
     public void incrementStep() {
         stepCount++;
+    }
+
+    public int replanCount() {
+        return replanCount;
+    }
+
+    public void incrementReplanCount() {
+        replanCount++;
+    }
+
+    public List<String> failedPlanIds() {
+        return failedPlanIds;
     }
 
     public List<String> validatedSqlIds() {

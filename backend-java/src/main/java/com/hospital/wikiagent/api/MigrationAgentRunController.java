@@ -88,7 +88,7 @@ public class MigrationAgentRunController {
                     send(emitter, Map.of(
                             "event", "agent_error",
                             "trace_id", traceId,
-                            "message", "Java 影子 Agent 运行失败。",
+                            "message", "Java Agent 运行失败。",
                             "stop_reason", "runtime_error",
                             "status", "failed"));
                     emitter.complete();

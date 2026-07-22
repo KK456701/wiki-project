@@ -12,6 +12,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -22,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Repository
 public class RuleReadRepository {
+    private static final Pattern MINUTES = Pattern.compile("(\\d+)\\s*分钟");
     private static final Set<String> PATCH_ROOTS = Set.of(
             "scope", "derived_fields", "denominator", "numerator", "result", "detail_fields");
 
@@ -180,6 +183,78 @@ public class RuleReadRepository {
         result.put("warnings", List.of());
         result.put("relations", Map.of());
         return result;
+    }
+
+    /** 只生成字段级差异预览；不提交、审批、发布或写入规则。 */
+    public Map<String, Object> previewChange(
+            String ruleId, String hospitalId, String changeDescription) {
+        Map<String, Object> effective = effectiveRule(ruleId, hospitalId);
+        String currentDefinition = text(effective.get("definition"));
+        String currentFormula = text(effective.get("formula"));
+        String requestedDefinition = deriveFeedbackValue(currentDefinition, changeDescription);
+        String requestedFormula = deriveFeedbackValue(currentFormula, changeDescription);
+        List<Map<String, Object>> fieldChanges = List.of(
+                fieldChange("指标定义", requestedDefinition, currentDefinition),
+                fieldChange("计算公式", requestedFormula, currentFormula),
+                fieldChange("实现状态", "", text(effective.get("sql_status"))));
+        List<String> changedFields = fieldChanges.stream()
+                .filter(item -> Boolean.TRUE.equals(item.get("changed")))
+                .map(item -> text(item.get("field"))).toList();
+        boolean affectsDefinition = changedFields.contains("指标定义");
+        boolean affectsFormula = changedFields.contains("计算公式");
+        boolean requiresFieldReview = changedFields.contains("实现状态");
+
+        Map<String, Object> requested = new LinkedHashMap<>();
+        requested.put("level", "hospital");
+        requested.put("status", "requested");
+        requested.put("definition", requestedDefinition);
+        requested.put("formula", requestedFormula);
+        requested.put("source_text", changeDescription);
+        Map<String, Object> current = new LinkedHashMap<>();
+        current.put("level", text(effective.get("effective_level")));
+        current.put("status", "effective");
+        current.put("definition", currentDefinition);
+        current.put("formula", currentFormula);
+        current.put("implementation_status", text(effective.get("sql_status")));
+
+        Map<String, Object> impact = new LinkedHashMap<>();
+        impact.put("changed_fields", changedFields);
+        impact.put("affects_definition", affectsDefinition);
+        impact.put("affects_formula", affectsFormula);
+        impact.put("requires_field_review", requiresFieldReview);
+        impact.put("requires_sql_regeneration", affectsFormula || requiresFieldReview);
+        impact.put("requires_version_increment", !changedFields.isEmpty());
+
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("rule_id", text(effective.get("rule_id")));
+        preview.put("rule_name", text(effective.get("rule_name")));
+        preview.put("target_level", "hospital");
+        preview.put("current_effective_level", text(effective.get("effective_level")));
+        preview.put("requested", requested);
+        preview.put("current_effective", current);
+        preview.put("field_changes", fieldChanges);
+        preview.put("impact", impact);
+        preview.put("message", "检测到本院口径反馈，请确认差异后再提交变更申请。");
+        return preview;
+    }
+
+    private static Map<String, Object> fieldChange(
+            String field, String requested, String current) {
+        return Map.of(
+                "field", field,
+                "requested", requested,
+                "current", current,
+                "changed", !requested.isBlank() && !requested.equals(current));
+    }
+
+    private static String deriveFeedbackValue(String base, String feedback) {
+        String requested = feedback == null ? "" : feedback.strip();
+        Matcher feedbackMinutes = MINUTES.matcher(requested);
+        Matcher baseMinutes = MINUTES.matcher(base == null ? "" : base);
+        if (feedbackMinutes.find() && baseMinutes.find()) {
+            return baseMinutes.replaceFirst(Matcher.quoteReplacement(feedbackMinutes.group(1) + "分钟"));
+        }
+        return requested.isBlank() ? text(base) : requested;
     }
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {

@@ -15,6 +15,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
@@ -27,13 +28,14 @@ import jakarta.annotation.PreDestroy;
 /** 多指标 fan-out/fan-in 外层；单指标执行仍由 AgentRunner 负责。 */
 @Component
 public class CompoundAgentRuntime {
-    public static final String VERSION = "compound-runtime-v1";
+    public static final String VERSION = "compound-runtime-v2";
 
     private final AgentRunner runner;
     private final CompoundRequestSplitter splitter;
     private final AgentModelRegistry models;
     private final AgentModelProperties properties;
     private final AgentConversationMemory conversations;
+    private final HybridIndicatorResolver indicatorResolver;
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -46,11 +48,23 @@ public class CompoundAgentRuntime {
             AgentModelRegistry models,
             AgentModelProperties properties,
             AgentConversationMemory conversations) {
+        this(runner, splitter, models, properties, conversations, null);
+    }
+
+    @Autowired
+    public CompoundAgentRuntime(
+            AgentRunner runner,
+            CompoundRequestSplitter splitter,
+            AgentModelRegistry models,
+            AgentModelProperties properties,
+            AgentConversationMemory conversations,
+            HybridIndicatorResolver indicatorResolver) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
         this.properties = properties;
         this.conversations = conversations;
+        this.indicatorResolver = indicatorResolver;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -60,10 +74,21 @@ public class CompoundAgentRuntime {
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
         long splitStarted = TraceEvents.started();
         var conversation = conversations.open(request.principal(), request.sessionId());
+        HybridIndicatorResolver.Resolution resolution = indicatorResolver == null
+                ? HybridIndicatorResolver.Resolution.empty()
+                : indicatorResolver.resolve(
+                        request.query(), request.principal().hospitalId(), request.modelId(),
+                        request.traceId(), "root", observer);
+        if (resolution.needsClarification()) {
+            return clarification(request, observer, conversation, resolution);
+        }
         SplitResult split = splitter.split(
-                request.query(), conversation.recentHistory(), request.principal().hospitalId());
+                request.query(), conversation.recentHistory(), request.principal().hospitalId(),
+                resolution.indicators());
         if (!split.compound()) {
-            return runner.run(request, observer);
+            var resolved = resolution.indicators().size() == 1
+                    ? resolution.indicators().get(0) : null;
+            return runner.run(request, observer, resolved);
         }
         conversations.appendUser(
                 conversation, request.principal(), request.query(), request.fileKey());
@@ -166,8 +191,11 @@ public class CompoundAgentRuntime {
                     parentTraceId + "_S" + task.index(), parent.dbSourceId(),
                     parentState + "\ncompound_subtask_id=" + subtaskId,
                     parentHistory, parent.principal());
-            AgentRunResult result = runner.run(child, event -> forwardChildEvent(
-                    observer, event, parentTraceId, subtaskId, subtaskNodeId, task.index()));
+            AgentRunObserver childObserver = event -> forwardChildEvent(
+                    observer, event, parentTraceId, subtaskId, subtaskNodeId, task.index());
+            AgentRunResult result = task.resolvedIndicator() == null
+                    ? runner.run(child, childObserver)
+                    : runner.run(child, childObserver, task.resolvedIndicator());
             TraceEvents.completed(observer, parentTraceId, "compound_subtask", "code",
                     subtaskStarted, subtaskId, Map.of(
                             "target", task.target(), "query", task.query()), Map.of(
@@ -258,6 +286,37 @@ public class CompoundAgentRuntime {
         payload.put("step", step);
         payload.putAll(values);
         observer.onEvent(Map.copyOf(payload));
+    }
+
+    private AgentRunResult clarification(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            AgentConversationMemory.ConversationSnapshot conversation,
+            HybridIndicatorResolver.Resolution resolution) {
+        String traceId = first(request.traceId(), id("TRACE_"));
+        List<String> groups = new ArrayList<>();
+        for (var ambiguity : resolution.ambiguities()) {
+            String candidates = ambiguity.candidates().stream()
+                    .map(value -> value.canonicalName() + "（" + value.ruleId() + "）")
+                    .distinct().reduce((left, right) -> left + "、" + right).orElse("无候选");
+            groups.add("“" + ambiguity.mention() + "”可能是：" + candidates);
+        }
+        String answer = "我识别到指标名称存在歧义，请明确要查询哪一个：\n\n- "
+                + String.join("\n- ", groups);
+        conversations.appendUser(conversation, request.principal(), request.query(), request.fileKey());
+        AgentRunState state = new AgentRunState();
+        conversations.appendAssistant(conversation, request.principal(), answer, state);
+        emit(observer, "agent_start", traceId, 0, Map.of(
+                "status", "running", "resolver_version", HybridIndicatorResolver.VERSION));
+        emit(observer, "clarification_required", traceId, 0, Map.of(
+                "message", answer,
+                "code", "INDICATOR_AMBIGUOUS",
+                "fallback_category", "USER_CLARIFICATION",
+                "stop_reason", "clarification"));
+        emit(observer, "agent_done", traceId, 0, Map.of(
+                "stop_reason", "clarification", "status", "incomplete", "step_count", 0));
+        return new AgentRunResult(
+                answer, "clarification", traceId, conversation.sessionId(), 0, null, null);
     }
 
     private static long timeout(Duration duration) {

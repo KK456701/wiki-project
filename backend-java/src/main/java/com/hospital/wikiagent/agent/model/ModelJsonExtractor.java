@@ -1,10 +1,10 @@
 package com.hospital.wikiagent.agent.model;
 
-final class ModelJsonExtractor {
+public final class ModelJsonExtractor {
     private ModelJsonExtractor() {
     }
 
-    static String firstObject(String raw) {
+    public static String firstObject(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("模型返回为空");
         }

@@ -84,7 +84,7 @@ class AgentRunnerTest {
                   "schema_version": "request-plan-v1",
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "target_indicator": {"raw_name": "transfer_within_48h_ratio"},
                   "time_expression": {
                     "raw_text": "2026年1月至3月",
                     "start_time": "2026-01-01T00:00:00",
@@ -114,15 +114,20 @@ class AgentRunnerTest {
                 "request_001", "trace_001", null, "{}", "",
                 new HospitalPrincipal(
                         "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
-                events::add);
+                events::add,
+                new HybridIndicatorResolver.ResolvedIndicator(
+                        "急会诊及时到位率", "急会诊及时到位率", "MQSI2025_005",
+                        "RULE:MQSI2025_005", "rule", 1.0, 0, 9));
 
         assertThat(result.stopReason()).as(result.answer() + " " + events).isEqualTo("final_answer");
         assertThat(result.answer()).contains("分子", "分母");
-        assertThat(result.stepCount()).isEqualTo(2);
+        assertThat(result.requestPlan().targetIndicator().rawName()).isEqualTo("急会诊及时到位率");
+        assertThat(result.requestPlan().targetIndicator().ruleId()).isEqualTo("MQSI2025_005");
+        assertThat(result.stepCount()).isEqualTo(1);
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
-                .containsExactly("search_indicator_rules", "get_effective_rule");
-        assertThat(store.evidence).hasSize(4);
+                .containsExactly("get_effective_rule");
+        assertThat(store.evidence).hasSize(3);
         assertThat(store.verifications.values())
                 .allMatch(value -> "verified".equals(value.status()));
         assertThat(models.calls).isEqualTo(2);

@@ -16,7 +16,7 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 /** 服务端确定性拆分 2～3 个并列指标；不让 Planner 决定子任务数量。 */
 @Component
 public class CompoundRequestSplitter {
-    public static final String VERSION = "compound-splitter-v1";
+    public static final String VERSION = "compound-splitter-v2";
     private static final Pattern SEPARATOR = Pattern.compile(
             "(?:\\s*(?:，|,|；|;|、)\\s*|(?:还有|以及|并且|同时|和|与))");
     private static final Pattern HEADING = Pattern.compile("(?m)^(?:助手：)?\\s*##\\s+([^\\r\\n]+)$");
@@ -45,7 +45,28 @@ public class CompoundRequestSplitter {
     }
 
     public SplitResult split(String query, String recentHistory, String hospitalId) {
+        return split(query, recentHistory, hospitalId, List.of());
+    }
+
+    public SplitResult split(
+            String query,
+            String recentHistory,
+            String hospitalId,
+            List<HybridIndicatorResolver.ResolvedIndicator> resolvedIndicators) {
         String input = query == null ? "" : query.strip();
+        if (resolvedIndicators != null && resolvedIndicators.size() >= 2) {
+            RequestKind kind = classify(input);
+            String time = extractTime(input);
+            List<SubtaskSpec> tasks = new ArrayList<>();
+            for (int index = 0; index < Math.min(3, resolvedIndicators.size()); index++) {
+                var resolved = resolvedIndicators.get(index);
+                tasks.add(new SubtaskSpec(
+                        index + 1, resolved.canonicalName(),
+                        childQuery(resolved.canonicalName(), kind, time), resolved));
+            }
+            boolean serial = SERIAL_TERMS.stream().anyMatch(input::contains);
+            return new SplitResult(List.copyOf(tasks), kind, time, serial, false);
+        }
         List<String> clauses = explicitClauses(input);
         boolean followup = false;
         if (clauses.isEmpty()) {
@@ -63,7 +84,7 @@ public class CompoundRequestSplitter {
         List<SubtaskSpec> tasks = new ArrayList<>();
         for (int index = 0; index < clauses.size(); index++) {
             String target = followup ? clauses.get(index) : target(clauses.get(index));
-            tasks.add(new SubtaskSpec(index + 1, target, childQuery(target, kind, time)));
+            tasks.add(new SubtaskSpec(index + 1, target, childQuery(target, kind, time), null));
         }
         boolean serial = SERIAL_TERMS.stream().anyMatch(input::contains);
         return new SplitResult(List.copyOf(tasks), kind, time, serial, followup);
@@ -173,7 +194,14 @@ public class CompoundRequestSplitter {
         DIAGNOSIS
     }
 
-    public record SubtaskSpec(int index, String target, String query) {
+    public record SubtaskSpec(
+            int index,
+            String target,
+            String query,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        public SubtaskSpec(int index, String target, String query) {
+            this(index, target, query, null);
+        }
     }
 
     public record SplitResult(

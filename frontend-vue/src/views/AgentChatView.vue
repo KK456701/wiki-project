@@ -93,9 +93,9 @@ async function exportComparison(runId?: string, fileToken?: string) {
 <template>
   <main v-if="!store.isAuthenticated" class="login-shell">
     <section class="login-story">
-      <p class="eyebrow">Java / Vue 渐进迁移</p>
+      <p class="eyebrow">Java / Vue 权威运行时</p>
       <h1>结论可读，<br><em>依据可追。</em></h1>
-      <p>迁移版先复用现有 FastAPI 和 DBHub，所有指标规则、SQL 安全边界与医院权限保持不变。</p>
+      <p>Java Agent 复用现有 DBHub，只读访问医院业务库；指标规则、SQL 安全边界与医院权限均由服务端控制。</p>
       <div class="contract-stamp">
         <strong>CONTRACT V1</strong>
         <span>REST · SSE · DBHub MCP</span>
@@ -108,7 +108,7 @@ async function exportComparison(runId?: string, fileToken?: string) {
       <label>密码<input v-model="password" type="password" autocomplete="current-password" /></label>
       <p v-if="loginError" class="form-error">{{ loginError }}</p>
       <button class="primary-button" :disabled="loggingIn" type="submit">{{ loggingIn ? '正在验证…' : '进入系统' }}</button>
-      <small>登录请求仍由现有医院认证接口处理。</small>
+      <small>登录、会话和医院隔离由当前 Java 权威服务处理。</small>
     </form>
   </main>
 

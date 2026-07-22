@@ -8,12 +8,16 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class PromptCatalog {
-    public static final String VERSION = "java-agent-prompts-v3";
+    public static final String VERSION = "java-agent-prompts-v5";
 
     public String planner() { return read("prompts/planner-system.txt"); }
     public String plannerRepair() { return read("prompts/planner-repair.txt"); }
+    public String replanner() { return read("prompts/replanner-instruction.txt"); }
     public String finalAnswer() { return read("prompts/final-answer-system.txt"); }
     public String finalAnswerCorrection() { return read("prompts/final-answer-correction.txt"); }
+    public String indicatorCandidateDisambiguator() {
+        return read("prompts/indicator-candidate-disambiguator.txt");
+    }
 
     private String read(String path) {
         try (var input = new ClassPathResource(path).getInputStream()) {

@@ -45,6 +45,27 @@ class FinalAnswerComposerTest {
         assertThat(invoker.prompts.get(0)).doesNotContain("SELECT", "patient_id");
     }
 
+    @Test
+    void fallsBackToDeterministicVerifiedEvidenceWhenRepairStillLeaksProtocol() {
+        CapturingInvoker invoker = new CapturingInvoker(
+                "<｜｜DSML｜｜tool_calls>",
+                "tool_calls: []");
+        AgentModelProperties properties = AgentModelRegistryTest.properties();
+        FinalAnswerComposer composer = new FinalAnswerComposer(
+                invoker,
+                new AgentModelRegistry(properties),
+                properties,
+                new PromptCatalog(),
+                new ObjectMapper());
+
+        var result = composer.compose(new FinalAnswerComposer.FinalAnswerInput(
+                "急会诊结果是多少", "计算急会诊及时到位率", "ollama-test",
+                LocalDate.of(2026, 7, 22), "", List.of(verifiedEvidence())));
+
+        assertThat(result.deterministicFallback()).isTrue();
+        assertThat(result.content()).contains("分子：3", "分母：68", "指标值：4.41%");
+    }
+
     private static VerifiedEvidence verifiedEvidence() {
         Instant now = Instant.parse("2026-07-22T00:00:00Z");
         EvidenceEnvelope evidence = new EvidenceEnvelope(

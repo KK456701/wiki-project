@@ -68,6 +68,8 @@
 
 - **Java / Vue 迁移第二十四批（正式切流）**：2026-07-22 在真实 MySQL、SQL Server/DBHub、Ollama 和 DeepSeek 环境完成 Python `8765` 与 Java `8766` 双跑，最终报告 `CUTOVER_20260722T023503Z` 为 12 项通过、0 失败、0 跳过。Java 使用 Temurin `17.0.19+10` 和本机可选外部 API 代理正式接管 `8765`，Vue、登录、规则解释、受控 SQL 与 Trace 均通过；实际回退到 FastAPI 后约 41.13 秒恢复，再次切回 Java 后多轮观察无 Java WARN/ERROR。规则搜索同时补齐 Planner 删除空格、虚词或主语时的确定性归一化兜底。
 
+- **Java / Vue 迁移第二十五批（指标理解与运行时补齐）**：Java 权威入口新增规则精确匹配、本地字符语义召回和候选白名单 LLM 消歧三层指标识别，先于 Planner 确认 1 至 3 个 `rule_id`，既能处理简称、少字和错别字，也能确定性拆分多个指标；LLM 不能创造目录外指标。审计同时补齐真实只读规则变更预览、只允许一次的方向性 Replan，以及 Final Answer 两次协议校验失败后的 VerifiedEvidence 确定性回答，移除仍指向 FastAPI/影子链的页面和状态文案。切流门禁新增模糊单指标与模糊多指标用例，防止 4B/8B Planner 再把英文内部标识送入规则搜索。
+
 ## 技术栈
 
 - 当前权威后端：Java 17、Spring Boot 4.1、Spring AI 2.0；FastAPI、Pydantic、SQLAlchemy 和 PyMySQL 作为回退栈保留。医院业务源为 SQL Server，只通过 DBHub 只读访问
@@ -77,8 +79,8 @@
 - MCP：DBHub HTTP sidecar，用于数据库工具、元数据同步和只读 SQL 试运行
 - SQL 模板：Jinja2
 - 知识库：MySQL 保存已审核术语与版本，Wiki/YAML 保存公司语料来源和只读兜底，Markdown、YAML、JSON 索引服务制度文档检索
-- 前端：原生 HTML/CSS/JavaScript，SSE 流式输出
-- 迁移技术栈：Java 17、Spring Boot 4.1、Spring AI 2.0 BOM；Vue 3、TypeScript、Vite、Vue Router、Pinia。迁移版 Vue 当前代理现有 FastAPI，生产切换后静态资源进入 Spring Boot JAR
+- 当前权威前端：Vue 3、TypeScript、Vite、Vue Router、Pinia，SSE 流式输出；生产静态资源已进入 Spring Boot 单 JAR。旧原生 HTML/CSS/JavaScript 仅随 FastAPI 回退栈保留
+- 迁移技术栈：Java 17、Spring Boot 4.1、Spring AI 2.0 BOM；Vue 开发服务器默认代理 Java `8765`，影子验收时可显式指向 `8766`
 - 测试：Python `unittest` 测试套件，兼容使用 `pytest` 执行
 
 ## 运行架构与数据边界

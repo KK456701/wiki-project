@@ -1,6 +1,6 @@
 # Java 迁移服务
 
-这是完成正式切流的 Java 权威服务。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、版本化 Agent IR、Spring AI 模型适配、Evidence、受控 SQL、三层诊断、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理、指标监控闭环，以及指标实施与审批发布完整闭环。2026-07-22 已通过真实双跑、正式切流和 Python 回退演练；Java 当前在 `8765` 提供 Spring Boot API 与内置 Vue 3 页面，FastAPI 作为显式回退入口保留。
+这是完成正式切流的 Java 权威服务。当前已完成基础契约、DBHub 客户端、医院认证与规则只读、规则/语义/受控 LLM 三层指标识别、版本化 Agent IR、一次语义 Replan、Spring AI 模型适配、Evidence、确定性回答降级、受控 SQL、三层诊断、规则变更只读预览、Excel 汇总分析、试运行结果明细、上传明细与系统明细的逐条差异导出、2 至 3 个指标的隔离执行与自适应并行、单轮 Trace、跨运行观察、固定 L1/L4/L5/可选 L6 的全面实施验收 MVP、元数据概览与 DBHub 同步、医学术语治理、指标监控闭环，以及指标实施与审批发布完整闭环。2026-07-22 已通过真实双跑、正式切流和 Python 回退演练；Java 当前在 `8765` 提供 Spring Boot API 与内置 Vue 3 页面，FastAPI 作为显式回退入口保留。
 
 ## 本地运行
 
@@ -24,8 +24,8 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/kb/rules/search`：按登录主体所在医院搜索规则。
 - `GET /api/kb/rules/{rule_id}/effective`：读取本院生效口径；客户端传入其他医院会被拒绝。
 - `POST /api/migration/agent/compile`：认证后的影子编译接口，只返回计划校验、版本化 IR 和第一步确定性决策，不执行工具。
-- `POST /api/migration/agent/chat`、`POST /api/migration/agent/chat/stream`：执行 Java 影子 Agent，支持规则解释、受控 SQL 试运行、诊断、上传汇总分析和全面实施验收。
-- `/api/agent/capabilities`、`/api/agent/chat`、`/api/agent/chat/stream`：上述影子接口的前端兼容别名，供 Vue 整体切到 `8766` 时使用。
+- `POST /api/migration/agent/chat`、`POST /api/migration/agent/chat/stream`：保留的迁移兼容路径，执行同一套 Java Agent。
+- `/api/agent/capabilities`、`/api/agent/chat`、`/api/agent/chat/stream`：当前权威 Agent 接口，支持规则解释、受控 SQL 试运行、诊断、上传分析、规则预览和全面实施验收。
 - `POST /api/sql-runs/{run_id}/details`：基于已成功试运行生成或复用数量一致的短期明细快照。
 - `GET /api/sql-runs/{run_id}/details/{denominator|numerator|unmatched}`：分页返回脱敏明细。
 - `POST /api/sql-runs/{run_id}/exports`：在有导出权限且显式确认后生成三工作表 `.xlsx`。
@@ -99,7 +99,9 @@ Java 已实现版本化 `RequestPlan` / `CompiledPlanIR`、能力注册表、Pla
 
 用户明确要求“全面实施验收、上线验收、迁移核对或全链路验收”时，服务端把模型计划规范化为 `implementation_validation`，再由一个顶层受控工具固定执行 L1 字段映射与来源、L4 生效规则、L5 SQL 安全校验与 DBHub 只读试运行，以及存在上传文件时的 L6 报表数据核对。任何阶段未通过都会进入同一份结构化报告，而不是触发模型自由重规划；最终报告由 Java 模板生成，不再次调用 LLM。Trace 独立记录 `implementation_validation_l1/l4/l5/l6`，Evidence 只保存报告引用和允许列表字段。
 
-复合请求由 `CompoundRequestSplitter` 在服务端识别明确并列指标或跨轮“这两个/它们/分别”等复数指代，再由 `CompoundAgentRuntime` fan-out 到相互隔离的单指标 Runner。每个子任务拥有独立会话、请求 ID、RunState、Evidence namespace 与 Trace 子标识，子任务执行期间不修改父状态。OpenAI 兼容 API 最大并发 2，Ollama 最大并发 1，DBHub 只读最大并发 2；上传、规则变更、发布和审批类任务保持串行。整体超时会取消未完成任务，已成功子任务仍按输入顺序返回；Vue 同一回答可展示多个明细或差异导出入口。
+指标识别先由 `HybridIndicatorResolver` 执行正式名称/审核同义词精确匹配，再用本地字符语义召回；只有候选接近且不能唯一确认时，才让当前模型在服务端候选 `rule_id` 白名单内消歧。该层不判断意图、不选择工具、不写 SQL。复合请求随后由 `CompoundRequestSplitter` 根据已确认指标确定性拆成 2 至 3 个任务，再由 `CompoundAgentRuntime` fan-out 到相互隔离的单指标 Runner。每个子任务拥有独立会话、请求 ID、RunState、Evidence namespace 与 Trace 子标识，子任务执行期间不修改父状态。OpenAI 兼容 API 最大并发 2，Ollama 最大并发 1，DBHub 只读最大并发 2；上传、规则变更、发布和审批类任务保持串行。整体超时会取消未完成任务，已成功子任务仍按输入顺序返回；Vue 同一回答可展示多个明细或差异导出入口。
+
+Replanner 只在 `semantic_plan_error`、`task_type_error`、用户改变目标或存在合法替代方向时执行一次；数据库、权限、缺时间、对象过期、Evidence 冲突和普通工具异常直接进入对应兜底。Final Answer 仍先使用模型组织业务回答；首次泄漏工具协议时只修复一次，第二次仍无效且已有完整 `VerifiedEvidence` 时由服务端确定性模板回答，不会丢掉已经得到的规则或聚合结果。
 
 Java Trace 复用现有 `med_agent_trace` 和 `med_agent_trace_node`，不部署外部可观测服务。新运行记录 `memory_load`、`planner_llm`、`plan_compile`、`plan_validate`、`state_controller`、`deterministic_tool_dispatch`、`tool_result`、`plan_verify`、`final_answer_llm`、`response_guard`、`memory_save`，复合请求另含拆分、子任务和合并节点。节点包含真实开始偏移、耗时、父子关系、`subtask_id`、工具、模型、能力、FailureClass、缓存及安全输入输出；密码、认证令牌、SQL 正文与患者原始行不会落入 Trace。Vue 链路抽屉以中英文节点名、类型颜色、瀑布条、泳道、筛选和 Evidence 来源显示这些数据，历史 Python Trace 缺少新字段时仍按顺序降级展示。
 
@@ -123,7 +125,7 @@ $env:MONITORING_LEASE_SECONDS = '600'
 
 Vue `/implementation` 页面展示当前医院实施任务、版本、状态阶段、设计字段、字段候选、SQL 和试运行证据，并完成提交、管理员审批与历史恢复。SQL 只能由服务端结构化计划编译，浏览器不能提交任意 SQL；医院级审批同时校验管理员 token 与医院 token。编辑请求中的 `actor_id` 仅为兼容旧契约，服务端始终使用医院登录用户作为真实操作者。
 
-Vue 默认代理当前权威 FastAPI。需要完整验证 Java 影子链时，在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`；Java 同时提供正式前端路径的兼容别名，因此模型选择、SSE 对话、上传、Trace、明细和元数据页面不会混用两个后端。
+Vue 开发服务器默认代理当前 Java 权威服务 `http://127.0.0.1:8765`；如需运行独立 Java 影子实例，可在启动 Vite 前设置 `$env:VITE_API_TARGET='http://127.0.0.1:8766'`。生产 Vue 静态资源打包进同一个 Spring Boot JAR，不会混用两个后端。
 
 真实环境完整验收、显式切流和回退演练已经完成。后续重启 Java 权威进程仍必须使用合格的门禁报告；代码提交本身不会自动改变权威入口。
 

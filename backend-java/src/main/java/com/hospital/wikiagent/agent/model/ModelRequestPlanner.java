@@ -12,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class ModelRequestPlanner {
-    public static final String VERSION = "model-request-planner-v1";
+    public static final String VERSION = "model-request-planner-v2";
 
     private final AgentModelInvoker models;
     private final AgentModelRegistry registry;
@@ -40,6 +40,30 @@ public class ModelRequestPlanner {
                 + "结构化会话状态：\n" + safe(input.structuredState()) + "\n"
                 + "最近对话（最多 8 轮）：\n" + safe(input.recentHistory()) + "\n"
                 + "本轮用户输入：\n" + input.userMessage();
+        return generate(modelId, userPrompt);
+    }
+
+    public PlannerResult replan(ReplannerInput input) {
+        String modelId = input.modelId() == null || input.modelId().isBlank()
+                ? registry.defaultModelId() : input.modelId();
+        String original;
+        try {
+            original = objectMapper.writeValueAsString(input.originalPlan());
+        } catch (Exception exception) {
+            original = String.valueOf(input.originalPlan());
+        }
+        String userPrompt = "当前日期：" + input.currentDate() + "。\n"
+                + "原始用户输入：\n" + input.userMessage() + "\n"
+                + "原业务计划：\n" + original + "\n"
+                + "失败代码：" + safe(input.failureCode()) + "\n"
+                + "失败原因：" + safe(input.failureReason()) + "\n"
+                + "已确认事实：\n" + safe(input.knownFacts()) + "\n"
+                + "失败计划编号：" + safe(input.failedPlanId()) + "\n\n"
+                + prompts.replanner();
+        return generate(modelId, userPrompt);
+    }
+
+    private PlannerResult generate(String modelId, String userPrompt) {
         String raw = models.complete(
                 modelId, prompts.planner(), userPrompt, properties.getPlannerTimeout()).content();
         try {
@@ -106,5 +130,22 @@ public class ModelRequestPlanner {
             String rawContent,
             String modelId,
             boolean repaired) {
+    }
+
+    public record ReplannerInput(
+            String userMessage,
+            String modelId,
+            LocalDate currentDate,
+            RequestPlan originalPlan,
+            String failureCode,
+            String failureReason,
+            String knownFacts,
+            String failedPlanId) {
+        public ReplannerInput {
+            if (userMessage == null || userMessage.isBlank() || originalPlan == null) {
+                throw new IllegalArgumentException("重规划必须包含原始问题和原计划");
+            }
+            currentDate = currentDate == null ? LocalDate.now() : currentDate;
+        }
     }
 }

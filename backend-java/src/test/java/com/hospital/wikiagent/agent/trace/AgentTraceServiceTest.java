@@ -41,7 +41,9 @@ class AgentTraceServiceTest {
         event.put("duration_ms", 12);
         event.put("tool_name", "prepare_indicator_sql");
         event.put("input", Map.of("rule_id", "MQSI2025_005", "sql", "SELECT secret"));
-        event.put("output", Map.of("token", "secret-token", "sql_id", "SQL_001"));
+        event.put("output", Map.of(
+                "token", "secret-token", "sql_id", "SQL_001",
+                "sql_preview", "SELECT private_table"));
         AtomicInteger forwarded = new AtomicInteger();
         AgentRunObserver observer = service.observer("TRACE_001", ignored -> forwarded.incrementAndGet());
         observer.onEvent(event);
@@ -57,6 +59,7 @@ class AgentTraceServiceTest {
         assertThat(String.valueOf(node.get("input_data"))).contains("[已脱敏]")
                 .doesNotContain("SELECT secret");
         assertThat(String.valueOf(node.get("output_data"))).doesNotContain("secret-token");
+        assertThat(String.valueOf(node.get("output_data"))).doesNotContain("private_table");
         assertThat(String.valueOf(node.get("output_data"))).contains("SQL_001");
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);

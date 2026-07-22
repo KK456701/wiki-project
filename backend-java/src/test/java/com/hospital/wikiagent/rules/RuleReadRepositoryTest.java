@@ -94,4 +94,24 @@ class RuleReadRepositoryTest {
 
         assertThat(response.get("resolved_rule_id")).isEqualTo("MQSI2025_001");
     }
+
+    @Test
+    void previewsRuleChangeWithoutWritingCurrentRule() {
+        Integer before = jdbc.queryForObject(
+                "SELECT version FROM med_index_hospital_custom WHERE hospital_id=? AND index_code=?",
+                Integer.class, "hospital_001", "MQSI2025_001");
+
+        Map<String, Object> preview = repository.previewChange(
+                "MQSI2025_001", "hospital_001", "本院改为72分钟内完成转科");
+
+        assertThat(preview).containsEntry("rule_id", "MQSI2025_001")
+                .containsEntry("target_level", "hospital");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> impact = (Map<String, Object>) preview.get("impact");
+        assertThat(impact).containsEntry("requires_version_increment", true)
+                .containsEntry("requires_sql_regeneration", true);
+        assertThat(jdbc.queryForObject(
+                "SELECT version FROM med_index_hospital_custom WHERE hospital_id=? AND index_code=?",
+                Integer.class, "hospital_001", "MQSI2025_001")).isEqualTo(before);
+    }
 }

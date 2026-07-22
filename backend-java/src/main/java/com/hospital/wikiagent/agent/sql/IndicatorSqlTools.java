@@ -164,6 +164,12 @@ public class IndicatorSqlTools {
         data.put("context_digest", digest);
         data.put("dialect", sqlObject.dialect());
         data.put("validation_status", "validated");
+        data.put("sql_preview", sql);
+        Map<String, Object> displayParameters = new LinkedHashMap<>(params);
+        displayParameters.put("hospital_id", context.agentContext().hospitalId());
+        displayParameters.put("start_time", statStart);
+        displayParameters.put("end_time", statEnd);
+        data.put("parameters", displayParameters);
         data.put("stat_start", statStart);
         data.put("stat_end", statEnd);
         data.put("expires_at", sqlObject.expiresAt().toString());

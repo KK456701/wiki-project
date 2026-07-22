@@ -23,7 +23,11 @@
     "terminology_admin_workflow",
     "vue_bundle_in_jar",
     "indicator_implementation_workflow",
-    "cutover_readiness_gate"
+    "cutover_readiness_gate",
+    "hybrid_indicator_resolution",
+    "rule_change_preview",
+    "semantic_replan",
+    "deterministic_answer_fallback"
   ],
   "rule_queries": [
     "急会诊及时到位率",
@@ -36,11 +40,11 @@
     },
     {
       "id": "controlled_trial",
-      "query": "患者入院 48 小时内转科的比例从2026年1月到3月的结果"
+      "query": "患者入院48小时转科比例从2026年1月到3月的结果"
     },
     {
       "id": "compound_explanation",
-      "query": "急会诊及时到位率、患者入院 48 小时内转科的比例怎么算？"
+      "query": "急会诊到位率、患者入院48小时转科比例怎么算？"
     }
   ]
 }

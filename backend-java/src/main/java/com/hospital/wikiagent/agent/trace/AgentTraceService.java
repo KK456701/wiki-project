@@ -389,9 +389,17 @@ public class AgentTraceService {
 
     private static String title(String name) {
         String safeName = name == null ? "" : name;
+        if (safeName.startsWith("implementation_validation_")
+                && !"implementation_validation_answer".equals(safeName)) {
+            return "执行实施验收阶段 " + safeName.substring("implementation_validation_".length()).toUpperCase();
+        }
         return switch (safeName) {
+            case "indicator_rule_match" -> "规则精确识别指标";
+            case "indicator_semantic_retrieval" -> "本地语义召回指标";
+            case "indicator_llm_disambiguation" -> "模型候选内消歧";
             case "memory_load" -> "读取会话上下文";
             case "planner_llm" -> "规划业务目标";
+            case "plan_replan" -> "重新规划业务目标";
             case "plan_compile" -> "编译业务计划";
             case "plan_validate" -> "校验业务计划";
             case "state_controller" -> "选择下一业务能力";
@@ -399,6 +407,8 @@ public class AgentTraceService {
             case "tool_result" -> "执行并观察工具结果";
             case "plan_verify" -> "校验证据完整性";
             case "final_answer_llm" -> "生成最终回答";
+            case "prepared_sql_answer" -> "生成受控 SQL 回答";
+            case "implementation_validation_answer" -> "生成实施验收回答";
             case "response_guard" -> "检查回答协议";
             case "memory_save" -> "保存会话上下文";
             case "compound_split" -> "拆分复合指标请求";
@@ -411,11 +421,17 @@ public class AgentTraceService {
 
     private static String processing(String name) {
         return switch (name == null ? "" : name) {
+            case "indicator_rule_match" -> "用正式名称和已审核同义词确定性匹配指标。";
+            case "indicator_semantic_retrieval" -> "对未命中片段执行本地字符语义召回，不调用模型。";
+            case "indicator_llm_disambiguation" -> "LLM 只能从服务端候选 rule_id 中消歧。";
             case "planner_llm" -> "LLM 只生成业务 RequestPlan，不选择工具。";
+            case "plan_replan" -> "仅在允许的方向性错误下由 LLM 重规划一次。";
             case "state_controller" -> "根据未完成事实选择下一项业务能力。";
             case "deterministic_tool_dispatch" -> "服务端按 CapabilitySpec 编译工具与参数。";
             case "plan_verify" -> "只接受医院、规则、周期和对象链一致的 Evidence。";
             case "final_answer_llm" -> "LLM 只根据 VerifiedEvidence 组织回答。";
+            case "prepared_sql_answer" -> "服务端从本轮私有 SQL 对象确定性生成回答，不调用 Final Answer LLM。";
+            case "implementation_validation_answer" -> "服务端根据固定阶段报告确定性生成回答。";
             case "metadata_sync_dbhub" -> "经 DBHub 只读采集表目录和指标映射依赖字段。";
             default -> title(name);
         };
@@ -441,7 +457,7 @@ public class AgentTraceService {
     private static boolean sensitiveKey(String key) {
         return key.contains("password") || key.contains("secret")
                 || List.of("authorization", "api_key", "token", "access_token", "refresh_token",
-                        "sql", "sql_text", "raw_sql", "generated_sql", "raw_rows", "rows",
+                        "sql", "sql_text", "sql_preview", "raw_sql", "generated_sql", "raw_rows", "rows",
                         "patient_rows").contains(key);
     }
 

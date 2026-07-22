@@ -42,9 +42,12 @@ public class SystemController {
                         "implementation_validation_mvp", "metadata_workbench",
                         "terminology_read_workbench", "terminology_admin_workflow",
                         "vue_bundle_in_jar", "indicator_implementation_workflow",
-                        "cutover_readiness_gate"),
-                "next", List.of("real_environment_readiness_execution",
-                        "explicit_contract_cutover"));
+                        "cutover_readiness_gate", "hybrid_indicator_resolution",
+                        "rule_change_preview", "semantic_replan",
+                        "deterministic_answer_fallback"),
+                "next", migration.javaAuthority()
+                        ? List.of("stability_observation", "retire_python_fallback_after_window")
+                        : List.of("real_environment_readiness_execution", "explicit_contract_cutover"));
     }
 
     @GetMapping("/migration/readiness")

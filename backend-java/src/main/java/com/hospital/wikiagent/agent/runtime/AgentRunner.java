@@ -26,6 +26,7 @@ import com.hospital.wikiagent.agent.model.FinalAnswerComposer.FinalAnswerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerResult;
+import com.hospital.wikiagent.agent.model.ModelRequestPlanner.ReplannerInput;
 import com.hospital.wikiagent.agent.planning.AgentStateController;
 import com.hospital.wikiagent.agent.planning.CapabilityDispatchException;
 import com.hospital.wikiagent.agent.planning.CapabilitySpecRegistry;
@@ -36,6 +37,7 @@ import com.hospital.wikiagent.agent.planning.PlanCompiler;
 import com.hospital.wikiagent.agent.planning.PlanValidation;
 import com.hospital.wikiagent.agent.planning.PlanValidator;
 import com.hospital.wikiagent.agent.planning.PlanningExecution;
+import com.hospital.wikiagent.agent.planning.ReplanPolicy;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 
@@ -55,6 +57,7 @@ public class AgentRunner {
     private final EvidenceVerifier verifier;
     private final FinalAnswerComposer finalAnswer;
     private final AgentConversationMemory conversations;
+    private final ReplanPolicy replanPolicy;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -67,7 +70,8 @@ public class AgentRunner {
             ToolGateway gateway,
             EvidenceVerifier verifier,
             FinalAnswerComposer finalAnswer,
-            AgentConversationMemory conversations) {
+            AgentConversationMemory conversations,
+            ReplanPolicy replanPolicy) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -78,6 +82,22 @@ public class AgentRunner {
         this.verifier = verifier;
         this.finalAnswer = finalAnswer;
         this.conversations = conversations;
+        this.replanPolicy = replanPolicy;
+    }
+
+    public AgentRunner(
+            ModelRequestPlanner planner,
+            PlanValidator validator,
+            PlanCompiler compiler,
+            CapabilitySpecRegistry capabilities,
+            AgentStateController controller,
+            DeterministicDispatch dispatch,
+            ToolGateway gateway,
+            EvidenceVerifier verifier,
+            FinalAnswerComposer finalAnswer,
+            AgentConversationMemory conversations) {
+        this(planner, validator, compiler, capabilities, controller, dispatch,
+                gateway, verifier, finalAnswer, conversations, new ReplanPolicy());
     }
 
     public AgentRunner(
@@ -95,10 +115,17 @@ public class AgentRunner {
     }
 
     public AgentRunResult run(AgentRunRequest request) {
-        return run(request, AgentRunObserver.noop());
+        return run(request, AgentRunObserver.noop(), null);
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        return run(request, observer, null);
+    }
+
+    public AgentRunResult run(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
         String requestId = blankTo(request.requestId(), id("REQ_"));
         String traceId = blankTo(request.traceId(), id("TRACE_"));
         long memoryStarted = TraceEvents.started();
@@ -138,7 +165,8 @@ public class AgentRunner {
         }
         long compileStarted = TraceEvents.started();
         RequestPlan enrichedPlan = normalizeExplicitImplementationValidation(
-                request.query(), enrichFromConversation(modelPlan.plan(), conversation));
+                request.query(), enrichFromResolvedIndicator(
+                        enrichFromConversation(modelPlan.plan(), conversation), resolvedIndicator));
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
         CompiledPlanIR compiled = compiler.compile(planned.plan());
@@ -203,6 +231,16 @@ public class AgentRunner {
                 TraceEvents.failed(observer, traceId, "deterministic_tool_dispatch", "code",
                         dispatchStarted, subtaskId, exception.code(), exception.getMessage(),
                         "capability", decision.capability());
+                ReplanOutcome replanned = tryReplan(
+                        request, observer, traceId, state, planned, compiled,
+                        exception.code(), exception.getMessage(), conversation, resolvedIndicator);
+                if (replanned != null) {
+                    planned = replanned.planned();
+                    execution = replanned.execution();
+                    compiled = execution.compiledPlan();
+                    validation = execution.validation();
+                    continue;
+                }
                 AgentRunResult result = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         exception.getMessage(), exception.code());
@@ -246,6 +284,16 @@ public class AgentRunner {
             emitImplementationValidationStages(observer, traceId, subtaskId, result);
             updateState(state, result);
             if (!result.ok()) {
+                ReplanOutcome replanned = tryReplan(
+                        request, observer, traceId, state, planned, compiled,
+                        result.code(), result.summary(), conversation, resolvedIndicator);
+                if (replanned != null) {
+                    planned = replanned.planned();
+                    execution = replanned.execution();
+                    compiled = execution.compiledPlan();
+                    validation = execution.validation();
+                    continue;
+                }
                 AgentRunResult failure = finishFailure(
                         observer, traceId, sessionId, state, planned.plan(), compiled,
                         result.summary(), result.code());
@@ -260,6 +308,67 @@ public class AgentRunner {
         saveConversation(observer, traceId, subtaskId, conversation,
                 request.principal(), failure.answer(), state);
         return failure;
+    }
+
+    private ReplanOutcome tryReplan(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            String traceId,
+            AgentRunState state,
+            PlannerResult current,
+            CompiledPlanIR compiled,
+            String failureCode,
+            String failureReason,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        if (!replanPolicy.canReplan(state, failureCode)) return null;
+        replanPolicy.recordFailure(state, compiled.planId());
+        long started = TraceEvents.started();
+        try {
+            PlannerResult raw = planner.replan(new ReplannerInput(
+                    request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                    current.plan(), failureCode, failureReason,
+                    "rule_id=" + safe(state.currentRuleId())
+                            + "; evidence_ids=" + state.evidenceIds(),
+                    compiled.planId()));
+            RequestPlan plan = normalizeExplicitImplementationValidation(
+                    request.query(), enrichFromResolvedIndicator(
+                            enrichFromConversation(raw.plan(), conversation), resolvedIndicator));
+            PlannerResult planned = new PlannerResult(
+                    plan, raw.rawContent(), raw.modelId(), raw.repaired());
+            CompiledPlanIR alternative = compiler.compile(plan);
+            if (!replanPolicy.accepts(state, alternative.planId())) {
+                TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
+                        state.subtaskId(), "REPLAN_REPEATED_FAILED_PATH",
+                        "重规划重复了已经失败的计划方向。",
+                        "model_id", raw.modelId(),
+                        "failure_class", FailureClass.classify(failureCode).value());
+                return null;
+            }
+            PlanValidation alternativeValidation = validator.validate(plan);
+            PlanningExecution execution = new PlanningExecution(
+                    plan, alternative, alternativeValidation, capabilities);
+            TraceEvents.completed(observer, traceId, "plan_replan", "llm", started,
+                    state.subtaskId(), Map.of(
+                            "original_plan_id", compiled.planId(),
+                            "failure_code", failureCode,
+                            "failure_reason", failureReason,
+                            "known_evidence_ids", state.evidenceIds()), Map.of(
+                            "plan_id", alternative.planId(),
+                            "intent", plan.intent().name(),
+                            "replan_count", state.replanCount(),
+                            "valid", alternativeValidation.ok()),
+                    "model_id", raw.modelId(),
+                    "failure_class", FailureClass.classify(failureCode).value(),
+                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+            return new ReplanOutcome(planned, execution);
+        } catch (RuntimeException exception) {
+            TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
+                    state.subtaskId(), "REPLAN_FAILED", exception.getMessage(),
+                    "failure_class", FailureClass.classify(failureCode).value(),
+                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+            return null;
+        }
     }
 
     private AgentRunResult compose(
@@ -295,20 +404,26 @@ public class AgentRunner {
                         "evidence_ids", state.evidenceIds()), eventValues(
                         "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
-        String validationAnswer = composeImplementationValidationAnswer(plan, state);
-        if (validationAnswer != null) {
+        String deterministicAnswer = composeImplementationValidationAnswer(plan, state);
+        String deterministicNode = "implementation_validation_answer";
+        if (deterministicAnswer == null) {
+            deterministicAnswer = composePreparedSqlAnswer(plan, state);
+            deterministicNode = "prepared_sql_answer";
+        }
+        if (deterministicAnswer != null) {
             long answerStarted = TraceEvents.started();
-            TraceEvents.completed(observer, traceId, "implementation_validation_answer", "code",
+            TraceEvents.completed(observer, traceId, deterministicNode, "code",
                     answerStarted, state.subtaskId(), Map.of(
                             "verified_evidence_count", evidence.size()), Map.of(
-                            "answer_length", validationAnswer.length()),
-                    "workflow_version", "implementation-validation-mvp-v1");
+                            "answer_length", deterministicAnswer.length()),
+                    "workflow_version", deterministicNode.equals("prepared_sql_answer")
+                            ? "prepared-sql-answer-v1" : "implementation-validation-mvp-v1");
             long guardStarted = TraceEvents.started();
-            String answerContent = appendExportMarker(validationAnswer, state, request.principal());
+            String answerContent = appendExportMarker(deterministicAnswer, state, request.principal());
             TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
-                    state.subtaskId(), Map.of("answer_length", validationAnswer.length()), Map.of(
+                    state.subtaskId(), Map.of("answer_length", deterministicAnswer.length()), Map.of(
                             "accepted", true, "export_marker_added",
-                            !answerContent.equals(validationAnswer)));
+                            !answerContent.equals(deterministicAnswer)));
             emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
                     "message", answerContent, "status", "completed"));
             emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
@@ -327,7 +442,8 @@ public class AgentRunner {
                 state.subtaskId(), Map.of(
                         "query", request.query(), "verified_evidence_count", evidence.size()),
                 Map.of("answer_length", answer.content().length(), "corrected", answer.corrected()),
-                "model_id", answer.modelId());
+                "model_id", answer.modelId(),
+                "deterministic_fallback", answer.deterministicFallback());
         long guardStarted = TraceEvents.started();
         String answerContent = appendExportMarker(answer.content(), state, request.principal());
         TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
@@ -461,6 +577,17 @@ public class AgentRunner {
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
     }
 
+    private static RequestPlan enrichFromResolvedIndicator(
+            RequestPlan plan,
+            HybridIndicatorResolver.ResolvedIndicator resolved) {
+        if (resolved == null) return plan;
+        return new RequestPlan(
+                plan.schemaVersion(), plan.intent(), plan.goal(),
+                new RequestPlan.TargetIndicator(resolved.canonicalName(), resolved.ruleId()),
+                plan.timeExpression(), plan.requestedOutputs(), plan.constraints(),
+                plan.semanticAmbiguities());
+    }
+
     private static RequestPlan normalizeExplicitImplementationValidation(
             String query,
             RequestPlan plan) {
@@ -575,6 +702,32 @@ public class AgentRunner {
         return answer.toString().stripTrailing();
     }
 
+    private static String composePreparedSqlAnswer(RequestPlan plan, AgentRunState state) {
+        if (plan.intent() != PlanIntent.INDICATOR_SQL_PREPARE
+                && !plan.requestedOutputs().contains(RequestedOutput.PREPARED_SQL_HANDLE)) {
+            return null;
+        }
+        ToolResult prepared = null;
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (candidate.ok() && "SQL_OBJECT_PREPARED".equals(candidate.code())) {
+                prepared = candidate;
+                break;
+            }
+        }
+        if (prepared == null) return null;
+        Object sql = prepared.data().get("sql_preview");
+        if (sql == null || String.valueOf(sql).isBlank()) return null;
+        StringBuilder answer = new StringBuilder("已生成并校验受控只读 SQL：\n\n```sql\n")
+                .append(sql).append("\n```\n\n");
+        answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+        answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
+                .append(" 至 ").append(prepared.data().get("stat_end")).append("（左闭右开）\n");
+        answer.append("- 参数：").append(prepared.data().getOrDefault("parameters", Map.of())).append('\n');
+        answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
+        return answer.toString();
+    }
+
     private static String stageStatus(Object value) {
         return switch (String.valueOf(value)) {
             case "passed" -> "通过";
@@ -643,6 +796,8 @@ public class AgentRunner {
     private static String id(String prefix) {
         return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
+
+    private record ReplanOutcome(PlannerResult planned, PlanningExecution execution) { }
 
     private static String appendExportMarker(
             String content,

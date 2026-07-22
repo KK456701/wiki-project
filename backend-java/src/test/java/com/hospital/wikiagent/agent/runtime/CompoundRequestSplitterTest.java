@@ -49,4 +49,24 @@ class CompoundRequestSplitterTest {
         assertThat(result.tasks()).extracting("target").containsExactly(
                 "急会诊及时到位率", "患者入院48小时内转科的比例");
     }
+
+    @Test
+    void usesResolvedIndicatorsAsAuthoritativeCompoundTargets() {
+        var first = new HybridIndicatorResolver.ResolvedIndicator(
+                "急会诊到位", "急会诊及时到位率", "MQSI2025_005",
+                "RULE:MQSI2025_005", "semantic", 0.9, 0, 5);
+        var second = new HybridIndicatorResolver.ResolvedIndicator(
+                "48小时转科", "患者入院 48 小时内转科的比例", "MQSI2025_001",
+                "RULE:MQSI2025_001", "semantic", 0.9, 6, 12);
+
+        var result = splitter.split(
+                "急会诊到位和48小时转科从一月到现在结果", "", "hospital_001",
+                java.util.List.of(first, second));
+
+        assertThat(result.compound()).isTrue();
+        assertThat(result.tasks()).extracting("target").containsExactly(
+                "急会诊及时到位率", "患者入院 48 小时内转科的比例");
+        assertThat(result.tasks()).extracting("resolvedIndicator")
+                .containsExactly(first, second);
+    }
 }

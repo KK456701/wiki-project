@@ -72,8 +72,10 @@ class IndicatorSqlToolsTest {
                 "MQSI2025_005", "2026-01-01T00:00:00", "2026-04-01T00:00:00"), context);
         assertThat(prepared.ok()).isTrue();
         assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
-        assertThat(prepared.data()).containsKeys("sql_id", "context_digest", "stat_start", "stat_end");
-        assertThat(prepared.data()).doesNotContainKeys("sql_text", "sql_preview", "parameters");
+        assertThat(prepared.data()).containsKeys(
+                "sql_id", "context_digest", "stat_start", "stat_end", "sql_preview", "parameters");
+        assertThat(prepared.data().get("sql_preview").toString()).startsWith("SELECT");
+        assertThat(prepared.data()).doesNotContainKey("sql_text");
 
         String sqlId = prepared.data().get("sql_id").toString();
         ToolResult trial = tools.trial(new IndicatorSqlTools.TrialInput(sqlId), context);

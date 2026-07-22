@@ -78,6 +78,28 @@ public class ToolRegistry {
                             "已读取 " + data.getOrDefault("rule_name", arguments.ruleId()) + " 的生效规则。",
                             data);
                 }));
+        register(values, new AgentTool(
+                "preview_rule_change",
+                PreviewRuleChangeInput.class,
+                Set.of(),
+                Duration.ofSeconds(30),
+                AgentTool.RiskLevel.READ_ONLY,
+                true,
+                (context, state) -> state.currentRuleId() != null,
+                (input, context) -> {
+                    PreviewRuleChangeInput arguments = (PreviewRuleChangeInput) input;
+                    if (!arguments.ruleId().equals(context.runState().currentRuleId())) {
+                        return ToolResult.failure(
+                                "validation_failed", "RULE_NOT_VERIFIED",
+                                "该指标尚未经过规则搜索或读取，不能预览口径变更。", false);
+                    }
+                    Map<String, Object> data = rules.previewChange(
+                            arguments.ruleId(), context.agentContext().hospitalId(),
+                            arguments.changeDescription());
+                    return ToolResult.success(
+                            "RULE_CHANGE_PREVIEWED",
+                            "本院口径变更预览已生成，尚未提交审批或发布。", data);
+                }));
 
         if (migrateSqlTools) {
             register(values, new AgentTool(
@@ -149,7 +171,6 @@ public class ToolRegistry {
                 "prepare_indicator_sql",
                 "trial_run_indicator_sql",
                 "diagnose_indicator_issue",
-                "preview_rule_change",
                 "analyze_uploaded_indicators",
                 "validate_indicator_implementation")) {
             if (!values.containsKey(name)) {
@@ -188,8 +209,8 @@ public class ToolRegistry {
                 null,
                 (input, context) -> ToolResult.failure(
                         "unavailable",
-                        "TOOL_NOT_MIGRATED",
-                        "该工具尚未迁移到 Java 影子运行时。",
+                        "TOOL_DEPENDENCY_UNAVAILABLE",
+                        "当前 Java 运行时未配置该工具所需的领域依赖。",
                         false));
     }
 
@@ -214,6 +235,19 @@ public class ToolRegistry {
             ruleId = ruleId == null ? "" : ruleId.strip();
             if (ruleId.isEmpty()) {
                 throw new IllegalArgumentException("规则编号不能为空");
+            }
+        }
+    }
+
+    public record PreviewRuleChangeInput(String ruleId, String changeDescription) {
+        public PreviewRuleChangeInput {
+            ruleId = ruleId == null ? "" : ruleId.strip();
+            changeDescription = changeDescription == null ? "" : changeDescription.strip();
+            if (ruleId.isEmpty()) {
+                throw new IllegalArgumentException("规则编号不能为空");
+            }
+            if (changeDescription.length() < 2 || changeDescription.length() > 5000) {
+                throw new IllegalArgumentException("口径调整说明必须为 2 至 5000 个字符");
             }
         }
     }

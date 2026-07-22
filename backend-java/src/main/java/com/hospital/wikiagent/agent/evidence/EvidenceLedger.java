@@ -48,7 +48,9 @@ public class EvidenceLedger implements EvidenceRecorder {
             "system_only_numerator_count", "uploaded_only_numerator_count",
             "classification_difference_count", "confirmed_findings",
             "report_id", "report_schema_version", "overall_status", "stages",
-            "passed_stages", "warning_stages", "failed_stages", "skipped_stages");
+            "passed_stages", "warning_stages", "failed_stages", "skipped_stages",
+            "target_level", "current_effective_level", "requested", "current_effective",
+            "field_changes", "impact", "message");
 
     private static final Map<String, List<String>> FACT_TYPES = Map.ofEntries(
             Map.entry("search_indicator_rules", List.of("rule_identity")),
