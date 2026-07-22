@@ -670,12 +670,35 @@ created_at: {created_at}
         active_rel_path = self._active_override_rel_path(hospital_id, rule["rule_id"])
         active_path = self.kb_root / active_rel_path
         active_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(active_path, version_path.read_text(encoding="utf-8"))
+        restored_content = version_path.read_text(encoding="utf-8")
+        atomic_write_text(active_path, restored_content)
         restored_at = datetime.now().isoformat(timespec="seconds")
+        restored_version_id = (
+            f"{hospital_id}_{rule['rule_id']}_restore_"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+        )
+        restored_version_rel_path = self._version_override_rel_path(
+            hospital_id, rule["rule_id"], restored_version_id
+        )
+        atomic_write_text(
+            self.kb_root / restored_version_rel_path, restored_content
+        )
+        item.setdefault("versions", []).append(
+            {
+                "version_id": restored_version_id,
+                "path": restored_version_rel_path,
+                "change_id": f"RESTORE_{uuid.uuid4().hex[:12]}",
+                "approved_at": restored_at,
+                "approver_id": approver_id,
+                "source": "restore",
+                "restored_from_version": version_id,
+                "status": "approved",
+            }
+        )
         item["path"] = active_rel_path
-        item["active_version_id"] = version_id
-        item["active_version_path"] = str(target.get("path") or "")
-        item["version"] = version_id
+        item["active_version_id"] = restored_version_id
+        item["active_version_path"] = restored_version_rel_path
+        item["version"] = restored_version_id
         item["status"] = "approved"
         item.setdefault("restore_events", []).append({"version_id": version_id, "restored_at": restored_at, "approver_id": approver_id})
         self._write_json("indexes/hospital_override_index.json", index)
@@ -684,9 +707,10 @@ created_at: {created_at}
             "status": "restored",
             "rule_id": rule["rule_id"],
             "hospital_id": hospital_id,
-            "active_version_id": version_id,
+            "active_version_id": restored_version_id,
             "active_version_path": item.get("active_version_path"),
             "override_path": active_rel_path,
+            "restored_from_version": version_id,
             "restored_at": restored_at,
             "approver_id": approver_id,
         }

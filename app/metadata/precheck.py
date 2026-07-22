@@ -148,6 +148,7 @@ def precheck_rule_fields(
         str(mapping.get("db_name") or ""),
         str(mapping.get("main_table") or ""),
         physical_tables,
+        mapping.get("relations") or [],
     )
     issues = _business_issues(
         business_fields,
@@ -198,6 +199,7 @@ def _missing_relations(
     db_name: str,
     main_table: str,
     physical_tables: set[str],
+    declared_relations: list[dict[str, Any]],
 ) -> list[str]:
     if len(physical_tables) <= 1:
         return []
@@ -206,8 +208,21 @@ def _missing_relations(
     has_relation_table = inspect(engine).has_table("med_table_relation")
     missing: list[str] = []
     for other in others:
-        found = None
-        if has_relation_table:
+        found = any(
+            str(item.get("status") or "confirmed").lower() == "confirmed"
+            and (
+                (
+                    str(item.get("left_table") or "") == anchor
+                    and str(item.get("right_table") or "") == other
+                )
+                or (
+                    str(item.get("left_table") or "") == other
+                    and str(item.get("right_table") or "") == anchor
+                )
+            )
+            for item in declared_relations
+        )
+        if not found and has_relation_table:
             with engine.connect() as conn:
                 found = conn.execute(
                     text(

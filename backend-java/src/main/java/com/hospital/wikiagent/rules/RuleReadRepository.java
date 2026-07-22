@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
 
 import tools.jackson.databind.JsonNode;
@@ -30,13 +31,27 @@ public class RuleReadRepository {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final WikiRuleKnowledgeSource wiki;
 
+    @Autowired
+    public RuleReadRepository(
+            JdbcTemplate jdbc, ObjectMapper objectMapper, WikiRuleKnowledgeSource wiki) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+        this.wiki = wiki;
+    }
+
+    /** 仅供原有仓储单元测试和 MySQL→Wiki 迁移核对使用。 */
     public RuleReadRepository(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.wiki = null;
     }
 
     public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
+        if (wiki != null) {
+            return wiki.searchForHospital(query, hospitalId, limit);
+        }
         String normalized = query == null ? "" : query.strip();
         String pattern = "%" + normalized + "%";
         LocalDateTime now = LocalDateTime.now();
@@ -68,6 +83,9 @@ public class RuleReadRepository {
     }
 
     public List<Map<String, String>> activeIndicatorNames(String hospitalId, int limit) {
+        if (wiki != null) {
+            return wiki.activeIndicatorNames(hospitalId, limit);
+        }
         int safeLimit = Math.max(1, Math.min(500, limit));
         List<Map<String, String>> values = new ArrayList<>();
         jdbc.query(
@@ -94,6 +112,9 @@ public class RuleReadRepository {
     }
 
     public Map<String, Object> effectiveRule(String query, String hospitalId) {
+        if (wiki != null) {
+            return wiki.effectiveRule(query, hospitalId);
+        }
         Map<String, Object> standard = findStandard(query);
         if (standard == null) {
             Map<String, Object> defined = findDefined(query, hospitalId);
@@ -258,6 +279,25 @@ public class RuleReadRepository {
     }
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {
+        if (wiki != null) {
+            Map<String, Object> result = new LinkedHashMap<>(wiki.fieldMapping(ruleId, hospitalId));
+            List<Map<String, Object>> metadataItems = new ArrayList<>();
+            for (Map<String, Object> item : listOfMaps(result.get("items"))) {
+                Map<String, Object> enriched = new LinkedHashMap<>(item);
+                String actualType = jdbc.query(
+                        "SELECT data_type FROM med_metadata_column "
+                                + "WHERE hospital_id=? AND db_name=? AND table_name=? AND column_name=? "
+                                + "ORDER BY id DESC LIMIT 1",
+                        rows -> rows.next() ? text(rows.getObject(1)) : "",
+                        hospitalId, text(item.get("db_name")), text(item.get("table_name")),
+                        text(item.get("column_name")));
+                enriched.put("mapping_data_type", text(item.get("data_type")));
+                enriched.put("metadata_data_type", actualType);
+                metadataItems.add(enriched);
+            }
+            result.put("metadata_items", metadataItems);
+            return result;
+        }
         List<Map<String, Object>> items = jdbc.query(
                 "SELECT business_field,db_name,table_name,column_name,data_type,status "
                         + "FROM med_field_mapping WHERE hospital_id=? AND rule_id=? ORDER BY id",
@@ -534,6 +574,18 @@ public class RuleReadRepository {
 
     private static int integer(Object value) {
         return value instanceof Number number ? number.intValue() : Integer.parseInt(text(value));
+    }
+
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> source)) continue;
+            Map<String, Object> copy = new LinkedHashMap<>();
+            source.forEach((key, nested) -> copy.put(String.valueOf(key), nested));
+            result.add(copy);
+        }
+        return result;
     }
 
     private static String text(Object value) {

@@ -6,13 +6,20 @@ spring:
   application:
     name: wiki-agent-java
   datasource:
-    url: ${WIKI_RUNTIME_DB_URL:jdbc:mysql://127.0.0.1:3306/wiki_agent_runtime?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${WIKI_RUNTIME_DB_USER:root}
-    password: ${WIKI_RUNTIME_DB_PASSWORD:}
+    url: ${WIKI_RUNTIME_DB_URL:jdbc:sqlite:runtime/wiki_agent_runtime.db}
+    driver-class-name: org.sqlite.JDBC
+    username: ""
+    password: ""
     hikari:
       maximum-pool-size: 6
       minimum-idle: 0
       connection-timeout: 5000
+      connection-init-sql: PRAGMA busy_timeout=30000
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:sqlite-runtime-schema.sql
+      continue-on-error: false
   jackson:
     property-naming-strategy: SNAKE_CASE
     deserialization:
@@ -25,6 +32,8 @@ management:
         include: health,info
 
 wiki:
+  knowledge:
+    root: ${WIKI_KNOWLEDGE_ROOT:core-rules-wiki}
   migration:
     authority-runtime: ${MIGRATION_AUTHORITY_RUNTIME:python}
     cutover-approved: ${MIGRATION_CUTOVER_APPROVED:false}

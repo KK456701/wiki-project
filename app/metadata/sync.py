@@ -308,6 +308,17 @@ def _persist_metadata_batch(
             sync_batch_id=VALUES(sync_batch_id), sync_time=CURRENT_TIMESTAMP
         """
     with runtime_engine.begin() as conn:
+        if sqlite:
+            # SQLite is the embedded projection store. Replace the scoped snapshot
+            # atomically instead of relying on MySQL's ON DUPLICATE KEY syntax.
+            conn.execute(
+                text("DELETE FROM med_metadata_table WHERE hospital_id=:h AND db_name=:d"),
+                {"h": hospital_id, "d": db_name},
+            )
+            conn.execute(
+                text("DELETE FROM med_metadata_column WHERE hospital_id=:h AND db_name=:d"),
+                {"h": hospital_id, "d": db_name},
+            )
         if table_params:
             conn.execute(text(table_sql), table_params)
         if column_params:

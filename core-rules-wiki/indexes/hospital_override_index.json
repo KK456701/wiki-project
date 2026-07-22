@@ -3,10 +3,33 @@
   "hospital_overrides": [
     {
       "hospital_id": "hospital_001",
+      "rule_id": "MQSI2025_001",
+      "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001_override.md",
+      "status": "approved",
+      "version": "hospital_001_MQSI2025_001_v4",
+      "hospital_version": 4,
+      "change_id": "MYSQL_MIGRATION_20260722",
+      "versions": [
+        {
+          "version_id": "hospital_001_MQSI2025_001_v4",
+          "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001/versions/hospital_001_MQSI2025_001_v4.md",
+          "change_id": "MYSQL_MIGRATION_20260722",
+          "approved_at": "2026-07-22",
+          "approver_id": "migration",
+          "source": "mysql_migration",
+          "status": "approved"
+        }
+      ],
+      "active_version_id": "hospital_001_MQSI2025_001_v4",
+      "active_version_path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001/versions/hospital_001_MQSI2025_001_v4.md"
+    },
+    {
+      "hospital_id": "hospital_001",
       "rule_id": "MQSI2025_005",
       "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_005_override.md",
       "status": "approved",
       "version": "hospital_001_2026-07-05T21:22:02",
+      "hospital_version": 1,
       "change_id": "CR_20260705_230621_dca41d",
       "versions": [
         {

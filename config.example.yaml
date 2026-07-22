@@ -1,13 +1,13 @@
 # 复制本文件为 config.yaml，并按本地环境修改。
 
 # 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
-runtime_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_agent_runtime?charset=utf8mb4"
+runtime_db_url: "sqlite+pysqlite:///runtime/wiki_agent_runtime.db"
 
-# 公司知识中心库：仅在公司回收与发布服务中配置，医院端不需要连接。
-company_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/wiki_company_kb?charset=utf8mb4"
+# 公司包交换和审批状态：单机部署与运行库共用内嵌 SQLite。
+company_db_url: "sqlite+pysqlite:///runtime/wiki_agent_runtime.db"
 
-# 正式医院业务库。运行库和规则库仍使用上面的 MySQL；患者业务数据只通过
-# DBHub 只读访问 SQL Server，不在本项目中保存数据库账号密码。
+# 规则正文、医院口径、字段映射和 SQL 规格直接从 core-rules-wiki 读取。
+# 患者业务数据只通过 DBHub 只读访问 SQL Server，应用不保存其账号密码。
 business_db_source_id: "win60_qa_991827"
 business_db_dialect: "sqlserver"
 business_db_database: "WIN60_QA_991827"
@@ -18,11 +18,9 @@ business_db_transfer_department_code: 399549991
 business_db_transfer_ward_code: 399549990
 business_db_icu_org_ids: ""
 
-# 本地演示数据脚本使用的业务库连接。正式运行链路仍通过下方 DBHub MCP
-# 使用只读账号访问医院业务库；不要把真实密码提交到 Git。
-business_db_url: "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/hospital_demo_data?charset=utf8mb4"
+# 医院业务库统一经下方 DBHub MCP 访问；不要把真实密码提交到 Git。
 
-# DBHub MCP sidecar：用于访问医院业务库和运行库。
+# DBHub MCP sidecar：仅用于访问医院 SQL Server 业务库。
 dbhub_api_url: "http://127.0.0.1:8080"
 dbhub_http_url: "http://127.0.0.1:8080"
 dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
@@ -33,8 +31,6 @@ dbhub_source_id_hospital_demo_data: "hospital_demo_data"
 dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
 dbhub_source_id_win60_qa_991827: "win60_qa_991827"
 dbhub_execute_tool_win60_qa_991827: "execute_sql_win60_qa_991827"
-dbhub_source_id_wiki_agent_runtime: "wiki_agent_runtime"
-dbhub_execute_tool_wiki_agent_runtime: "execute_sql_wiki_agent_runtime"
 
 # 元数据缓存最大有效时间。
 metadata_max_age_hours: 24

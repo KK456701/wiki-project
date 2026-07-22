@@ -3,6 +3,7 @@
 from .repository import (
     FallbackRuleRepository,
     MySQLRuleRepository,
+    WikiRuleRepository,
     RuleNotFoundError,
     RuleRepository,
     WikiRuleSource,
@@ -14,6 +15,7 @@ __all__ = [
     "FOUR_INDICATOR_CODES",
     "FallbackRuleRepository",
     "MySQLRuleRepository",
+    "WikiRuleRepository",
     "RuleNotFoundError",
     "RuleRepository",
     "WikiRuleSource",

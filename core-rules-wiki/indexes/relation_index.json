@@ -30,7 +30,15 @@
       ],
       "depends_on_fields": [],
       "uses_tables": [],
-      "has_hospital_override": [],
+      "has_hospital_override": [
+        {
+          "hospital_id": "hospital_001",
+          "target_path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001_override.md",
+          "active_version_id": "hospital_001_MQSI2025_001_v4",
+          "active_version_path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001/versions/hospital_001_MQSI2025_001_v4.md",
+          "status": "approved"
+        }
+      ],
       "source_from": [
         {
           "source_path": "raw/national/medical_quality_core_system_indicators_2025_dify_cleaned.md",

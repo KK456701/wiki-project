@@ -364,6 +364,16 @@ def start_monitoring_scheduler() -> None:
         set_monitoring_scheduler_error(str(exc))
 
 
+def initialize_embedded_runtime() -> None:
+    try:
+        from app.db.engine import create_runtime_engine, ensure_embedded_runtime_schema
+
+        engine = create_runtime_engine()
+        ensure_embedded_runtime_schema(engine)
+    except Exception:
+        logger.exception("embedded runtime schema initialization failed")
+
+
 def initialize_terminology_runtime() -> None:
     try:
         from app.db.engine import create_runtime_engine
@@ -435,6 +445,7 @@ def stop_monitoring_scheduler() -> None:
         scheduler.shutdown()
 
 
+app.add_event_handler("startup", initialize_embedded_runtime)
 app.add_event_handler("startup", initialize_terminology_runtime)
 app.add_event_handler("startup", initialize_rule_lineage_runtime)
 app.add_event_handler("startup", initialize_hospital_auth_runtime)
@@ -779,7 +790,7 @@ def create_change_request(request: ChangeRequestCreate) -> dict[str, Any]:
             "change_request_submit",
             error_count=1,
         )
-        raise HTTPException(status_code=503, detail=f"MySQL 规则库写入失败: {exc}") from exc
+        raise HTTPException(status_code=503, detail=f"Wiki 规则写入失败: {exc}") from exc
 
 
 @app.post("/api/kb/search")
@@ -1259,7 +1270,7 @@ def approve_change_request(
             "index_rebuild",
             "success",
             {"change_id": change_id, "rule_id": result.get("rule_id"), "hospital_id": result.get("hospital_id")},
-            {"status": "mysql_projection_updated", "active_version_id": result.get("active_version_id")},
+            {"status": "wiki_projection_updated", "active_version_id": result.get("active_version_id")},
         )
         _finish_api_trace(recorder, trace_id, "success", str(result.get("active_version_id") or ""), "approval_apply_override")
         complete_recovery_task(runtime_engine, recovery_task_id, result)
@@ -1323,7 +1334,7 @@ def restore_hospital_override_version(
     try:
         approver_id = (body.approver_id if body else None) or "admin"
         result = _create_rule_repository().restore_version(
-            rule_id, hospital_id, int(version_id), approver_id
+            rule_id, hospital_id, version_id, approver_id
         )
         update_recovery_task(runtime_engine, recovery_task_id, current_step="index_rebuild")
         record_review_trace_node(
@@ -1340,7 +1351,7 @@ def restore_hospital_override_version(
             "index_rebuild",
             "success",
             {"rule_id": rule_id, "hospital_id": hospital_id, "version_id": version_id},
-            {"status": "mysql_projection_updated", "active_version_id": result.get("active_version_id")},
+            {"status": "wiki_projection_updated", "active_version_id": result.get("active_version_id")},
         )
         _finish_api_trace(recorder, trace_id, "success", str(result.get("active_version_id") or ""), "approval_apply_override")
         complete_recovery_task(runtime_engine, recovery_task_id, result)

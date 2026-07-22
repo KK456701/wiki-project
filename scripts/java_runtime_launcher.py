@@ -44,20 +44,33 @@ def build_java_environment(
     config: Mapping[str, object], base_environment: Mapping[str, str]
 ) -> dict[str, str]:
     environment = dict(base_environment)
-    runtime_url = urlparse(str(config.get("runtime_db_url") or ""))
-    if not runtime_url.hostname or not runtime_url.path.strip("/"):
+    runtime_value = str(config.get("runtime_db_url") or "")
+    runtime_url = urlparse(runtime_value)
+    if not runtime_url.scheme:
         raise ValueError("config.yaml 缺少有效 runtime_db_url")
-
-    database = runtime_url.path.strip("/")
-    port = runtime_url.port or 3306
-    environment.setdefault(
-        "WIKI_RUNTIME_DB_URL",
-        "jdbc:mysql://"
-        f"{runtime_url.hostname}:{port}/{database}"
-        "?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai",
-    )
-    environment.setdefault("WIKI_RUNTIME_DB_USER", unquote(runtime_url.username or "root"))
-    environment.setdefault("WIKI_RUNTIME_DB_PASSWORD", unquote(runtime_url.password or ""))
+    if runtime_url.scheme.startswith("sqlite"):
+        raw_path = runtime_value.split("///", 1)[-1]
+        database_path = Path(unquote(raw_path))
+        if not database_path.is_absolute():
+            database_path = ROOT / database_path
+        database_path.parent.mkdir(parents=True, exist_ok=True)
+        environment.setdefault("WIKI_RUNTIME_DB_URL", f"jdbc:sqlite:{database_path.resolve()}")
+        environment.setdefault("WIKI_RUNTIME_DB_USER", "")
+        environment.setdefault("WIKI_RUNTIME_DB_PASSWORD", "")
+    else:
+        if not runtime_url.hostname or not runtime_url.path.strip("/"):
+            raise ValueError("config.yaml 缺少有效 runtime_db_url")
+        database = runtime_url.path.strip("/")
+        port = runtime_url.port or 3306
+        environment.setdefault(
+            "WIKI_RUNTIME_DB_URL",
+            "jdbc:mysql://"
+            f"{runtime_url.hostname}:{port}/{database}"
+            "?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai",
+        )
+        environment.setdefault("WIKI_RUNTIME_DB_USER", unquote(runtime_url.username or "root"))
+        environment.setdefault("WIKI_RUNTIME_DB_PASSWORD", unquote(runtime_url.password or ""))
+    environment.setdefault("WIKI_KNOWLEDGE_ROOT", str(ROOT / "core-rules-wiki"))
     environment.setdefault("WIKI_ADMIN_PASSWORD", str(config.get("admin_password") or ""))
 
     source_id = str(config.get("business_db_source_id") or "win60_qa_991827")
@@ -72,7 +85,7 @@ def build_java_environment(
     environment["PATH"] = java_bin + os.pathsep + environment.get("PATH", "")
     append_java_proxy_options(environment, config.get("java_http_proxy_url"))
 
-    if not environment["WIKI_RUNTIME_DB_PASSWORD"]:
+    if not runtime_url.scheme.startswith("sqlite") and not environment["WIKI_RUNTIME_DB_PASSWORD"]:
         raise ValueError("运行库密码未配置")
     if not environment["WIKI_ADMIN_PASSWORD"]:
         raise ValueError("管理员密码未配置")

@@ -56,6 +56,24 @@ class PlanValidatorTest {
         assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-21T16:00");
     }
 
+    @Test
+    void relativeUserTextOverridesModelInventedAbsoluteDates() {
+        TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
+                Instant.parse("2026-07-22T04:30:00Z"),
+                ZoneId.of("Asia/Shanghai")));
+        PlanValidator fixedValidator = new PlanValidator(resolver);
+
+        PlanValidation result = fixedValidator.validate(plan(
+                List.of(),
+                new RequestPlan.TimeExpression(
+                        "从一月份到现在",
+                        "2025-01-01 00:00:00",
+                        "2026-07-22 00:00:00")));
+
+        assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2026-01-01T00:00");
+        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-22T12:30");
+    }
+
     private static RequestPlan plan(List<String> constraints, RequestPlan.TimeExpression time) {
         return new RequestPlan(
                 null,

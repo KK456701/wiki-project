@@ -1012,6 +1012,191 @@ class WikiRuleSource:
         return {**result, "hospital_id": hospital_id}
 
 
+class WikiRuleRepository(WikiRuleSource):
+    """Wiki-first rule repository; all rule reads and governance stay file based."""
+
+    @staticmethod
+    def _annotate(result: dict[str, Any]) -> dict[str, Any]:
+        return {**result, "rule_source": "wiki", "warnings": result.get("warnings", [])}
+
+    def search_for_hospital(
+        self, query: str, hospital_id: str, limit: int = 5
+    ) -> dict[str, Any]:
+        return self.search(query, limit=limit)
+
+    def search(self, query: str, limit: int = 5) -> dict[str, Any]:
+        return self._annotate(super().search(query, limit=limit))
+
+    def get_effective_rule(
+        self, index_code_or_name: str, hospital_id: str | None
+    ) -> dict[str, Any]:
+        from app.sqlgen.spec_loader import (
+            load_field_contract,
+            load_hospital_mapping,
+            load_rule_sql_spec,
+            load_template,
+        )
+
+        result = super().get_effective_rule(index_code_or_name, hospital_id)
+        rule_id = str(result.get("rule_id") or index_code_or_name)
+        hospital_override = dict(result.get("hospital_override") or {})
+        result["hospital_version"] = hospital_override.get(
+            "hospital_version", hospital_override.get("version")
+        )
+        try:
+            spec = load_rule_sql_spec(self.tools.kb_root, rule_id)
+            contract = load_field_contract(self.tools.kb_root, rule_id)
+            mapping = (
+                load_hospital_mapping(self.tools.kb_root, hospital_id, rule_id)
+                if hospital_id
+                else {}
+            )
+            dialect = str(mapping.get("dialect") or "mysql")
+            template = load_template(self.tools.kb_root, rule_id, dialect)
+            default_params = dict(spec.get("default_params") or {})
+            text_value = f"{result.get('formula', '')} {result.get('definition', '')}"
+            for key, value in list(default_params.items()):
+                if "minute" in key:
+                    match = re.search(r"(\d+)\s*分钟", text_value)
+                    if match:
+                        default_params[key] = int(match.group(1))
+                elif "hour" in key:
+                    match = re.search(r"(\d+)\s*小时", text_value)
+                    if match:
+                        default_params[key] = int(match.group(1))
+            result.update(
+                {
+                    "numerator_rule": str(
+                        (spec.get("numerator") or {}).get("name") or ""
+                    ),
+                    "denominator_rule": str(
+                        (spec.get("denominator") or {}).get("name") or ""
+                    ),
+                    "filter_rule": "；".join(
+                        str(item)
+                        for item in (spec.get("denominator") or {}).get("logic", [])
+                    ),
+                    "exclude_rule": "；".join(
+                        str(item)
+                        for item in (spec.get("numerator") or {}).get("logic", [])
+                        if "!=" in str(item) or "exclude" in str(item).lower()
+                    ),
+                    "standard_sql": template,
+                    "implementation_status": template,
+                    "calculation_definition": dict(spec.get("calculation") or {}),
+                    "national_calculation_definition": dict(
+                        spec.get("calculation") or {}
+                    ),
+                    "field_contract": contract,
+                    "effective_params": default_params,
+                    "national_params": dict(spec.get("default_params") or {}),
+                    "sql_status": (
+                        "available"
+                        if mapping.get("status") == "confirmed" and template.strip()
+                        else "unavailable"
+                    ),
+                }
+            )
+        except (FileNotFoundError, ValueError):
+            # 未实施的规则仍可从 Wiki 回答定义与公式，但不能生成 SQL。
+            result.setdefault("standard_sql", "")
+            result.setdefault("effective_params", {})
+            result.setdefault("calculation_definition", {})
+            result.setdefault("field_contract", {})
+        return self._annotate(result)
+
+    def get_caliber_comparison(
+        self, index_code_or_name: str, hospital_id: str
+    ) -> dict[str, Any]:
+        effective = self.get_effective_rule(index_code_or_name, hospital_id)
+        return {
+            "rule_id": effective.get("rule_id"),
+            "hospital_id": hospital_id,
+            "applicable": True,
+            "effective_level": effective.get("effective_level"),
+            "hospital_rule": effective.get("hospital_override"),
+            "company_rule": effective.get("company_rule"),
+            "national_rule": effective.get("national_rule"),
+            "warnings": effective.get("warnings", []),
+            "rule_source": "wiki",
+        }
+
+    def get_field_mapping(self, index_code: str, hospital_id: str) -> dict[str, Any]:
+        from app.sqlgen.spec_loader import load_field_contract, load_hospital_mapping
+
+        try:
+            mapping = dict(
+                load_hospital_mapping(self.tools.kb_root, hospital_id, index_code)
+            )
+            contract = load_field_contract(self.tools.kb_root, index_code)
+        except FileNotFoundError:
+            return self._annotate(super().get_field_mapping(index_code, hospital_id))
+        business_fields = dict(contract.get("business_fields") or {})
+        items: list[dict[str, Any]] = []
+        metadata_items: list[dict[str, Any]] = []
+        for business_field, physical in dict(mapping.get("fields") or {}).items():
+            table_name, _, column_name = str(physical).rpartition(".")
+            expected_type = str(
+                (business_fields.get(business_field) or {}).get("type") or ""
+            )
+            item = {
+                "business_field": business_field,
+                "db_name": mapping.get("db_name", ""),
+                "table_name": table_name,
+                "column_name": column_name,
+                "data_type": expected_type,
+                "status": mapping.get("status", "missing"),
+            }
+            items.append(item)
+            metadata_items.append(
+                {
+                    **item,
+                    "mapping_data_type": expected_type,
+                    # 实际类型由 metadata precheck 从 SQLite 的 DBHub 快照读取。
+                    "metadata_data_type": "",
+                }
+            )
+        mapping.update(
+            {
+                "rule_id": index_code,
+                "hospital_id": hospital_id,
+                "items": items,
+                "metadata_items": metadata_items,
+                "relations": list(mapping.get("relations") or []),
+            }
+        )
+        return self._annotate(mapping)
+
+    def build_feedback_preview(
+        self, index_code: str, hospital_id: str | None, user_feedback: str
+    ) -> dict[str, Any]:
+        return self._annotate(
+            self.tools.build_feedback_preview(index_code, hospital_id, user_feedback)
+        )
+
+    def submit_change_request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.tools.submit_change_request(payload)
+
+    def list_pending_changes(self) -> list[dict[str, Any]]:
+        return self.tools.list_pending_change_requests()
+
+    def reject_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
+        return self.tools.reject_change_request(change_id, approver_id)
+
+    def approve_change_request(self, change_id: str, approver_id: str) -> dict[str, Any]:
+        return self.tools.approve_change_request(change_id, approver_id)
+
+    def list_versions(self, index_code: str, hospital_id: str) -> dict[str, Any]:
+        return self.tools.list_hospital_override_versions(index_code, hospital_id)
+
+    def restore_version(
+        self, index_code: str, hospital_id: str, version: int | str, approver_id: str
+    ) -> dict[str, Any]:
+        return self.tools.restore_hospital_override_version(
+            index_code, hospital_id, str(version), approver_id
+        )
+
+
 class FallbackRuleRepository:
     def __init__(self, primary: RuleRepository, fallback: WikiRuleSource) -> None:
         self.primary = primary
@@ -1137,6 +1322,5 @@ class FallbackRuleRepository:
 def create_rule_repository(engine: Engine, kb_root: str | Path) -> RuleRepository:
     from app.kb.tools import KnowledgeBaseTools
 
-    primary = MySQLRuleRepository(engine)
-    fallback = WikiRuleSource(KnowledgeBaseTools(kb_root))
-    return FallbackRuleRepository(primary, fallback)
+    del engine  # 保留参数兼容现有调用方；规则知识不再读取运行数据库。
+    return WikiRuleRepository(KnowledgeBaseTools(kb_root))

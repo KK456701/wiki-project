@@ -55,12 +55,6 @@ public class TimeRangeResolver {
         if (expression == null) {
             return null;
         }
-        if (expression.startTime() != null && expression.endTime() != null) {
-            LocalDateTime start = parse(expression.startTime());
-            LocalDateTime end = parse(expression.endTime());
-            return valid(start, end, expression.rawText());
-        }
-
         LocalDateTime now = LocalDateTime.now(clock);
         String raw = normalize(expression.rawText());
         if (SetValues.CURRENT_MONTH.contains(raw)) {
@@ -134,6 +128,13 @@ public class TimeRangeResolver {
             if (raw.contains(relative)) {
                 return resolve(new TimeExpression(relative, null, null));
             }
+        }
+        // 用户原始时间表达是事实来源。模型擅自补出的绝对日期不能覆盖
+        // “从一月份到现在”等可由服务端确定性解析的相对时间。
+        if (expression.startTime() != null && expression.endTime() != null) {
+            LocalDateTime start = parse(expression.startTime());
+            LocalDateTime end = parse(expression.endTime());
+            return valid(start, end, expression.rawText());
         }
         return null;
     }

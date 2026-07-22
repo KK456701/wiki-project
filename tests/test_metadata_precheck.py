@@ -177,6 +177,43 @@ class MetadataPrecheckTest(unittest.TestCase):
             ["arrive_time：期望 datetime，实际 varchar（consult_record.arrive_time）"],
         )
 
+    def test_accepts_confirmed_relation_declared_in_wiki_mapping(self) -> None:
+        mapping = copy.deepcopy(_mapping())
+        mapping["fields"]["arrive_time"] = "staff_directory.arrive_time"
+        for item in mapping["items"]:
+            if item["business_field"] == "arrive_time":
+                item.update(table_name="staff_directory", column_name="arrive_time")
+        mapping["relations"] = [
+            {
+                "left_table": "consult_record",
+                "right_table": "staff_directory",
+                "status": "confirmed",
+            }
+        ]
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO med_metadata_column
+                      (hospital_id, db_name, table_name, column_name, data_type)
+                    VALUES
+                      ('hospital_001', 'hospital_demo_data', 'staff_directory', 'arrive_time', 'datetime')
+                    """
+                )
+            )
+
+        result = precheck_rule_fields(
+            KB_ROOT,
+            self.engine,
+            "hospital_001",
+            "MQSI2025_005",
+            calculation_definition=_urgent_calculation(),
+            field_mapping=mapping,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["missing_relations"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

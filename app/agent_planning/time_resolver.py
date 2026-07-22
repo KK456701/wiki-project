@@ -78,13 +78,6 @@ class TimeRangeResolver:
             if now.tzinfo is None
             else now.astimezone(self.timezone)
         )
-        if expression.start_time and expression.end_time:
-            start = _parse_datetime(expression.start_time, self.timezone)
-            end = _parse_datetime(expression.end_time, self.timezone)
-            if start >= end:
-                return None
-            return self._result(start, end, expression.raw_text)
-
         raw = re.sub(r"\s+", "", expression.raw_text or "")
         raw = re.sub(r"(?:的)?(?:结果|数据|指标值)$", "", raw)
         raw = raw.removesuffix("的")
@@ -178,6 +171,14 @@ class TimeRangeResolver:
                 TimeExpression(raw_text=relative_periods[0]),
                 now=local_now,
             )
+        # 原始用户表达优先于模型补写的绝对边界，避免小模型把
+        # “从一月份到现在”错误补成上一年度。
+        if expression.start_time and expression.end_time:
+            start = _parse_datetime(expression.start_time, self.timezone)
+            end = _parse_datetime(expression.end_time, self.timezone)
+            if start >= end:
+                return None
+            return self._result(start, end, expression.raw_text)
         return None
 
     def _result(

@@ -18,6 +18,10 @@ def _uid(prefix: str = "") -> str:
     return f"{prefix}{uuid.uuid4().hex[:12]}"
 
 
+def _current_timestamp(engine: Engine) -> str:
+    return "CURRENT_TIMESTAMP" if engine.dialect.name == "sqlite" else "NOW()"
+
+
 def _normalize_datetime(value: datetime | str | None) -> str | None:
     if value is None:
         return None
@@ -47,6 +51,10 @@ def log_sync_table(engine: Engine, hospital_id: str, db_name: str, table_name: s
     with engine.connect() as conn:
         if engine.dialect.name == "sqlite":
             conn.execute(
+                text("DELETE FROM med_metadata_table WHERE hospital_id=:h AND db_name=:d AND table_name=:t"),
+                {"h": hospital_id, "d": db_name, "t": table_name},
+            )
+            conn.execute(
                 text("""INSERT INTO med_metadata_table (hospital_id, db_name, table_name, table_comment, table_type, sync_batch_id, sync_time)
                          VALUES (:h, :d, :t, :c, :ty, :b, CURRENT_TIMESTAMP)"""),
                 {"h": hospital_id, "d": db_name, "t": table_name, "c": table_comment or "", "ty": table_type or "", "b": batch_id})
@@ -66,6 +74,10 @@ def log_sync_column(engine: Engine, hospital_id: str, db_name: str, table_name: 
         params = {"h": hospital_id, "d": db_name, "t": table_name, "cn": col_name, "dt": data_type or "", "ct": col_type or "",
                   "n": is_nullable or "", "k": col_key or "", "cd": str(col_default or ""), "cc": col_comment or "", "b": batch_id}
         if engine.dialect.name == "sqlite":
+            conn.execute(
+                text("DELETE FROM med_metadata_column WHERE hospital_id=:h AND db_name=:d AND table_name=:t AND column_name=:cn"),
+                {"h": hospital_id, "d": db_name, "t": table_name, "cn": col_name},
+            )
             conn.execute(
                 text("""INSERT INTO med_metadata_column (hospital_id, db_name, table_name, column_name, data_type, column_type, is_nullable, column_key, column_default, column_comment, sync_batch_id, sync_time)
                          VALUES (:h, :d, :t, :cn, :dt, :ct, :n, :k, :cd, :cc, :b, CURRENT_TIMESTAMP)"""),
@@ -92,6 +104,18 @@ def insert_field_mapping(engine: Engine, hospital_id: str, rule_id: str, busines
                          db_name: str, table_name: str, column_name: str, data_type: str,
                          updated_by: str = "") -> None:
     with engine.connect() as conn:
+        if engine.dialect.name == "sqlite":
+            conn.execute(
+                text("DELETE FROM med_field_mapping WHERE hospital_id=:h AND rule_id=:r AND business_field=:b"),
+                {"h": hospital_id, "r": rule_id, "b": business_field},
+            )
+            conn.execute(
+                text("""INSERT INTO med_field_mapping (hospital_id, rule_id, business_field, db_name, table_name, column_name, data_type, status, updated_by, updated_at)
+                         VALUES (:h, :r, :b, :d, :t, :c, :dt, 'confirmed', :u, CURRENT_TIMESTAMP)"""),
+                {"h": hospital_id, "r": rule_id, "b": business_field, "d": db_name, "t": table_name, "c": column_name, "dt": data_type or "", "u": updated_by},
+            )
+            conn.commit()
+            return
         conn.execute(
             text("""INSERT INTO med_field_mapping (hospital_id, rule_id, business_field, db_name, table_name, column_name, data_type, status, updated_by, updated_at)
                      VALUES (:h, :r, :b, :d, :t, :c, :dt, 'confirmed', :u, NOW())
@@ -104,8 +128,9 @@ def insert_generated_sql(engine: Engine, sql_id: str, hospital_id: str, rule_id:
                          dialect: str, sql_text: str, sql_status: str,
                          validation_message: str, generated_by: str) -> None:
     with engine.connect() as conn:
+        now = _current_timestamp(engine)
         conn.execute(
-            text("INSERT INTO med_generated_sql (sql_id, hospital_id, rule_id, dialect, sql_text, sql_status, validation_message, generated_by, generated_at) VALUES (:s, :h, :r, :d, :t, :st, :v, :b, NOW())"),
+            text(f"INSERT INTO med_generated_sql (sql_id, hospital_id, rule_id, dialect, sql_text, sql_status, validation_message, generated_by, generated_at) VALUES (:s, :h, :r, :d, :t, :st, :v, :b, {now})"),
             {"s": sql_id, "h": hospital_id, "r": rule_id, "d": dialect, "t": sql_text, "st": sql_status, "v": validation_message or "", "b": generated_by})
         conn.commit()
 
@@ -121,10 +146,11 @@ def insert_sql_run_log(engine: Engine, run_id: str, sql_id: str, hospital_id: st
         for column in inspect(engine).get_columns("med_sql_run_log")
     }
     with engine.connect() as conn:
+        now = _current_timestamp(engine)
         params = {"rid": run_id, "sid": sql_id, "h": hospital_id, "r": rule_id, "ss": stat_start, "se": stat_end, "rs": run_status, "rv": result_value, "e": error_message or "", "d": duration_ms, "b": run_by}
         if {"numerator_count", "denominator_count", "run_context_json"} <= columns:
             conn.execute(
-                text("INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time, numerator_count, denominator_count, run_context_json) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, NOW(), :numerator_count, :denominator_count, :run_context_json)"),
+                text(f"INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time, numerator_count, denominator_count, run_context_json) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, {now}, :numerator_count, :denominator_count, :run_context_json)"),
                 {
                     **params,
                     "numerator_count": numerator_count,
@@ -134,7 +160,7 @@ def insert_sql_run_log(engine: Engine, run_id: str, sql_id: str, hospital_id: st
             )
         else:
             conn.execute(
-                text("INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, NOW())"),
+                text(f"INSERT INTO med_sql_run_log (run_id, sql_id, hospital_id, rule_id, stat_start_time, stat_end_time, run_status, result_value, error_message, duration_ms, run_by, run_time) VALUES (:rid, :sid, :h, :r, :ss, :se, :rs, :rv, :e, :d, :b, {now})"),
                 params,
             )
         conn.commit()
@@ -639,7 +665,8 @@ def insert_run_result(engine: Engine, hospital_id: str, rule_id: str, stat_perio
     if previous_value is not None and previous_value != 0:
         change_rate = round((result_value - previous_value) / previous_value * 100, 2)
     with engine.connect() as conn:
+        now = _current_timestamp(engine)
         conn.execute(
-            text("INSERT INTO med_index_run_result (hospital_id, rule_id, stat_period, result_value, previous_value, change_rate, run_id, created_at) VALUES (:h, :r, :sp, :rv, :pv, :cr, :rid, NOW())"),
+            text(f"INSERT INTO med_index_run_result (hospital_id, rule_id, stat_period, result_value, previous_value, change_rate, run_id, created_at) VALUES (:h, :r, :sp, :rv, :pv, :cr, :rid, {now})"),
             {"h": hospital_id, "r": rule_id, "sp": stat_period, "rv": result_value, "pv": previous_value, "cr": change_rate, "rid": run_id})
         conn.commit()

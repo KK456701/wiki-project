@@ -1,6 +1,6 @@
 # Java 17 + Spring AI + Vue 3 渐进迁移
 
-> 更新日期：2026-07-22。阶段 0 至阶段 5、业务工作台、单 JAR 构建、真实只读双跑、正式切流、回退演练和稳定观察均已完成。Java 当前是 `8765` 权威运行时并直接提供 Vue 3 页面；FastAPI 保留为显式回退入口。
+> 更新日期：2026-07-22。阶段 0 至阶段 5、业务工作台、单 JAR 构建、真实只读双跑、正式切流、回退演练和稳定观察均已完成。Java 当前是 `8765` 权威运行时并直接提供 Vue 3 页面；FastAPI 保留为显式回退入口。规则已统一迁移到 `core-rules-wiki/`，运行数据已迁移到内嵌 SQLite；下文批次记录中的 MySQL 描述仅代表当时迁移状态，不再是当前部署要求。
 
 ## 1. 迁移目标与约束
 
@@ -10,7 +10,7 @@
 
 - Java 17、Spring Boot 4.1、Spring AI 2.0、Maven。
 - Vue 3、TypeScript、Vite、Vue Router、Pinia。
-- 保留现有 MySQL、SQL Server、Ollama、DeepSeek API 和 DBHub sidecar。
+- 保留现有 SQL Server、Ollama、DeepSeek API 和 DBHub sidecar；规则使用 Wiki，运行状态使用内嵌 SQLite，不再部署 MySQL。
 - Java 主服务仍通过 DBHub MCP 访问 SQL Server，不引入直连旁路。
 - 不增加 Redis、消息队列、工作流服务、Docker 或新的生产数据库。
 - Spring AI 只负责模型适配和结构化输出；计划编译、状态控制、策略、工具网关、Evidence 和验证器继续确定性实现。
@@ -29,7 +29,7 @@ flowchart LR
     IR --> C["确定性 Controller / Dispatch"]
     C --> G["PolicyDecision → ToolGateway"]
     G --> RT["规则 / SQL / 诊断 / 文件工具"]
-    RT --> M[("MySQL")]
+    RT --> M[("SQLite 内嵌运行库")]
     RT --> D["DBHub sidecar"]
     D --> S[("SQL Server · 只读")]
     G --> E["Evidence Ledger / Verifier"]
@@ -181,7 +181,7 @@ DBHub 与 Java 的关系是“保留外部数据库能力边界”，不是“Ja
 - `scripts/start-python-runtime.ps1` 提供前台回退入口，同样不会抢占端口。由此切流与回退都是可审计的人工操作，不由代码提交、应用自检或模型自动触发。
 - 2026-07-22 使用最终 JAR 完成真实双跑门禁：12 项通过、0 项失败、0 项跳过，报告 `CUTOVER_20260722T023503Z`。Java 正式接管 `8765` 后，Vue 首页、医院登录、规则解释和 DBHub 受控 SQL 试运行均通过。
 - 回退演练实际停止 Java 并在同一 `8765` 恢复 FastAPI，约 41.13 秒后健康检查、登录、规则查询、解释和试运行全部通过；随后使用同一未过期门禁报告恢复 Java 权威运行时。FastAPI 回退代码和启动器继续保留。
-- DeepSeek 在本机网络下需要现有 HTTP 代理。`scripts/java_runtime_launcher.py` 从 `config.yaml` 的可选 `java_http_proxy_url` 生成 JVM 代理参数，同时把 localhost、DBHub、MySQL 和 Ollama 保持为直连；凭据不会写入启动日志或门禁报告。
+- DeepSeek 在本机网络下需要现有 HTTP 代理。`scripts/java_runtime_launcher.py` 从 `config.yaml` 的可选 `java_http_proxy_url` 生成 JVM 代理参数，同时把 localhost、DBHub 和 Ollama 保持为直连；凭据不会写入启动日志或门禁报告。
 - Planner 可能删除指标名中的空格、虚词或主语。Java 规则读取仅在普通精确/包含搜索无结果后，使用去空白、去“的”的包含式归一化兜底；空结果由 StateController 立即停止，不会重复搜索到最大步骤。
 - 2026-07-22 迁移复核补齐 `HybridIndicatorResolver`：正式名称和已审核别名先做确定性命中，未命中片段再做本地字符语义召回，只有候选接近且不能唯一确认时才调用当前模型在候选 `rule_id` 白名单内消歧。确认后的规范名称和规则编号直接注入单指标或复合子任务，不再依赖 4B/8B Planner 原样抄写指标名称。
 - 同次复核确认并修复两项文档与实现偏差：`preview_rule_change` 已由占位工具改为真实只读字段差异预览；Java 主链已真正实现最多一次的方向性 Replan 和 Final Answer 二次协议校验失败后的 VerifiedEvidence 确定性模板。数据库、权限、缺时间、对象过期、Evidence 冲突及普通工具异常仍禁止 Replan。
@@ -201,7 +201,6 @@ app/ + web/                FastAPI 回退实现与旧前端，稳定窗口结束
 ```powershell
 # Java 服务（默认配置仍为影子模式）
 cd F:\A-wiki-project\backend-java
-$env:WIKI_RUNTIME_DB_PASSWORD = "<本机 MySQL 密码>"
 $env:DBHUB_SOURCE_ID_WIN60_QA_991827 = "win60_qa_991827"
 $env:DBHUB_EXECUTE_TOOL_WIN60_QA_991827 = "execute_sql_win60_qa_991827"
 mvn -s maven-settings.xml test

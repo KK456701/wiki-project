@@ -18,10 +18,25 @@ fields:
   to_dept_id: INPAT_TRANSFER.DESTINATION_DEPT_ID
   to_ward_id: INPAT_TRANSFER.DESTINATION_WARD_ID
 filters: {}
+parameters:
+  hospital_soid: 991827
+  icu_org_ids_csv: "360896232048246943,360915701134999568"
+  transfer_ward_code: 399549990
+  transfer_department_code: 399549991
+  transfer_minutes_threshold: 2880
+  excluded_inpatient_business_code: 399552157
 custom_rules:
   event_selection: first_by_transfer_time
   period_anchor: admitted_at
   threshold_boundary: inclusive
+relations:
+  - left_table: INPATIENT_ENCOUNTER
+    left_column: ENCOUNTER_ID
+    right_table: INPAT_TRANSFER
+    right_column: ENCOUNTER_ID
+    join_type: left
+    relation_source: wiki_confirmed
+    status: confirmed
 status: confirmed
 updated_by: formal_source_import
 updated_at: "2026-07-15 00:00:00"

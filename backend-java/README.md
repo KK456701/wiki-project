@@ -19,7 +19,7 @@ mvn -s maven-settings.xml spring-boot:run
 - `GET /api/migration/status`：查看当前迁移阶段和权威运行时。
 - `GET /api/migration/readiness`：查看 Java 当前是影子还是权威模式、切流门禁和验收报告编号。
 - `GET /api/mcp/dbhub/sources`：通过 Java 客户端访问现有 DBHub sidecar。
-- `POST /api/auth/hospital/login`：使用现有 MySQL 医院账号登录，签发 Python 可识别的共享会话。
+- `POST /api/auth/hospital/login`：使用内嵌 SQLite 中已迁移的医院账号登录，签发 Python 可识别的共享会话。
 - `POST /api/auth/hospital/change-password`、`POST /api/auth/hospital/logout`：兼容现有认证语义。
 - `GET /api/kb/rules/search`：按登录主体所在医院搜索规则。
 - `GET /api/kb/rules/{rule_id}/effective`：读取本院生效口径；客户端传入其他医院会被拒绝。
@@ -56,7 +56,7 @@ mvn -s maven-settings.xml spring-boot:run
 - `POST /api/indicator-drafts/{draft_id}/approve|reject`：在管理员和医院双重认证下发布或驳回当前版本任务。
 - `GET /api/hospital-defined/{hospital_id}/{index_code}/versions`、`POST .../restore`：审阅本院新增指标不可变版本，并把指定快照恢复为新的递增版本。
 
-配置在 `src/main/resources/application.yml`。运行库凭据通过 `WIKI_RUNTIME_DB_URL`、`WIKI_RUNTIME_DB_USER` 和 `WIKI_RUNTIME_DB_PASSWORD` 提供，真实密码和令牌不得写入本目录；Java 服务不直连医院 SQL Server。
+配置在 `src/main/resources/application.yml`。默认运行库为 `runtime/wiki_agent_runtime.db`，可通过 `WIKI_RUNTIME_DB_URL` 覆盖；SQLite 不需要用户名或密码。真实令牌不得写入本目录，Java 服务不直连医院 SQL Server。
 
 已登录情况下可以运行早期规则接口双跑：
 
@@ -140,7 +140,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-java-vue.ps1
 脚本只在构建机使用现有 Node.js/npm：如果 `frontend-vue/node_modules` 不存在则执行 `npm ci`，随后运行 Vue 生产构建和 `mvn -Pbundle-vue clean package`。输出的 `backend-java/target/wiki-agent-java-*.jar` 已包含 Vue 的 `index.html`、JS 和 CSS，部署机只需 Java 17：
 
 ```powershell
-$env:WIKI_RUNTIME_DB_PASSWORD = '<MySQL 密码>'
 $env:WIKI_ADMIN_PASSWORD = '<管理员密码>'
 java -jar .\wiki-agent-java-0.1.0-SNAPSHOT.jar
 ```

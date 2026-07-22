@@ -294,78 +294,6 @@
     "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
   },
   {
-    "chunk_id": "MQSI2025_005_national_指标定义",
-    "rule_id": "MQSI2025_005",
-    "title": "急会诊及时到位率_指标定义",
-    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
-    "type": "standard_rule",
-    "level": "national",
-    "section": "指标定义",
-    "keywords": [
-      "MQSI2025_005",
-      "急会诊及时到位率",
-      "会诊制度",
-      "指标定义"
-    ],
-    "related_rule_ids": [
-      "MQSI2025_006",
-      "MQSI2025_007",
-      "MQSI2025_008",
-      "MQSI2025_033"
-    ],
-    "related_fields": [],
-    "related_tables": [],
-    "content": "急会诊请求发出后，10 分钟内到达现场的急会诊次数占同期急会诊总次数的比例。"
-  },
-  {
-    "chunk_id": "MQSI2025_005_national_计算公式",
-    "rule_id": "MQSI2025_005",
-    "title": "急会诊及时到位率_计算公式",
-    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
-    "type": "standard_rule",
-    "level": "national",
-    "section": "计算公式",
-    "keywords": [
-      "MQSI2025_005",
-      "急会诊及时到位率",
-      "会诊制度",
-      "计算公式"
-    ],
-    "related_rule_ids": [
-      "MQSI2025_006",
-      "MQSI2025_007",
-      "MQSI2025_008",
-      "MQSI2025_033"
-    ],
-    "related_fields": [],
-    "related_tables": [],
-    "content": "急会诊及时到位率 = (急会诊记录中 10 分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%"
-  },
-  {
-    "chunk_id": "MQSI2025_005_company_公司实现口径",
-    "rule_id": "MQSI2025_005",
-    "title": "急会诊及时到位率_公司实现口径",
-    "path": "wiki/standards/company/MQSI2025_005_急会诊及时到位率_公司标准.md",
-    "type": "standard_rule",
-    "level": "company",
-    "section": "公司实现口径",
-    "keywords": [
-      "MQSI2025_005",
-      "急会诊及时到位率",
-      "会诊制度",
-      "公司实现口径"
-    ],
-    "related_rule_ids": [
-      "MQSI2025_006",
-      "MQSI2025_007",
-      "MQSI2025_008",
-      "MQSI2025_033"
-    ],
-    "related_fields": [],
-    "related_tables": [],
-    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
-  },
-  {
     "chunk_id": "MQSI2025_006_national_指标定义",
     "rule_id": "MQSI2025_006",
     "title": "急会诊有效率_指标定义",
@@ -2697,6 +2625,141 @@
     ],
     "related_rule_ids": [
       "MQSI2025_034"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "公司标准 v1.0 暂按国标原文定义和公式继承，字段、表、SQL 待确认。"
+  },
+  {
+    "chunk_id": "MQSI2025_001_hospital_hospital_001_item",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_本院指标定义",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院指标定义",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "hospital_001",
+      "本院指标定义"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_MQSI2025_001_v4",
+    "content": "入院后 0 至 48 小时内发生转科，且转入、转出科室均非 ICU 的入院人次数，占同期入院患者总人次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_001_hospital_hospital_001_item",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_本院计算公式",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院计算公式",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "hospital_001",
+      "本院计算公式"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_MQSI2025_001_v4",
+    "content": "患者入院 48 小时内转科的比例 = 入院后 0 至 48 小时内转科且转入、转出科室均非 ICU 的入院人次数 ÷ 同期入院患者总人次数（按入院流水号去重） × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_001_hospital_hospital_001_SQL",
+    "rule_id": "MQSI2025_001",
+    "title": "患者入院 48小时内转科的比例_本院标准 SQL",
+    "path": "wiki/hospitals/hospital_001/overrides/MQSI2025_001_override.md",
+    "type": "hospital_override",
+    "level": "hospital",
+    "hospital_id": "hospital_001",
+    "section": "本院标准 SQL",
+    "keywords": [
+      "MQSI2025_001",
+      "患者入院 48小时内转科的比例",
+      "hospital_001",
+      "本院标准 SQL"
+    ],
+    "related_rule_ids": [],
+    "related_fields": [],
+    "related_tables": [],
+    "active_version_id": "hospital_001_MQSI2025_001_v4",
+    "content": "SQL 模板与字段映射分别以 `sql-specs/MQSI2025_001_患者入院48小时内转科比例` 和 `hospital-mappings/hospital_001/MQSI2025_001.yaml` 为准。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_national_指标定义",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_指标定义",
+    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "指标定义",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "指标定义"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊请求发出后，10 分钟内到达现场的急会诊次数占同期急会诊总次数的比例。"
+  },
+  {
+    "chunk_id": "MQSI2025_005_national_计算公式",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_计算公式",
+    "path": "wiki/standards/national/MQSI2025_005_急会诊及时到位率.md",
+    "type": "standard_rule",
+    "level": "national",
+    "section": "计算公式",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "计算公式"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
+    ],
+    "related_fields": [],
+    "related_tables": [],
+    "content": "急会诊及时到位率 = (急会诊记录中 10 分钟内到位的急会诊次数 / 同期急会诊总次数) × 100%"
+  },
+  {
+    "chunk_id": "MQSI2025_005_company_公司实现口径",
+    "rule_id": "MQSI2025_005",
+    "title": "急会诊及时到位率_公司实现口径",
+    "path": "wiki/standards/company/MQSI2025_005_急会诊及时到位率_公司标准.md",
+    "type": "standard_rule",
+    "level": "company",
+    "section": "公司实现口径",
+    "keywords": [
+      "MQSI2025_005",
+      "急会诊及时到位率",
+      "会诊制度",
+      "公司实现口径"
+    ],
+    "related_rule_ids": [
+      "MQSI2025_006",
+      "MQSI2025_007",
+      "MQSI2025_008",
+      "MQSI2025_033"
     ],
     "related_fields": [],
     "related_tables": [],

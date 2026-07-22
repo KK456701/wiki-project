@@ -16,6 +16,10 @@ fields:
 filters:
   hospital_soid: 991827
   urgent_level_code: 977578
+parameters:
+  hospital_soid: 991827
+  urgent_level_code: 977578
+  arrive_minutes_threshold: 20
 custom_rules:
   exclude_depts: []
 relations:

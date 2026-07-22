@@ -51,6 +51,17 @@ def test_resolves_from_month_to_now_as_current_year():
     assert result.resolved_time.end_time.isoformat() == NOW.isoformat()
 
 
+def test_relative_user_text_overrides_model_invented_absolute_dates():
+    plan = _plan("从一月份到现在")
+    plan.time_expression.start_time = "2025-01-01 00:00:00"
+    plan.time_expression.end_time = "2026-07-22 00:00:00"
+
+    result = PlanValidator().validate(plan, now=NOW)
+
+    assert result.resolved_time.start_time.isoformat() == "2026-01-01T00:00:00+08:00"
+    assert result.resolved_time.end_time.isoformat() == NOW.isoformat()
+
+
 def test_resolves_month_to_now_when_planner_keeps_query_suffix():
     result = PlanValidator().validate(_plan("从1月到现在的结果"), now=NOW)
 
