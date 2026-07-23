@@ -67,7 +67,13 @@ groups:
     expected_tools: [resolve_indicator_caliber]
     cases:
       - {id: caliber_explanation_01, query: "患者入院48小时内转科比例如果改按入区时间，公式怎么算？"}
-      - {id: caliber_explanation_02, query: "当前规则按入院还是入区？"}
+  - category: current_caliber_followup
+    expected_tools: [get_effective_rule]
+    cases:
+      - {id: current_caliber_01, query: "根据什么口径算的？"}
+      - {id: current_caliber_02, query: "分子分母具体是什么口径？"}
+      - {id: current_caliber_03, query: "当前采用哪个口径？"}
+      - {id: current_caliber_04, query: "当前规则按入院还是入区？"}
   - category: caliber_sql_followup
     expected_tools: [resolve_indicator_caliber, prepare_indicator_caliber_sql]
     cases:

@@ -57,6 +57,29 @@ class PlanGoalAlignmentValidatorTest {
     }
 
     @Test
+    void correctsCurrentCaliberFollowupWhenPlannerMistakesItForSimulation() {
+        RuleReadRepository rules = mock(RuleReadRepository.class);
+        PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
+
+        var decision = validator.assess(
+                "根据什么口径算的",
+                candidateSimulationPlan(),
+                "hospital_001");
+
+        assertThat(decision.status()).isEqualTo(AlignmentStatus.MISMATCH);
+        assertThat(decision.failureCode()).isEqualTo("TASK_TYPE_MISMATCH");
+        assertThat(decision.suggestedPlan().intent())
+                .isEqualTo(PlanIntent.RULE_EXPLANATION);
+        assertThat(decision.suggestedPlan().targetCaliber().profileId()).isNull();
+        assertThat(decision.suggestedPlan().requestedOutputs())
+                .containsExactly(
+                        RequestedOutput.DEFINITION,
+                        RequestedOutput.FORMULA);
+        assertThat(decision.suggestedPlan().timeExpression().startTime())
+                .isEqualTo("2026-01-01T00:00:00");
+    }
+
+    @Test
     void candidateFormulaWithoutPeriodDoesNotInventTrialRange() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
@@ -105,6 +128,23 @@ class PlanGoalAlignmentValidatorTest {
                                 "2026-07-23T00:00:00")
                         : new RequestPlan.TimeExpression("", null, null),
                 List.of(RequestedOutput.DEFINITION, RequestedOutput.FORMULA),
+                List.of(),
+                List.of());
+    }
+
+    private static RequestPlan candidateSimulationPlan() {
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_CALIBER_SIMULATION,
+                "按候选口径解释结果",
+                new RequestPlan.TargetIndicator(
+                        "患者入院48小时内转科的比例", "MQSI2025_001"),
+                new RequestPlan.TargetCaliber("什么口径", null),
+                new RequestPlan.TimeExpression(
+                        "沿用上一轮统计区间",
+                        "2026-01-01T00:00:00",
+                        "2026-07-23T00:00:00"),
+                List.of(RequestedOutput.CALIBER_EXPLANATION),
                 List.of(),
                 List.of());
     }

@@ -33,10 +33,13 @@ import com.hospital.wikiagent.agent.model.FinalAnswerComposer;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
 import com.hospital.wikiagent.agent.model.PromptCatalog;
 import com.hospital.wikiagent.agent.planning.AgentStateController;
+import com.hospital.wikiagent.agent.planning.AgentFailureRouter;
 import com.hospital.wikiagent.agent.planning.CapabilitySpecRegistry;
 import com.hospital.wikiagent.agent.planning.DeterministicDispatch;
 import com.hospital.wikiagent.agent.planning.PlanCompiler;
+import com.hospital.wikiagent.agent.planning.PlanGoalAlignmentValidator;
 import com.hospital.wikiagent.agent.planning.PlanValidator;
+import com.hospital.wikiagent.agent.planning.ReplanPolicy;
 import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.tools.PolicyDecisionService;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
@@ -140,6 +143,89 @@ class AgentRunnerTest {
         assertThat(store.verifications.values())
                 .allMatch(value -> "verified".equals(value.status()));
         assertThat(models.calls).isEqualTo(2);
+    }
+
+    @Test
+    void correctsCurrentCaliberFollowupBeforeIrWhenSmallModelKeepsChoosingSimulation() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        RuleReadRepository rules = ruleRepository(objectMapper);
+        ToolRegistry tools = new ToolRegistry(rules);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        String wrongCandidatePlan = """
+                {
+                  "schema_version": "request-plan-v2",
+                  "intent": "indicator_caliber_simulation",
+                  "goal": "按候选口径解释结果",
+                  "target_indicator": {
+                    "raw_name": "急会诊及时到位率",
+                    "rule_id": "MQSI2025_005"
+                  },
+                  "target_caliber": {"raw_text": "什么口径"},
+                  "time_expression": {
+                    "raw_text": "沿用上一轮",
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-07-23T00:00:00"
+                  },
+                  "requested_outputs": ["caliber_explanation"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """;
+        QueueInvoker models = new QueueInvoker(
+                wrongCandidatePlan,
+                wrongCandidatePlan,
+                "当前结果依据本院生效规则，分子分母口径如下。");
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(
+                        models, modelRegistry, properties,
+                        new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper),
+                capabilities,
+                new AgentStateController(capabilities),
+                new DeterministicDispatch(),
+                gateway,
+                verifier,
+                new FinalAnswerComposer(
+                        models, modelRegistry, properties,
+                        new PromptCatalog(), objectMapper),
+                AgentConversationMemory.noop(),
+                new AgentFailureRouter(new ReplanPolicy()),
+                null,
+                new PlanGoalAlignmentValidator(rules));
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "根据什么口径算的", "session_caliber_current", "ollama-test", null,
+                "request_caliber_current", "trace_caliber_current", null, "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001",
+                        Set.of(), false, "auth_session_caliber_current")),
+                events::add,
+                null);
+
+        assertThat(result.stopReason()).as(result.answer() + " " + events)
+                .isEqualTo("final_answer");
+        assertThat(result.requestPlan().intent()).isEqualTo(
+                com.hospital.wikiagent.agent.ir.PlanIntent.RULE_EXPLANATION);
+        assertThat(result.requestPlan().targetCaliber().profileId()).isNull();
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .containsExactly("get_effective_rule");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("plan_goal_alignment", "plan_replan",
+                        "plan_alignment_deterministic_fallback")
+                .doesNotContain("plan_alignment_review_llm");
+        assertThat(models.calls).isEqualTo(3);
     }
 
     @Test

@@ -529,7 +529,8 @@ public class AgentRunner {
                     fallbackStarted, state.subtaskId(), Map.of(
                             "failure_reason", decision.reason()), Map.of(
                             "intent", fallback.intent().name(),
-                            "target_caliber", fallback.targetCaliber().profileId()));
+                            "target_caliber",
+                            safe(text(fallback.targetCaliber().profileId()))));
             return new PlannerResult(
                     fallback,
                     "deterministic-plan-alignment-fallback",

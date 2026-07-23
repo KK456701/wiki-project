@@ -39,11 +39,28 @@ public class PlanGoalAlignmentValidator {
             return AlignmentDecision.pass();
         }
 
-        // “当前是按入院还是入区”是在询问生效口径，不是要求模拟另一套算法。
-        boolean currentCaliberQuestion = query.contains("还是")
+        // “根据什么口径算的”“当前是按入院还是入区”都在追问现行规则。
+        // 这类问题与“根据入区怎么算”只有几个字的差异，小模型很容易误判为候选模拟，
+        // 因此必须先用确定性规则区分，再允许 Planner 计划进入 IR。
+        boolean currentCaliberQuestion = containsAny(
+                query,
+                "什么口径",
+                "哪个口径",
+                "哪种口径",
+                "口径是什么",
+                "口径依据")
+                || query.contains("还是")
                 || ((query.contains("当前") || query.contains("现在"))
                         && (query.contains("按") || query.contains("根据"))
                         && !query.contains("如果"));
+        if (currentCaliberQuestion
+                && plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION) {
+            return AlignmentDecision.mismatch(
+                    "TASK_TYPE_MISMATCH",
+                    "用户在追问当前生效口径，但 Planner 错误生成了候选口径模拟计划。",
+                    correctedCurrentRulePlan(plan),
+                    List.of());
+        }
         boolean alternateCaliber = !currentCaliberQuestion
                 && containsAny(query, "入区", "首次入区")
                 && containsAny(query, "按", "根据", "如果", "改成", "改为", "换成", "那");
@@ -173,6 +190,27 @@ public class PlanGoalAlignmentValidator {
                 new RequestPlan.TargetCaliber(label, profileId),
                 original.timeExpression(),
                 outputs,
+                original.constraints(),
+                original.semanticAmbiguities());
+    }
+
+    /**
+     * 将“当前按什么口径”恢复为现行规则解释。
+     *
+     * <p>统计周期仍保留在结构化计划中，便于回答说明该口径对应上一轮结果；
+     * 但本轮不重复执行数据库，也不会继承候选 profile。</p>
+     */
+    private RequestPlan correctedCurrentRulePlan(RequestPlan original) {
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.RULE_EXPLANATION,
+                "解释当前生效口径、分子分母条件及版本依据",
+                original.targetIndicator(),
+                new RequestPlan.TargetCaliber("", null),
+                original.timeExpression(),
+                List.of(
+                        RequestedOutput.DEFINITION,
+                        RequestedOutput.FORMULA),
                 original.constraints(),
                 original.semanticAmbiguities());
     }
