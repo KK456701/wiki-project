@@ -262,3 +262,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - 该补全仅接受空名称、明确指代词、完全相同的规则名称或规则编号，不会把上一轮规则覆盖到用户本轮提出的新指标。
 - SQLite 会话表升级改为只读取目标表的零行元数据，不再枚举整个运行库，避免表较多时触发 `too many terms in compound SELECT`。新建库脚本同步包含候选 profile 字段。
 - 候选口径一致性校验允许 Wiki profile 的 `effective_to: null`，该值表示尚未设置失效日期；候选列表不再使用拒绝空值的 `Map.copyOf`。流式入口同时记录带 Trace ID 的服务端异常堆栈，避免未处理异常只能显示通用失败。
+
+## 9. 2026-07-23 候选口径分级归因
+
+- 差异诊断不再把候选口径简化成“匹配/不匹配”一个布尔值，而是逐项比较分子、分母和指标率，输出 `exact`、`partial`、`none` 三档匹配等级。
+- 完整聚合值一致时结论为 `CALIBER_CAUSE_CONFIRMED`；部分维度一致且存在口径关键词或文件字段证据时标记 `CALIBER_CAUSE_LIKELY`，并继续执行记录集合与数据质量层，防止遗漏更直接的逐条原因。
+- 单个没有业务维度标签的数字即使命中候选结果，也只标记 `possible`，避免偶然相等导致错误归因。
+- 差异报告升级为 `difference-diagnosis-report-v2`，顶层返回候选试算值、匹配维度、未匹配维度和差值；确定性最终回答同步展示这些安全汇总证据。

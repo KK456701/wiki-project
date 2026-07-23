@@ -37,9 +37,10 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
  * 差异诊断目标，服务端固定执行范围预检、实时结构核验、口径反事实、记录集合和数据质量
  * 检查。所有 SQL 都来自 Wiki 模板或本类允许列表检查器，不能接受模型和用户提交的 SQL。</p>
  *
- * <p>诊断采用保守归因：候选口径结果碰巧等于用户值并不足以确认原因；只有用户描述中的
- * 口径证据或逐条记录证据同时支持时才确认。患者级行只留在现有短期明细对象中，本工具
- * 返回并保存的报告只包含计数、对象编号和结论。</p>
+ * <p>候选口径采用分级归因：分子、分母和指标率完整一致时确认口径原因；部分聚合值一致且
+ * 口径描述或文件字段支持时标记为高度相关，并继续核对剩余记录；只有一个未标注数值一致时
+ * 仅标记为可能相关。患者级行只留在现有短期明细对象中，本工具返回并保存的报告只包含计数、
+ * 对象编号和结论。</p>
  */
 @Component
 public class IndicatorDifferenceDiagnosisWorkflow {
@@ -170,6 +171,10 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         if (Boolean.TRUE.equals(recordSet.get("cause_confirmed"))) {
             return finish(execution, "RECORD_SET_DIFF_CONFIRMED", 6,
                     text(recordSet.get("conclusion")));
+        }
+        if (Boolean.TRUE.equals(caliber.get("cause_likely"))) {
+            return finish(execution, "CALIBER_CAUSE_LIKELY", 6,
+                    text(caliber.get("likely_conclusion")));
         }
 
         boolean externalEvidence = hasExternalValues(execution) || rowLevelAvailable(execution.uploadComparison);
@@ -401,7 +406,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 .toList();
 
         boolean causeConfirmed = false;
+        boolean causeLikely = false;
         String conclusion = "";
+        String likelyConclusion = "";
         for (Map<String, Object> profile : profiles) {
             Map<String, Object> candidate = runCandidate(profile, execution);
             candidates.add(candidate);
@@ -411,16 +418,26 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                         + text(profile.get("label")) + "”一致，且用户描述或逐条记录证据支持该口径差异。";
                 break;
             }
+            if (!causeLikely && Boolean.TRUE.equals(candidate.get("cause_likely"))) {
+                causeLikely = true;
+                likelyConclusion = "候选口径“" + text(profile.get("label"))
+                        + "”与用户结果部分一致，且口径描述或文件字段支持该方向；"
+                        + "仍有" + dimensionLabels(strings(candidate.get("mismatched_dimensions")))
+                        + "差异需要继续核对。";
+            }
         }
 
         Map<String, Object> result = new LinkedHashMap<>(layer(
-                4, "试运行候选口径", causeConfirmed ? "confirmed" : "completed",
+                4, "试运行候选口径",
+                causeConfirmed ? "confirmed" : causeLikely ? "likely" : "completed",
                 false, causeConfirmed, List.of(), elapsedMs(started)));
         result.put("candidate_limit", MAX_CALIBER_CANDIDATES);
         result.put("candidate_count", candidates.size());
         result.put("candidates", candidates);
         result.put("cause_confirmed", causeConfirmed);
+        result.put("cause_likely", causeLikely);
         if (!conclusion.isBlank()) result.put("conclusion", conclusion);
+        if (!likelyConclusion.isBlank()) result.put("likely_conclusion", likelyConclusion);
         return Map.copyOf(result);
     }
 
@@ -467,7 +484,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         result.put("numerator_count", trial.data().get("numerator_count"));
         result.put("denominator_count", trial.data().get("denominator_count"));
 
-        boolean resultMatches = candidateMatchesExternal(trial.data(), execution);
+        CandidateMatch match = compareCandidateToExternal(trial.data(), execution);
         boolean differsFromBaseline = differs(trial.data(), execution.baseline.data());
         boolean keywordEvidence = keywordsMatch(
                 profile.get("evidence_keywords"), execution.input.issueDescription());
@@ -482,17 +499,44 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             rowEvidence = rowSetsEqual(comparison.data());
             result.put("row_evidence", safeRowSummary(comparison.data()));
         }
-        boolean confirmed = resultMatches && differsFromBaseline
-                && (keywordEvidence || fileSchemaEvidence || rowEvidence);
-        result.put("external_result_match", resultMatches);
+        boolean semanticEvidence = keywordEvidence || fileSchemaEvidence;
+        boolean confirmed = differsFromBaseline
+                && ("exact".equals(match.level()) || rowEvidence);
+        // 上传汇总中的分子、分母、指标率是有明确字段含义的证据。只要其中部分维度
+        // 匹配，且用户描述或文件表头明确指向该候选口径，就标记为“高度相关”；
+        // 普通对话中一个没有维度标签的数字仍只能算“可能相关”。
+        boolean structuredExternalEvidence = !"user_statement".equals(
+                text(safeExternal(execution).get("source")));
+        boolean likely = !confirmed
+                && differsFromBaseline
+                && "partial".equals(match.level())
+                && structuredExternalEvidence
+                && semanticEvidence;
+        String causeLikelihood = confirmed
+                ? "confirmed"
+                : likely
+                        ? "likely"
+                        : "partial".equals(match.level()) ? "possible" : "none";
+        result.put("match_level", match.level());
+        result.put("matching_dimensions", match.matchingDimensions());
+        result.put("mismatched_dimensions", match.mismatchedDimensions());
+        result.put("metric_differences", match.metricDifferences());
+        result.put("external_result_match", "exact".equals(match.level()));
+        result.put("external_partial_match", "partial".equals(match.level()));
         result.put("differs_from_baseline", differsFromBaseline);
         result.put("keyword_evidence", keywordEvidence);
         result.put("file_schema_evidence", fileSchemaEvidence);
         result.put("row_evidence_confirmed", rowEvidence);
         result.put("cause_confirmed", confirmed);
-        if (resultMatches && !confirmed) {
+        result.put("cause_likely", likely);
+        result.put("cause_likelihood", causeLikelihood);
+        if (likely) {
             result.put("evidence_limit",
-                    "候选结果与用户值相同，但缺少口径描述或逐条受影响记录，不能仅凭数值相同确认原因。");
+                    "候选口径与外部结果部分一致，且存在口径语义证据；"
+                            + "未匹配维度仍需通过逐条记录或数据质量检查解释。");
+        } else if ("partial".equals(match.level())) {
+            result.put("evidence_limit",
+                    "候选结果只命中部分数值，且证据不足；不能仅凭单个或未标注数值相同确认原因。");
         }
         return Map.copyOf(result);
     }
@@ -742,7 +786,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         String status = text(layer.get("status"));
         String traceStatus = switch (status) {
             case "blocked", "failed" -> "failed";
-            case "warning", "insufficient" -> "warning";
+            case "warning", "insufficient", "likely" -> "warning";
             default -> "success";
         };
         execution.context.runState().reportProgress(new AgentRunState.WorkflowProgress(
@@ -773,9 +817,13 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 .flatMap(layer -> strings(layer.get("confirmed_findings")).stream())
                 .distinct()
                 .toList();
+        Map<String, Object> caliberLayer = execution.layers.stream()
+                .filter(layer -> Integer.valueOf(4).equals(layer.get("layer")))
+                .findFirst()
+                .orElse(Map.of());
 
         Map<String, Object> report = new LinkedHashMap<>();
-        report.put("report_schema_version", "difference-diagnosis-report-v1");
+        report.put("report_schema_version", "difference-diagnosis-report-v2");
         report.put("report_id", reportId);
         report.put("rule_id", execution.input.ruleId());
         report.put("hospital_id", execution.context.agentContext().hospitalId());
@@ -791,6 +839,10 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         report.put("confirmed_findings", confirmedFindings);
         report.put("baseline_result", baseline);
         report.put("external_evidence", external);
+        // 提升到报告顶层，供最终回答和前端直接展示候选试算，不需要解析内部层级结构。
+        report.put("caliber_candidates", listOfMaps(caliberLayer.get("candidates")));
+        report.put("caliber_cause_likely",
+                Boolean.TRUE.equals(caliberLayer.get("cause_likely")));
         report.put("file_key", execution.input.fileKey() == null ? "" : execution.input.fileKey());
         report.put("baseline_run_id", execution.baselineRunId == null ? "" : execution.baselineRunId);
         report.put("baseline_sql_id", execution.baselineSqlId == null ? "" : execution.baselineSqlId);
@@ -841,6 +893,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             case "STRUCTURE_BLOCKING" -> "blocked";
             case "INSUFFICIENT_EXTERNAL_EVIDENCE" -> "insufficient";
             case "SYSTEM_RESULT_VERIFIED" -> "verified";
+            case "CALIBER_CAUSE_LIKELY" -> "likely";
             default -> "confirmed";
         };
     }
@@ -850,6 +903,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             case "STRUCTURE_BLOCKING" -> "先修复字段、表、类型或关联映射后重新诊断。";
             case "STRUCTURE_CAUSE_CONFIRMED" -> "修复已确认的字段、关联或医院映射差异后重新计算。";
             case "CALIBER_CAUSE_CONFIRMED" -> "统一指标版本、阈值、排除条件和统计周期后重新计算。";
+            case "CALIBER_CAUSE_LIKELY" -> "候选口径高度相关；继续核对未匹配的分子、分母或逐条记录后再确认。";
             case "RECORD_SET_DIFF_CONFIRMED" -> "导出受权限保护的差异明细，逐条核对单边记录和达标判定。";
             case "DATA_QUALITY_CAUSE_CONFIRMED" -> "按异常类型治理源数据后重新计算。";
             case "INSUFFICIENT_EXTERNAL_EVIDENCE" -> "补充包含稳定业务主键和统计区间的逐条明细。";
@@ -889,32 +943,101 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         return Map.copyOf(result);
     }
 
-    private static boolean candidateMatchesExternal(
+    /**
+     * 按“分子、分母、指标率”三个业务维度逐项比较候选口径和外部结果。
+     *
+     * <p>完整匹配要求外部证据至少明确给出分子和分母，且所有已提供维度都一致。
+     * 仅在自然语言中出现的单个数值没有维度标签，即使碰巧命中候选结果，也只能标记为
+     * partial，防止把偶然相等误判为已确认原因。</p>
+     */
+    private static CandidateMatch compareCandidateToExternal(
             Map<String, Object> candidate,
             DiagnosticExecution execution) {
         Map<String, Object> external = safeExternal(execution);
+        List<String> matching = new ArrayList<>();
+        List<String> mismatched = new ArrayList<>();
+        List<Map<String, Object>> differences = new ArrayList<>();
         if (external.containsKey("numerator") || external.containsKey("denominator")
                 || external.containsKey("rate")) {
-            boolean matchedAny = false;
-            for (Map.Entry<String, String> metric : Map.of(
-                    "numerator", "numerator_count",
-                    "denominator", "denominator_count",
-                    "rate", "result_value").entrySet()) {
+            Map<String, String> dimensions = new LinkedHashMap<>();
+            dimensions.put("numerator", "numerator_count");
+            dimensions.put("denominator", "denominator_count");
+            dimensions.put("rate", "result_value");
+            for (Map.Entry<String, String> metric : dimensions.entrySet()) {
                 if (!external.containsKey(metric.getKey())) continue;
-                matchedAny = true;
-                if (!metricMatches(candidate.get(metric.getValue()), external.get(metric.getKey()))) {
-                    return false;
+                Object candidateValue = candidate.get(metric.getValue());
+                Object externalValue = external.get(metric.getKey());
+                if (metricMatches(candidateValue, externalValue)) {
+                    matching.add(metric.getKey());
+                } else {
+                    mismatched.add(metric.getKey());
+                    differences.add(metricDifference(
+                            metric.getKey(), candidateValue, externalValue));
                 }
             }
-            return matchedAny;
+            boolean hasCountPair = external.containsKey("numerator")
+                    && external.containsKey("denominator");
+            String level = hasCountPair && !matching.isEmpty() && mismatched.isEmpty()
+                    ? "exact"
+                    : !matching.isEmpty() ? "partial" : "none";
+            return new CandidateMatch(
+                    level, List.copyOf(matching), List.copyOf(mismatched), List.copyOf(differences));
         }
         Object claim = external.get("claimed_user_value");
-        return claim != null && List.of(
-                        candidate.get("numerator_count"),
-                        candidate.get("denominator_count"),
-                        candidate.get("result_value")).stream()
-                .filter(value -> value != null)
-                .anyMatch(value -> same(value, claim));
+        if (claim != null) {
+            Map<String, Object> dimensions = new LinkedHashMap<>();
+            dimensions.put("numerator", candidate.get("numerator_count"));
+            dimensions.put("denominator", candidate.get("denominator_count"));
+            dimensions.put("rate", candidate.get("result_value"));
+            for (Map.Entry<String, Object> metric : dimensions.entrySet()) {
+                if (metric.getValue() != null && same(metric.getValue(), claim)) {
+                    matching.add(metric.getKey());
+                }
+            }
+        }
+        return new CandidateMatch(
+                matching.isEmpty() ? "none" : "partial",
+                List.copyOf(matching),
+                List.of(),
+                List.of());
+    }
+
+    private static Map<String, Object> metricDifference(
+            String dimension,
+            Object candidateValue,
+            Object externalValue) {
+        Map<String, Object> difference = new LinkedHashMap<>();
+        difference.put("dimension", dimension);
+        difference.put("candidate_value", candidateValue == null ? "" : candidateValue);
+        difference.put("external_value", externalValue == null ? "" : externalValue);
+        if (candidateValue != null && externalValue != null) {
+            difference.put("delta", BigDecimal.valueOf(
+                            doubleValue(candidateValue) - doubleValue(externalValue))
+                    .setScale(2, RoundingMode.HALF_UP)
+                    .stripTrailingZeros()
+                    .toPlainString());
+        } else {
+            difference.put("delta", "");
+        }
+        return Map.copyOf(difference);
+    }
+
+    private static String dimensionLabels(List<String> dimensions) {
+        if (dimensions.isEmpty()) return "尚未定位的维度";
+        return dimensions.stream()
+                .map(IndicatorDifferenceDiagnosisWorkflow::dimensionLabel)
+                .distinct()
+                .reduce((left, right) -> left + "、" + right)
+                .orElse("尚未定位的维度");
+    }
+
+    private static String dimensionLabel(String dimension) {
+        return switch (dimension) {
+            case "numerator" -> "分子";
+            case "denominator" -> "分母";
+            case "rate" -> "指标率";
+            default -> dimension;
+        };
     }
 
     /**
@@ -925,6 +1048,12 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         if (candidate == null) return false;
         return Math.abs(doubleValue(candidate) - doubleValue(external)) < 0.01;
     }
+
+    private record CandidateMatch(
+            String level,
+            List<String> matchingDimensions,
+            List<String> mismatchedDimensions,
+            List<Map<String, Object>> metricDifferences) {}
 
     private static boolean differs(Map<String, Object> left, Map<String, Object> right) {
         return !same(left.get("numerator_count"), right.get("numerator_count"))

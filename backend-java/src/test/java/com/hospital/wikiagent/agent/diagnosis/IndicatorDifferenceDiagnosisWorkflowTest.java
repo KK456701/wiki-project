@@ -85,7 +85,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
     }
 
     @Test
-    void doesNotConfirmCaliberFromCoincidentalNumberMatchAlone() {
+    void treatsSingleAmbiguousNumberMatchAsPossibleRatherThanConfirmed() {
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001")).thenReturn(List.of(Map.of(
                 "profile_id", "candidate-100",
                 "label", "候选口径",
@@ -112,7 +112,96 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 .filter(layer -> Integer.valueOf(4).equals(layer.get("layer")))
                 .findFirst().orElseThrow();
         assertThat(caliber).containsEntry("cause_confirmed", false);
-        assertThat(caliber.get("candidates").toString()).contains("evidence_limit");
+        assertThat(caliber.get("candidates").toString())
+                .contains("match_level=partial", "cause_likelihood=possible");
+    }
+
+    @Test
+    void reportsPartialCaliberMatchAsLikelyAndKeepsUnexplainedDifference() {
+        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+                .thenReturn(List.of(wardEntryProfile()));
+        Map<String, Object> uploaded = Map.ofEntries(
+                Map.entry("file_name", "ward-entry-summary.xlsx"),
+                Map.entry("row_count", 1),
+                Map.entry("columns", List.of("首次入区时间", "分子", "分母", "指标率")),
+                Map.entry("file_evidence_type", "summary"),
+                Map.entry("uploaded_rule_id", "MQSI2025_001"),
+                Map.entry("uploaded_stat_period",
+                        "2026-01-01 00:00:00 至 2026-04-01 00:00:00"),
+                Map.entry("uploaded_numerator", 12),
+                Map.entry("uploaded_denominator", 234),
+                Map.entry("uploaded_rate", 5.13),
+                Map.entry("comparison_level", "summary"));
+        when(uploads.analyze(any(), any())).thenReturn(
+                ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
+        when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+        when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
+                ToolResult.success(
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+        when(sql.trial(any(), any()))
+                .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
+                .thenReturn(trial("RUN_CANDIDATE", 12L, 235L, 5.11));
+        IndicatorDifferenceDiagnosisWorkflow.Input input =
+                new IndicatorDifferenceDiagnosisWorkflow.Input(
+                        "MQSI2025_001", "为什么文件与系统不一致",
+                        "2026-01-01T00:00:00", "2026-04-01T00:00:00",
+                        "hospital_001_ward_entry_summary.xlsx");
+
+        ToolResult result = workflow().diagnose(input, context);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.data()).containsEntry(
+                "conclusion_code", "CALIBER_CAUSE_LIKELY");
+        assertThat(result.data().get("caliber_candidates").toString())
+                .contains(
+                        "match_level=partial",
+                        "cause_likelihood=likely",
+                        "matching_dimensions=[numerator]",
+                        "mismatched_dimensions=[denominator, rate]");
+    }
+
+    @Test
+    void reportsCandidateAsNoMatchWhenEveryAggregateDimensionDiffers() {
+        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+                .thenReturn(List.of(wardEntryProfile()));
+        Map<String, Object> uploaded = Map.ofEntries(
+                Map.entry("file_name", "ward-entry-summary.xlsx"),
+                Map.entry("row_count", 1),
+                Map.entry("columns", List.of("首次入区时间", "分子", "分母", "指标率")),
+                Map.entry("file_evidence_type", "summary"),
+                Map.entry("uploaded_rule_id", "MQSI2025_001"),
+                Map.entry("uploaded_stat_period",
+                        "2026-01-01 00:00:00 至 2026-04-01 00:00:00"),
+                Map.entry("uploaded_numerator", 20),
+                Map.entry("uploaded_denominator", 400),
+                Map.entry("uploaded_rate", 5.0),
+                Map.entry("comparison_level", "summary"));
+        when(uploads.analyze(any(), any())).thenReturn(
+                ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
+        when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+        when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
+                ToolResult.success(
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+        when(sql.trial(any(), any()))
+                .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
+                .thenReturn(trial("RUN_CANDIDATE", 12L, 235L, 5.11));
+        IndicatorDifferenceDiagnosisWorkflow.Input input =
+                new IndicatorDifferenceDiagnosisWorkflow.Input(
+                        "MQSI2025_001", "为什么文件与系统不一致",
+                        "2026-01-01T00:00:00", "2026-04-01T00:00:00",
+                        "hospital_001_ward_entry_summary.xlsx");
+
+        ToolResult result = workflow().diagnose(input, context);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.data()).containsEntry("conclusion_code", "SYSTEM_RESULT_VERIFIED");
+        assertThat(result.data().get("caliber_candidates").toString())
+                .contains(
+                        "match_level=none",
+                        "cause_likelihood=none",
+                        "mismatched_dimensions=[numerator, denominator, rate]");
     }
 
     @Test
@@ -186,17 +275,8 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
     @Test
     void confirmsWardEntryCaliberFromUploadedSchemaAndExactAggregate() {
-        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001")).thenReturn(List.of(Map.of(
-                "profile_id", "hospital_001_ward_entry_anchor",
-                "label", "首次入区时间统计及48小时口径",
-                "source_level", "hospital_history",
-                "status", "approved",
-                "effective_from", "2026-01-01",
-                "parameter_overrides", Map.of("threshold", 48),
-                "field_role_overrides", Map.of(
-                        "period_time", "ward_entry_time",
-                        "admit_time", "ward_entry_time"),
-                "evidence_keywords", List.of("首次入区", "入区时间"))));
+        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+                .thenReturn(List.of(wardEntryProfile()));
         Map<String, Object> uploaded = Map.ofEntries(
                 Map.entry("file_name", "ward-entry.xlsx"),
                 Map.entry("row_count", 234),
@@ -231,6 +311,8 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
                 "conclusion_code", "CALIBER_CAUSE_CONFIRMED");
+        assertThat(result.data().get("caliber_candidates").toString())
+                .contains("match_level=exact", "cause_likelihood=confirmed");
         assertThat(result.data().get("layers").toString())
                 .contains("hospital_001_ward_entry_anchor", "file_schema_evidence=true");
         verify(sql).prepareDiagnostic(
@@ -299,5 +381,19 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
     private static Map<String, Object> column(String name, String type) {
         return Map.of("COLUMN_NAME", name, "DATA_TYPE", type);
+    }
+
+    private static Map<String, Object> wardEntryProfile() {
+        return Map.of(
+                "profile_id", "hospital_001_ward_entry_anchor",
+                "label", "首次入区时间统计及48小时口径",
+                "source_level", "hospital_history",
+                "status", "approved",
+                "effective_from", "2026-01-01",
+                "parameter_overrides", Map.of("threshold", 48),
+                "field_role_overrides", Map.of(
+                        "period_time", "ward_entry_time",
+                        "admit_time", "ward_entry_time"),
+                "evidence_keywords", List.of("首次入区", "入区时间"));
     }
 }

@@ -1304,6 +1304,7 @@ public class AgentRunner {
                     .append("- 分母：").append(external.getOrDefault("denominator", "未提供")).append('\n')
                     .append("- 指标值：").append(external.getOrDefault("rate", "未提供")).append("\n\n");
         }
+        appendCaliberCandidates(answer, data.get("caliber_candidates"));
         answer.append("## 诊断结论\n\n")
                 .append(data.getOrDefault("user_summary", "诊断已完成。")).append('\n');
         if (data.get("confirmed_findings") instanceof List<?> findings && !findings.isEmpty()) {
@@ -1314,6 +1315,102 @@ public class AgentRunner {
                 .append(data.getOrDefault("evidence_limit",
                         "未发现系统异常不等于用户结果必然错误。"));
         return answer.toString();
+    }
+
+    /**
+     * 将候选口径的真实试运行聚合值和逐维比较结论放入最终回答。
+     *
+     * <p>这里只展示分子、分母、指标率等安全汇总数据；SQL 正文和患者级记录仍留在
+     * 受权限保护的对象中。这样用户可以直接看出“哪个口径接近、还差在哪个维度”，
+     * 不必只依赖一条笼统的原因描述。</p>
+     */
+    private static void appendCaliberCandidates(StringBuilder answer, Object rawCandidates) {
+        if (!(rawCandidates instanceof List<?> candidates) || candidates.isEmpty()) return;
+        answer.append("## 候选口径试算\n\n")
+                .append("| 候选口径 | 分子 | 分母 | 指标率 | 匹配等级 | 原因判断 |\n")
+                .append("|---|---:|---:|---:|---|---|\n");
+        for (Object raw : candidates) {
+            if (!(raw instanceof Map<?, ?> candidate)) continue;
+            answer.append("| ").append(markdown(candidate.get("label")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "numerator_count")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "denominator_count")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "result_value")))
+                    .append("% | ").append(candidateMatchLabel(candidate.get("match_level")))
+                    .append(" | ").append(candidateLikelihoodLabel(candidate.get("cause_likelihood")))
+                    .append(" |\n");
+        }
+        answer.append('\n');
+        for (Object raw : candidates) {
+            if (!(raw instanceof Map<?, ?> candidate)) continue;
+            Object matching = candidate.get("matching_dimensions");
+            Object mismatched = candidate.get("mismatched_dimensions");
+            if (!(matching instanceof List<?> matched) || matched.isEmpty()) continue;
+            answer.append("- ").append(markdown(candidate.get("label")))
+                    .append("：已匹配 ").append(candidateDimensions(matched));
+            if (mismatched instanceof List<?> missed && !missed.isEmpty()) {
+                answer.append("；仍有差异 ").append(candidateDimensions(missed));
+                if (candidate.get("metric_differences") instanceof List<?> differences
+                        && !differences.isEmpty()) {
+                    answer.append("（");
+                    boolean first = true;
+                    for (Object differenceRaw : differences) {
+                        if (!(differenceRaw instanceof Map<?, ?> difference)) continue;
+                        if (!first) answer.append("；");
+                        answer.append(candidateDimensionLabel(difference.get("dimension")))
+                                .append("：候选 ")
+                                .append(markdown(difference.get("candidate_value")))
+                                .append("，用户/文件 ")
+                                .append(markdown(difference.get("external_value")))
+                                .append("，差值 ")
+                                .append(markdown(difference.get("delta")));
+                        first = false;
+                    }
+                    answer.append('）');
+                }
+            }
+            answer.append("。\n");
+        }
+        answer.append('\n');
+    }
+
+    private static Object candidateValue(Map<?, ?> candidate, String key) {
+        Object value = candidate.get(key);
+        return value == null || String.valueOf(value).isBlank() ? "—" : value;
+    }
+
+    private static String candidateMatchLabel(Object value) {
+        return switch (String.valueOf(value)) {
+            case "exact" -> "完全匹配";
+            case "partial" -> "部分匹配";
+            case "none" -> "未匹配";
+            default -> "未比较";
+        };
+    }
+
+    private static String candidateLikelihoodLabel(Object value) {
+        return switch (String.valueOf(value)) {
+            case "confirmed" -> "已确认";
+            case "likely" -> "高度相关";
+            case "possible" -> "可能相关";
+            default -> "未发现关联";
+        };
+    }
+
+    private static String candidateDimensions(List<?> dimensions) {
+        return dimensions.stream()
+                .map(AgentRunner::candidateDimensionLabel)
+                .distinct()
+                .reduce((left, right) -> left + "、" + right)
+                .orElse("—");
+    }
+
+    private static String candidateDimensionLabel(Object value) {
+        return switch (String.valueOf(value)) {
+            case "numerator" -> "分子";
+            case "denominator" -> "分母";
+            case "rate" -> "指标率";
+            default -> markdown(value);
+        };
     }
 
     @SuppressWarnings("unchecked")
