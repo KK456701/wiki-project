@@ -33,8 +33,8 @@ class EvidenceLedgerTest {
         ToolResult raw = ToolResult.success("SQL_PREPARED", "已生成 SQL", Map.of(
                 "rule_id", "MQSI2025_005",
                 "sql_id", "SQL_001",
-                "stat_start", "2026-01-01 00:00:00",
-                "stat_end", "2026-04-01 00:00:00",
+                "stat_start", "2026-01-01T00:00",
+                "stat_end", "2026-04-01T00:00:00.123456789",
                 "sql", "SELECT patient_id FROM secret"));
 
         ToolResult recorded = ledger.recordToolResult(

@@ -96,7 +96,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 "evidence_keywords", List.of("特殊阈值"))));
         when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
                 "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
-        when(sql.prepareDiagnostic(any(), anyString(), any(), any())).thenReturn(ToolResult.success(
+        when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(ToolResult.success(
                 "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
         when(sql.trial(any(), any()))
                 .thenReturn(trial("RUN_BASE", 98L, 200L, 49.0))
@@ -153,6 +153,88 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
         verify(metadata, never()).listTables(anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
+    }
+
+    @Test
+    void ignoresExplanatoryDateWhenCheckingUploadedPeriodEndpoints() {
+        when(uploads.analyze(any(), any())).thenReturn(ToolResult.success(
+                "UPLOAD_ANALYZED", "analyzed", Map.of(
+                        "file_name", "ward-entry.xlsx",
+                        "row_count", 234,
+                        "columns", List.of("入院流水号", "首次入区时间", "是否达到要求"),
+                        "file_evidence_type", "detail",
+                        "uploaded_rule_id", "MQSI2025_001",
+                        "uploaded_stat_period",
+                        "2026-01-01 00:00:00 至 2026-07-24 00:00:00"
+                                + "（左闭右开，覆盖至2026-07-23自然日结束）",
+                        "comparison_level", "row")));
+        IndicatorDifferenceDiagnosisWorkflow.Input input =
+                new IndicatorDifferenceDiagnosisWorkflow.Input(
+                        "MQSI2025_001", "为什么文件与系统不一致",
+                        "2026-01-01T00:00:00", "2026-07-23T14:28:34",
+                        "hospital_001_ward_entry.xlsx");
+
+        ToolResult result = workflow().diagnose(input, context);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.data()).containsEntry(
+                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
+        assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
+        verify(metadata, never()).listTables(anyString(), anyString());
+        verify(sql, never()).prepare(any(), any());
+    }
+
+    @Test
+    void confirmsWardEntryCaliberFromUploadedSchemaAndExactAggregate() {
+        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001")).thenReturn(List.of(Map.of(
+                "profile_id", "hospital_001_ward_entry_anchor",
+                "label", "首次入区时间统计及48小时口径",
+                "source_level", "hospital_history",
+                "status", "approved",
+                "effective_from", "2026-01-01",
+                "parameter_overrides", Map.of("threshold", 48),
+                "field_role_overrides", Map.of(
+                        "period_time", "ward_entry_time",
+                        "admit_time", "ward_entry_time"),
+                "evidence_keywords", List.of("首次入区", "入区时间"))));
+        Map<String, Object> uploaded = Map.ofEntries(
+                Map.entry("file_name", "ward-entry.xlsx"),
+                Map.entry("row_count", 234),
+                Map.entry("columns", List.of("入院流水号", "首次入区时间", "是否达到要求")),
+                Map.entry("file_evidence_type", "detail"),
+                Map.entry("contains_detail_records", true),
+                Map.entry("uploaded_rule_id", "MQSI2025_001"),
+                Map.entry("uploaded_stat_period",
+                        "2026-01-01 00:00:00 至 2026-07-24 00:00:00"),
+                Map.entry("uploaded_count", 234),
+                Map.entry("uploaded_numerator_count", 12),
+                Map.entry("comparison_level", "row"),
+                Map.entry("row_level_comparison_available", false));
+        when(uploads.analyze(any(), any())).thenReturn(
+                ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
+        when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+        when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
+                ToolResult.success(
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+        when(sql.trial(any(), any()))
+                .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
+                .thenReturn(trial("RUN_CANDIDATE", 12L, 234L, 5.13));
+        IndicatorDifferenceDiagnosisWorkflow.Input input =
+                new IndicatorDifferenceDiagnosisWorkflow.Input(
+                        "MQSI2025_001", "为什么文件与系统不一致",
+                        "2026-01-01T00:00:00", "2026-07-24T00:00:00",
+                        "hospital_001_ward_entry.xlsx");
+
+        ToolResult result = workflow().diagnose(input, context);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.data()).containsEntry(
+                "conclusion_code", "CALIBER_CAUSE_CONFIRMED");
+        assertThat(result.data().get("layers").toString())
+                .contains("hospital_001_ward_entry_anchor", "file_schema_evidence=true");
+        verify(sql).prepareDiagnostic(
+                any(), anyString(), any(), any(), any());
     }
 
     private IndicatorDifferenceDiagnosisWorkflow workflow() {

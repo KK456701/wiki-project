@@ -33,6 +33,9 @@ class AgentConversationMemoryTest {
         memory.appendUser(first, principal, "计算这个指标从一月到现在", "hospital_001_file.xlsx");
         AgentRunState state = new AgentRunState();
         state.currentRuleId("MQSI2025_001");
+        state.currentCaliber(
+                "hospital_001_ward_entry_anchor",
+                "首次入区时间统计及48小时口径");
         state.currentUploadFileKey("hospital_001_file.xlsx");
         state.lastRunId("RUN_001");
         state.statPeriod("2026-01-01 00:00:00", "2026-07-22 00:00:00");
@@ -49,12 +52,16 @@ class AgentConversationMemoryTest {
 
         assertThat(restored.ruleId()).isEqualTo("MQSI2025_001");
         assertThat(restored.ruleName()).contains("48小时");
+        assertThat(restored.caliberProfileId())
+                .isEqualTo("hospital_001_ward_entry_anchor");
+        assertThat(restored.caliberLabel()).contains("首次入区");
         assertThat(restored.statStart()).isEqualTo("2026-01-01 00:00:00");
         assertThat(restored.statEnd()).isEqualTo("2026-07-22 00:00:00");
         assertThat(restored.lastRunId()).isEqualTo("RUN_001");
         assertThat(restored.uploadFileKey()).isEqualTo("hospital_001_file.xlsx");
         assertThat(restored.recentHistory()).contains("用户：计算这个指标", "助手：结果为2.83%");
-        assertThat(restored.structuredSummary()).contains("MQSI2025_001", "RUN_001");
+        assertThat(restored.structuredSummary()).contains(
+                "MQSI2025_001", "RUN_001", "hospital_001_ward_entry_anchor");
         assertThat(otherHospital.recentHistory()).isEmpty();
         assertThat(otherHospital.ruleId()).isNull();
     }

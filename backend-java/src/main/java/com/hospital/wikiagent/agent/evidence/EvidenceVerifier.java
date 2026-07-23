@@ -1,6 +1,9 @@
 package com.hospital.wikiagent.agent.evidence;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -78,13 +81,24 @@ public class EvidenceVerifier {
         }
         requireMatch(expected.ruleId(), value.ruleId(),
                 "EVIDENCE_RULE_MISMATCH", "证据规则与当前指标不一致。");
-        requireMatch(expected.statStart(), value.statStart(),
+        requireTimeMatch(expected.statStart(), value.statStart(),
                 "EVIDENCE_PERIOD_MISMATCH", "证据统计开始时间与当前请求不一致。");
-        requireMatch(expected.statEnd(), value.statEnd(),
+        requireTimeMatch(expected.statEnd(), value.statEnd(),
                 "EVIDENCE_PERIOD_MISMATCH", "证据统计结束时间与当前请求不一致。");
         String evidenceSqlId = text(value.safePayload().get("sql_id"));
         requireMatch(expected.sqlId(), evidenceSqlId,
                 "EVIDENCE_SQL_MISMATCH", "证据 SQL 对象与当前已校验 SQL 不一致。");
+        String evidenceCaliberProfileId = text(
+                value.safePayload().get("caliber_profile_id"));
+        requireMatch(expected.caliberProfileId(), evidenceCaliberProfileId,
+                "EVIDENCE_CALIBER_MISMATCH", "证据候选口径与当前计划不一致。");
+        String evidenceRuleVersion = text(
+                value.safePayload().get("current_rule_version"));
+        requireMatch(expected.currentRuleVersion(), evidenceRuleVersion,
+                "EVIDENCE_RULE_MISMATCH", "候选口径证据引用的当前规则版本已变化。");
+        String caliberSqlId = text(value.safePayload().get("caliber_sql_id"));
+        requireMatch(expected.sqlId(), caliberSqlId,
+                "EVIDENCE_SQL_MISMATCH", "候选口径试运行未使用当前已校验 SQL。");
         ToolResult currentResult = expected.currentToolResults().get(value.evidenceId());
         if (currentResult != null
                 && !ledger.fingerprint(currentResult.withEvidenceIds(List.of()))
@@ -122,6 +136,40 @@ public class EvidenceVerifier {
         }
     }
 
+    /**
+     * Evidence 的时间可能来自 SQL 对象（空格分隔、秒精度）或 Java 业务对象
+     *（ISO {@code T} 分隔、可能带纳秒）。两者表示同一时刻时必须视为一致，避免仅因
+     * 序列化格式不同拒绝一份已经通过业务校验的证据。
+     */
+    private static void requireTimeMatch(
+            String expected,
+            String actual,
+            String code,
+            String message) {
+        if (expected == null || expected.isBlank() || actual == null || actual.isBlank()) {
+            return;
+        }
+        String expectedTime = canonicalTime(expected);
+        String actualTime = canonicalTime(actual);
+        if (!expectedTime.equals(actualTime)) {
+            throw new EvidenceAccessException(code, message);
+        }
+    }
+
+    private static String canonicalTime(String value) {
+        String normalized = value.strip().replace(' ', 'T');
+        try {
+            return LocalDateTime.parse(normalized).withNano(0).toString();
+        } catch (DateTimeParseException ignored) {
+            try {
+                return LocalDate.parse(normalized).atStartOfDay().toString();
+            } catch (DateTimeParseException ignoredDate) {
+                // 未知格式仍按原始文本严格比较，不能放宽 Evidence 的安全边界。
+                return value.strip();
+            }
+        }
+    }
+
     private static String text(Object value) {
         return value == null || String.valueOf(value).isBlank() ? null : String.valueOf(value);
     }
@@ -132,7 +180,19 @@ public class EvidenceVerifier {
             String statStart,
             String statEnd,
             String sqlId,
+            String caliberProfileId,
+            String currentRuleVersion,
             Map<String, ToolResult> currentToolResults) {
+        public VerificationExpectations(
+                String subtaskId,
+                String ruleId,
+                String statStart,
+                String statEnd,
+                String sqlId,
+                Map<String, ToolResult> currentToolResults) {
+            this(subtaskId, ruleId, statStart, statEnd, sqlId, null, null, currentToolResults);
+        }
+
         public VerificationExpectations {
             if (subtaskId == null || subtaskId.isBlank()) {
                 throw new IllegalArgumentException("Evidence 校验必须指定子任务");

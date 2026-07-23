@@ -76,17 +76,22 @@ public class CapabilitySpecRegistry {
     }
 
     public Set<String> requiredOutputFacts(RequestPlan plan) {
-        Map<RequestedOutput, String> mapping = Map.of(
-                RequestedOutput.DEFINITION, "definition",
-                RequestedOutput.FORMULA, "formula",
-                RequestedOutput.IMPLEMENTATION_STATUS, "implementation_status",
-                RequestedOutput.PREPARED_SQL_HANDLE, "sql_validation",
-                RequestedOutput.TRIAL_RESULT, "trial_run",
-                RequestedOutput.DIAGNOSIS, "diagnosis",
-                RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT, "difference_diagnosis_report",
-                RequestedOutput.CHANGE_PREVIEW, "rule_change_preview",
-                RequestedOutput.FILE_ANALYSIS, "file_analysis",
-                RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT, "implementation_validation_report");
+        Map<RequestedOutput, String> mapping = Map.ofEntries(
+                Map.entry(RequestedOutput.DEFINITION, "definition"),
+                Map.entry(RequestedOutput.FORMULA, "formula"),
+                Map.entry(RequestedOutput.IMPLEMENTATION_STATUS, "implementation_status"),
+                Map.entry(RequestedOutput.PREPARED_SQL_HANDLE, "sql_validation"),
+                Map.entry(RequestedOutput.TRIAL_RESULT, "trial_run"),
+                Map.entry(RequestedOutput.CALIBER_EXPLANATION, "caliber_profile"),
+                Map.entry(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE,
+                        "caliber_sql_validation"),
+                Map.entry(RequestedOutput.CALIBER_TRIAL_RESULT, "caliber_trial_result"),
+                Map.entry(RequestedOutput.DIAGNOSIS, "diagnosis"),
+                Map.entry(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT, "difference_diagnosis_report"),
+                Map.entry(RequestedOutput.CHANGE_PREVIEW, "rule_change_preview"),
+                Map.entry(RequestedOutput.FILE_ANALYSIS, "file_analysis"),
+                Map.entry(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
+                        "implementation_validation_report"));
         Set<String> facts = new LinkedHashSet<>();
         for (RequestedOutput output : plan.requestedOutputs()) {
             if (mapping.containsKey(output)) {
@@ -100,6 +105,10 @@ public class CapabilitySpecRegistry {
             case RULE_EXPLANATION -> Set.of("effective_rule");
             case INDICATOR_SQL_PREPARE -> Set.of("sql_validation");
             case INDICATOR_TRIAL_RUN -> Set.of("trial_run");
+            case INDICATOR_CALIBER_SIMULATION -> plan.requestedOutputs().contains(
+                    RequestedOutput.CALIBER_TRIAL_RESULT)
+                    ? Set.of("caliber_trial_result")
+                    : Set.of("caliber_profile");
             case INDICATOR_DIAGNOSIS -> Set.of("diagnosis");
             case INDICATOR_DIFFERENCE_DIAGNOSIS -> Set.of("difference_diagnosis_report");
             case RULE_CHANGE_PREVIEW -> Set.of("rule_change_preview");
@@ -204,6 +213,17 @@ public class CapabilitySpecRegistry {
                         CapabilitySpecRegistry::sqlArguments, "sql_validation"),
                 spec(PlanCapability.EXECUTE_TRIAL_RUN, Set.of("sql_validation"), Set.of("trial_run"),
                         "trial_run_indicator_sql", CapabilitySpecRegistry::trialArguments, "trial_run"),
+                spec(PlanCapability.RESOLVE_CALIBER_PROFILE, Set.of("effective_rule"),
+                        Set.of("caliber_profile"), "resolve_indicator_caliber",
+                        CapabilitySpecRegistry::caliberResolveArguments, "caliber_profile"),
+                spec(PlanCapability.PREPARE_CALIBER_SQL,
+                        Set.of("effective_rule", "stat_period", "caliber_profile"),
+                        Set.of("caliber_sql_validation"), "prepare_indicator_caliber_sql",
+                        CapabilitySpecRegistry::caliberPrepareArguments, "caliber_sql_validation"),
+                spec(PlanCapability.EXECUTE_CALIBER_TRIAL_RUN,
+                        Set.of("caliber_sql_validation"), Set.of("caliber_trial_result"),
+                        "trial_run_indicator_caliber_sql",
+                        CapabilitySpecRegistry::caliberTrialArguments, "caliber_trial_result"),
                 spec(PlanCapability.DIAGNOSE_INDICATOR, Set.of("effective_rule", "implementation_status"),
                         Set.of("diagnosis"), "diagnose_indicator_issue",
                         CapabilitySpecRegistry::diagnosisArguments, "diagnosis"),
@@ -299,6 +319,52 @@ public class CapabilitySpecRegistry {
                     "VALIDATED_SQL_ID_MISSING", "当前没有可试运行的已校验 SQL，请重新准备 SQL。");
         }
         return Map.of("sql_id", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1));
+    }
+
+    private static Map<String, Object> caliberResolveArguments(
+            PlanningExecution execution, AgentRunState state, String userMessage) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", resolveRuleId(execution, state));
+        String raw = execution.requestPlan().targetCaliber().rawText();
+        values.put("raw_caliber", raw.isBlank() ? userMessage : raw);
+        if (execution.requestPlan().targetCaliber().profileId() != null) {
+            values.put("profile_id", execution.requestPlan().targetCaliber().profileId());
+        }
+        PlanValidation.ResolvedTimeRange period = execution.validation().resolvedTime();
+        if (period != null) {
+            values.put("stat_start_time", period.startTime().toString());
+            values.put("stat_end_time", period.endTime().toString());
+        }
+        return values;
+    }
+
+    private static Map<String, Object> caliberPrepareArguments(
+            PlanningExecution execution, AgentRunState state, String userMessage) {
+        PlanValidation.ResolvedTimeRange period = execution.validation().resolvedTime();
+        if (period == null) {
+            throw new CapabilityDispatchException(
+                    "STAT_PERIOD_MISSING", "请明确候选口径试运行的开始时间和结束时间。", true);
+        }
+        if (state.currentCaliberProfileId() == null) {
+            throw new CapabilityDispatchException(
+                    "CALIBER_PROFILE_MISSING", "当前尚未确认唯一候选口径。", true);
+        }
+        return Map.of(
+                "rule_id", resolveRuleId(execution, state),
+                "profile_id", state.currentCaliberProfileId(),
+                "stat_start_time", period.startTime().toString(),
+                "stat_end_time", period.endTime().toString());
+    }
+
+    private static Map<String, Object> caliberTrialArguments(
+            PlanningExecution execution, AgentRunState state, String userMessage) {
+        if (state.currentCaliberProfileId() == null || state.validatedSqlIds().isEmpty()) {
+            throw new CapabilityDispatchException(
+                    "CALIBER_SQL_ID_MISSING", "当前没有可试运行的候选口径 SQL。");
+        }
+        return Map.of(
+                "sql_id", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1),
+                "profile_id", state.currentCaliberProfileId());
     }
 
     private static Map<String, Object> diagnosisArguments(
@@ -405,6 +471,9 @@ public class CapabilitySpecRegistry {
                 PlanCapability.INSPECT_IMPLEMENTATION,
                 PlanCapability.PREPARE_VERIFIED_SQL,
                 PlanCapability.EXECUTE_TRIAL_RUN,
+                PlanCapability.RESOLVE_CALIBER_PROFILE,
+                PlanCapability.PREPARE_CALIBER_SQL,
+                PlanCapability.EXECUTE_CALIBER_TRIAL_RUN,
                 PlanCapability.DIAGNOSE_INDICATOR,
                 PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
                 PlanCapability.PREVIEW_RULE_CHANGE,

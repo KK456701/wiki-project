@@ -13,11 +13,15 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class PromptCatalog {
-    public static final String VERSION = "java-agent-prompts-v5";
+    public static final String VERSION = "java-agent-prompts-v6";
 
     public String planner() { return read("prompts/planner-system.txt"); }
     public String plannerRepair() { return read("prompts/planner-repair.txt"); }
     public String replanner() { return read("prompts/replanner-instruction.txt"); }
+
+    public String planAlignmentReview() {
+        return read("prompts/plan-alignment-review.txt");
+    }
     public String finalAnswer() { return read("prompts/final-answer-system.txt"); }
     public String finalAnswerCorrection() { return read("prompts/final-answer-correction.txt"); }
     public String indicatorCandidateDisambiguator() {

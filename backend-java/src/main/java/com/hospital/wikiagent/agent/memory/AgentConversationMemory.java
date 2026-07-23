@@ -73,6 +73,8 @@ public class AgentConversationMemory {
                       content TEXT NOT NULL,
                       rule_id VARCHAR(128),
                       rule_name VARCHAR(255),
+                      caliber_profile_id VARCHAR(128),
+                      caliber_label VARCHAR(255),
                       stat_start VARCHAR(40),
                       stat_end VARCHAR(40),
                       run_id VARCHAR(80),
@@ -80,6 +82,8 @@ public class AgentConversationMemory {
                       created_at VARCHAR(40) NOT NULL
                     )
                     """.formatted(identity));
+            ensureColumn("caliber_profile_id", "VARCHAR(128)");
+            ensureColumn("caliber_label", "VARCHAR(255)");
         } catch (Exception exception) {
             // 运行库不可用时仍允许服务启动；具体消息会进入租户隔离的内存兜底。
             LOGGER.warn("Unable to initialize Agent conversation memory table; fallback remains enabled: {}",
@@ -95,7 +99,8 @@ public class AgentConversationMemory {
         Message latestContext = null;
         for (int index = messages.size() - 1; index >= 0; index--) {
             Message candidate = messages.get(index);
-            if (candidate.ruleId() != null || candidate.statStart() != null
+            if (candidate.ruleId() != null || candidate.caliberProfileId() != null
+                    || candidate.statStart() != null
                     || candidate.runId() != null || candidate.uploadFileKey() != null) {
                 latestContext = candidate;
                 break;
@@ -108,6 +113,12 @@ public class AgentConversationMemory {
                 cached == null ? null : cached.ruleId());
         String ruleName = first(latestContext == null ? null : latestContext.ruleName(),
                 cached == null ? null : cached.ruleName());
+        String caliberProfileId = first(
+                latestContext == null ? null : latestContext.caliberProfileId(),
+                cached == null ? null : cached.caliberProfileId());
+        String caliberLabel = first(
+                latestContext == null ? null : latestContext.caliberLabel(),
+                cached == null ? null : cached.caliberLabel());
         String statStart = first(latestContext == null ? null : latestContext.statStart(),
                 cached == null ? null : cached.statStart());
         String statEnd = first(latestContext == null ? null : latestContext.statEnd(),
@@ -119,6 +130,8 @@ public class AgentConversationMemory {
         Map<String, Object> structured = new LinkedHashMap<>();
         put(structured, "active_rule_id", ruleId);
         put(structured, "active_rule_name", ruleName);
+        put(structured, "active_caliber_profile_id", caliberProfileId);
+        put(structured, "active_caliber_label", caliberLabel);
         put(structured, "stat_start", statStart);
         put(structured, "stat_end", statEnd);
         put(structured, "last_run_id", runId);
@@ -135,7 +148,8 @@ public class AgentConversationMemory {
                 sessionId,
                 history(messages),
                 structuredSummary,
-                ruleId, ruleName, statStart, statEnd, runId, uploadFileKey);
+                ruleId, ruleName, caliberProfileId, caliberLabel,
+                statStart, statEnd, runId, uploadFileKey);
     }
 
     public void appendUser(
@@ -147,6 +161,7 @@ public class AgentConversationMemory {
                 conversation.storageKey(), principal.hospitalId(), principal.userId(),
                 "user", limited(content, 5_000),
                 conversation.ruleId(), conversation.ruleName(),
+                conversation.caliberProfileId(), conversation.caliberLabel(),
                 conversation.statStart(), conversation.statEnd(), conversation.lastRunId(),
                 first(uploadFileKey, conversation.uploadFileKey()), Instant.now().toString()));
     }
@@ -161,6 +176,7 @@ public class AgentConversationMemory {
         append(new Message(
                 conversation.storageKey(), principal.hospitalId(), principal.userId(),
                 "assistant", limited(content, 12_000), values.ruleId(), values.ruleName(),
+                values.caliberProfileId(), values.caliberLabel(),
                 values.statStart(), values.statEnd(), values.runId(), values.uploadFileKey(),
                 Instant.now().toString()));
     }
@@ -170,7 +186,8 @@ public class AgentConversationMemory {
             try {
                 List<Message> rows = jdbc.query("""
                         SELECT session_key, hospital_id, user_id, role, content,
-                               rule_id, rule_name, stat_start, stat_end, run_id,
+                               rule_id, rule_name, caliber_profile_id, caliber_label,
+                               stat_start, stat_end, run_id,
                                upload_file_key, created_at
                         FROM med_agent_java_message
                         WHERE session_key = ?
@@ -180,7 +197,10 @@ public class AgentConversationMemory {
                         result.getString("session_key"), result.getString("hospital_id"),
                         result.getString("user_id"), result.getString("role"),
                         result.getString("content"), result.getString("rule_id"),
-                        result.getString("rule_name"), result.getString("stat_start"),
+                        result.getString("rule_name"),
+                        result.getString("caliber_profile_id"),
+                        result.getString("caliber_label"),
+                        result.getString("stat_start"),
                         result.getString("stat_end"), result.getString("run_id"),
                         result.getString("upload_file_key"), result.getString("created_at")),
                         key, MAX_MESSAGES);
@@ -202,12 +222,15 @@ public class AgentConversationMemory {
                 jdbc.update("""
                         INSERT INTO med_agent_java_message (
                           session_key, hospital_id, user_id, role, content, rule_id, rule_name,
-                          stat_start, stat_end, run_id, upload_file_key, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          caliber_profile_id, caliber_label, stat_start, stat_end, run_id,
+                          upload_file_key, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         message.sessionKey(), message.hospitalId(), message.userId(), message.role(),
-                        message.content(), message.ruleId(), message.ruleName(), message.statStart(),
-                        message.statEnd(), message.runId(), message.uploadFileKey(), message.createdAt());
+                        message.content(), message.ruleId(), message.ruleName(),
+                        message.caliberProfileId(), message.caliberLabel(),
+                        message.statStart(), message.statEnd(), message.runId(),
+                        message.uploadFileKey(), message.createdAt());
             } catch (RuntimeException exception) {
                 LOGGER.warn("Unable to persist Agent conversation memory; using fallback for session key hash={}: {}",
                         Integer.toHexString(message.sessionKey().hashCode()), exception.getMessage());
@@ -230,11 +253,37 @@ public class AgentConversationMemory {
         }
     }
 
+    /**
+     * 为已存在的轻量运行库补充 v2 会话列。
+     *
+     * <p>SQLite 与 H2 都支持 {@code ADD COLUMN}，重复列错误表示迁移已经完成，
+     * 因此可以安全忽略。这里不引入数据库迁移框架，仍保持单进程轻量部署。</p>
+     */
+    private void ensureColumn(String name, String type) throws java.sql.SQLException {
+        if (jdbc == null || jdbc.getDataSource() == null) return;
+        try (Connection connection = jdbc.getDataSource().getConnection();
+                java.sql.ResultSet columns = connection.getMetaData().getColumns(
+                        null, null, null, null)) {
+            while (columns.next()) {
+                if ("med_agent_java_message".equalsIgnoreCase(
+                        columns.getString("TABLE_NAME"))
+                        && name.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
+                    return;
+                }
+            }
+        }
+        jdbc.execute("ALTER TABLE med_agent_java_message ADD COLUMN " + name + " " + type);
+    }
+
     private static ContextValues contextValues(
             AgentRunState state,
             ConversationSnapshot previous) {
         String ruleId = first(state.currentRuleId(), previous.ruleId());
         String ruleName = previous.ruleName();
+        String caliberProfileId = first(
+                state.currentCaliberProfileId(), previous.caliberProfileId());
+        String caliberLabel = first(
+                state.currentCaliberLabel(), previous.caliberLabel());
         String statStart = first(state.statStart(), previous.statStart());
         String statEnd = first(state.statEnd(), previous.statEnd());
         String runId = first(state.lastRunId(), previous.lastRunId());
@@ -248,12 +297,16 @@ public class AgentConversationMemory {
                 ruleId = text(data.get("rule_id"));
                 ruleName = first(text(data.get("rule_name")), ruleName);
             }
+            caliberProfileId = first(
+                    text(data.get("caliber_profile_id")), caliberProfileId);
+            caliberLabel = first(text(data.get("caliber_label")), caliberLabel);
             statStart = first(text(data.get("stat_start")), text(data.get("stat_start_time")), statStart);
             statEnd = first(text(data.get("stat_end")), text(data.get("stat_end_time")), statEnd);
             runId = first(text(data.get("run_id")), runId);
         }
         return new ContextValues(
-                ruleId, ruleName, statStart, statEnd, runId,
+                ruleId, ruleName, caliberProfileId, caliberLabel,
+                statStart, statEnd, runId,
                 first(state.currentUploadFileKey(), previous.uploadFileKey()));
     }
 
@@ -291,7 +344,8 @@ public class AgentConversationMemory {
     private static String messageKey(Message message) {
         return String.join("\u001f",
                 safeKey(message.createdAt()), safeKey(message.role()), safeKey(message.content()),
-                safeKey(message.ruleId()), safeKey(message.statStart()), safeKey(message.statEnd()),
+                safeKey(message.ruleId()), safeKey(message.caliberProfileId()),
+                safeKey(message.statStart()), safeKey(message.statEnd()),
                 safeKey(message.runId()), safeKey(message.uploadFileKey()));
     }
 
@@ -348,6 +402,8 @@ public class AgentConversationMemory {
             String structuredSummary,
             String ruleId,
             String ruleName,
+            String caliberProfileId,
+            String caliberLabel,
             String statStart,
             String statEnd,
             String lastRunId,
@@ -357,6 +413,8 @@ public class AgentConversationMemory {
     private record ContextValues(
             String ruleId,
             String ruleName,
+            String caliberProfileId,
+            String caliberLabel,
             String statStart,
             String statEnd,
             String runId,
@@ -371,6 +429,8 @@ public class AgentConversationMemory {
             String content,
             String ruleId,
             String ruleName,
+            String caliberProfileId,
+            String caliberLabel,
             String statStart,
             String statEnd,
             String runId,

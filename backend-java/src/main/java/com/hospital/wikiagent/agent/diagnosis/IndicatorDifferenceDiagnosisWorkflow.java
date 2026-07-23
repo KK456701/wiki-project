@@ -371,12 +371,15 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         if (fileEvidence == null) return Map.of();
         String uploadedPeriod = text(fileEvidence.data().get("uploaded_stat_period"));
         if (uploadedPeriod.isBlank()) return Map.of();
-        Set<LocalDate> dates = dates(uploadedPeriod);
+        List<LocalDate> dates = periodDates(uploadedPeriod);
         if (dates.size() < 2) return Map.of();
         LocalDate expectedStart = execution.start.toLocalDate();
         LocalDate expectedEnd = execution.end.toLocalDate();
-        boolean matches = dates.contains(expectedStart)
-                && (dates.contains(expectedEnd) || dates.contains(expectedEnd.minusDays(1)));
+        // 只取统计区间文本中前两个日期作为端点。括号中的“覆盖至某日”等说明日期
+        // 不能参与匹配，否则完整自然日 [7月23日, 7月24日) 会被误认为“到当前时刻”。
+        boolean matches = dates.get(0).equals(expectedStart)
+                && (dates.get(1).equals(expectedEnd)
+                        || dates.get(1).equals(expectedEnd.minusDays(1)));
         if (matches) return Map.of();
         return layer(1, "诊断范围预检", "blocked", true, false,
                 List.of(check("FILE_PERIOD_CONFLICT", "fail",
@@ -439,6 +442,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                         execution.input.statEndTime()),
                 profileId,
                 objectMap(profile.get("parameter_overrides")),
+                objectMap(profile.get("field_role_overrides")),
                 execution.context);
         if (!prepared.ok()) {
             result.put("executable", false);
@@ -465,17 +469,25 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
         boolean resultMatches = candidateMatchesExternal(trial.data(), execution);
         boolean differsFromBaseline = differs(trial.data(), execution.baseline.data());
-        boolean keywordEvidence = keywordsMatch(profile.get("evidence_keywords"), execution.input.issueDescription());
+        boolean keywordEvidence = keywordsMatch(
+                profile.get("evidence_keywords"), execution.input.issueDescription());
+        boolean fileSchemaEvidence = execution.initialUploadInspection != null
+                && keywordsMatch(
+                        profile.get("evidence_keywords"),
+                        String.valueOf(execution.initialUploadInspection.data().getOrDefault(
+                                "columns", List.of())));
         boolean rowEvidence = false;
         if (execution.input.fileKey() != null && detailExport(execution.initialUploadInspection)) {
             ToolResult comparison = analyzeUploadAgainst(trial, execution);
             rowEvidence = rowSetsEqual(comparison.data());
             result.put("row_evidence", safeRowSummary(comparison.data()));
         }
-        boolean confirmed = resultMatches && differsFromBaseline && (keywordEvidence || rowEvidence);
+        boolean confirmed = resultMatches && differsFromBaseline
+                && (keywordEvidence || fileSchemaEvidence || rowEvidence);
         result.put("external_result_match", resultMatches);
         result.put("differs_from_baseline", differsFromBaseline);
         result.put("keyword_evidence", keywordEvidence);
+        result.put("file_schema_evidence", fileSchemaEvidence);
         result.put("row_evidence_confirmed", rowEvidence);
         result.put("cause_confirmed", confirmed);
         if (resultMatches && !confirmed) {
@@ -932,9 +944,26 @@ public class IndicatorDifferenceDiagnosisWorkflow {
     private static Map<String, Object> safeExternal(DiagnosticExecution execution) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (execution.uploadComparison != null) {
-            put(result, "numerator", execution.uploadComparison.data().get("uploaded_numerator"));
-            put(result, "denominator", execution.uploadComparison.data().get("uploaded_denominator"));
-            put(result, "rate", execution.uploadComparison.data().get("uploaded_rate"));
+            Object numerator = firstPresent(
+                    execution.uploadComparison.data().get("uploaded_numerator"),
+                    execution.uploadComparison.data().get("uploaded_numerator_count"));
+            Object denominator = firstPresent(
+                    execution.uploadComparison.data().get("uploaded_denominator"),
+                    execution.uploadComparison.data().get("uploaded_count"));
+            Object rate = firstPresent(
+                    execution.uploadComparison.data().get("uploaded_rate"));
+            if (text(rate).isBlank()
+                    && !text(numerator).isBlank()
+                    && !text(denominator).isBlank()
+                    && doubleValue(denominator) != 0) {
+                rate = BigDecimal.valueOf(
+                                doubleValue(numerator) * 100.0 / doubleValue(denominator))
+                        .setScale(2, RoundingMode.HALF_UP)
+                        .doubleValue();
+            }
+            put(result, "numerator", numerator);
+            put(result, "denominator", denominator);
+            put(result, "rate", rate);
             put(result, "stat_period", execution.uploadComparison.data().get("uploaded_stat_period"));
             if (!result.isEmpty()) result.put("source", "uploaded_file");
         } else {
@@ -1109,17 +1138,17 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         return groups.getOrDefault(expected, Set.of(expected)).contains(actual);
     }
 
-    private static Set<LocalDate> dates(String value) {
+    private static List<LocalDate> periodDates(String value) {
         Matcher matcher = Pattern.compile("\\d{4}-\\d{2}-\\d{2}").matcher(value);
-        Set<LocalDate> result = new LinkedHashSet<>();
-        while (matcher.find()) {
+        List<LocalDate> result = new ArrayList<>();
+        while (matcher.find() && result.size() < 2) {
             try {
                 result.add(LocalDate.parse(matcher.group()));
             } catch (DateTimeParseException ignored) {
                 // 非法日期按缺少可比较元数据处理。
             }
         }
-        return result;
+        return List.copyOf(result);
     }
 
     private static Object firstPresent(Object... values) {

@@ -1,0 +1,46 @@
+schema_version: caliber-profiles-v1
+rule_id: MQSI2025_001
+profiles:
+  - profile_id: national_2025
+    label: 国家标准2025口径
+    aliases: [国标口径, 国家标准口径]
+    source_level: national
+    source_version: "2025"
+    status: approved
+    hospital_ids: ["*"]
+    effective_from: "2025-01-01"
+    effective_to: null
+    baseline_equivalent: true
+    parameter_overrides:
+      transfer_minutes_threshold: 2880
+    difference_dimensions:
+      - 入院后48小时内转科
+      - 转入和转出科室均非ICU
+    evidence_keywords: [国标, 国家标准, 48小时, 非ICU]
+  - profile_id: hospital_001_ward_entry_anchor
+    label: 首次入区时间统计及48小时口径
+    aliases: [入区, 入区时间, 首次入区, 首次入区时间]
+    source_level: hospital_history
+    source_version: "2026-07"
+    status: approved
+    hospital_ids: [hospital_001]
+    effective_from: "2026-01-01"
+    effective_to: null
+    baseline_equivalent: false
+    caliber_definition: 首次入区后0至48小时内发生转科，且转入、转出科室均非ICU的入院人次数，占同期首次入区患者总人次数的比例。
+    numerator_rule: 统计周期内首次入区，且首次入区后0至48小时内发生转科，转入、转出科室均非ICU的入院人次数（按入院流水号去重）。
+    denominator_rule: 统计周期内首次入区患者总人次数（按入院流水号去重）。
+    period_anchor_label: 首次入区时间
+    elapsed_anchor_label: 首次入区时间
+    field_role_overrides:
+      period_time: ward_entry_time
+      admit_time: ward_entry_time
+    parameter_overrides:
+      transfer_minutes_threshold: 2880
+    difference_dimensions:
+      - 统计周期由办理住院时间改为首次入区时间
+      - 48小时耗时起点由办理住院时间改为首次入区时间
+    evidence_keywords:
+      - 首次入区
+      - 入区时间
+      - FIRST_ADMITTED_TO_WARD_AT

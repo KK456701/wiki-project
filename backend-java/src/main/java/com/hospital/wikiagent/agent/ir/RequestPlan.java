@@ -12,12 +12,30 @@ public record RequestPlan(
         PlanIntent intent,
         String goal,
         TargetIndicator targetIndicator,
+        TargetCaliber targetCaliber,
         TimeExpression timeExpression,
         List<RequestedOutput> requestedOutputs,
         List<String> constraints,
         List<SemanticAmbiguity> semanticAmbiguities) {
 
-    public static final String VERSION = "request-plan-v1";
+    public static final String VERSION = "request-plan-v2";
+
+    /**
+     * 兼容项目内仍使用 v1 形状构造计划的调用方。序列化协议已经升级为 v2，
+     * 旧构造方式只表示“本轮没有候选口径目标”。
+     */
+    public RequestPlan(
+            String schemaVersion,
+            PlanIntent intent,
+            String goal,
+            TargetIndicator targetIndicator,
+            TimeExpression timeExpression,
+            List<RequestedOutput> requestedOutputs,
+            List<String> constraints,
+            List<SemanticAmbiguity> semanticAmbiguities) {
+        this(schemaVersion, intent, goal, targetIndicator, null, timeExpression,
+                requestedOutputs, constraints, semanticAmbiguities);
+    }
 
     public RequestPlan {
         schemaVersion = blankTo(schemaVersion, VERSION);
@@ -27,6 +45,7 @@ public record RequestPlan(
             throw new IllegalArgumentException("业务目标必须为 1 至 500 个字符");
         }
         targetIndicator = targetIndicator == null ? new TargetIndicator("", null) : targetIndicator;
+        targetCaliber = targetCaliber == null ? new TargetCaliber("", null) : targetCaliber;
         timeExpression = timeExpression == null ? new TimeExpression("", null, null) : timeExpression;
         requestedOutputs = requestedOutputs == null ? List.of() : List.copyOf(requestedOutputs);
         constraints = constraints == null ? List.of() : constraints.stream().map(String::strip).toList();
@@ -37,6 +56,17 @@ public record RequestPlan(
         public TargetIndicator {
             rawName = rawName == null ? "" : rawName.strip();
             ruleId = normalizeNullable(ruleId);
+        }
+    }
+
+    /**
+     * 描述用户希望模拟的候选口径。profileId 只能由服务端 Wiki 候选解析器确认，
+     * Planner 提供的编号仍需重新校验，不能直接决定字段覆盖或 SQL。
+     */
+    public record TargetCaliber(String rawText, String profileId) {
+        public TargetCaliber {
+            rawText = rawText == null ? "" : rawText.strip();
+            profileId = normalizeNullable(profileId);
         }
     }
 

@@ -31,6 +31,7 @@ import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerResult;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.ReplannerInput;
+import com.hospital.wikiagent.agent.model.ModelRequestPlanner.AlignmentReviewInput;
 import com.hospital.wikiagent.agent.planning.AgentStateController;
 import com.hospital.wikiagent.agent.planning.AgentFailureRouter;
 import com.hospital.wikiagent.agent.planning.AgentFailureRouter.FailureRoute;
@@ -40,6 +41,9 @@ import com.hospital.wikiagent.agent.planning.ControllerDecision;
 import com.hospital.wikiagent.agent.planning.ControllerDecision.ControllerAction;
 import com.hospital.wikiagent.agent.planning.DeterministicDispatch;
 import com.hospital.wikiagent.agent.planning.PlanCompiler;
+import com.hospital.wikiagent.agent.planning.PlanGoalAlignmentValidator;
+import com.hospital.wikiagent.agent.planning.PlanGoalAlignmentValidator.AlignmentDecision;
+import com.hospital.wikiagent.agent.planning.PlanGoalAlignmentValidator.AlignmentStatus;
 import com.hospital.wikiagent.agent.planning.PlanValidation;
 import com.hospital.wikiagent.agent.planning.PlanValidator;
 import com.hospital.wikiagent.agent.planning.PlanningExecution;
@@ -85,6 +89,7 @@ public class AgentRunner {
     private final AgentConversationMemory conversations;
     private final AgentFailureRouter failureRouter;
     private final UploadedFilePlanningContext uploadPlanningContext;
+    private final PlanGoalAlignmentValidator alignmentValidator;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -99,7 +104,8 @@ public class AgentRunner {
             FinalAnswerComposer finalAnswer,
             AgentConversationMemory conversations,
             AgentFailureRouter failureRouter,
-            UploadedFilePlanningContext uploadPlanningContext) {
+            UploadedFilePlanningContext uploadPlanningContext,
+            PlanGoalAlignmentValidator alignmentValidator) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -112,6 +118,7 @@ public class AgentRunner {
         this.conversations = conversations;
         this.failureRouter = failureRouter;
         this.uploadPlanningContext = uploadPlanningContext;
+        this.alignmentValidator = alignmentValidator;
     }
 
     public AgentRunner(
@@ -127,7 +134,7 @@ public class AgentRunner {
             AgentConversationMemory conversations) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
                 gateway, verifier, finalAnswer, conversations,
-                new AgentFailureRouter(new ReplanPolicy()), null);
+                new AgentFailureRouter(new ReplanPolicy()), null, null);
     }
 
     public AgentRunner(
@@ -226,7 +233,6 @@ public class AgentRunner {
                 throw exception;
             }
         }
-        long compileStarted = TraceEvents.started();
         PlanningContext fileContext = resolveUploadPlanningContext(request);
         RequestPlan enrichedPlan = normalizeExplicitDifferenceDiagnosis(
                 request.query(), normalizeExplicitImplementationValidation(
@@ -237,20 +243,6 @@ public class AgentRunner {
                                 resolvedIndicator)));
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
-        // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
-        CompiledPlanIR compiled = compiler.compile(planned.plan());
-        TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
-                subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
-                        "plan_id", compiled.planId(), "node_count", compiled.nodes().size(),
-                        "ir_version", CompiledPlanIR.VERSION));
-        long validationStarted = TraceEvents.started();
-        PlanValidation validation = validator.validate(planned.plan());
-        TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
-                subtaskId, Map.of("plan_id", compiled.planId()), Map.of(
-                        "valid", validation.ok(),
-                        "code", validation.code()));
-        PlanningExecution execution = new PlanningExecution(
-                planned.plan(), compiled, validation, capabilities);
 
         AgentRunState state = new AgentRunState();
         state.subtaskId(subtaskId);
@@ -268,6 +260,30 @@ public class AgentRunner {
         state.currentRuleId(first(
                 planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
         state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
+
+        // 在编译 IR 之前核对原问题和模型计划。只有真正的方向性冲突才触发一次
+        // Replanner；正常计划不会增加模型调用。
+        planned = alignPlanBeforeCompile(
+                request, observer, traceId, state, planned, conversation, resolvedIndicator);
+
+        // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
+        long compileStarted = TraceEvents.started();
+        CompiledPlanIR compiled = compiler.compile(planned.plan());
+        TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
+                subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
+                        "plan_id", compiled.planId(), "node_count", compiled.nodes().size(),
+                        "ir_version", CompiledPlanIR.VERSION));
+        long validationStarted = TraceEvents.started();
+        PlanValidation validation = validator.validate(planned.plan());
+        TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
+                subtaskId, Map.of("plan_id", compiled.planId()), Map.of(
+                        "valid", validation.ok(),
+                        "code", validation.code()));
+        PlanningExecution execution = new PlanningExecution(
+                planned.plan(), compiled, validation, capabilities);
+
+        state.currentRuleId(first(
+                planned.plan().targetIndicator().ruleId(), state.currentRuleId()));
         applyResolvedTime(state, validation);
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId());
@@ -419,6 +435,227 @@ public class AgentRunner {
     /**
      * 仅为可恢复的语义计划错误生成一次替代计划，并拒绝重复失败的 planId。
      */
+    private PlannerResult alignPlanBeforeCompile(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            String traceId,
+            AgentRunState state,
+            PlannerResult current,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        if (alignmentValidator == null) return current;
+        long started = TraceEvents.started();
+        AlignmentDecision decision = alignmentValidator.assess(
+                request.query(), current.plan(), request.principal().hospitalId());
+        TraceEvents.completed(observer, traceId, "plan_goal_alignment", "code", started,
+                state.subtaskId(), Map.of(
+                        "query", request.query(),
+                        "intent", current.plan().intent().name()), Map.of(
+                        "status", decision.status().name(),
+                        "failure_code", decision.failureCode(),
+                        "reason", decision.reason(),
+                        "candidate_profiles", safeCandidateProfiles(decision)),
+                "failure_class", decision.aligned()
+                        ? "" : FailureClass.TASK_TYPE_ERROR.value());
+        if (decision.aligned()) return current;
+
+        RequestPlan reviewedCorrection = null;
+        if (decision.status() == AlignmentStatus.REVIEW_REQUIRED) {
+            long reviewStarted = TraceEvents.started();
+            try {
+                var review = planner.reviewAlignment(new AlignmentReviewInput(
+                        request.query(),
+                        request.modelId(),
+                        current.plan(),
+                        request.structuredState(),
+                        safeCandidateProfiles(decision).toString()));
+                TraceEvents.completed(
+                        observer, traceId, "plan_alignment_review_llm", "llm",
+                        reviewStarted, state.subtaskId(), Map.of(
+                                "intent", current.plan().intent().name(),
+                                "candidate_profiles", safeCandidateProfiles(decision)), Map.of(
+                                "aligned", review.aligned(),
+                                "reason", review.reason(),
+                                "suggested_profile_id", review.suggestedProfileId()),
+                        "model_id", review.modelId());
+                if (review.aligned()) return current;
+                reviewedCorrection = alignmentValidator.correctionForReviewedProfile(
+                        current.plan(), decision, review.suggestedProfileId(), request.query());
+                decision = AlignmentDecision.mismatch(
+                        "TASK_TYPE_MISMATCH",
+                        review.reason().isBlank() ? decision.reason() : review.reason(),
+                        reviewedCorrection,
+                        decision.candidates());
+            } catch (RuntimeException exception) {
+                TraceEvents.failed(
+                        observer, traceId, "plan_alignment_review_llm", "llm",
+                        reviewStarted, state.subtaskId(),
+                        "PLAN_ALIGNMENT_REVIEW_FAILED",
+                        exception.getMessage(),
+                        "model_id", request.modelId());
+                // 审核模型不可用时不能把可疑计划当作正确；后续由 Replanner 或明确兜底处理。
+            }
+        }
+
+        PlannerResult replanned = tryAlignmentReplan(
+                request, observer, traceId, state, current,
+                "TASK_TYPE_MISMATCH", decision.reason(),
+                conversation, resolvedIndicator);
+        if (replanned != null) {
+            PlannerResult alternative = replanned;
+            long revalidateStarted = TraceEvents.started();
+            AlignmentDecision revalidated = alignmentValidator.assess(
+                    request.query(), alternative.plan(), request.principal().hospitalId());
+            TraceEvents.completed(
+                    observer, traceId, "plan_alignment_revalidate", "code",
+                    revalidateStarted, state.subtaskId(), Map.of(
+                            "intent", alternative.plan().intent().name()), Map.of(
+                            "status", revalidated.status().name(),
+                            "reason", revalidated.reason()),
+                    "failure_class", revalidated.aligned()
+                            ? "" : FailureClass.TASK_TYPE_ERROR.value());
+            if (revalidated.aligned()) {
+                return alternative;
+            }
+        }
+
+        RequestPlan fallback = firstNonNull(
+                reviewedCorrection,
+                alignmentValidator.deterministicFallback(decision));
+        if (fallback != null) {
+            long fallbackStarted = TraceEvents.started();
+            TraceEvents.completed(
+                    observer, traceId, "plan_alignment_deterministic_fallback", "code",
+                    fallbackStarted, state.subtaskId(), Map.of(
+                            "failure_reason", decision.reason()), Map.of(
+                            "intent", fallback.intent().name(),
+                            "target_caliber", fallback.targetCaliber().profileId()));
+            return new PlannerResult(
+                    fallback,
+                    "deterministic-plan-alignment-fallback",
+                    current.modelId(),
+                    true);
+        }
+
+        // 无唯一安全修正方向时给 PlanValidator 一个明确阻断标记，不能继续按错误计划回答。
+        List<String> constraints = new ArrayList<>(current.plan().constraints());
+        constraints.add("alignment_blocked");
+        RequestPlan blocked = new RequestPlan(
+                RequestPlan.VERSION,
+                current.plan().intent(),
+                current.plan().goal(),
+                current.plan().targetIndicator(),
+                current.plan().targetCaliber(),
+                current.plan().timeExpression(),
+                current.plan().requestedOutputs(),
+                constraints,
+                current.plan().semanticAmbiguities());
+        return new PlannerResult(
+                blocked, current.rawContent(), current.modelId(), current.repaired());
+    }
+
+    private static List<Map<String, Object>> safeCandidateProfiles(AlignmentDecision decision) {
+        if (decision == null) return List.of();
+        return decision.candidates().stream().map(item -> Map.<String, Object>of(
+                "profile_id", safe(text(item.get("profile_id"))),
+                "label", safe(text(item.get("label"))),
+                "source_version", safe(text(item.get("source_version"))))).toList();
+    }
+
+    @SafeVarargs
+    private static <T> T firstNonNull(T... values) {
+        for (T value : values) {
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    /**
+     * 在 IR 编译之前执行一次受限 Replan。
+     *
+     * <p>这里不能复用运行期 {@link #tryReplan}：运行期已经拥有 CompiledPlan，
+     * 而目标一致性校验要求“替代计划先复核、后编译”。预编译阶段使用 RequestPlan
+     * 指纹记录失败路径，避免为了 planId 提前编译错误计划。</p>
+     */
+    private PlannerResult tryAlignmentReplan(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            String traceId,
+            AgentRunState state,
+            PlannerResult current,
+            String failureCode,
+            String failureReason,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        long routeStarted = TraceEvents.started();
+        FailureRoute route = failureRouter.route(state, failureCode);
+        TraceEvents.completed(observer, traceId, "failure_router", "code", routeStarted,
+                state.subtaskId(), Map.of(
+                        "failure_code", route.failureCode(),
+                        "failure_class", route.failureClass().value(),
+                        "replan_count", state.replanCount()), Map.of(
+                        "action", route.action().name()),
+                "failure_class", route.failureClass().value());
+        if (!route.shouldReplan()) return null;
+
+        String failedPlanId = precompilePlanId(current.plan());
+        failureRouter.recordReplan(state, failedPlanId);
+        long started = TraceEvents.started();
+        try {
+            PlannerResult raw = planner.replan(new ReplannerInput(
+                    request.query(), request.modelId(),
+                    LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                    current.plan(), failureCode, failureReason,
+                    "rule_id=" + safe(state.currentRuleId())
+                            + "; evidence_ids=" + state.evidenceIds(),
+                    failedPlanId));
+            RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
+                    request.query(), normalizeExplicitImplementationValidation(
+                            request.query(), enrichFromResolvedIndicator(
+                                    enrichFromConversation(
+                                            enrichFromUploadedFile(
+                                                    raw.plan(),
+                                                    resolveUploadPlanningContext(request)),
+                                            conversation),
+                                    resolvedIndicator)));
+            String alternativeId = precompilePlanId(plan);
+            if (!failureRouter.acceptsAlternative(state, alternativeId)) {
+                TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
+                        state.subtaskId(), "REPLAN_REPEATED_FAILED_PATH",
+                        "重规划重复了已经失败的计划方向。",
+                        "model_id", raw.modelId(),
+                        "failure_class", FailureClass.classify(failureCode).value());
+                return null;
+            }
+            PlannerResult planned = new PlannerResult(
+                    plan, raw.rawContent(), raw.modelId(), raw.repaired());
+            TraceEvents.completed(observer, traceId, "plan_replan", "llm", started,
+                    state.subtaskId(), Map.of(
+                            "original_plan_id", failedPlanId,
+                            "failure_code", failureCode,
+                            "failure_reason", failureReason,
+                            "known_evidence_ids", state.evidenceIds()), eventValues(
+                            "raw_content", raw.rawContent(),
+                            "candidate_plan_id", alternativeId,
+                            "request_plan", tracePlan(plan),
+                            "replan_count", state.replanCount()),
+                    "model_id", raw.modelId(),
+                    "failure_class", FailureClass.classify(failureCode).value(),
+                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+            return planned;
+        } catch (RuntimeException exception) {
+            TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
+                    state.subtaskId(), "REPLAN_FAILED", exception.getMessage(),
+                    "failure_class", FailureClass.classify(failureCode).value(),
+                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+            return null;
+        }
+    }
+
+    private static String precompilePlanId(RequestPlan plan) {
+        return "PREPLAN_" + Integer.toUnsignedString(tracePlan(plan).hashCode(), 16);
+    }
+
     private ReplanOutcome tryReplan(
             AgentRunRequest request,
             AgentRunObserver observer,
@@ -520,11 +757,20 @@ public class AgentRunner {
                 ? null : validation.resolvedTime().endTime().format(EVIDENCE_TIME);
         String sqlId = state.validatedSqlIds().isEmpty()
                 ? null : state.validatedSqlIds().get(state.validatedSqlIds().size() - 1);
+        ToolResult currentRuleEvidence = latestSuccessful(
+                state, "EFFECTIVE_RULE_FOUND", state.currentRuleId());
+        String currentRuleVersion = currentRuleEvidence == null
+                ? null
+                : first(
+                        text(currentRuleEvidence.data().get("hospital_version")),
+                        text(currentRuleEvidence.data().get("version")),
+                        text(currentRuleEvidence.data().get("national_version")));
         long verifyStarted = TraceEvents.started();
         List<com.hospital.wikiagent.agent.evidence.VerifiedEvidence> evidence = verifier.verifyMany(
                 state.evidenceIds(), context,
                 new VerificationExpectations(
-                        state.subtaskId(), state.currentRuleId(), statStart, statEnd, sqlId, currentResults));
+                        state.subtaskId(), state.currentRuleId(), statStart, statEnd, sqlId,
+                        state.currentCaliberProfileId(), currentRuleVersion, currentResults));
         TraceEvents.completed(observer, traceId, "plan_verify", "code", verifyStarted,
                 state.subtaskId(), Map.of(
                         "evidence_ids", state.evidenceIds()), eventValues(
@@ -536,6 +782,10 @@ public class AgentRunner {
         if (deterministicAnswer == null) {
             deterministicAnswer = composeImplementationValidationAnswer(plan, state);
             deterministicNode = "implementation_validation_answer";
+        }
+        if (deterministicAnswer == null) {
+            deterministicAnswer = composeCaliberSimulationAnswer(plan, state);
+            deterministicNode = "caliber_simulation_answer";
         }
         if (deterministicAnswer == null) {
             deterministicAnswer = composePreparedSqlAnswer(plan, state);
@@ -550,6 +800,7 @@ public class AgentRunner {
                     "workflow_version", switch (deterministicNode) {
                         case "prepared_sql_answer" -> "prepared-sql-answer-v2";
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
+                        case "caliber_simulation_answer" -> "caliber-simulation-answer-v1";
                         default -> "implementation-validation-mvp-v1";
                     });
             long guardStarted = TraceEvents.started();
@@ -642,7 +893,8 @@ public class AgentRunner {
                 state.currentRuleId(ruleId.toString());
             }
         }
-        if ("SQL_OBJECT_PREPARED".equals(result.code())) {
+        if ("SQL_OBJECT_PREPARED".equals(result.code())
+                || "CALIBER_SQL_PREPARED".equals(result.code())) {
             Object sqlId = result.data().get("sql_id");
             if (sqlId != null && !sqlId.toString().isBlank()
                     && !state.validatedSqlIds().contains(sqlId.toString())) {
@@ -656,7 +908,13 @@ public class AgentRunner {
                 state.lastDiagnosisId(reportId.toString());
             }
         }
-        if ("TRIAL_RUN_COMPLETED".equals(result.code())) {
+        if ("CALIBER_PROFILE_RESOLVED".equals(result.code())) {
+            state.currentCaliber(
+                    text(result.data().get("caliber_profile_id")),
+                    text(result.data().get("caliber_label")));
+        }
+        if ("TRIAL_RUN_COMPLETED".equals(result.code())
+                || "CALIBER_TRIAL_RUN_COMPLETED".equals(result.code())) {
             Object runId = result.data().get("run_id");
             if (runId != null && !runId.toString().isBlank()) {
                 state.lastRunId(runId.toString());
@@ -704,6 +962,13 @@ public class AgentRunner {
             target = new RequestPlan.TargetIndicator(
                     first(conversation.ruleName(), conversation.ruleId()), conversation.ruleId());
         }
+        RequestPlan.TargetCaliber caliber = plan.targetCaliber();
+        if (caliber.rawText().isBlank() && caliber.profileId() == null
+                && conversation.caliberProfileId() != null) {
+            caliber = new RequestPlan.TargetCaliber(
+                    first(conversation.caliberLabel(), conversation.caliberProfileId()),
+                    conversation.caliberProfileId());
+        }
         RequestPlan.TimeExpression time = plan.timeExpression();
         if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
                 && conversation.statStart() != null && conversation.statEnd() != null) {
@@ -711,7 +976,7 @@ public class AgentRunner {
                     "沿用上一轮统计区间", conversation.statStart(), conversation.statEnd());
         }
         return new RequestPlan(
-                plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
+                plan.schemaVersion(), plan.intent(), plan.goal(), target, caliber, time,
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
     }
 
@@ -741,7 +1006,7 @@ public class AgentRunner {
                     file.statEnd());
         }
         return new RequestPlan(
-                plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
+                plan.schemaVersion(), plan.intent(), plan.goal(), target, plan.targetCaliber(), time,
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
     }
 
@@ -766,7 +1031,7 @@ public class AgentRunner {
         return new RequestPlan(
                 plan.schemaVersion(), plan.intent(), plan.goal(),
                 new RequestPlan.TargetIndicator(resolved.canonicalName(), resolved.ruleId()),
-                plan.timeExpression(), plan.requestedOutputs(), plan.constraints(),
+                plan.targetCaliber(), plan.timeExpression(), plan.requestedOutputs(), plan.constraints(),
                 plan.semanticAmbiguities());
     }
 
@@ -800,6 +1065,29 @@ public class AgentRunner {
             }
         }
         if (ruleId == null || statStart == null || statEnd == null) return null;
+        boolean candidateReference = conversation.caliberProfileId() != null
+                && (compact.contains("这个口径")
+                        || compact.contains("该口径")
+                        || compact.contains("候选口径")
+                        || compact.contains("刚才口径"));
+        if (candidateReference) {
+            return new RequestPlan(
+                    RequestPlan.VERSION,
+                    PlanIntent.INDICATOR_CALIBER_SIMULATION,
+                    query == null ? "生成上一轮候选口径的受控 SQL" : query,
+                    new RequestPlan.TargetIndicator(ruleName, ruleId),
+                    new RequestPlan.TargetCaliber(
+                            first(conversation.caliberLabel(),
+                                    conversation.caliberProfileId()),
+                            conversation.caliberProfileId()),
+                    new RequestPlan.TimeExpression(
+                            "沿用上一轮统计区间", statStart, statEnd),
+                    List.of(
+                            RequestedOutput.CALIBER_EXPLANATION,
+                            RequestedOutput.CALIBER_PREPARED_SQL_HANDLE),
+                    List.of(),
+                    List.of());
+        }
         return new RequestPlan(
                 RequestPlan.VERSION,
                 PlanIntent.INDICATOR_SQL_PREPARE,
@@ -872,6 +1160,7 @@ public class AgentRunner {
                 PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
                 plan.goal(),
                 target,
+                plan.targetCaliber(),
                 time,
                 List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
                 plan.constraints(),
@@ -899,6 +1188,7 @@ public class AgentRunner {
                 PlanIntent.IMPLEMENTATION_VALIDATION,
                 plan.goal(),
                 target,
+                plan.targetCaliber(),
                 time,
                 List.of(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT),
                 plan.constraints(),
@@ -1087,6 +1377,109 @@ public class AgentRunner {
         return answer.toString();
     }
 
+    /**
+     * 用候选口径工具的已验证结果生成确定性回答。
+     *
+     * <p>该回答明确区分“当前生效规则”和“候选模拟口径”，并在输出数值前再次核对
+     * profile、SQL 和统计周期。模型不参与改写这些事实，避免把候选结果误称为正式口径。</p>
+     */
+    private static String composeCaliberSimulationAnswer(
+            RequestPlan plan,
+            AgentRunState state) {
+        if (plan.intent() != PlanIntent.INDICATOR_CALIBER_SIMULATION
+                && !plan.requestedOutputs().contains(RequestedOutput.CALIBER_EXPLANATION)
+                && !plan.requestedOutputs().contains(RequestedOutput.CALIBER_TRIAL_RESULT)) {
+            return null;
+        }
+        ToolResult profile = latestSuccessful(
+                state, "CALIBER_PROFILE_RESOLVED", state.currentRuleId());
+        if (profile == null) return null;
+        String profileId = text(profile.data().get("caliber_profile_id"));
+        if (profileId == null || !profileId.equals(state.currentCaliberProfileId())) {
+            return "候选口径结果未通过 profile 一致性校验，本轮不输出模拟数值。";
+        }
+
+        ToolResult trial = latestSuccessful(
+                state, "CALIBER_TRIAL_RUN_COMPLETED", state.currentRuleId());
+        ToolResult prepared = latestSuccessful(
+                state, "CALIBER_SQL_PREPARED", state.currentRuleId());
+        boolean wantsTrial = plan.requestedOutputs().contains(
+                RequestedOutput.CALIBER_TRIAL_RESULT);
+        boolean wantsPreparedSql = plan.requestedOutputs().contains(
+                RequestedOutput.CALIBER_PREPARED_SQL_HANDLE);
+        if (wantsTrial && trial == null) return null;
+        if (wantsPreparedSql && prepared == null) return null;
+        if (prepared != null
+                && (!profileId.equals(text(prepared.data().get("caliber_profile_id")))
+                        || !java.util.Objects.equals(
+                                text(profile.data().get("caliber_version")),
+                                text(prepared.data().get("caliber_version"))))) {
+            return "候选口径 SQL 未通过 profile 一致性校验，本轮不输出 SQL。";
+        }
+        if (trial != null) {
+            String trialProfileId = text(trial.data().get("caliber_profile_id"));
+            String trialProfileVersion = text(trial.data().get("caliber_version"));
+            String resolvedProfileVersion = text(profile.data().get("caliber_version"));
+            String sqlId = text(trial.data().get("sql_id"));
+            String caliberSqlId = text(trial.data().get("caliber_sql_id"));
+            if (!profileId.equals(trialProfileId)
+                    || !java.util.Objects.equals(
+                            resolvedProfileVersion, trialProfileVersion)
+                    || sqlId == null || !sqlId.equals(caliberSqlId)
+                    || !sameTime(state.statStart(), text(trial.data().get("stat_start")))
+                    || !sameTime(state.statEnd(), text(trial.data().get("stat_end")))) {
+                return "候选口径结果未通过规则、周期或 SQL 证据链校验，本轮不输出模拟数值。";
+            }
+        }
+
+        Map<String, Object> values = trial != null
+                ? trial.data()
+                : prepared != null ? prepared.data() : profile.data();
+        StringBuilder answer = new StringBuilder();
+        answer.append("## 候选口径模拟\n\n");
+        answer.append("> 这是一项候选/假设口径试算，不是本院当前生效规则，")
+                .append("不会修改或发布医院正式口径。\n\n");
+        appendCaliber(answer, "指标", first(
+                text(values.get("rule_name")), plan.targetIndicator().rawName()));
+        appendCaliber(answer, "候选口径", values.get("caliber_label"));
+        appendCaliber(answer, "候选 profile", values.get("caliber_profile_id"));
+        appendCaliber(answer, "候选版本", values.get("caliber_version"));
+        appendCaliber(answer, "口径定义", values.get("caliber_definition"));
+        appendCaliber(answer, "统计周期时间字段", values.get("period_anchor_label"));
+        appendCaliber(answer, "48 小时耗时起点", values.get("elapsed_anchor_label"));
+        appendCaliber(answer, "分子口径", values.get("caliber_numerator_rule"));
+        appendCaliber(answer, "分母口径", values.get("caliber_denominator_rule"));
+        if (trial != null) {
+            answer.append("\n## 只读试运行结果\n\n");
+            answer.append("- 统计区间：").append(values.get("stat_start"))
+                    .append(" 至 ").append(values.get("stat_end"))
+                    .append("（左闭右开）\n");
+            answer.append("- 分子：").append(values.getOrDefault("numerator_count", "—"))
+                    .append('\n');
+            answer.append("- 分母：").append(values.getOrDefault("denominator_count", "—"))
+                    .append('\n');
+            answer.append("- 指标率：").append(values.getOrDefault("result_value", "—"))
+                    .append("%\n");
+            answer.append("- SQL 对象：").append(values.get("sql_id")).append('\n');
+            answer.append("- 运行对象：").append(values.get("run_id")).append('\n');
+        } else if (prepared != null) {
+            answer.append("\n## 已校验候选口径 SQL\n\n```sql\n")
+                    .append(prepared.data().get("sql_preview"))
+                    .append("\n```\n\n");
+            answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
+                    .append(" 至 ").append(prepared.data().get("stat_end"))
+                    .append("（左闭右开）\n");
+            answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+            answer.append("- 参数：")
+                    .append(prepared.data().getOrDefault("parameters", Map.of()))
+                    .append('\n');
+            answer.append("\n该请求只生成并校验候选口径 SQL，不执行数据库。");
+        } else {
+            answer.append("\n当前只解释候选公式；如需具体数值，请提供统计时间范围。");
+        }
+        return answer.toString().stripTrailing();
+    }
+
     private static ToolResult latestSuccessful(
             AgentRunState state,
             String code,
@@ -1107,6 +1500,11 @@ public class AgentRunner {
         if (value != null) {
             answer.append("- ").append(label).append("：").append(value).append('\n');
         }
+    }
+
+    private static boolean sameTime(String expected, String actual) {
+        if (expected == null || actual == null) return false;
+        return expected.replace('T', ' ').equals(actual.replace('T', ' '));
     }
 
     private static void applyResolvedTime(AgentRunState state, PlanValidation validation) {
@@ -1171,6 +1569,9 @@ public class AgentRunner {
         Map<String, Object> targetIndicator = new LinkedHashMap<>();
         targetIndicator.put("raw_name", plan.targetIndicator().rawName());
         targetIndicator.put("rule_id", plan.targetIndicator().ruleId());
+        Map<String, Object> targetCaliber = new LinkedHashMap<>();
+        targetCaliber.put("raw_text", plan.targetCaliber().rawText());
+        targetCaliber.put("profile_id", plan.targetCaliber().profileId());
 
         Map<String, Object> timeExpression = new LinkedHashMap<>();
         timeExpression.put("raw_text", plan.timeExpression().rawText());
@@ -1191,6 +1592,7 @@ public class AgentRunner {
         value.put("intent", plan.intent().name());
         value.put("goal", plan.goal());
         value.put("target_indicator", targetIndicator);
+        value.put("target_caliber", targetCaliber);
         value.put("time_expression", timeExpression);
         value.put("requested_outputs", plan.requestedOutputs().stream().map(Enum::name).toList());
         value.put("constraints", plan.constraints());

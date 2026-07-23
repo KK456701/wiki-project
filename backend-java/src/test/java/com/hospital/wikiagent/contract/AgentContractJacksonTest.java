@@ -65,7 +65,7 @@ class AgentContractJacksonTest {
         RequestPlan restored = objectMapper.readValue(payload, RequestPlan.class);
 
         assertThat(payload).contains(
-                "\"schema_version\":\"request-plan-v1\"",
+                "\"schema_version\":\"request-plan-v2\"",
                 "\"indicator_trial_run\"",
                 "\"target_indicator\"",
                 "\"trial_result\"");

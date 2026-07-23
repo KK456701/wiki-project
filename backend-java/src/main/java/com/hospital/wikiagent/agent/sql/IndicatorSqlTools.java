@@ -92,7 +92,7 @@ public class IndicatorSqlTools {
     }
 
     public ToolResult prepare(PrepareInput input, ToolExecutionContext context) {
-        return prepareInternal(input, Map.of(), null, context);
+        return prepareInternal(input, Map.of(), Map.of(), null, context);
     }
 
     /**
@@ -106,6 +106,23 @@ public class IndicatorSqlTools {
             String profileId,
             Map<String, Object> parameterOverrides,
             ToolExecutionContext context) {
+        return prepareDiagnostic(
+                input, profileId, parameterOverrides, Map.of(), context);
+    }
+
+    /**
+     * 为候选口径额外应用受控的“业务字段角色替换”。
+     *
+     * <p>配置值只能引用当前医院已经确认的字段角色，例如把 {@code period_time} 和
+     * {@code admit_time} 都指向 {@code ward_entry_time}。这里不接受物理表字段名，
+     * 因而不能通过诊断配置绕过 Wiki 字段映射或注入任意 SQL。</p>
+     */
+    public ToolResult prepareDiagnostic(
+            PrepareInput input,
+            String profileId,
+            Map<String, Object> parameterOverrides,
+            Map<String, Object> fieldRoleOverrides,
+            ToolExecutionContext context) {
         String normalizedProfile = profileId == null ? "" : profileId.strip();
         if (normalizedProfile.isBlank() || normalizedProfile.length() > 128) {
             return failure("validation_failed", "DIAGNOSIS_PROFILE_INVALID",
@@ -114,6 +131,7 @@ public class IndicatorSqlTools {
         return prepareInternal(
                 input,
                 parameterOverrides == null ? Map.of() : Map.copyOf(parameterOverrides),
+                fieldRoleOverrides == null ? Map.of() : Map.copyOf(fieldRoleOverrides),
                 normalizedProfile,
                 context);
     }
@@ -121,6 +139,7 @@ public class IndicatorSqlTools {
     private ToolResult prepareInternal(
             PrepareInput input,
             Map<String, Object> parameterOverrides,
+            Map<String, Object> fieldRoleOverrides,
             String diagnosticProfileId,
             ToolExecutionContext context) {
         AgentRunState state = context.runState();
@@ -142,6 +161,12 @@ public class IndicatorSqlTools {
         Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
         Map<String, Object> mapping = withExecutionDefaults(
                 rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId()));
+        try {
+            mapping = applyDiagnosticFieldRoleOverrides(mapping, fieldRoleOverrides);
+        } catch (IllegalArgumentException exception) {
+            return failure("validation_failed", "DIAGNOSIS_PROFILE_FIELD_INVALID",
+                    exception.getMessage(), false);
+        }
         Inspection inspection = inspection(rule, mapping);
         if (!inspection.ready()) {
             Map<String, Object> data = new LinkedHashMap<>();
@@ -186,7 +211,13 @@ public class IndicatorSqlTools {
         String statStart = start.format(SQL_TIME);
         String statEnd = end.format(SQL_TIME);
         String sourceId = sourceId(context);
-        Map<String, Object> snapshot = contextSnapshot(rule, mapping, params, statStart, statEnd, sourceId);
+        Map<String, Object> diagnosticExecution = diagnosticProfileId == null
+                ? Map.of()
+                : Map.of(
+                        "diagnostic_profile_id", diagnosticProfileId,
+                        "field_role_overrides", fieldRoleOverrides);
+        Map<String, Object> snapshot = contextSnapshot(
+                rule, mapping, params, statStart, statEnd, sourceId, diagnosticExecution);
         String digest = digest(snapshot);
         String sqlId = id("SQL_");
         Instant now = Instant.now();
@@ -249,13 +280,24 @@ public class IndicatorSqlTools {
         Map<String, Object> currentRule = rules.effectiveRule(sql.ruleId(), context.agentContext().hospitalId());
         Map<String, Object> currentMapping = withExecutionDefaults(
                 rules.fieldMapping(sql.ruleId(), context.agentContext().hospitalId()));
+        Map<String, Object> storedExecution =
+                objectMap(sql.contextSnapshot().get("execution_context"));
+        try {
+            currentMapping = applyDiagnosticFieldRoleOverrides(
+                    currentMapping,
+                    objectMap(storedExecution.get("field_role_overrides")));
+        } catch (IllegalArgumentException exception) {
+            return failure("validation_failed", "SQL_CONTEXT_STALE",
+                    "候选口径字段角色已失效，请重新准备 SQL 后再试运行。", false);
+        }
         Inspection inspection = inspection(currentRule, currentMapping);
         if (!inspection.ready()) {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "医院字段或元数据已变化，请重新准备 SQL 后再试运行。", false);
         }
         String currentDigest = digest(contextSnapshot(
-                currentRule, currentMapping, sql.params(), sql.statStart(), sql.statEnd(), sql.dbSourceId()));
+                currentRule, currentMapping, sql.params(), sql.statStart(), sql.statEnd(),
+                sql.dbSourceId(), storedExecution));
         if (!currentDigest.equals(sql.contextDigest())) {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "指标规则或字段映射已变化，请重新准备 SQL 后再试运行。", false);
@@ -407,6 +449,17 @@ public class IndicatorSqlTools {
             String start,
             String end,
             String sourceId) {
+        return contextSnapshot(rule, mapping, params, start, end, sourceId, Map.of());
+    }
+
+    private Map<String, Object> contextSnapshot(
+            Map<String, Object> rule,
+            Map<String, Object> mapping,
+            Map<String, Object> params,
+            String start,
+            String end,
+            String sourceId,
+            Map<String, Object> executionContext) {
         Map<String, Object> ruleSnapshot = new LinkedHashMap<>(rule);
         String sql = text(ruleSnapshot.remove("standard_sql"));
         if (!sql.isBlank()) {
@@ -415,7 +468,8 @@ public class IndicatorSqlTools {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("effective_rule", ruleSnapshot);
         result.put("field_mapping", mapping);
-        result.put("execution_context", Map.of());
+        result.put("execution_context", executionContext == null
+                ? Map.of() : Map.copyOf(executionContext));
         result.put("params", params);
         result.put("stat_start", start);
         result.put("stat_end", end);
@@ -430,6 +484,31 @@ public class IndicatorSqlTools {
         if (!admit.isBlank()) {
             fields.putIfAbsent("baseline_admit_time", admit);
             fields.putIfAbsent("period_time", admit);
+        }
+        mapping.put("fields", fields);
+        return mapping;
+    }
+
+    private Map<String, Object> applyDiagnosticFieldRoleOverrides(
+            Map<String, Object> raw,
+            Map<String, Object> overrides) {
+        if (overrides == null || overrides.isEmpty()) {
+            return raw;
+        }
+        Map<String, Object> mapping = deepMap(raw);
+        Map<String, Object> fields = objectMap(mapping.get("fields"));
+        Set<String> allowedTargets = Set.of("period_time", "admit_time");
+        for (Map.Entry<String, Object> entry : overrides.entrySet()) {
+            String targetRole = entry.getKey();
+            String sourceRole = text(entry.getValue());
+            if (!allowedTargets.contains(targetRole)
+                    || sourceRole.isBlank()
+                    || !fields.containsKey(sourceRole)
+                    || text(fields.get(sourceRole)).isBlank()) {
+                throw new IllegalArgumentException(
+                        "候选口径字段角色必须引用已确认的统计时间或耗时起点字段。");
+            }
+            fields.put(targetRole, fields.get(sourceRole));
         }
         mapping.put("fields", fields);
         return mapping;

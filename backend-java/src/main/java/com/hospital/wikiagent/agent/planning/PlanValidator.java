@@ -27,6 +27,12 @@ public class PlanValidator {
     public PlanValidation validate(RequestPlan plan) {
         Set<String> constraints = new HashSet<>();
         plan.constraints().forEach(value -> constraints.add(value.strip().toLowerCase(Locale.ROOT)));
+        if (constraints.contains("alignment_blocked")) {
+            return PlanValidation.invalid(
+                    "TASK_TYPE_MISMATCH",
+                    "当前问题与业务计划仍不一致，请明确希望使用的指标口径或输出结果。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
         if (constraints.contains("patient_level_detail")) {
             return PlanValidation.invalid(
                     "PATIENT_DETAIL_FORBIDDEN",
@@ -58,15 +64,37 @@ public class PlanValidator {
                     "差异诊断计划缺少分层诊断报告输出目标。",
                     FallbackCategory.USER_CLARIFICATION);
         }
+        if (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
+                && plan.targetCaliber().rawText().isBlank()
+                && plan.targetCaliber().profileId() == null) {
+            return PlanValidation.invalid(
+                    "CALIBER_PROFILE_MISSING",
+                    "请明确希望模拟的候选口径，例如“首次入区时间口径”。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
+        if (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
+                && !outputs.contains(RequestedOutput.CALIBER_EXPLANATION)
+                && !outputs.contains(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE)
+                && !outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)) {
+            return PlanValidation.invalid(
+                    "PLAN_INTENT_MISMATCH",
+                    "候选口径计划缺少解释或试运行输出目标。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
         boolean needsDatabase = outputs.contains(RequestedOutput.TRIAL_RESULT)
+                || outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
                 || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT);
         boolean needsTime = outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)
+                || outputs.contains(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.TRIAL_RESULT)
+                || outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
                 || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)
                 || plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
                 || plan.intent() == PlanIntent.INDICATOR_TRIAL_RUN
+                || (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
+                        && outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT))
                 || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS
                 || plan.intent() == PlanIntent.IMPLEMENTATION_VALIDATION;
 

@@ -19,7 +19,7 @@ class ModelRequestPlannerTest {
                 "not-json",
                 """
                 {
-                  "schemaVersion": "request-plan-v1",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "indicator_trial_run",
                   "goal": "计算指标结果",
                   "targetIndicator": {"rawName": "急会诊及时到位率"},

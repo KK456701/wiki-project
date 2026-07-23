@@ -222,6 +222,11 @@ public class RuleReadRepository {
         return wiki == null ? List.of() : wiki.diagnosticProfiles(ruleId, hospitalId);
     }
 
+    /** 返回可供普通模拟计算和差异诊断共同使用的已审批候选口径。 */
+    public List<Map<String, Object>> caliberProfiles(String ruleId, String hospitalId) {
+        return wiki == null ? List.of() : wiki.caliberProfiles(ruleId, hospitalId);
+    }
+
     /** 返回不含任意 SQL 的允许列表式数据质量检查。 */
     public List<Map<String, Object>> dataQualityRules(String ruleId) {
         return wiki == null ? List.of() : wiki.dataQualityRules(ruleId);

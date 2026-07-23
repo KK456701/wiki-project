@@ -25,14 +25,18 @@ import com.hospital.wikiagent.agent.runtime.ToolResult;
  */
 @Component
 public class AgentStateController {
-    private static final Map<String, FallbackCategory> BLOCKING = Map.of(
-            "TRIAL_RUN_FAILED", FallbackCategory.SYSTEM_OPERATOR,
-            "DIAGNOSIS_FAILED", FallbackCategory.SYSTEM_OPERATOR,
-            "TOOL_TIMEOUT", FallbackCategory.SYSTEM_OPERATOR,
-            "TOOL_EXECUTION_FAILED", FallbackCategory.SYSTEM_OPERATOR,
-            "FIELD_PRECHECK_FAILED", FallbackCategory.IMPLEMENTATION_SUPPORT,
-            "PERMISSION_DENIED", FallbackCategory.SECURITY_DENIAL,
-            "PATIENT_DETAIL_FORBIDDEN", FallbackCategory.SECURITY_DENIAL);
+    private static final Map<String, FallbackCategory> BLOCKING = Map.ofEntries(
+            Map.entry("TRIAL_RUN_FAILED", FallbackCategory.SYSTEM_OPERATOR),
+            Map.entry("DIAGNOSIS_FAILED", FallbackCategory.SYSTEM_OPERATOR),
+            Map.entry("TOOL_TIMEOUT", FallbackCategory.SYSTEM_OPERATOR),
+            Map.entry("TOOL_EXECUTION_FAILED", FallbackCategory.SYSTEM_OPERATOR),
+            Map.entry("FIELD_PRECHECK_FAILED", FallbackCategory.IMPLEMENTATION_SUPPORT),
+            Map.entry("CALIBER_PROFILE_NOT_FOUND", FallbackCategory.USER_CLARIFICATION),
+            Map.entry("CALIBER_PROFILE_AMBIGUOUS", FallbackCategory.USER_CLARIFICATION),
+            Map.entry("CALIBER_PROFILE_NOT_AVAILABLE", FallbackCategory.IMPLEMENTATION_SUPPORT),
+            Map.entry("CALIBER_PROFILE_CHAIN_MISMATCH", FallbackCategory.IMPLEMENTATION_SUPPORT),
+            Map.entry("PERMISSION_DENIED", FallbackCategory.SECURITY_DENIAL),
+            Map.entry("PATIENT_DETAIL_FORBIDDEN", FallbackCategory.SECURITY_DENIAL));
 
     private final CapabilitySpecRegistry registry;
 
@@ -139,6 +143,9 @@ public class AgentStateController {
                 }
                 case "SQL_OBJECT_PREPARED" -> facts.add("sql_validation");
                 case "TRIAL_RUN_COMPLETED" -> facts.add("trial_run");
+                case "CALIBER_PROFILE_RESOLVED" -> facts.add("caliber_profile");
+                case "CALIBER_SQL_PREPARED" -> facts.add("caliber_sql_validation");
+                case "CALIBER_TRIAL_RUN_COMPLETED" -> facts.add("caliber_trial_result");
                 case "DIAGNOSIS_COMPLETED", "INDICATOR_DIAGNOSED" -> facts.add("diagnosis");
                 case "DIFFERENCE_DIAGNOSIS_COMPLETED" -> facts.add("difference_diagnosis_report");
                 case "RULE_CHANGE_PREVIEWED" -> facts.add("rule_change_preview");

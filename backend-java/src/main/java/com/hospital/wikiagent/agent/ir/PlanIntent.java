@@ -13,6 +13,7 @@ public enum PlanIntent {
     RULE_EXPLANATION("rule_explanation"),
     INDICATOR_SQL_PREPARE("indicator_sql_prepare"),
     INDICATOR_TRIAL_RUN("indicator_trial_run"),
+    INDICATOR_CALIBER_SIMULATION("indicator_caliber_simulation"),
     INDICATOR_DIAGNOSIS("indicator_diagnosis"),
     INDICATOR_DIFFERENCE_DIAGNOSIS("indicator_difference_diagnosis"),
     RULE_CHANGE_PREVIEW("rule_change_preview"),

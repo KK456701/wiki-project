@@ -15,6 +15,8 @@ import java.util.function.Consumer;
 public class AgentRunState {
     private String currentRuleId;
     private String currentUploadFileKey;
+    private String currentCaliberProfileId;
+    private String currentCaliberLabel;
     private String subtaskId;
     private String lastRunId;
     private String lastDiagnosisId;
@@ -45,6 +47,24 @@ public class AgentRunState {
 
     public void currentUploadFileKey(String value) {
         currentUploadFileKey = value == null || value.isBlank() ? null : value.strip();
+    }
+
+    /**
+     * 记录当前子任务已经由 Wiki 解析并确认的候选口径。
+     *
+     * <p>这里只保存安全 profile 引用，不保存字段物理名、SQL 或患者数据。</p>
+     */
+    public void currentCaliber(String profileId, String label) {
+        currentCaliberProfileId = normalize(profileId);
+        currentCaliberLabel = normalize(label);
+    }
+
+    public String currentCaliberProfileId() {
+        return currentCaliberProfileId;
+    }
+
+    public String currentCaliberLabel() {
+        return currentCaliberLabel;
     }
 
     public String subtaskId() {
@@ -162,5 +182,9 @@ public class AgentRunState {
             durationMs = Math.max(0, durationMs);
             safeOutput = safeOutput == null ? Map.of() : Map.copyOf(safeOutput);
         }
+    }
+
+    private static String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }

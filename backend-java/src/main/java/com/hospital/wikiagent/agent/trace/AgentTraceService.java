@@ -433,7 +433,11 @@ public class AgentTraceService {
             case "indicator_llm_disambiguation" -> "模型候选内消歧";
             case "memory_load" -> "读取会话上下文";
             case "planner_llm" -> "规划业务目标";
+            case "plan_goal_alignment" -> "校验目标与计划";
+            case "plan_alignment_review_llm" -> "审核复杂口径目标";
             case "plan_replan" -> "重新规划业务目标";
+            case "plan_alignment_revalidate" -> "复核替代计划";
+            case "plan_alignment_deterministic_fallback" -> "生成受控修正计划";
             case "plan_compile" -> "编译业务计划";
             case "plan_validate" -> "校验业务计划";
             case "failure_router" -> "路由失败处理";
@@ -444,6 +448,7 @@ public class AgentTraceService {
             case "final_answer_llm" -> "生成最终回答";
             case "prepared_sql_answer" -> "生成受控 SQL 回答";
             case "implementation_validation_answer" -> "生成实施验收回答";
+            case "caliber_simulation_answer" -> "生成候选口径回答";
             case "difference_diagnosis_layer_1" -> "诊断范围预检";
             case "difference_diagnosis_layer_2" -> "实时结构核验";
             case "difference_diagnosis_layer_3" -> "执行当前口径";
@@ -468,7 +473,11 @@ public class AgentTraceService {
             case "indicator_semantic_retrieval" -> "对未命中片段执行本地字符语义召回，不调用模型。";
             case "indicator_llm_disambiguation" -> "LLM 只能从服务端候选 rule_id 中消歧。";
             case "planner_llm" -> "LLM 只生成业务 RequestPlan，不选择工具。";
+            case "plan_goal_alignment" -> "确定性核对用户目标、会话事实、指标和候选口径是否与计划一致。";
+            case "plan_alignment_review_llm" -> "仅在规则无法确定的复杂语义下，从允许候选中审核目标口径。";
             case "plan_replan" -> "仅在允许的方向性错误下由 LLM 重规划一次。";
+            case "plan_alignment_revalidate" -> "替代计划必须再次通过同一套目标一致性校验。";
+            case "plan_alignment_deterministic_fallback" -> "模型仍未纠正且候选唯一时，由服务端生成受控计划。";
             case "failure_router" -> "统一判断本次失败应重规划一次，还是直接澄清、拒绝或兜底。";
             case "state_controller" -> "根据未完成事实选择下一项业务能力。";
             case "deterministic_tool_dispatch" -> "服务端按 CapabilitySpec 编译工具与参数。";
@@ -476,6 +485,7 @@ public class AgentTraceService {
             case "final_answer_llm" -> "LLM 只根据 VerifiedEvidence 组织回答。";
             case "prepared_sql_answer" -> "服务端从本轮私有 SQL 对象确定性生成回答，不调用 Final Answer LLM。";
             case "implementation_validation_answer" -> "服务端根据固定阶段报告确定性生成回答。";
+            case "caliber_simulation_answer" -> "服务端使用已验证候选 profile 和试运行结果生成回答。";
             case "difference_diagnosis_layer_1" -> "固定指标、医院、统计周期、文件类型和外部声明值。";
             case "difference_diagnosis_layer_2" -> "对比 Wiki 字段契约、医院映射与 DBHub 实时元数据。";
             case "difference_diagnosis_layer_3" -> "按当前生效口径生成、校验并试运行基准 SQL。";

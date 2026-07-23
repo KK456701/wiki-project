@@ -75,6 +75,47 @@ public class ModelRequestPlanner {
         return generate(modelId, userPrompt);
     }
 
+    /**
+     * 仅在确定性校验无法判断时审核“用户目标与计划是否一致”。
+     *
+     * <p>审核器不能生成新计划、工具名或 SQL；它只返回接受/拒绝和候选 profile
+     * 编号。被拒绝的计划仍必须进入受限 Replanner，并重新通过服务端校验。</p>
+     */
+    public AlignmentReviewResult reviewAlignment(AlignmentReviewInput input) {
+        String modelId = input.modelId() == null || input.modelId().isBlank()
+                ? registry.defaultModelId() : input.modelId();
+        String plan;
+        try {
+            plan = objectMapper.writeValueAsString(input.plan());
+        } catch (Exception exception) {
+            plan = String.valueOf(input.plan());
+        }
+        String userPrompt = "原始用户输入：\n" + input.userMessage() + "\n"
+                + "结构化会话状态：\n" + safe(input.structuredState()) + "\n"
+                + "Planner 计划：\n" + plan + "\n"
+                + "允许的候选口径：\n" + safe(input.candidateSummary());
+        String raw = models.complete(
+                modelId,
+                prompts.planAlignmentReview(),
+                userPrompt,
+                properties.getPlannerTimeout()).content();
+        try {
+            AlignmentReview value = objectMapper.readValue(
+                    ModelJsonExtractor.firstObject(raw), AlignmentReview.class);
+            return new AlignmentReviewResult(
+                    value.aligned(),
+                    safe(value.reason()),
+                    safe(value.suggestedProfileId()),
+                    raw,
+                    modelId);
+        } catch (Exception exception) {
+            throw new PlannerOutputException(
+                    "PLAN_ALIGNMENT_REVIEW_INVALID",
+                    "模型未生成有效的计划一致性审核结果。",
+                    exception);
+        }
+    }
+
     private PlannerResult generate(String modelId, String userPrompt) {
         String raw = models.complete(
                 modelId, prompts.planner(), userPrompt, properties.getPlannerTimeout()).content();
@@ -151,5 +192,32 @@ public class ModelRequestPlanner {
             }
             currentDate = currentDate == null ? LocalDate.now() : currentDate;
         }
+    }
+
+    public record AlignmentReviewInput(
+            String userMessage,
+            String modelId,
+            RequestPlan plan,
+            String structuredState,
+            String candidateSummary) {
+        public AlignmentReviewInput {
+            if (userMessage == null || userMessage.isBlank() || plan == null) {
+                throw new IllegalArgumentException("计划一致性审核缺少用户问题或业务计划");
+            }
+        }
+    }
+
+    public record AlignmentReviewResult(
+            boolean aligned,
+            String reason,
+            String suggestedProfileId,
+            String rawContent,
+            String modelId) {
+    }
+
+    private record AlignmentReview(
+            boolean aligned,
+            String reason,
+            String suggestedProfileId) {
     }
 }

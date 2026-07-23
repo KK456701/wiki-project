@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.diagnosis.IndicatorDiagnosisTools;
 import com.hospital.wikiagent.agent.diagnosis.IndicatorDifferenceDiagnosisWorkflow;
+import com.hospital.wikiagent.agent.sql.IndicatorCaliberTools;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
@@ -30,15 +31,17 @@ public class ToolRegistry {
     public ToolRegistry(
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
+            IndicatorCaliberTools caliberTools,
             IndicatorDiagnosisTools diagnosisTools,
             IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
             UploadedIndicatorTools uploadTools,
             ImplementationValidationTools validationTools) {
-        this(rules, sqlTools, diagnosisTools, differenceDiagnosisWorkflow, uploadTools, validationTools, true);
+        this(rules, sqlTools, caliberTools, diagnosisTools,
+                differenceDiagnosisWorkflow, uploadTools, validationTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, null, null, null, null, true);
+        this(rules, sqlTools, null, null, null, null, null, true);
     }
 
     /**
@@ -51,16 +54,17 @@ public class ToolRegistry {
             IndicatorDiagnosisTools diagnosisTools,
             UploadedIndicatorTools uploadTools,
             ImplementationValidationTools validationTools) {
-        this(rules, sqlTools, diagnosisTools, null, uploadTools, validationTools, true);
+        this(rules, sqlTools, null, diagnosisTools, null, uploadTools, validationTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, null, null, null, null, false);
+        this(rules, null, null, null, null, null, null, false);
     }
 
     private ToolRegistry(
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
+            IndicatorCaliberTools caliberTools,
             IndicatorDiagnosisTools diagnosisTools,
             IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
             UploadedIndicatorTools uploadTools,
@@ -151,6 +155,39 @@ public class ToolRegistry {
                     (context, state) -> !state.validatedSqlIds().isEmpty(),
                     (input, context) -> sqlTools.trial((IndicatorSqlTools.TrialInput) input, context)));
         }
+        if (caliberTools != null) {
+            register(values, new AgentTool(
+                    "resolve_indicator_caliber",
+                    IndicatorCaliberTools.ResolveInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(10),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> state.currentRuleId() != null,
+                    (input, context) -> caliberTools.resolve(
+                            (IndicatorCaliberTools.ResolveInput) input, context)));
+            register(values, new AgentTool(
+                    "prepare_indicator_caliber_sql",
+                    IndicatorCaliberTools.PrepareInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(30),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> state.currentCaliberProfileId() != null,
+                    (input, context) -> caliberTools.prepare(
+                            (IndicatorCaliberTools.PrepareInput) input, context)));
+            register(values, new AgentTool(
+                    "trial_run_indicator_caliber_sql",
+                    IndicatorCaliberTools.TrialInput.class,
+                    Set.of(),
+                    Duration.ofSeconds(30),
+                    AgentTool.RiskLevel.READ_ONLY,
+                    true,
+                    (context, state) -> state.currentCaliberProfileId() != null
+                            && !state.validatedSqlIds().isEmpty(),
+                    (input, context) -> caliberTools.trial(
+                            (IndicatorCaliberTools.TrialInput) input, context)));
+        }
         if (diagnosisTools != null) {
             register(values, new AgentTool(
                     "diagnose_indicator_issue",
@@ -203,6 +240,9 @@ public class ToolRegistry {
                 "inspect_indicator_implementation",
                 "prepare_indicator_sql",
                 "trial_run_indicator_sql",
+                "resolve_indicator_caliber",
+                "prepare_indicator_caliber_sql",
+                "trial_run_indicator_caliber_sql",
                 "diagnose_indicator_issue",
                 "diagnose_indicator_difference",
                 "analyze_uploaded_indicators",

@@ -209,9 +209,13 @@ public class WikiRuleKnowledgeSource {
      * <p>候选只允许来自指标 SQL 规格目录内的 YAML，不接受模型或用户提供 SQL。
      * 医院范围在知识源层先过滤，生效时间和最大执行数量由诊断 Workflow 再约束。</p>
      */
-    public List<Map<String, Object>> diagnosticProfiles(String ruleId, String hospitalId) {
-        Path path = findSpecFile(ruleId, "rule_sql_spec.yaml").getParent()
-                .resolve("diagnosis_profiles.yaml");
+    public List<Map<String, Object>> caliberProfiles(String ruleId, String hospitalId) {
+        Path directory = findSpecFile(ruleId, "rule_sql_spec.yaml").getParent();
+        Path path = directory.resolve("caliber_profiles.yaml");
+        // 兼容已经部署的 diagnosis_profiles.yaml；新 Wiki 统一使用业务含义更准确的文件名。
+        if (!Files.isRegularFile(path)) {
+            path = directory.resolve("diagnosis_profiles.yaml");
+        }
         if (!Files.isRegularFile(path)) {
             return List.of();
         }
@@ -224,6 +228,10 @@ public class WikiRuleKnowledgeSource {
                 })
                 .map(profile -> Collections.unmodifiableMap(new LinkedHashMap<>(profile)))
                 .toList();
+    }
+
+    public List<Map<String, Object>> diagnosticProfiles(String ruleId, String hospitalId) {
+        return caliberProfiles(ruleId, hospitalId);
     }
 
     /**

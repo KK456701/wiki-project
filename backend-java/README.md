@@ -5,11 +5,11 @@
 ## 模块职责
 
 - `agent/ir`：`RequestPlan`、`CompiledPlanIR` 和失败分类。
-- `agent/planning`：能力注册、计划编译与校验、状态控制、确定性分派、统一失败路由和一次受限 Replan。
+- `agent/planning`：目标—计划一致性校验、能力注册、计划编译与校验、状态控制、确定性分派、统一失败路由和一次受限 Replan。
 - `agent/runtime`：单指标执行循环、多指标 fan-out/fan-in 和 Trace 事件。
 - `agent/tools`：工具注册、类型化上下文、策略判断和调用网关。
 - `agent/evidence`：Evidence 记录、验证、过期和跨医院隔离。
-- `agent/sql`：Wiki SQL 规格渲染、只读校验、对象保存和 DBHub 试运行。
+- `agent/sql`：Wiki 当前/候选口径 SQL 规格渲染、只读校验、对象保存和 DBHub 试运行。
 - `details`：分子分母明细快照、分页、Excel 和上传逐条比较。
 - `implementation`：新增指标草稿、字段映射、试运行、审批、发布和恢复。
 - `metadata`、`terminology`、`monitoring`：元数据、医学术语和指标监控工作台。

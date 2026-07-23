@@ -55,6 +55,23 @@ groups:
       - {id: trial_02, query: "试算第二季度危急值处置及时率"}
       - {id: trial_03, query: "算一下上月非计划再次手术率"}
       - {id: trial_04, query: "运行本周死亡病例讨论及时完成率"}
+  - category: caliber_simulation
+    critical: true
+    repeat_count: 3
+    expected_tools: [resolve_indicator_caliber, prepare_indicator_caliber_sql, trial_run_indicator_caliber_sql]
+    cases:
+      - {id: caliber_01, query: "患者入院48小时内转科比例按首次入区时间统计，试算2026年1月至今的结果"}
+      - {id: caliber_02, query: "沿用刚才患者入院48小时内转科比例和统计周期，那根据入区怎么算"}
+      - {id: caliber_03, query: "不要修改现行规则，按首次入区时间模拟计算患者入院48小时内转科比例"}
+  - category: caliber_explanation
+    expected_tools: [resolve_indicator_caliber]
+    cases:
+      - {id: caliber_explanation_01, query: "患者入院48小时内转科比例如果改按入区时间，公式怎么算？"}
+      - {id: caliber_explanation_02, query: "当前规则按入院还是入区？"}
+  - category: caliber_sql_followup
+    expected_tools: [resolve_indicator_caliber, prepare_indicator_caliber_sql]
+    cases:
+      - {id: caliber_sql_01, query: "沿用刚才的首次入区候选口径和统计周期，这个口径的SQL怎么写？"}
   - category: decline_diagnosis
     expected_tools: [search_indicator_rules, diagnose_indicator_issue]
     cases:

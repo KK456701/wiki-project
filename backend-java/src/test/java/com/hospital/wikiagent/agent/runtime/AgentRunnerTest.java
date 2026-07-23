@@ -81,7 +81,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
                   "target_indicator": {"raw_name": "transfer_within_48h_ratio"},
@@ -157,7 +157,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "indicator_sql_prepare",
                   "goal": "错误理解的初始目标",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
@@ -169,7 +169,7 @@ class AgentRunnerTest {
                 """,
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "纠正后解释指标定义和公式",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
@@ -246,7 +246,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "indicator_trial_run",
                   "goal": "计算急会诊及时到位率",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
@@ -332,7 +332,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "indicator_sql_prepare",
                   "goal": "解释 SQL 以及分子分母口径",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
@@ -470,7 +470,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v1",
+                  "schema_version": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},

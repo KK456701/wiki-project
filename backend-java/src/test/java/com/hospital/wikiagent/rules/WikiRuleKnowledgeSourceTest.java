@@ -42,12 +42,17 @@ class WikiRuleKnowledgeSourceTest {
     void readsOnlyApprovedVisibleDiagnosisProfilesAndQualityRules() {
         var consultProfiles = source.diagnosticProfiles("MQSI2025_005", "hospital_001");
         var otherHospitalProfiles = source.diagnosticProfiles("MQSI2025_005", "hospital_999");
+        var transferProfiles = source.diagnosticProfiles("MQSI2025_001", "hospital_001");
         var qualityRules = source.dataQualityRules("MQSI2025_001");
 
         assertThat(consultProfiles).extracting(profile -> profile.get("profile_id"))
                 .containsExactly("national_2025_10m", "hospital_001_20m");
         assertThat(otherHospitalProfiles).extracting(profile -> profile.get("profile_id"))
                 .containsExactly("national_2025_10m");
+        assertThat(transferProfiles).extracting(profile -> profile.get("profile_id"))
+                .containsExactly("national_2025", "hospital_001_ward_entry_anchor");
+        assertThat(transferProfiles.get(1).get("field_role_overrides").toString())
+                .contains("period_time", "ward_entry_time", "admit_time");
         assertThat(qualityRules).extracting(rule -> rule.get("type"))
                 .contains("required_not_null", "duplicate_key", "timestamp_order");
     }
