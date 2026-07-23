@@ -83,6 +83,8 @@ wiki:
         provider: openai-compatible
         model: ${DASHSCOPE_QWEN3_14B_MODEL:qwen3-14b}
         base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        # Spring AI 默认路径自带 /v1；百炼官方 Base URL 已含 /v1，所以这里只追加 chat/completions。
+        completions-path: /chat/completions
         api-key: ${DASHSCOPE_API_KEY:}
         # Qwen3 默认开启思考。Agent Planner 更需要稳定的结构化输出，默认关闭；需要时可通过环境变量开启。
         thinking: ${DASHSCOPE_QWEN3_14B_ENABLE_THINKING:false}

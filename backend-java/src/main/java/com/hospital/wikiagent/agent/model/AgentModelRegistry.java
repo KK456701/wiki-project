@@ -93,10 +93,14 @@ public class AgentModelRegistry {
 
     private ChatModel buildOpenAiCompatible(ModelDefinition definition) {
         // Spring AI 1.1.x 把地址和密钥放在 OpenAiApi，ChatOptions 只保存模型推理参数。
-        OpenAiApi api = OpenAiApi.builder()
+        OpenAiApi.Builder apiBuilder = OpenAiApi.builder()
                 .baseUrl(stripTrailingSlash(definition.getBaseUrl()))
-                .apiKey(definition.getApiKey())
-                .build();
+                .apiKey(definition.getApiKey());
+        if (definition.getCompletionsPath() != null && !definition.getCompletionsPath().isBlank()) {
+            // 各 OpenAI 兼容厂商对 Base URL 是否包含 /v1 的约定不同，不能统一拼接路径。
+            apiBuilder.completionsPath(normalizePath(definition.getCompletionsPath()));
+        }
+        OpenAiApi api = apiBuilder.build();
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(definition.getModel())
                 .temperature(0.0);
@@ -150,5 +154,10 @@ public class AgentModelRegistry {
             result = result.substring(0, result.length() - 1);
         }
         return result;
+    }
+
+    private static String normalizePath(String value) {
+        String result = value.strip();
+        return result.startsWith("/") ? result : "/" + result;
     }
 }

@@ -118,6 +118,7 @@ Copy-Item .\config.example.yaml .\config.yaml
 - `business_db_source_id` 和对应 `dbhub_execute_tool_*`。
 - `ollama_base_url`；使用 DeepSeek 时设置 `DEEPSEEK_API_KEY`，使用阿里云百炼时设置 `DASHSCOPE_API_KEY`。
 - 百炼默认使用北京公共端点和 `qwen3-14b`；专属 Workspace、其他地域或自定义部署时，分别覆盖 `DASHSCOPE_BASE_URL` 和 `DASHSCOPE_QWEN3_14B_MODEL`。
+- 百炼官方 Base URL 已包含 `/v1`，Java 模型注册项固定使用 `/chat/completions` 相对路径，避免 Spring AI 重复拼接 `/v1`。
 - 如外部 API 需要本机代理，设置 `java_http_proxy_url`。
 
 真实密码、令牌、医院连接串、运行数据库和日志不得提交到 Git。

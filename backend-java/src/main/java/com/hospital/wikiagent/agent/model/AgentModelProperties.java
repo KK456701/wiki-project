@@ -68,6 +68,7 @@ public class AgentModelProperties {
         private String provider;
         private String model;
         private String baseUrl;
+        private String completionsPath;
         private String apiKey;
         private boolean thinking;
         private Boolean enableThinking;
@@ -82,6 +83,12 @@ public class AgentModelProperties {
         public void setModel(String value) { model = value; }
         public String getBaseUrl() { return baseUrl; }
         public void setBaseUrl(String value) { baseUrl = value; }
+        /**
+         * 聊天补全的相对路径。为空时沿用 Spring AI 默认的 {@code /v1/chat/completions}；
+         * 百炼官方 Base URL 已包含 {@code /v1}，因此需要显式改为 {@code /chat/completions}。
+         */
+        public String getCompletionsPath() { return completionsPath; }
+        public void setCompletionsPath(String value) { completionsPath = value; }
         public String getApiKey() { return apiKey; }
         public void setApiKey(String value) { apiKey = value; }
         public boolean isThinking() { return thinking; }
