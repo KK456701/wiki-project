@@ -778,7 +778,11 @@ public class AgentRunner {
                         "evidence_ids", state.evidenceIds()), eventValues(
                         "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
-        // SQL、实施验收和差异归因均由确定性代码回答，避免模型改写已验证事实。
+        // 模板选择只依赖已校验的计划，不允许模型自行挑选版式。即使下方某些高风险报告
+        // 使用确定性代码渲染，Trace 也记录与该意图对应的模板编号和版本。
+        var selectedTemplate = finalAnswer.selectTemplate(plan.intent(), plan.requestedOutputs());
+        // SQL、候选口径模拟、实施验收和差异归因由确定性代码回答，避免模型改写
+        // 高风险事实；其他意图由 Final Answer LLM 按本轮选中的模板组织。
         String deterministicAnswer = composeDifferenceDiagnosisAnswer(plan, state);
         String deterministicNode = "difference_diagnosis_answer";
         if (deterministicAnswer == null) {
@@ -804,7 +808,10 @@ public class AgentRunner {
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
                         case "caliber_simulation_answer" -> "caliber-simulation-answer-v1";
                         default -> "implementation-validation-mvp-v1";
-                    });
+                    },
+                    "answer_template_id", selectedTemplate.id(),
+                    "answer_template_version", selectedTemplate.version(),
+                    "answer_template_mode", "deterministic");
             long guardStarted = TraceEvents.started();
             String answerContent = appendExportMarker(deterministicAnswer, state, request.principal());
             TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
@@ -823,14 +830,22 @@ public class AgentRunner {
         emit(observer, "model_start", traceId, state.stepCount(), Map.of("message", "生成最终回答"));
         long finalStarted = TraceEvents.started();
         var answer = finalAnswer.compose(new FinalAnswerInput(
-                request.query(), plan.goal(), modelId,
+                request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(), modelId,
                 LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
         TraceEvents.completed(observer, traceId, "final_answer_llm", "llm", finalStarted,
                 state.subtaskId(), Map.of(
-                        "query", request.query(), "verified_evidence_count", evidence.size()),
-                Map.of("answer_length", answer.content().length(), "corrected", answer.corrected()),
+                        "query", request.query(),
+                        "verified_evidence_count", evidence.size(),
+                        "answer_template_id", answer.templateId(),
+                        "answer_template_version", answer.templateVersion()),
+                Map.of(
+                        "answer_length", answer.content().length(),
+                        "corrected", answer.corrected(),
+                        "answer_contract_validated", answer.contractValidated()),
                 "model_id", answer.modelId(),
-                "deterministic_fallback", answer.deterministicFallback());
+                "deterministic_fallback", answer.deterministicFallback(),
+                "answer_template_id", answer.templateId(),
+                "answer_template_version", answer.templateVersion());
         long guardStarted = TraceEvents.started();
         String answerContent = appendExportMarker(answer.content(), state, request.principal());
         TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,

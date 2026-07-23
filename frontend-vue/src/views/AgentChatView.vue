@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 
 import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
+import MarkdownMessage from '../components/MarkdownMessage.vue'
 import { useAgentStore } from '../stores/agent'
 import {
   createDiagnosisReportExport,
@@ -205,7 +206,11 @@ async function exportDiagnosis(reportId?: string) {
                 <span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span>
               </div>
             </header>
-            <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
+            <MarkdownMessage
+              v-if="message.role === 'agent'"
+              :content="message.content || '正在读取规则与证据…'"
+            />
+            <div v-else class="message-content">{{ message.content }}</div>
             <button
               v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
               :key="`${runId}-${detailIndex}`"

@@ -60,6 +60,46 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 class AgentRunnerTest {
+    private static final String RULE_TEMPLATE_ANSWER = """
+            # 急会诊及时到位率
+
+            > **口径速览**
+            > 当前结果依据本院生效规则。
+
+            ## 口径摘要
+
+            用于衡量急会诊是否及时到位。
+
+            ## 计算口径
+
+            指标率 = 分子 ÷ 分母 × 100%。
+
+            ## 实施信息
+
+            当前规则已生效，分子分母口径以本轮证据为准。
+            """;
+    private static final String TRIAL_TEMPLATE_ANSWER = """
+            # 急会诊及时到位率 · 统计结果
+
+            > **结论速览**
+            > 指标率为 **25.0%**。
+
+            ## 结果速览
+
+            | 统计项 | 结果 |
+            |---|---:|
+            | 分子 | 1 |
+            | 分母 | 4 |
+            | 指标率 | **25.0%** |
+
+            ## 计算口径
+
+            指标率 = 1 ÷ 4 × 100%。
+
+            ## 数据依据
+
+            数据来自本轮已验证试运行。
+            """;
     private ToolGateway gateway;
 
     @AfterEach
@@ -98,7 +138,7 @@ class AgentRunnerTest {
                   "semantic_ambiguities": []
                 }
                 """,
-                "急会诊及时到位率 = 分子 ÷ 分母 × 100%。");
+                RULE_TEMPLATE_ANSWER);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
@@ -180,7 +220,7 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 wrongCandidatePlan,
                 wrongCandidatePlan,
-                "当前结果依据本院生效规则，分子分母口径如下。");
+                RULE_TEMPLATE_ANSWER);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentConversationMemory conversations = mock(AgentConversationMemory.class);
         org.mockito.Mockito.when(conversations.open(
@@ -281,7 +321,7 @@ class AgentRunnerTest {
                   "semantic_ambiguities": []
                 }
                 """,
-                "急会诊及时到位率 = 分子 ÷ 分母 × 100%。");
+                RULE_TEMPLATE_ANSWER);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
@@ -362,7 +402,7 @@ class AgentRunnerTest {
                   "semantic_ambiguities": []
                 }
                 """,
-                "急会诊及时到位率为 25.0%（1 ÷ 4 × 100%）。");
+                TRIAL_TEMPLATE_ANSWER);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),

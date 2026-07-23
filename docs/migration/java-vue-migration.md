@@ -269,3 +269,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - 完整聚合值一致时结论为 `CALIBER_CAUSE_CONFIRMED`；部分维度一致且存在口径关键词或文件字段证据时标记 `CALIBER_CAUSE_LIKELY`，并继续执行记录集合与数据质量层，防止遗漏更直接的逐条原因。
 - 单个没有业务维度标签的数字即使命中候选结果，也只标记 `possible`，避免偶然相等导致错误归因。
 - 差异报告升级为 `difference-diagnosis-report-v2`，顶层返回候选试算值、匹配维度、未匹配维度和差值；确定性最终回答同步展示这些安全汇总证据。
+
+## 10. 2026-07-23 Final Answer 按需模板
+
+- 新增 `AnswerTemplateRegistry`，为全部 `PlanIntent` 固定注册独立回答或报告模板；输出目标比通用意图更具体时优先选择输出目标模板。
+- 11 份模板集中位于 `resources/answer-templates/`。基础 Prompt 不再承载具体版式，每轮只向 Final Answer LLM 注入一个 `template_id@version` 和对应模板正文。
+- 新增 `AnswerContractValidator`，确定性检查工具协议、模板占位符、必需章节以及试运行分子、分母、指标率是否完整；失败最多纠正一次，之后使用美化后的 VerifiedEvidence 确定性答案。
+- `final_answer_llm` Trace 增加模板编号、模板版本和契约校验状态；确定性 SQL、候选口径、差异诊断和实施验收节点也记录对应模板元数据。
+- Vue 新增无第三方依赖的安全 Markdown 子集渲染器，支持标题、摘要引用块、数据表、列表和代码块；不使用 `v-html`，模型返回的 HTML 始终按普通文本显示。

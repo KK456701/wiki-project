@@ -62,6 +62,7 @@ public class EvidenceLedger implements EvidenceRecorder {
             "report_id", "report_schema_version", "overall_status", "stages",
             "conclusion_code", "stopped_layer", "cause_confirmed",
             "affected_record_count", "baseline_result", "external_evidence",
+            "caliber_candidates", "caliber_cause_likely",
             "baseline_run_id", "baseline_sql_id", "evidence_limit",
             "passed_stages", "warning_stages", "failed_stages", "skipped_stages",
             "target_level", "current_effective_level", "requested", "current_effective",

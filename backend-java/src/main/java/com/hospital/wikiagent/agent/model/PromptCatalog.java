@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class PromptCatalog {
-    public static final String VERSION = "java-agent-prompts-v7";
+    public static final String VERSION = "java-agent-prompts-v8";
 
     public String planner() { return read("prompts/planner-system.txt"); }
     public String plannerRepair() { return read("prompts/planner-repair.txt"); }
