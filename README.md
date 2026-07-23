@@ -190,7 +190,7 @@ npm.cmd run build
 ## 文档
 
 - 当前架构：[`docs/architecture/agent-runtime-current.md`](docs/architecture/agent-runtime-current.md)
-- 前后端接口对接：[`docs/wiki-project_后端接口对接文档_2026-07-22.md`](docs/wiki-project_后端接口对接文档_2026-07-22.md)（覆盖 65 个业务 API、SSE 事件、鉴权、错误码与联调清单）
+- 前后端接口对接：[`docs/wiki-project_后端接口对接文档_2026-07-23.md`](docs/wiki-project_后端接口对接文档_2026-07-23.md)（按单接口规范覆盖 65 个业务 API，包含请求/响应参数、示例、鉴权与错误说明）
 - Java/Vue 迁移历史：[`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)
 - MySQL 到 Wiki + SQLite 的迁移历史：[`docs/migration/mysql-to-wiki-sqlite.md`](docs/migration/mysql-to-wiki-sqlite.md)
 - 项目协作约束：[`agent.md`](agent.md)
