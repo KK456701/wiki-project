@@ -91,6 +91,7 @@ public class AgentRunner {
     private final AgentFailureRouter failureRouter;
     private final UploadedFilePlanningContext uploadPlanningContext;
     private final PlanGoalAlignmentValidator alignmentValidator;
+    private final ClarificationPromptFactory clarificationPrompts;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -106,7 +107,8 @@ public class AgentRunner {
             AgentConversationMemory conversations,
             AgentFailureRouter failureRouter,
             UploadedFilePlanningContext uploadPlanningContext,
-            PlanGoalAlignmentValidator alignmentValidator) {
+            PlanGoalAlignmentValidator alignmentValidator,
+            ClarificationPromptFactory clarificationPrompts) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -120,6 +122,29 @@ public class AgentRunner {
         this.failureRouter = failureRouter;
         this.uploadPlanningContext = uploadPlanningContext;
         this.alignmentValidator = alignmentValidator;
+        this.clarificationPrompts = clarificationPrompts;
+    }
+
+    /**
+     * 兼容现有单元测试中的完整构造方式；生产环境使用上方 Spring 注入构造器。
+     */
+    public AgentRunner(
+            ModelRequestPlanner planner,
+            PlanValidator validator,
+            PlanCompiler compiler,
+            CapabilitySpecRegistry capabilities,
+            AgentStateController controller,
+            DeterministicDispatch dispatch,
+            ToolGateway gateway,
+            EvidenceVerifier verifier,
+            FinalAnswerComposer finalAnswer,
+            AgentConversationMemory conversations,
+            AgentFailureRouter failureRouter,
+            UploadedFilePlanningContext uploadPlanningContext,
+            PlanGoalAlignmentValidator alignmentValidator) {
+        this(planner, validator, compiler, capabilities, controller, dispatch,
+                gateway, verifier, finalAnswer, conversations, failureRouter,
+                uploadPlanningContext, alignmentValidator, null);
     }
 
     public AgentRunner(
@@ -135,7 +160,7 @@ public class AgentRunner {
             AgentConversationMemory conversations) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
                 gateway, verifier, finalAnswer, conversations,
-                new AgentFailureRouter(new ReplanPolicy()), null, null);
+                new AgentFailureRouter(new ReplanPolicy()), null, null, null);
     }
 
     public AgentRunner(
@@ -304,7 +329,8 @@ public class AgentRunner {
             } else {
                 ControllerDecision fallback = controller.nextDecision(compiled, validation, state);
                 AgentRunResult result = finishFallback(
-                        observer, traceId, sessionId, state, planned.plan(), compiled, fallback);
+                        request, observer, traceId, sessionId, state,
+                        planned.plan(), compiled, fallback);
                 saveConversation(observer, traceId, subtaskId, conversation,
                         request.principal(), result.answer(), state);
                 return result;
@@ -324,7 +350,8 @@ public class AgentRunner {
                     "capability", decision.capability());
             if (decision.action() == ControllerAction.FALLBACK) {
                 AgentRunResult result = finishFallback(
-                        observer, traceId, sessionId, state, planned.plan(), compiled, decision);
+                        request, observer, traceId, sessionId, state,
+                        planned.plan(), compiled, decision);
                 saveConversation(observer, traceId, subtaskId, conversation,
                         request.principal(), result.answer(), state);
                 return result;
@@ -863,6 +890,7 @@ public class AgentRunner {
     }
 
     private AgentRunResult finishFallback(
+            AgentRunRequest request,
             AgentRunObserver observer,
             String traceId,
             String sessionId,
@@ -870,17 +898,24 @@ public class AgentRunner {
             com.hospital.wikiagent.agent.ir.RequestPlan plan,
             CompiledPlanIR compiled,
             ControllerDecision decision) {
+        var clarification = clarificationPrompts == null ? null : clarificationPrompts.fromDecision(
+                decision,
+                plan,
+                state,
+                request.principal().hospitalId(),
+                request.query());
         emit(observer, "clarification_required", traceId, state.stepCount(), eventValues(
                 "message", decision.message(), "code", decision.code(),
                 "fallback_category", decision.fallbackCategory() == null
                         ? null : decision.fallbackCategory().name(),
+                "clarification", clarification,
                 "stop_reason", "clarification"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
                 "stop_reason", "clarification", "status", "incomplete",
                 "step_count", state.stepCount()));
         return new AgentRunResult(
                 decision.message(), "clarification", traceId, sessionId,
-                state.stepCount(), plan, compiled);
+                state.stepCount(), plan, compiled, clarification);
     }
 
     private AgentRunResult finishFailure(

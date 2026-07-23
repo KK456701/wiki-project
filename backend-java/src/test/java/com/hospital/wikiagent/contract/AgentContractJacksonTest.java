@@ -35,10 +35,31 @@ class AgentContractJacksonTest {
                 new AgentChatResponse("已完成", "final_answer", "TRACE_1", "session-1", 2));
         String upload = objectMapper.writeValueAsString(
                 new UploadResponse("hospital_001_file.xlsx", "file.xlsx", 128));
+        String clarification = objectMapper.writeValueAsString(new AgentClarification(
+                "TIME_RANGE_AMBIGUOUS",
+                "time_range",
+                "请选择统计时间",
+                "你希望统计哪个时间范围？",
+                "选择后将继续原任务。",
+                "single",
+                List.of(new AgentClarification.Option(
+                        "time:ytd",
+                        "今年至今",
+                        "2026-01-01 至 2026-07-23",
+                        "从今年第一天统计到今天",
+                        "常用时间")),
+                true,
+                "例如：2026-01-01 至 2026-03-31",
+                "继续原问题："));
 
         assertThat(request.sessionId()).isEqualTo("session-1");
         assertThat(response).contains("\"stop_reason\"", "\"trace_id\"", "\"step_count\"");
         assertThat(upload).contains("\"file_key\"", "\"file_name\"", "\"size_bytes\"");
+        assertThat(clarification).contains(
+                "\"help_text\"",
+                "\"selection_mode\":\"single\"",
+                "\"allow_free_text\":true",
+                "\"resume_prefix\"");
     }
 
     @Test

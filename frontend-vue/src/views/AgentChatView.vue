@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import MarkdownMessage from '../components/MarkdownMessage.vue'
+import ClarificationChoices from '../components/ClarificationChoices.vue'
 import { useAgentStore } from '../stores/agent'
 import {
   createDiagnosisReportExport,
@@ -61,6 +62,14 @@ async function send(text = query.value) {
   await store.send(normalized)
   await nextTick()
   conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+}
+
+async function continueFromClarification(messageId: string, values: string[]) {
+  const message = store.messages.find((item) => item.id === messageId)
+  if (!message?.clarification || !values.length) return
+  message.clarificationResolved = true
+  const continuation = `${message.clarification.resumePrefix}${values.join('、')}`
+  await send(continuation)
 }
 
 async function uploadFile(event: Event) {
@@ -203,7 +212,15 @@ async function exportDiagnosis(reportId?: string) {
                 <time v-if="message.role === 'agent' && message.durationMs !== undefined">
                   本轮耗时 {{ formatDuration(message.durationMs) }}
                 </time>
-                <span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span>
+                <span>{{
+                  message.status === 'running'
+                    ? '处理中'
+                    : message.status === 'failed'
+                      ? '未完成'
+                      : message.awaitingClarification && !message.clarificationResolved
+                        ? '等待选择'
+                        : '已完成'
+                }}</span>
               </div>
             </header>
             <MarkdownMessage
@@ -211,6 +228,13 @@ async function exportDiagnosis(reportId?: string) {
               :content="message.content || '正在读取规则与证据…'"
             />
             <div v-else class="message-content">{{ message.content }}</div>
+            <ClarificationChoices
+              v-if="message.role === 'agent' && message.clarification"
+              :clarification="message.clarification"
+              :disabled="store.running"
+              :resolved="message.clarificationResolved"
+              @submit="continueFromClarification(message.id, $event)"
+            />
             <button
               v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
               :key="`${runId}-${detailIndex}`"

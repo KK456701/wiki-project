@@ -29,6 +29,40 @@ export interface AgentCapabilities {
   orchestration?: string
 }
 
+export interface AgentClarificationOption {
+  id: string
+  label: string
+  value: string
+  description: string
+  group: string
+}
+
+export interface AgentClarification {
+  code: string
+  kind: string
+  title: string
+  question: string
+  helpText: string
+  selectionMode: 'single' | 'multiple'
+  options: AgentClarificationOption[]
+  allowFreeText: boolean
+  freeTextPlaceholder: string
+  resumePrefix: string
+}
+
+export interface AgentClarificationWire {
+  code: string
+  kind: string
+  title: string
+  question: string
+  help_text: string
+  selection_mode: 'single' | 'multiple'
+  options: AgentClarificationOption[]
+  allow_free_text: boolean
+  free_text_placeholder: string
+  resume_prefix: string
+}
+
 export interface AgentEvent {
   event: string
   trace_id: string
@@ -47,6 +81,7 @@ export interface AgentEvent {
   capability?: string
   model_id?: string
   subtask_id?: string
+  clarification?: AgentClarificationWire
 }
 
 export interface UploadResult {

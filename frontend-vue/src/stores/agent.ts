@@ -7,6 +7,7 @@ import {
   streamAgent,
   uploadIndicatorFile,
   type AgentCapabilities,
+  type AgentClarification,
   type AgentEvent,
   type HospitalUser,
 } from '../api/agent'
@@ -54,6 +55,9 @@ export interface ChatMessage {
   pendingTerminalStatus?: 'complete' | 'failed'
   startedAtMs?: number
   durationMs?: number
+  clarification?: AgentClarification
+  awaitingClarification?: boolean
+  clarificationResolved?: boolean
 }
 
 const toolLabels: Record<string, string> = {
@@ -224,6 +228,24 @@ function setAgentContent(message: ChatMessage, value: string) {
     .replace(/\n{3,}/g, '\n\n').trim()
 }
 
+function normalizeClarification(
+  value?: import('../api/agent').AgentClarificationWire,
+): AgentClarification | undefined {
+  if (!value) return undefined
+  return {
+    code: value.code || '',
+    kind: value.kind || 'free_text',
+    title: value.title || '还需要你补充一点信息',
+    question: value.question || '',
+    helpText: value.help_text || '',
+    selectionMode: value.selection_mode === 'multiple' ? 'multiple' : 'single',
+    options: value.options || [],
+    allowFreeText: Boolean(value.allow_free_text),
+    freeTextPlaceholder: value.free_text_placeholder || '补充说明',
+    resumePrefix: value.resume_prefix || '继续处理上一条请求。补充信息：',
+  }
+}
+
 export const useAgentStore = defineStore('agent', {
   state: () => ({
     token: sessionStorage.getItem('vueHospitalToken') || '',
@@ -290,6 +312,12 @@ export const useAgentStore = defineStore('agent', {
     async send(query: string) {
       const normalized = query.trim()
       if (!normalized || this.running) return
+      const pendingClarification = [...this.messages].reverse().find(
+        (message) => message.role === 'agent'
+          && message.awaitingClarification
+          && !message.clarificationResolved,
+      )
+      if (pendingClarification) pendingClarification.clarificationResolved = true
       this.error = ''
       this.running = true
       const userMessage: ChatMessage = {
@@ -313,12 +341,16 @@ export const useAgentStore = defineStore('agent', {
           fileKey: this.latestFileKey,
         }, (event) => this.applyEvent(activeMessage, event))
         const terminalStatus = activeMessage.pendingTerminalStatus || 'complete'
-        setStage(activeMessage,
-          terminalStatus === 'complete' ? '流程完成' : '运行失败',
-          'done',
-          terminalStatus === 'complete' ? 'success' : 'failed',
-          undefined,
-          terminalStatus)
+        if (activeMessage.awaitingClarification) {
+          setStage(activeMessage, '等待你选择', 'done', 'warning', undefined, 'complete')
+        } else {
+          setStage(activeMessage,
+            terminalStatus === 'complete' ? '流程完成' : '运行失败',
+            'done',
+            terminalStatus === 'complete' ? 'success' : 'failed',
+            undefined,
+            terminalStatus)
+        }
         if (!activeMessage.content) activeMessage.content = '本轮处理已结束，但没有返回可展示的业务回答。'
       } catch (error) {
         activeMessage.stageQueue = []
@@ -341,6 +373,11 @@ export const useAgentStore = defineStore('agent', {
         setAgentContent(message, event.message || '')
         if (event.event === 'assistant_message') {
           setStage(message, '整理业务回答', 'code', 'success')
+        } else {
+          message.clarification = normalizeClarification(event.clarification)
+          message.awaitingClarification = true
+          message.pendingTerminalStatus = 'complete'
+          setStage(message, '等待你选择', 'code', 'warning')
         }
       }
       if (event.event === 'agent_error') {
@@ -355,7 +392,9 @@ export const useAgentStore = defineStore('agent', {
           event.status === 'failed' ? 'failed' : 'success', event.duration_ms)
       }
       if (event.event === 'agent_done') {
-        if (event.status === 'completed') {
+        if (event.stop_reason === 'clarification' || message.awaitingClarification) {
+          message.pendingTerminalStatus = 'complete'
+        } else if (event.status === 'completed') {
           message.pendingTerminalStatus = 'complete'
         } else {
           message.pendingTerminalStatus = 'failed'

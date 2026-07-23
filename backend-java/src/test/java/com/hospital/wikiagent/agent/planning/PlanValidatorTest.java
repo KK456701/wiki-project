@@ -49,6 +49,44 @@ class PlanValidatorTest {
     }
 
     @Test
+    void turnsUnknownIntentIntoRecoverableClarification() {
+        RequestPlan unclear = new RequestPlan(
+                null,
+                PlanIntent.UNKNOWN,
+                "帮我看看这个",
+                new RequestPlan.TargetIndicator("", null),
+                new RequestPlan.TimeExpression("", null, null),
+                List.of(),
+                List.of(),
+                List.of());
+
+        PlanValidation result = validator.validate(unclear);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("INTENT_AMBIGUOUS");
+        assertThat(result.fallbackCategory()).isEqualTo(FallbackCategory.USER_CLARIFICATION);
+    }
+
+    @Test
+    void respectsPlannerDeclaredIntentAmbiguityInsteadOfGuessing() {
+        RequestPlan unclear = new RequestPlan(
+                null,
+                PlanIntent.RULE_EXPLANATION,
+                "处理指标问题",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", null),
+                new RequestPlan.TimeExpression("", null, null),
+                List.of(RequestedOutput.DEFINITION),
+                List.of(),
+                List.of(new RequestPlan.SemanticAmbiguity(
+                        "intent", "无法确认用户是要公式还是具体结果")));
+
+        PlanValidation result = validator.validate(unclear);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("INTENT_AMBIGUOUS");
+    }
+
+    @Test
     void acceptsExplicitHalfOpenPeriod() {
         PlanValidation result = validator.validate(plan(
                 List.of(),

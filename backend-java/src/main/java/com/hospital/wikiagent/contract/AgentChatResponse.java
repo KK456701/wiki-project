@@ -10,5 +10,15 @@ public record AgentChatResponse(
         String stopReason,
         String traceId,
         String sessionId,
-        int stepCount) {
+        int stepCount,
+        AgentClarification clarification) {
+
+    public AgentChatResponse(
+            String answer,
+            String stopReason,
+            String traceId,
+            String sessionId,
+            int stepCount) {
+        this(answer, stopReason, traceId, sessionId, stepCount, null);
+    }
 }

@@ -31,7 +31,7 @@ flowchart TD
     REVALIDATE -->|一致| COMPILE
     REVALIDATE -->|仍错误且候选唯一| SAFE_PLAN["服务端受控修正计划"]
     SAFE_PLAN --> COMPILE
-    REVALIDATE -->|仍有歧义| FALLBACK
+    REVALIDATE -->|仍有歧义| CLARIFY
     COMPILE --> VALIDATE["PlanValidator：目标、时间和冲突校验"]
     VALIDATE -->|计划有效| CTRL["StateController：选择尚未完成的业务能力"]
     VALIDATE -->|计划校验失败| FAILURE["FailureRouter：统一失败分类"]
@@ -49,13 +49,16 @@ flowchart TD
     LEDGER --> VERIFY["EvidenceVerifier：医院、规则、周期和 SQL 链校验"]
     VERIFY -->|事实仍缺失| CTRL
     FAILURE -->|允许的方向性语义错误| REPLAN["Replanner LLM：最多一次"]
-    FAILURE -->|缺时间、权限、数据库或普通工具错误| FALLBACK["用户澄清 / 安全拒绝 / 系统兜底"]
+    FAILURE -->|缺指标、缺时间、意图或口径歧义| CLARIFY["结构化反问：选项 / 搜索 / 自由补充"]
+    FAILURE -->|权限、数据库或普通工具错误| FALLBACK["安全拒绝 / 系统兜底"]
     REPLAN --> COMPILE
     VERIFY -->|事实完整| ANSWER["Final Answer LLM 或确定性模板"]
     ANSWER --> GUARD["ResponseGuard：协议与证据约束"]
     GUARD --> MERGE["按用户输入顺序合并子任务"]
     MERGE --> SAVE["保存会话、对象引用和 Trace"]
     SAVE --> VUE["Vue 3：回答、导出与查看链路"]
+    CLARIFY --> VUE
+    VUE -->|用户选择或补充| U
 ```
 
 ## LLM 参与位置
@@ -111,6 +114,21 @@ Planner 生成 `RequestPlan v2` 后、IR 编译前，Java 先对照用户原话�
 ### StateController
 
 Controller 比较计划所需 Fact 与当前 Evidence，只选择下一个缺失能力。它不是一段模型提示词，而是 Java 状态控制代码。
+
+### 结构化反问与任务恢复
+
+当安全执行所需信息不足时，Runtime 返回 `clarification_required`，而不是把本轮标记为普通失败。
+反问对象包含类型、问题、帮助文字、单选/多选模式、允许的业务选项、自由输入提示和原任务恢复前缀。
+
+- 指标不唯一或无法确认：显示当前医院可见指标，优先排列推荐匹配；指标较多时可搜索。
+- 时间缺失：提供今年至今、本月、上一个自然月、最近 30 天，也允许输入任意明确起止日期。
+- 意图不清：提供查看口径、计算结果、生成 SQL、异常诊断和上传文件对比等业务动作。
+- 口径不唯一：只展示 Wiki 中已审批且适用于当前医院的候选口径。
+
+用户点击或补充文字后，前端把“原问题 + 用户选择”作为新一轮消息提交。该消息仍然经过
+Planner、目标一致性、IR、权限、ToolGateway 和 Evidence 验证，不能从选项直接调用工具。
+因此反问可以恢复任务，但不会绕过安全边界。前端把此状态展示为“等待选择”，而不是红色
+“运行失败”；完整原因和候选生成过程仍可在 Trace 中查看。
 
 ### DeterministicDispatch 与 ToolGateway
 

@@ -67,7 +67,7 @@ public class AgentRunController {
             traces.finish(traceId, result);
             return new AgentChatResponse(
                     result.answer(), result.stopReason(), result.traceId(),
-                    result.sessionId(), result.stepCount());
+                    result.sessionId(), result.stepCount(), result.clarification());
         } catch (RuntimeException exception) {
             traces.fail(traceId, exception.getMessage());
             LOGGER.error("Java Agent run failed, traceId={}", traceId, exception);

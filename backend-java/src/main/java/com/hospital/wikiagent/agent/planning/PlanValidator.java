@@ -39,6 +39,29 @@ public class PlanValidator {
                     "当前 Agent 不允许访问或返回患者明细。",
                     FallbackCategory.SECURITY_DENIAL);
         }
+        if (plan.intent() == PlanIntent.UNKNOWN) {
+            return PlanValidation.invalid(
+                    "INTENT_AMBIGUOUS",
+                    "我还不能确定你是想看口径、计算结果、生成 SQL，还是排查差异。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
+        for (RequestPlan.SemanticAmbiguity ambiguity : plan.semanticAmbiguities()) {
+            String field = ambiguity.field().toLowerCase(Locale.ROOT);
+            if ((field.contains("indicator") || field.contains("指标"))
+                    && plan.targetIndicator().ruleId() == null
+                    && plan.targetIndicator().rawName().isBlank()) {
+                return PlanValidation.invalid(
+                        "TARGET_INDICATOR_AMBIGUOUS",
+                        ambiguity.description(),
+                        FallbackCategory.USER_CLARIFICATION);
+            }
+            if (field.contains("intent") || field.contains("意图") || field.contains("output")) {
+                return PlanValidation.invalid(
+                        "INTENT_AMBIGUOUS",
+                        ambiguity.description(),
+                        FallbackCategory.USER_CLARIFICATION);
+            }
+        }
         Set<RequestedOutput> outputs = Set.copyOf(plan.requestedOutputs());
         // 意图与输出目标的矛盾属于方向性计划错误，必须交给 FailureRouter 决定是否
         // Replan；不能混入 Planner 的 JSON 修复，否则会丢失原计划和明确失败原因。

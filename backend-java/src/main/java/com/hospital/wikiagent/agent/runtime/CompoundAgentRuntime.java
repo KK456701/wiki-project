@@ -40,6 +40,7 @@ public class CompoundAgentRuntime {
     private final AgentModelProperties properties;
     private final AgentConversationMemory conversations;
     private final HybridIndicatorResolver indicatorResolver;
+    private final ClarificationPromptFactory clarificationPrompts;
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -55,7 +56,6 @@ public class CompoundAgentRuntime {
         this(runner, splitter, models, properties, conversations, null);
     }
 
-    @Autowired
     public CompoundAgentRuntime(
             AgentRunner runner,
             CompoundRequestSplitter splitter,
@@ -63,12 +63,25 @@ public class CompoundAgentRuntime {
             AgentModelProperties properties,
             AgentConversationMemory conversations,
             HybridIndicatorResolver indicatorResolver) {
+        this(runner, splitter, models, properties, conversations, indicatorResolver, null);
+    }
+
+    @Autowired
+    public CompoundAgentRuntime(
+            AgentRunner runner,
+            CompoundRequestSplitter splitter,
+            AgentModelRegistry models,
+            AgentModelProperties properties,
+            AgentConversationMemory conversations,
+            HybridIndicatorResolver indicatorResolver,
+            ClarificationPromptFactory clarificationPrompts) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
         this.properties = properties;
         this.conversations = conversations;
         this.indicatorResolver = indicatorResolver;
+        this.clarificationPrompts = clarificationPrompts;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -307,6 +320,14 @@ public class CompoundAgentRuntime {
         }
         String answer = "我识别到指标名称存在歧义，请明确要查询哪一个：\n\n- "
                 + String.join("\n- ", groups);
+        var clarification = clarificationPrompts == null ? null
+                : clarificationPrompts.fromResolution(
+                        resolution, request.principal().hospitalId(), request.query());
+        if (clarification != null) {
+            answer = "# " + clarification.title() + "\n\n"
+                    + clarification.question() + "\n\n"
+                    + "> " + clarification.helpText();
+        }
         conversations.appendUser(conversation, request.principal(), request.query(), request.fileKey());
         AgentRunState state = new AgentRunState();
         conversations.appendAssistant(conversation, request.principal(), answer, state);
@@ -316,11 +337,13 @@ public class CompoundAgentRuntime {
                 "message", answer,
                 "code", "INDICATOR_AMBIGUOUS",
                 "fallback_category", "USER_CLARIFICATION",
+                "clarification", clarification == null ? Map.of() : clarification,
                 "stop_reason", "clarification"));
         emit(observer, "agent_done", traceId, 0, Map.of(
                 "stop_reason", "clarification", "status", "incomplete", "step_count", 0));
         return new AgentRunResult(
-                answer, "clarification", traceId, conversation.sessionId(), 0, null, null);
+                answer, "clarification", traceId, conversation.sessionId(), 0,
+                null, null, clarification);
     }
 
     private static long timeout(Duration duration) {

@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.runtime;
 
 import com.hospital.wikiagent.agent.ir.CompiledPlanIR;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.contract.AgentClarification;
 
 /**
  * 定义 {@code AgentRunResult} 的不可变数据载体。
@@ -15,5 +16,20 @@ public record AgentRunResult(
         String sessionId,
         int stepCount,
         RequestPlan requestPlan,
-        CompiledPlanIR compiledPlan) {
+        CompiledPlanIR compiledPlan,
+        AgentClarification clarification) {
+
+    /**
+     * 兼容现有成功、工具失败和测试构造代码；只有可恢复反问才携带 clarification。
+     */
+    public AgentRunResult(
+            String answer,
+            String stopReason,
+            String traceId,
+            String sessionId,
+            int stepCount,
+            RequestPlan requestPlan,
+            CompiledPlanIR compiledPlan) {
+        this(answer, stopReason, traceId, sessionId, stepCount, requestPlan, compiledPlan, null);
+    }
 }
