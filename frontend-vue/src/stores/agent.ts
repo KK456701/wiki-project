@@ -23,15 +23,6 @@ export interface EvidenceStep {
 export type StageKind = 'llm' | 'code' | 'tool' | 'storage' | 'done'
 export type StageState = 'running' | 'success' | 'warning' | 'failed'
 
-export interface StageStep {
-  id: string
-  label: string
-  kind: StageKind
-  state: StageState
-  sourceKey?: string
-  durationMs?: number
-}
-
 export interface ChatMessage {
   id: string
   role: 'user' | 'agent'
@@ -44,10 +35,11 @@ export interface ChatMessage {
   comparisonFileToken?: string
   comparisonExports?: Array<{ runId: string; fileToken: string }>
   evidence: EvidenceStep[]
-  stageHistory?: StageStep[]
   stageLabel?: string
   stageKind?: StageKind
+  stageState?: StageState
   stageNumber?: number
+  stageDurationMs?: number
   startedAtMs?: number
   durationMs?: number
 }
@@ -102,44 +94,14 @@ function setStage(
   kind: StageKind,
   state: StageState = 'running',
   durationMs?: number,
-  sourceKey?: string,
 ) {
   if (!label) return
-  const history = message.stageHistory || (message.stageHistory = [])
-  const last = history[history.length - 1]
-  if (state === 'running' && last?.state === 'running'
-    && !last.sourceKey && (last.label !== label || last.kind !== kind)) {
-    last.state = 'success'
-  }
-  if (kind === 'done' && state !== 'running') {
-    history.filter((stage) => stage.state === 'running').forEach((stage) => {
-      stage.state = state === 'failed' ? 'failed' : 'success'
-    })
-  }
-  const existing = state === 'running' ? undefined : [...history].reverse().find((stage) =>
-    stage.state === 'running'
-      && (sourceKey ? stage.sourceKey === sourceKey : stage.label === label && stage.kind === kind))
-
-  if (existing) {
-    existing.state = state
-    existing.durationMs = durationMs
-  } else {
-    const currentLast = history[history.length - 1]
-    if (state === 'running' && currentLast?.state === 'running'
-      && currentLast.label === label && currentLast.kind === kind
-      && currentLast.sourceKey === sourceKey) return
-    history.push({
-      id: `${message.id}-stage-${history.length + 1}`,
-      label,
-      kind,
-      state,
-      sourceKey,
-      durationMs,
-    })
-  }
+  const changed = message.stageLabel !== label || message.stageKind !== kind
   message.stageLabel = label
   message.stageKind = kind
-  message.stageNumber = history.length
+  message.stageState = state
+  message.stageDurationMs = durationMs
+  if (changed) message.stageNumber = (message.stageNumber || 0) + 1
 }
 
 function finishTiming(message: ChatMessage) {
@@ -254,7 +216,7 @@ export const useAgentStore = defineStore('agent', {
       }
       const agentMessage: ChatMessage = {
         id: makeId('message'), role: 'agent', content: '', status: 'running', evidence: [],
-        stageHistory: [], startedAtMs: Date.now(),
+        startedAtMs: Date.now(),
       }
       setStage(agentMessage, '准备运行', 'code')
       this.messages.push(userMessage, agentMessage)
@@ -314,7 +276,7 @@ export const useAgentStore = defineStore('agent', {
       }
       if (event.event === 'tool_call') {
         setStage(message, toolLabels[event.tool_name || ''] || '调用受控业务工具', 'tool',
-          'running', undefined, `tool:${event.tool_name || 'unknown'}`)
+          'running')
         message.evidence.push({
           id: `${event.tool_name || 'tool'}-${message.evidence.length}`,
           label: toolLabels[event.tool_name || ''] || '处理业务信息',
@@ -330,8 +292,7 @@ export const useAgentStore = defineStore('agent', {
         step.durationMs = event.duration_ms
         step.reused = event.reused
         setStage(message, step.label, 'tool',
-          step.state === 'success' ? 'success' : 'warning', event.duration_ms,
-          `tool:${event.tool_name || 'unknown'}`)
+          step.state === 'success' ? 'success' : 'warning', event.duration_ms)
       }
     },
   },

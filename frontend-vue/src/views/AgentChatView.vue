@@ -84,14 +84,6 @@ function formatStageNumber(value?: number): string {
   return String(value || 1).padStart(2, '0')
 }
 
-function stageKindLabel(kind?: string): string {
-  if (kind === 'llm') return 'LLM'
-  if (kind === 'tool') return '工具'
-  if (kind === 'storage') return '存储'
-  if (kind === 'done') return '结束'
-  return '代码'
-}
-
 async function exportComparison(runId?: string, fileToken?: string) {
   if (!runId || !fileToken || exportingComparison.value) return
   if (!window.confirm('差异表可能包含患者级业务明细。确认仅在授权范围内使用并立即下载吗？')) return
@@ -175,11 +167,15 @@ async function exportComparison(runId?: string, fileToken?: string) {
                   v-if="message.role === 'agent' && message.stageLabel"
                   class="stage-machine"
                   :data-kind="message.stageKind"
+                  :data-state="message.stageState"
                   :data-running="message.status === 'running'"
                 >
                   <b>{{ formatStageNumber(message.stageNumber) }}</b>
                   <i aria-hidden="true"></i>
                   <span>{{ message.stageLabel }}</span>
+                  <time v-if="message.stageDurationMs !== undefined">
+                    {{ formatDuration(message.stageDurationMs) }}
+                  </time>
                 </span>
               </div>
               <div class="message-outcome">
@@ -189,30 +185,6 @@ async function exportComparison(runId?: string, fileToken?: string) {
                 <span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span>
               </div>
             </header>
-            <details
-              v-if="message.role === 'agent' && message.stageHistory?.length"
-              class="stage-ledger"
-              open
-            >
-              <summary>
-                <span>本轮执行轨迹</span>
-                <b>{{ message.stageHistory.length }} 个阶段</b>
-              </summary>
-              <ol>
-                <li
-                  v-for="(stage, stageIndex) in message.stageHistory"
-                  :key="stage.id"
-                  :data-kind="stage.kind"
-                  :data-state="stage.state"
-                >
-                  <span class="stage-index">{{ formatStageNumber(stageIndex + 1) }}</span>
-                  <i aria-hidden="true"></i>
-                  <strong>{{ stage.label }}</strong>
-                  <small>{{ stageKindLabel(stage.kind) }}</small>
-                  <time v-if="stage.durationMs !== undefined">{{ formatDuration(stage.durationMs) }}</time>
-                </li>
-              </ol>
-            </details>
             <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
             <button
               v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
