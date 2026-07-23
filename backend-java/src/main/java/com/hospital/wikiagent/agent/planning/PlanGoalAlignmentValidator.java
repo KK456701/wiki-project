@@ -1,6 +1,7 @@
 package com.hospital.wikiagent.agent.planning;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -238,7 +239,10 @@ public class PlanGoalAlignmentValidator {
         return scored.stream()
                 .filter(value -> value.score() >= best - 5)
                 .map(ScoredProfile::profile)
-                .map(value -> Map.copyOf(new LinkedHashMap<>(value)))
+                // Wiki 中 effective_to 等可选字段允许为 null。Map.copyOf 会拒绝
+                // 任何 null 键值并在一致性校验阶段抛出 NPE，因此这里保留原始
+                // YAML 语义，只通过不可修改视图防止调用方篡改候选配置。
+                .map(value -> Collections.unmodifiableMap(new LinkedHashMap<>(value)))
                 .toList();
     }
 

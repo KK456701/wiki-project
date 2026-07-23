@@ -4,16 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 import com.hospital.wikiagent.agent.planning.PlanGoalAlignmentValidator.AlignmentStatus;
 import com.hospital.wikiagent.rules.RuleReadRepository;
+import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 class PlanGoalAlignmentValidatorTest {
 
@@ -41,6 +46,27 @@ class PlanGoalAlignmentValidatorTest {
                         RequestedOutput.CALIBER_TRIAL_RESULT);
         assertThat(decision.suggestedPlan().timeExpression().startTime())
                 .isEqualTo("2026-01-01T00:00:00");
+    }
+
+    @Test
+    void acceptsRealWikiCandidateWithOpenEndedEffectiveDate() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        RuleReadRepository rules = new RuleReadRepository(
+                mock(JdbcTemplate.class),
+                objectMapper,
+                new WikiRuleKnowledgeSource(
+                        Path.of("..", "core-rules-wiki").toString(),
+                        objectMapper));
+        PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
+
+        var decision = validator.assess(
+                "如果根据入区时间怎么算",
+                currentRulePlan(true),
+                "hospital_001");
+
+        assertThat(decision.status()).isEqualTo(AlignmentStatus.MISMATCH);
+        assertThat(decision.suggestedPlan().targetCaliber().profileId())
+                .isEqualTo("hospital_001_ward_entry_anchor");
     }
 
     @Test
@@ -150,11 +176,14 @@ class PlanGoalAlignmentValidatorTest {
     }
 
     private static Map<String, Object> wardEntryProfile() {
-        return Map.of(
-                "profile_id", "hospital_001_ward_entry_anchor",
-                "label", "首次入区时间统计及48小时口径",
-                "aliases", List.of("入区", "首次入区"),
-                "source_version", "2026-07",
-                "status", "approved");
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("profile_id", "hospital_001_ward_entry_anchor");
+        profile.put("label", "首次入区时间统计及48小时口径");
+        profile.put("aliases", List.of("入区", "首次入区"));
+        profile.put("source_version", "2026-07");
+        profile.put("status", "approved");
+        // 真实 Wiki 配置用 null 表示长期有效；校验器必须保留该合法值。
+        profile.put("effective_to", null);
+        return profile;
     }
 }

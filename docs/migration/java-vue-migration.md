@@ -261,3 +261,4 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - Planner 在候选口径追问中只返回指标名称、漏掉 `rule_id` 时，Runner 会先核对该名称是否与上一轮已确认指标相同；确认相同后补全规则编号，再执行目标一致性校验和候选 profile 查询。
 - 该补全仅接受空名称、明确指代词、完全相同的规则名称或规则编号，不会把上一轮规则覆盖到用户本轮提出的新指标。
 - SQLite 会话表升级改为只读取目标表的零行元数据，不再枚举整个运行库，避免表较多时触发 `too many terms in compound SELECT`。新建库脚本同步包含候选 profile 字段。
+- 候选口径一致性校验允许 Wiki profile 的 `effective_to: null`，该值表示尚未设置失效日期；候选列表不再使用拒绝空值的 `Map.copyOf`。流式入口同时记录带 Trace ID 的服务端异常堆栈，避免未处理异常只能显示通用失败。

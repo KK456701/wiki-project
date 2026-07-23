@@ -6,6 +6,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -35,6 +37,8 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/agent")
 public class AgentRunController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentRunController.class);
+
     private final HospitalAuthService auth;
     private final CompoundAgentRuntime runner;
     private final AgentTraceService traces;
@@ -66,6 +70,7 @@ public class AgentRunController {
                     result.sessionId(), result.stepCount());
         } catch (RuntimeException exception) {
             traces.fail(traceId, exception.getMessage());
+            LOGGER.error("Java Agent run failed, traceId={}", traceId, exception);
             throw exception;
         }
     }
@@ -89,6 +94,7 @@ public class AgentRunController {
                 emitter.complete();
             } catch (RuntimeException exception) {
                 traces.fail(traceId, exception.getMessage());
+                LOGGER.error("Java Agent stream failed, traceId={}", traceId, exception);
                 try {
                     send(emitter, Map.of(
                             "event", "agent_error",
