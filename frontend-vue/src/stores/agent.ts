@@ -20,6 +20,18 @@ export interface EvidenceStep {
   reused?: boolean
 }
 
+export type StageKind = 'llm' | 'code' | 'tool' | 'storage' | 'done'
+export type StageState = 'running' | 'success' | 'warning' | 'failed'
+
+export interface StageStep {
+  id: string
+  label: string
+  kind: StageKind
+  state: StageState
+  sourceKey?: string
+  durationMs?: number
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'agent'
@@ -32,8 +44,9 @@ export interface ChatMessage {
   comparisonFileToken?: string
   comparisonExports?: Array<{ runId: string; fileToken: string }>
   evidence: EvidenceStep[]
+  stageHistory?: StageStep[]
   stageLabel?: string
-  stageKind?: 'llm' | 'code' | 'tool' | 'storage' | 'done'
+  stageKind?: StageKind
   stageNumber?: number
   startedAtMs?: number
   durationMs?: number
@@ -76,18 +89,57 @@ const nodeLabels: Record<string, string> = {
   compound_merge: '按输入顺序合并结果',
 }
 
-function stageKind(value?: string): ChatMessage['stageKind'] {
+function stageKind(value?: string): StageKind {
   if (value === 'llm' || value === 'tool' || value === 'database' || value === 'storage') {
     return value === 'database' ? 'tool' : value
   }
   return 'code'
 }
 
-function setStage(message: ChatMessage, label: string, kind: ChatMessage['stageKind']) {
-  if (!label || (message.stageLabel === label && message.stageKind === kind)) return
+function setStage(
+  message: ChatMessage,
+  label: string,
+  kind: StageKind,
+  state: StageState = 'running',
+  durationMs?: number,
+  sourceKey?: string,
+) {
+  if (!label) return
+  const history = message.stageHistory || (message.stageHistory = [])
+  const last = history[history.length - 1]
+  if (state === 'running' && last?.state === 'running'
+    && !last.sourceKey && (last.label !== label || last.kind !== kind)) {
+    last.state = 'success'
+  }
+  if (kind === 'done' && state !== 'running') {
+    history.filter((stage) => stage.state === 'running').forEach((stage) => {
+      stage.state = state === 'failed' ? 'failed' : 'success'
+    })
+  }
+  const existing = state === 'running' ? undefined : [...history].reverse().find((stage) =>
+    stage.state === 'running'
+      && (sourceKey ? stage.sourceKey === sourceKey : stage.label === label && stage.kind === kind))
+
+  if (existing) {
+    existing.state = state
+    existing.durationMs = durationMs
+  } else {
+    const currentLast = history[history.length - 1]
+    if (state === 'running' && currentLast?.state === 'running'
+      && currentLast.label === label && currentLast.kind === kind
+      && currentLast.sourceKey === sourceKey) return
+    history.push({
+      id: `${message.id}-stage-${history.length + 1}`,
+      label,
+      kind,
+      state,
+      sourceKey,
+      durationMs,
+    })
+  }
   message.stageLabel = label
   message.stageKind = kind
-  message.stageNumber = (message.stageNumber || 0) + 1
+  message.stageNumber = history.length
 }
 
 function finishTiming(message: ChatMessage) {
@@ -202,8 +254,9 @@ export const useAgentStore = defineStore('agent', {
       }
       const agentMessage: ChatMessage = {
         id: makeId('message'), role: 'agent', content: '', status: 'running', evidence: [],
-        stageLabel: '准备运行', stageKind: 'code', stageNumber: 1, startedAtMs: Date.now(),
+        stageHistory: [], startedAtMs: Date.now(),
       }
+      setStage(agentMessage, '准备运行', 'code')
       this.messages.push(userMessage, agentMessage)
 
       try {
@@ -215,12 +268,12 @@ export const useAgentStore = defineStore('agent', {
         }, (event) => this.applyEvent(agentMessage, event))
         if (agentMessage.status === 'running') {
           agentMessage.status = 'complete'
-          setStage(agentMessage, '流程完成', 'done')
+          setStage(agentMessage, '流程完成', 'done', 'success')
         }
         if (!agentMessage.content) agentMessage.content = '本轮处理已结束，但没有返回可展示的业务回答。'
       } catch (error) {
         agentMessage.status = 'failed'
-        setStage(agentMessage, '运行失败', 'done')
+        setStage(agentMessage, '运行失败', 'done', 'failed')
         finishTiming(agentMessage)
         agentMessage.content = error instanceof Error ? error.message : 'Agent 请求失败，请稍后重试。'
         this.error = agentMessage.content
@@ -234,30 +287,34 @@ export const useAgentStore = defineStore('agent', {
       if (event.event === 'assistant_message' || event.event === 'clarification_required') {
         setAgentContent(message, event.message || '')
         setStage(message, event.event === 'clarification_required' ? '等待补充信息' : '整理业务回答',
-          event.event === 'clarification_required' ? 'done' : 'code')
+          event.event === 'clarification_required' ? 'done' : 'code',
+          event.event === 'clarification_required' ? 'warning' : 'success')
       }
       if (event.event === 'agent_error') {
         message.status = 'failed'
         message.content = event.message || 'Agent 运行未完成。'
-        setStage(message, '运行失败', 'done')
+        setStage(message, '运行失败', 'done', 'failed')
       }
       if (event.event === 'agent_start') setStage(message, '读取会话上下文', 'storage')
       if (event.event === 'model_start') setStage(message, event.message || '模型处理中', 'llm')
       if (event.event === 'stage_update' && message.status === 'running') {
         const label = event.message || nodeLabels[event.node_name || ''] || '推进业务流程'
-        setStage(message, label, stageKind(event.node_type))
+        setStage(message, label, stageKind(event.node_type),
+          event.status === 'failed' ? 'failed' : 'success', event.duration_ms)
       }
       if (event.event === 'agent_done') {
         if (event.status === 'completed') {
           message.status = 'complete'
-          setStage(message, '流程完成', 'done')
+          setStage(message, '流程完成', 'done', 'success')
         } else {
           message.status = 'failed'
-          setStage(message, event.status === 'incomplete' ? '等待补充信息' : '运行失败', 'done')
+          setStage(message, event.status === 'incomplete' ? '等待补充信息' : '运行失败', 'done',
+            event.status === 'incomplete' ? 'warning' : 'failed')
         }
       }
       if (event.event === 'tool_call') {
-        setStage(message, toolLabels[event.tool_name || ''] || '调用受控业务工具', 'tool')
+        setStage(message, toolLabels[event.tool_name || ''] || '调用受控业务工具', 'tool',
+          'running', undefined, `tool:${event.tool_name || 'unknown'}`)
         message.evidence.push({
           id: `${event.tool_name || 'tool'}-${message.evidence.length}`,
           label: toolLabels[event.tool_name || ''] || '处理业务信息',
@@ -272,6 +329,9 @@ export const useAgentStore = defineStore('agent', {
         step.detail = event.reused ? '复用本轮已有结果' : event.message || event.code || '工具执行结束'
         step.durationMs = event.duration_ms
         step.reused = event.reused
+        setStage(message, step.label, 'tool',
+          step.state === 'success' ? 'success' : 'warning', event.duration_ms,
+          `tool:${event.tool_name || 'unknown'}`)
       }
     },
   },
