@@ -32,6 +32,11 @@ export interface ChatMessage {
   comparisonFileToken?: string
   comparisonExports?: Array<{ runId: string; fileToken: string }>
   evidence: EvidenceStep[]
+  stageLabel?: string
+  stageKind?: 'llm' | 'code' | 'tool' | 'storage' | 'done'
+  stageNumber?: number
+  startedAtMs?: number
+  durationMs?: number
 }
 
 const toolLabels: Record<string, string> = {
@@ -44,6 +49,50 @@ const toolLabels: Record<string, string> = {
   create_indicator_draft: '生成指标工作草稿',
   preview_rule_change: '预览本院口径变化',
   analyze_uploaded_indicators: '分析上传的指标文件',
+}
+
+const nodeLabels: Record<string, string> = {
+  indicator_rule_match: '规则精确识别指标',
+  indicator_semantic_retrieval: '本地语义召回指标',
+  indicator_llm_disambiguation: '模型候选内消歧',
+  memory_load: '读取会话上下文',
+  planner_llm: '规划业务目标',
+  plan_replan: '重新规划业务目标',
+  followup_plan_resolve: '解析追问目标',
+  plan_compile: '编译业务计划',
+  plan_validate: '校验业务计划',
+  failure_router: '路由失败处理',
+  state_controller: '选择下一业务能力',
+  deterministic_tool_dispatch: '编译受控工具调用',
+  tool_result: '执行并观察工具结果',
+  plan_verify: '校验证据完整性',
+  final_answer_llm: '生成最终回答',
+  prepared_sql_answer: '生成受控 SQL 回答',
+  implementation_validation_answer: '生成实施验收回答',
+  response_guard: '检查回答协议',
+  memory_save: '保存会话上下文',
+  compound_split: '拆分复合指标请求',
+  compound_subtask: '执行指标子任务',
+  compound_merge: '按输入顺序合并结果',
+}
+
+function stageKind(value?: string): ChatMessage['stageKind'] {
+  if (value === 'llm' || value === 'tool' || value === 'database' || value === 'storage') {
+    return value === 'database' ? 'tool' : value
+  }
+  return 'code'
+}
+
+function setStage(message: ChatMessage, label: string, kind: ChatMessage['stageKind']) {
+  if (!label || (message.stageLabel === label && message.stageKind === kind)) return
+  message.stageLabel = label
+  message.stageKind = kind
+  message.stageNumber = (message.stageNumber || 0) + 1
+}
+
+function finishTiming(message: ChatMessage) {
+  if (message.durationMs !== undefined || message.startedAtMs === undefined) return
+  message.durationMs = Math.max(0, Date.now() - message.startedAtMs)
 }
 
 function makeId(prefix: string): string {
@@ -153,6 +202,7 @@ export const useAgentStore = defineStore('agent', {
       }
       const agentMessage: ChatMessage = {
         id: makeId('message'), role: 'agent', content: '', status: 'running', evidence: [],
+        stageLabel: '准备运行', stageKind: 'code', stageNumber: 1, startedAtMs: Date.now(),
       }
       this.messages.push(userMessage, agentMessage)
 
@@ -163,13 +213,19 @@ export const useAgentStore = defineStore('agent', {
           modelId: this.selectedModel,
           fileKey: this.latestFileKey,
         }, (event) => this.applyEvent(agentMessage, event))
-        if (agentMessage.status === 'running') agentMessage.status = 'complete'
+        if (agentMessage.status === 'running') {
+          agentMessage.status = 'complete'
+          setStage(agentMessage, '流程完成', 'done')
+        }
         if (!agentMessage.content) agentMessage.content = '本轮处理已结束，但没有返回可展示的业务回答。'
       } catch (error) {
         agentMessage.status = 'failed'
+        setStage(agentMessage, '运行失败', 'done')
+        finishTiming(agentMessage)
         agentMessage.content = error instanceof Error ? error.message : 'Agent 请求失败，请稍后重试。'
         this.error = agentMessage.content
       } finally {
+        finishTiming(agentMessage)
         this.running = false
       }
     },
@@ -177,13 +233,31 @@ export const useAgentStore = defineStore('agent', {
       if (event.trace_id) message.traceId = event.trace_id
       if (event.event === 'assistant_message' || event.event === 'clarification_required') {
         setAgentContent(message, event.message || '')
+        setStage(message, event.event === 'clarification_required' ? '等待补充信息' : '整理业务回答',
+          event.event === 'clarification_required' ? 'done' : 'code')
       }
       if (event.event === 'agent_error') {
         message.status = 'failed'
         message.content = event.message || 'Agent 运行未完成。'
+        setStage(message, '运行失败', 'done')
       }
-      if (event.event === 'agent_done') message.status = 'complete'
+      if (event.event === 'agent_start') setStage(message, '读取会话上下文', 'storage')
+      if (event.event === 'model_start') setStage(message, event.message || '模型处理中', 'llm')
+      if (event.event === 'stage_update' && message.status === 'running') {
+        const label = event.message || nodeLabels[event.node_name || ''] || '推进业务流程'
+        setStage(message, label, stageKind(event.node_type))
+      }
+      if (event.event === 'agent_done') {
+        if (event.status === 'completed') {
+          message.status = 'complete'
+          setStage(message, '流程完成', 'done')
+        } else {
+          message.status = 'failed'
+          setStage(message, event.status === 'incomplete' ? '等待补充信息' : '运行失败', 'done')
+        }
+      }
       if (event.event === 'tool_call') {
+        setStage(message, toolLabels[event.tool_name || ''] || '调用受控业务工具', 'tool')
         message.evidence.push({
           id: `${event.tool_name || 'tool'}-${message.evidence.length}`,
           label: toolLabels[event.tool_name || ''] || '处理业务信息',

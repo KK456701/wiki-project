@@ -42,6 +42,11 @@ export interface AgentEvent {
   duration_ms?: number
   reused?: boolean
   retryable?: boolean
+  node_name?: string
+  node_type?: 'llm' | 'code' | 'tool' | 'database' | 'storage' | string
+  capability?: string
+  model_id?: string
+  subtask_id?: string
 }
 
 export interface UploadResult {

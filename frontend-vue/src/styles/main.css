@@ -136,8 +136,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .message.is-user .message-avatar { background: #cfe9e4; color: var(--teal-dark); border-radius: 11px 11px 11px 3px; }
 .message-card { max-width: min(900px, 82%); padding: 20px 22px; background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--teal); }
 .message.is-user .message-card { background: #dcefeb; border-left: 1px solid #b7d7d0; border-right: 4px solid var(--teal); }
-.message-card header { display: flex; justify-content: space-between; gap: 30px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
-.message-card header strong { color: var(--teal-dark); }
+.message-card .message-head { display: flex; justify-content: space-between; align-items: center; gap: 30px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }
+.message-card .message-head strong { color: var(--teal-dark); }
+.message-owner, .message-outcome { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.message-outcome { flex: 0 0 auto; }
+.message-outcome time { color: #4c625c; font: 700 11px Bahnschrift, sans-serif; }
+.stage-machine { min-width: 0; display: inline-grid; grid-template-columns: auto 7px minmax(0, auto); align-items: center; gap: 7px; padding-left: 11px; border-left: 1px solid #b7c9c4; color: #40534d; font: 700 11px Bahnschrift, sans-serif; }
+.stage-machine b { color: #71817d; font: 700 9px Consolas, monospace; letter-spacing: .04em; }
+.stage-machine i { width: 7px; height: 7px; background: #246a9a; box-shadow: 0 0 0 3px #e6f0f5; }
+.stage-machine > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-machine[data-kind="llm"] i { background: #7655ad; box-shadow: 0 0 0 3px #eee8f7; }
+.stage-machine[data-kind="tool"] i { background: var(--amber); box-shadow: 0 0 0 3px #fff0dc; }
+.stage-machine[data-kind="storage"] i { background: #4b806b; box-shadow: 0 0 0 3px #e4f0eb; }
+.stage-machine[data-kind="done"] i { background: var(--teal); box-shadow: 0 0 0 3px var(--mint); }
 .message-content { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.78; }
 .trace-link, .detail-link { margin-top: 15px; padding: 0; border: 0; background: transparent; color: var(--teal); font-weight: 700; }
 .detail-link { margin-right: 22px; color: var(--teal-dark); text-decoration: underline; text-decoration-color: #91bbb4; text-underline-offset: 4px; }
@@ -256,6 +267,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .login-card { margin: 30px; }
   .topbar { height: auto; padding: 13px 16px; align-items: flex-start; }.topbar-controls { flex-wrap: wrap; justify-content: flex-end; }.identity, .topbar-controls code { display: none; }
   .workspace { grid-template-columns: 1fr; }.evidence-rail { display: none; }.conversation-panel { padding: 28px 18px; }.message-card { max-width: calc(100% - 56px); }
+  .message-card .message-head, .message-owner { align-items: flex-start; flex-direction: column; gap: 7px; }.message-outcome { align-self: stretch; justify-content: space-between; }
   .composer { left: 8px; right: 8px; bottom: 8px; }.file-chip { display: none; }
   .detail-summary { grid-template-columns: repeat(2, 1fr); }.detail-head, .detail-summary, .detail-source, .detail-tabs, .detail-table-shell, .detail-footer, .detail-empty, .detail-loading, .detail-error { margin-left: 16px; margin-right: 16px; }.detail-export { align-items: stretch; flex-direction: column; }.detail-tabs { overflow-x: auto; }.detail-tabs button { min-width: 118px; }
   .runs-head { flex-direction: column; }.runs-head-actions { align-self: stretch; }.runs-filters { align-items: stretch; flex-direction: column; }.runs-filters > span { margin-left: 0; }.metric-grid, .runtime-panels { grid-template-columns: 1fr; }
@@ -266,5 +278,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 @media (prefers-reduced-motion: no-preference) {
   .welcome-panel { animation: settle .45s ease-out both; }
+  .stage-machine[data-running="true"] i { animation: stage-pulse 1.15s ease-in-out infinite; }
   @keyframes settle { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes stage-pulse { 50% { opacity: .35; transform: scale(.72); } }
 }

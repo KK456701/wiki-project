@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * 记录单轮节点、父子关系、耗时和安全输入输出，并提供当前医院范围内的性能汇总。
- * 密码、令牌、SQL 正文和患者原始行不得写入 Trace。
+ * 非敏感输入输出按原始长度保存，密码、令牌、受控 SQL 正文和患者原始行继续脱敏。
  *
  * <p>该服务负责按业务顺序组合依赖，并把可预期失败转换为稳定错误语义。它不允许模型直接访问数据库，也不允许上层绕过策略、Evidence 或医院隔离边界。</p>
  */
@@ -61,7 +61,7 @@ public class AgentTraceService {
         sequences.put(traceId, new AtomicInteger());
         try {
             repository.start(traceId, sessionId, principal.hospitalId(), principal.userId(),
-                    shorten(userQuery, 4000), at(now));
+                    userQuery, at(now));
             if (startsSincePrune.incrementAndGet() >= 100) {
                 startsSincePrune.set(0);
                 repository.prune(LocalDateTime.now(ZONE).minusDays(
@@ -76,6 +76,9 @@ public class AgentTraceService {
         return event -> {
             if ("trace_node".equals(String.valueOf(event.get("event")))) {
                 recordNode(traceId, event);
+                // Trace 节点的完整输入输出只进入审计存储；SSE 仅推送安全阶段摘要，
+                // 让对话卡片能实时显示当前执行阶段，而不会重复传输 SQL 或业务明细。
+                downstream.onEvent(stageUpdate(traceId, event));
                 return;
             }
             downstream.onEvent(event);
@@ -288,7 +291,9 @@ public class AgentTraceService {
         if (value == null) return "{}";
         Object safe = sanitize(value);
         try {
-            return shorten(objectMapper.writeValueAsString(safe), 12000);
+            // TEXT 字段能够保存完整 JSON；不再按字符数裁剪，避免长上下文或历史 SQL
+            // 在关键位置被截断。安全边界仍由 sanitize 的字段级脱敏负责。
+            return objectMapper.writeValueAsString(safe);
         } catch (Exception exception) {
             return "{}";
         }
@@ -310,7 +315,30 @@ public class AgentTraceService {
             for (Object item : values) safe.add(sanitize(item));
             return safe;
         }
-        return value instanceof String text ? shorten(text, 4000) : value;
+        return value;
+    }
+
+    /**
+     * 将内部 Trace 节点转换为前端可消费的轻量状态事件。
+     *
+     * <p>这里只公开节点身份、类型、状态和耗时，不携带 input/output。完整参数由授权
+     * 用户通过“查看链路”读取，既满足实时反馈，也避免同一份大上下文在 SSE 中反复发送。</p>
+     */
+    private static Map<String, Object> stageUpdate(String traceId, Map<String, Object> event) {
+        String nodeName = text(event.get("node_name"));
+        Map<String, Object> value = eventValues(
+                "event", "stage_update",
+                "trace_id", traceId,
+                "node_name", nodeName,
+                "node_type", first(text(event.get("node_type")), "code"),
+                "status", first(text(event.get("status")), "success"),
+                "message", title(nodeName),
+                "duration_ms", longValue(event.get("duration_ms"), 0),
+                "tool_name", text(event.get("tool_name")),
+                "capability", text(event.get("capability")),
+                "model_id", text(event.get("model_id")),
+                "subtask_id", text(event.get("subtask_id")));
+        return Map.copyOf(value);
     }
 
     private Object decode(String value) {

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,14 +40,25 @@ class AgentTraceServiceTest {
         event.put("status", "success");
         event.put("duration_ms", 12);
         event.put("tool_name", "prepare_indicator_sql");
-        event.put("input", Map.of("rule_id", "MQSI2025_005", "sql", "SELECT secret"));
+        String longHistory = "历史上下文".repeat(900) + "__完整输入末尾__";
+        event.put("input", Map.of(
+                "rule_id", "MQSI2025_005",
+                "history", longHistory,
+                "sql", "SELECT secret"));
         event.put("output", Map.of(
                 "token", "secret-token", "sql_id", "SQL_001",
                 "sql_preview", "SELECT private_table"));
-        AtomicInteger forwarded = new AtomicInteger();
-        AgentRunObserver observer = service.observer("TRACE_001", ignored -> forwarded.incrementAndGet());
+        AtomicReference<Map<String, Object>> forwarded = new AtomicReference<>();
+        AgentRunObserver observer = service.observer("TRACE_001", forwarded::set);
         observer.onEvent(event);
-        assertThat(forwarded.get()).isZero();
+        assertThat(forwarded.get())
+                .containsEntry("event", "stage_update")
+                .containsEntry("message", "执行并观察工具结果")
+                .containsEntry("tool_name", "prepare_indicator_sql")
+                .doesNotContainKeys("input", "output");
+        assertThat(String.valueOf(forwarded.get()))
+                .doesNotContain("SELECT secret")
+                .doesNotContain("secret-token");
         service.finish("TRACE_001", new AgentRunResult(
                 "已完成", "final_answer", "TRACE_001", "SESSION_001", 1, null, null));
 
@@ -57,6 +68,7 @@ class AgentTraceServiceTest {
         Map<String, Object> node = ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(0);
         assertThat(node.get("node_title")).isEqualTo("执行并观察工具结果");
         assertThat(String.valueOf(node.get("input_data"))).contains("[已脱敏]")
+                .contains("__完整输入末尾__")
                 .doesNotContain("SELECT secret");
         assertThat(String.valueOf(node.get("output_data"))).doesNotContain("secret-token");
         assertThat(String.valueOf(node.get("output_data"))).doesNotContain("private_table");

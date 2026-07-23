@@ -74,6 +74,16 @@ function openTrace(traceId?: string) {
   if (traceId) selectedTraceId.value = traceId
 }
 
+function formatDuration(durationMs?: number): string {
+  if (durationMs === undefined) return ''
+  if (durationMs < 1000) return `${durationMs} ms`
+  return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 2 : 1)} 秒`
+}
+
+function formatStageNumber(value?: number): string {
+  return String(value || 1).padStart(2, '0')
+}
+
 async function exportComparison(runId?: string, fileToken?: string) {
   if (!runId || !fileToken || exportingComparison.value) return
   if (!window.confirm('差异表可能包含患者级业务明细。确认仅在授权范围内使用并立即下载吗？')) return
@@ -150,7 +160,27 @@ async function exportComparison(runId?: string, fileToken?: string) {
         <article v-for="message in store.messages" :key="message.id" class="message" :class="`is-${message.role}`">
           <div class="message-avatar">{{ message.role === 'agent' ? 'AI' : '你' }}</div>
           <div class="message-card">
-            <header><strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong><span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span></header>
+            <header class="message-head">
+              <div class="message-owner">
+                <strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong>
+                <span
+                  v-if="message.role === 'agent' && message.stageLabel"
+                  class="stage-machine"
+                  :data-kind="message.stageKind"
+                  :data-running="message.status === 'running'"
+                >
+                  <b>{{ formatStageNumber(message.stageNumber) }}</b>
+                  <i aria-hidden="true"></i>
+                  <span>{{ message.stageLabel }}</span>
+                </span>
+              </div>
+              <div class="message-outcome">
+                <time v-if="message.role === 'agent' && message.durationMs !== undefined">
+                  本轮耗时 {{ formatDuration(message.durationMs) }}
+                </time>
+                <span>{{ message.status === 'running' ? '处理中' : message.status === 'failed' ? '未完成' : '已完成' }}</span>
+              </div>
+            </header>
             <div class="message-content">{{ message.content || '正在读取规则与证据…' }}</div>
             <button
               v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"

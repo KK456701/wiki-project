@@ -209,8 +209,9 @@ public class AgentRunner {
                         subtaskId, Map.of(
                                 "query", request.query(),
                                 "structured_state", request.structuredState(),
-                                "recent_history", request.recentHistory()), Map.of(
-                                "intent", modelPlan.plan().intent().name(),
+                                "recent_history", request.recentHistory()), eventValues(
+                                "raw_content", modelPlan.rawContent(),
+                                "request_plan", tracePlan(modelPlan.plan()),
                                 "repaired", modelPlan.repaired()),
                         "model_id", modelPlan.modelId());
             } catch (RuntimeException exception) {
@@ -449,9 +450,10 @@ public class AgentRunner {
                             "original_plan_id", compiled.planId(),
                             "failure_code", failureCode,
                             "failure_reason", failureReason,
-                            "known_evidence_ids", state.evidenceIds()), Map.of(
+                            "known_evidence_ids", state.evidenceIds()), eventValues(
+                            "raw_content", raw.rawContent(),
                             "plan_id", alternative.planId(),
-                            "intent", plan.intent().name(),
+                            "request_plan", tracePlan(plan),
                             "replan_count", state.replanCount(),
                             "valid", alternativeValidation.ok()),
                     "model_id", raw.modelId(),
@@ -977,6 +979,44 @@ public class AgentRunner {
             }
         }
         return result;
+    }
+
+    /**
+     * 把 Planner 的完整业务计划写入 Trace。
+     *
+     * <p>Planner 本身只负责自然语言到业务计划的转换；如果 Trace 只记录 intent，
+     * 就无法判断指标名、时间表达、输出目标或歧义究竟在哪一步丢失。这里保留所有
+     * RequestPlan 字段（包括值为 null 的字段），便于对比不同模型的结构化输出。</p>
+     */
+    private static Map<String, Object> tracePlan(RequestPlan plan) {
+        Map<String, Object> targetIndicator = new LinkedHashMap<>();
+        targetIndicator.put("raw_name", plan.targetIndicator().rawName());
+        targetIndicator.put("rule_id", plan.targetIndicator().ruleId());
+
+        Map<String, Object> timeExpression = new LinkedHashMap<>();
+        timeExpression.put("raw_text", plan.timeExpression().rawText());
+        timeExpression.put("start_time", plan.timeExpression().startTime());
+        timeExpression.put("end_time", plan.timeExpression().endTime());
+
+        List<Map<String, Object>> ambiguities = plan.semanticAmbiguities().stream()
+                .map(ambiguity -> {
+                    Map<String, Object> value = new LinkedHashMap<>();
+                    value.put("field", ambiguity.field());
+                    value.put("description", ambiguity.description());
+                    return value;
+                })
+                .toList();
+
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("schema_version", plan.schemaVersion());
+        value.put("intent", plan.intent().name());
+        value.put("goal", plan.goal());
+        value.put("target_indicator", targetIndicator);
+        value.put("time_expression", timeExpression);
+        value.put("requested_outputs", plan.requestedOutputs().stream().map(Enum::name).toList());
+        value.put("constraints", plan.constraints());
+        value.put("semantic_ambiguities", ambiguities);
+        return value;
     }
 
     private static String blankTo(String value, String fallback) {

@@ -127,6 +127,15 @@ class AgentRunnerTest {
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
                 .containsExactly("get_effective_rule");
+        Map<String, Object> plannerNode = events.stream()
+                .filter(event -> "trace_node".equals(event.get("event")))
+                .filter(event -> "planner_llm".equals(event.get("node_name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(String.valueOf(plannerNode.get("output")))
+                .contains("raw_content", "request_plan", "schema_version", "goal", "target_indicator",
+                        "time_expression", "requested_outputs", "constraints",
+                        "semantic_ambiguities");
         assertThat(store.evidence).hasSize(3);
         assertThat(store.verifications.values())
                 .allMatch(value -> "verified".equals(value.status()));
