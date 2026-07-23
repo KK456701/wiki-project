@@ -110,6 +110,16 @@ models:
     planner_thinking: false
     call_timeout_seconds: 120
     request_timeout_seconds: 300
+  # Java 运行时从环境变量读取百炼密钥，不要在本文件或 Git 中保存明文 API Key。
+  # 默认地址适用于北京公共按量调用；专属 Workspace 或其他地域请覆盖 DASHSCOPE_BASE_URL。
+  - id: "aliyun-qwen3-14b"
+    name: "Qwen3 14B（阿里云百炼 API）"
+    provider: "openai-compatible"
+    model: "${DASHSCOPE_QWEN3_14B_MODEL:qwen3-14b}"
+    base_url: "${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
+    api_key: "${DASHSCOPE_API_KEY}"
+    thinking: false
+    enable_thinking: false
   - id: "deepseek-v4-flash"
     name: "DeepSeek V4 Flash（API）"
     provider: "openai"

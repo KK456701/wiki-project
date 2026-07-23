@@ -78,6 +78,15 @@ wiki:
         model: ${OLLAMA_THINKING_MODEL:qwen3:8b}
         base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
         thinking: true
+      - id: aliyun-qwen3-14b
+        name: Qwen3 14B（阿里云百炼 API）
+        provider: openai-compatible
+        model: ${DASHSCOPE_QWEN3_14B_MODEL:qwen3-14b}
+        base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${DASHSCOPE_API_KEY:}
+        # Qwen3 默认开启思考。Agent Planner 更需要稳定的结构化输出，默认关闭；需要时可通过环境变量开启。
+        thinking: ${DASHSCOPE_QWEN3_14B_ENABLE_THINKING:false}
+        enable-thinking: ${DASHSCOPE_QWEN3_14B_ENABLE_THINKING:false}
       - id: deepseek-v4-flash
         name: DeepSeek V4 Flash（API）
         provider: openai-compatible

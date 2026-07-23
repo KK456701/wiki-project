@@ -70,6 +70,7 @@ public class AgentModelProperties {
         private String baseUrl;
         private String apiKey;
         private boolean thinking;
+        private Boolean enableThinking;
 
         public String getId() { return id; }
         public void setId(String value) { id = value; }
@@ -85,5 +86,11 @@ public class AgentModelProperties {
         public void setApiKey(String value) { apiKey = value; }
         public boolean isThinking() { return thinking; }
         public void setThinking(boolean value) { thinking = value; }
+        /**
+         * OpenAI 兼容接口的厂商扩展参数。保持 {@code null} 时不向请求体写入该字段，
+         * 避免 DeepSeek 等不识别 {@code enable_thinking} 的服务拒绝请求。
+         */
+        public Boolean getEnableThinking() { return enableThinking; }
+        public void setEnableThinking(Boolean value) { enableThinking = value; }
     }
 }

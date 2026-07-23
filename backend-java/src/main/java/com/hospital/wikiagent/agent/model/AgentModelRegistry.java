@@ -97,10 +97,15 @@ public class AgentModelRegistry {
                 .baseUrl(stripTrailingSlash(definition.getBaseUrl()))
                 .apiKey(definition.getApiKey())
                 .build();
-        OpenAiChatOptions options = OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(definition.getModel())
-                .temperature(0.0)
-                .build();
+                .temperature(0.0);
+        if (definition.getEnableThinking() != null) {
+            // 百炼的 Qwen3 默认会进入思考模式。Planner 需要稳定、短延迟的结构化输出，
+            // 因此该模型默认显式关闭思考；此参数仅对声明它的模型发送。
+            optionsBuilder.extraBody(Map.of("enable_thinking", definition.getEnableThinking()));
+        }
+        OpenAiChatOptions options = optionsBuilder.build();
         return OpenAiChatModel.builder().openAiApi(api).defaultOptions(options).build();
     }
 

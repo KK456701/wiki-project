@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.openai.OpenAiChatModel;
 
 import com.hospital.wikiagent.agent.model.AgentModelProperties.ModelDefinition;
 
@@ -18,8 +19,10 @@ class AgentModelRegistryTest {
 
         assertThat(registry.defaultModelId()).isEqualTo("ollama-test");
         assertThat(registry.listModels()).extracting(AgentModelInfo::id)
-                .containsExactly("ollama-test", "deepseek-test");
+                .containsExactly("ollama-test", "dashscope-test", "deepseek-test");
         assertThat(registry.requireModel("ollama-test")).isInstanceOf(OllamaChatModel.class);
+        assertThat(registry.requireModel("dashscope-test")).isInstanceOf(OpenAiChatModel.class);
+        assertThat(registry.requireInfo("dashscope-test").available()).isTrue();
         assertThat(registry.requireInfo("deepseek-test").available()).isFalse();
         assertThatThrownBy(() -> registry.requireModel("deepseek-test"))
                 .isInstanceOf(AgentModelUnavailableException.class)
@@ -31,10 +34,14 @@ class AgentModelRegistryTest {
         properties.setDefaultModel("ollama-test");
         ModelDefinition ollama = definition(
                 "ollama-test", "Ollama Test", "ollama", "qwen3:4b", "http://localhost:11434", null);
+        ModelDefinition dashscope = definition(
+                "dashscope-test", "DashScope Test", "openai-compatible", "qwen3-14b",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1", "test-key");
+        dashscope.setEnableThinking(false);
         ModelDefinition deepseek = definition(
                 "deepseek-test", "DeepSeek Test", "openai-compatible", "deepseek-v4-flash",
                 "https://api.deepseek.com", "");
-        properties.setModels(List.of(ollama, deepseek));
+        properties.setModels(List.of(ollama, dashscope, deepseek));
         return properties;
     }
 
