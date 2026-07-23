@@ -23,6 +23,14 @@ export interface EvidenceStep {
 export type StageKind = 'llm' | 'code' | 'tool' | 'storage' | 'done'
 export type StageState = 'running' | 'success' | 'warning' | 'failed'
 
+interface StageTransition {
+  label: string
+  kind: StageKind
+  state: StageState
+  durationMs?: number
+  terminalStatus?: 'complete' | 'failed'
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'agent'
@@ -40,6 +48,9 @@ export interface ChatMessage {
   stageState?: StageState
   stageNumber?: number
   stageDurationMs?: number
+  stageQueue?: StageTransition[]
+  stageFlowBusy?: boolean
+  pendingTerminalStatus?: 'complete' | 'failed'
   startedAtMs?: number
   durationMs?: number
 }
@@ -88,20 +99,66 @@ function stageKind(value?: string): StageKind {
   return 'code'
 }
 
+// 毫秒级代码节点会在同一帧内连续到达；保留短暂驻留时间，确保状态文字可被看到。
+const STAGE_MIN_VISIBLE_MS = 200
+
+function applyStage(message: ChatMessage, transition: StageTransition) {
+  const changed = message.stageLabel !== transition.label || message.stageKind !== transition.kind
+  message.stageLabel = transition.label
+  message.stageKind = transition.kind
+  message.stageState = transition.state
+  message.stageDurationMs = transition.durationMs
+  if (changed) message.stageNumber = (message.stageNumber || 0) + 1
+  if (transition.terminalStatus) message.status = transition.terminalStatus
+}
+
+function advanceStage(message: ChatMessage) {
+  const next = message.stageQueue?.shift()
+  if (!next) {
+    message.stageFlowBusy = false
+    return
+  }
+  applyStage(message, next)
+  window.setTimeout(() => advanceStage(message), STAGE_MIN_VISIBLE_MS)
+}
+
+/**
+ * SSE 可能在一个浏览器渲染帧内连续送达多个毫秒级节点。
+ * 这里只为单一状态槽排队，不保存或展示历史列表，确保用户能看到状态逐项流转。
+ */
 function setStage(
   message: ChatMessage,
   label: string,
   kind: StageKind,
   state: StageState = 'running',
   durationMs?: number,
+  terminalStatus?: 'complete' | 'failed',
 ) {
   if (!label) return
-  const changed = message.stageLabel !== label || message.stageKind !== kind
-  message.stageLabel = label
-  message.stageKind = kind
-  message.stageState = state
-  message.stageDurationMs = durationMs
-  if (changed) message.stageNumber = (message.stageNumber || 0) + 1
+  if (state !== 'running' && message.stageLabel === label && message.stageKind === kind) {
+    applyStage(message, { label, kind, state, durationMs, terminalStatus })
+    return
+  }
+  const queued = state === 'running' ? undefined : [...(message.stageQueue || [])].reverse()
+    .find((stage) => stage.label === label && stage.kind === kind)
+  if (queued) {
+    queued.state = state
+    queued.durationMs = durationMs
+    queued.terminalStatus = terminalStatus
+    return
+  }
+
+  const transition = { label, kind, state, durationMs, terminalStatus }
+  if (!message.stageFlowBusy) {
+    message.stageFlowBusy = true
+    applyStage(message, transition)
+    window.setTimeout(() => advanceStage(message), STAGE_MIN_VISIBLE_MS)
+    return
+  }
+  const queue = message.stageQueue || (message.stageQueue = [])
+  const last = queue[queue.length - 1]
+  if (last?.label === label && last.kind === kind && last.state === state) return
+  queue.push(transition)
 }
 
 function finishTiming(message: ChatMessage) {
@@ -218,8 +275,11 @@ export const useAgentStore = defineStore('agent', {
         id: makeId('message'), role: 'agent', content: '', status: 'running', evidence: [],
         startedAtMs: Date.now(),
       }
-      setStage(agentMessage, '准备运行', 'code')
       this.messages.push(userMessage, agentMessage)
+      // Pinia 会把数组中的消息转换为响应式代理。后续 SSE 必须修改这个代理，
+      // 如果继续修改 push 前的原始对象，页面通常只会在 this.running 变化时看到最终状态。
+      const activeMessage = this.messages[this.messages.length - 1]
+      setStage(activeMessage, '准备运行', 'code')
 
       try {
         await streamAgent(this.token, {
@@ -227,20 +287,27 @@ export const useAgentStore = defineStore('agent', {
           sessionId: this.sessionId,
           modelId: this.selectedModel,
           fileKey: this.latestFileKey,
-        }, (event) => this.applyEvent(agentMessage, event))
-        if (agentMessage.status === 'running') {
-          agentMessage.status = 'complete'
-          setStage(agentMessage, '流程完成', 'done', 'success')
-        }
-        if (!agentMessage.content) agentMessage.content = '本轮处理已结束，但没有返回可展示的业务回答。'
+        }, (event) => this.applyEvent(activeMessage, event))
+        const terminalStatus = activeMessage.pendingTerminalStatus || 'complete'
+        setStage(activeMessage,
+          terminalStatus === 'complete' ? '流程完成' : '运行失败',
+          'done',
+          terminalStatus === 'complete' ? 'success' : 'failed',
+          undefined,
+          terminalStatus)
+        if (!activeMessage.content) activeMessage.content = '本轮处理已结束，但没有返回可展示的业务回答。'
       } catch (error) {
-        agentMessage.status = 'failed'
-        setStage(agentMessage, '运行失败', 'done', 'failed')
-        finishTiming(agentMessage)
-        agentMessage.content = error instanceof Error ? error.message : 'Agent 请求失败，请稍后重试。'
-        this.error = agentMessage.content
+        activeMessage.stageQueue = []
+        activeMessage.stageFlowBusy = false
+        activeMessage.status = 'failed'
+        applyStage(activeMessage, {
+          label: '运行失败', kind: 'done', state: 'failed', terminalStatus: 'failed',
+        })
+        finishTiming(activeMessage)
+        activeMessage.content = error instanceof Error ? error.message : 'Agent 请求失败，请稍后重试。'
+        this.error = activeMessage.content
       } finally {
-        finishTiming(agentMessage)
+        finishTiming(activeMessage)
         this.running = false
       }
     },
@@ -248,14 +315,13 @@ export const useAgentStore = defineStore('agent', {
       if (event.trace_id) message.traceId = event.trace_id
       if (event.event === 'assistant_message' || event.event === 'clarification_required') {
         setAgentContent(message, event.message || '')
-        setStage(message, event.event === 'clarification_required' ? '等待补充信息' : '整理业务回答',
-          event.event === 'clarification_required' ? 'done' : 'code',
-          event.event === 'clarification_required' ? 'warning' : 'success')
+        if (event.event === 'assistant_message') {
+          setStage(message, '整理业务回答', 'code', 'success')
+        }
       }
       if (event.event === 'agent_error') {
-        message.status = 'failed'
         message.content = event.message || 'Agent 运行未完成。'
-        setStage(message, '运行失败', 'done', 'failed')
+        message.pendingTerminalStatus = 'failed'
       }
       if (event.event === 'agent_start') setStage(message, '读取会话上下文', 'storage')
       if (event.event === 'model_start') setStage(message, event.message || '模型处理中', 'llm')
@@ -266,12 +332,9 @@ export const useAgentStore = defineStore('agent', {
       }
       if (event.event === 'agent_done') {
         if (event.status === 'completed') {
-          message.status = 'complete'
-          setStage(message, '流程完成', 'done', 'success')
+          message.pendingTerminalStatus = 'complete'
         } else {
-          message.status = 'failed'
-          setStage(message, event.status === 'incomplete' ? '等待补充信息' : '运行失败', 'done',
-            event.status === 'incomplete' ? 'warning' : 'failed')
+          message.pendingTerminalStatus = 'failed'
         }
       }
       if (event.event === 'tool_call') {
