@@ -83,6 +83,7 @@ public class CapabilitySpecRegistry {
                 RequestedOutput.PREPARED_SQL_HANDLE, "sql_validation",
                 RequestedOutput.TRIAL_RESULT, "trial_run",
                 RequestedOutput.DIAGNOSIS, "diagnosis",
+                RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT, "difference_diagnosis_report",
                 RequestedOutput.CHANGE_PREVIEW, "rule_change_preview",
                 RequestedOutput.FILE_ANALYSIS, "file_analysis",
                 RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT, "implementation_validation_report");
@@ -100,6 +101,7 @@ public class CapabilitySpecRegistry {
             case INDICATOR_SQL_PREPARE -> Set.of("sql_validation");
             case INDICATOR_TRIAL_RUN -> Set.of("trial_run");
             case INDICATOR_DIAGNOSIS -> Set.of("diagnosis");
+            case INDICATOR_DIFFERENCE_DIAGNOSIS -> Set.of("difference_diagnosis_report");
             case RULE_CHANGE_PREVIEW -> Set.of("rule_change_preview");
             case UPLOAD_ANALYSIS -> Set.of("file_analysis");
             case IMPLEMENTATION_VALIDATION -> Set.of("implementation_validation_report");
@@ -205,6 +207,11 @@ public class CapabilitySpecRegistry {
                 spec(PlanCapability.DIAGNOSE_INDICATOR, Set.of("effective_rule", "implementation_status"),
                         Set.of("diagnosis"), "diagnose_indicator_issue",
                         CapabilitySpecRegistry::diagnosisArguments, "diagnosis"),
+                spec(PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
+                        Set.of("effective_rule", "stat_period"),
+                        Set.of("difference_diagnosis_report"), "diagnose_indicator_difference",
+                        CapabilitySpecRegistry::differenceDiagnosisArguments,
+                        "difference_diagnosis_report", "agent.diagnosis.execute", "diagnosis_report"),
                 spec(PlanCapability.PREVIEW_RULE_CHANGE, Set.of("effective_rule"),
                         Set.of("rule_change_preview"), "preview_rule_change",
                         CapabilitySpecRegistry::changeArguments, "rule_change_preview"),
@@ -309,6 +316,30 @@ public class CapabilitySpecRegistry {
         return values;
     }
 
+    /**
+     * 差异诊断由服务端固定 Workflow 自行完成结构、口径和数据层校验。
+     * 参数只携带已解析的规则、时间、原始问题和上传文件安全引用，不能包含 SQL。
+     */
+    private static Map<String, Object> differenceDiagnosisArguments(
+            PlanningExecution execution, AgentRunState state, String userMessage) {
+        PlanValidation.ResolvedTimeRange period = execution.validation().resolvedTime();
+        if (period == null) {
+            throw new CapabilityDispatchException(
+                    "STAT_PERIOD_MISSING", "请明确双方对比使用的开始时间和结束时间。", true);
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", resolveRuleId(execution, state));
+        values.put("issue_description", userMessage == null || userMessage.isBlank()
+                ? "请排查双方指标结果差异。"
+                : userMessage.strip());
+        values.put("stat_start_time", period.startTime().toString());
+        values.put("stat_end_time", period.endTime().toString());
+        if (state.currentUploadFileKey() != null) {
+            values.put("file_key", state.currentUploadFileKey());
+        }
+        return values;
+    }
+
     private static Map<String, Object> changeArguments(
             PlanningExecution execution, AgentRunState state, String userMessage) {
         if (userMessage == null || userMessage.isBlank()) {
@@ -375,6 +406,7 @@ public class CapabilitySpecRegistry {
                 PlanCapability.PREPARE_VERIFIED_SQL,
                 PlanCapability.EXECUTE_TRIAL_RUN,
                 PlanCapability.DIAGNOSE_INDICATOR,
+                PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
                 PlanCapability.PREVIEW_RULE_CHANGE,
                 PlanCapability.ANALYZE_UPLOADED_FILE,
                 PlanCapability.VALIDATE_IMPLEMENTATION

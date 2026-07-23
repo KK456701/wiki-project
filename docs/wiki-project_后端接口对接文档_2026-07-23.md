@@ -9,7 +9,7 @@
 | 接口基线 | 当前 `backend-java` Controller 与请求 Record |
 | 生成日期 | 2026-07-23（Asia/Shanghai） |
 | 服务地址 | `http://127.0.0.1:8766`；同源部署时前端使用相对路径 |
-| 接口数量 | 65 个 `/api` 操作 |
+| 接口数量 | 66 个 `/api` 操作 |
 | JSON 命名 | 统一 `snake_case`；未知请求字段返回 422 |
 | 统计区间 | 统一按左闭右开 `[start_time, end_time)` 解释 |
 
@@ -68,6 +68,7 @@ await fetch('/api/agent/upload', {
 23. `GET /api/sql-runs/{run_id}/details/{group}` - 指标明细与 Excel 导出 - 明细分页
 24. `POST /api/sql-runs/{run_id}/exports` - 指标明细与 Excel 导出 - 分子/分母明细导出对象
 25. `POST /api/sql-runs/{run_id}/upload-comparison-exports` - 指标明细与 Excel 导出 - 系统与上传文件差异导出对象
+25A. `POST /api/diagnosis-reports/{report_id}/exports` - 指标明细与 Excel 导出 - 分层诊断报告导出对象
 26. `GET /api/indicator-exports` - 指标明细与 Excel 导出 - 当前医院导出对象数组
 27. `GET /api/indicator-exports/{export_id}/download` - 指标明细与 Excel 导出 - XLSX 二进制附件
 28. `GET /api/indicator-drafts` - 指标实施草稿 - 草稿数组
@@ -1736,6 +1737,97 @@ curl -X POST 'http://127.0.0.1:8766/api/sql-runs/<run_id>/upload-comparison-expo
 | 404 | 当前医院范围内对象不存在 |
 | 409 / 410 | 版本冲突或临时对象已过期 |
 | 500 / 502 / 503 | 服务端、DBHub 或模型依赖异常 |
+
+## 25A. 指标明细与 Excel 导出 - 分层诊断报告导出对象
+
+### 基本信息
+
+| 项目 | 说明 |
+|------|------|
+| 接口路径 | `POST /api/diagnosis-reports/{report_id}/exports` |
+| Content-Type | application/json |
+| 响应类型 | application/json |
+| 认证方式 | Authorization: Bearer <hospital_token> |
+| API ID | wiki-agent-diagnosis-export-0025a |
+| 版本 | v1 |
+| 用途 | 根据已完成的差异诊断报告创建受权限保护的 Excel 导出对象 |
+
+### 请求参数
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|------|------|------|------|------|
+| report_id | String | 是 | Path | Agent 回答或 Trace 返回的 `DDR_*` 诊断报告编号 |
+| confirmed | Boolean | 是 | RequestBody | 用户确认导出患者级差异明细，必须为 `true` |
+
+文件编号、试运行编号、医院编号和统计区间由服务端从诊断报告解析，前端不得重复提交。
+
+#### RequestBody 示例
+
+```json
+{
+  "confirmed": true
+}
+```
+
+### 响应参数
+
+```json
+{
+  "export_id": "EXP_1234567890abcdef",
+  "run_id": "RUN_1234567890ab",
+  "hospital_id": "hospital_001",
+  "rule_id": "MQSI2025_001",
+  "file_name": "MQSI2025_001_20260101_20260723_逐条差异_EXP_1234567890abcdef.xlsx",
+  "row_count": 392,
+  "status": "ready",
+  "created_at": "2026-07-23T06:00:00Z",
+  "expires_at": "2026-07-24T06:00:00Z",
+  "download_count": 0
+}
+```
+
+| 字段名 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| export_id | String | 是 | 后续下载使用的导出对象编号 |
+| run_id | String | 是 | 诊断基准口径对应的只读试运行编号 |
+| hospital_id | String | 是 | 当前登录医院 |
+| rule_id | String | 是 | 指标编号 |
+| file_name | String | 是 | 服务端生成的安全文件名 |
+| row_count | Integer | 是 | 导出涉及的记录数 |
+| status | String | 是 | `ready`、`failed` 或 `expired` |
+| created_at | String | 是 | 创建时间，ISO-8601 |
+| expires_at | String | 是 | 到期时间，ISO-8601 |
+| download_count | Integer | 是 | 已下载次数 |
+
+有逐条文件时，工作簿包含诊断摘要、对比摘要、双方都有、仅系统有、仅文件有和数据质量
+异常汇总；只有汇总文件或没有外部明细时，接口可能返回 `409`，不会伪造患者级差异。
+
+### 请求示例
+
+```bash
+curl -X POST 'http://127.0.0.1:8766/api/diagnosis-reports/DDR_1234567890ab/exports' \
+  -H 'Authorization: Bearer <hospital_token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"confirmed":true}'
+```
+
+创建成功后，继续调用：
+
+```text
+GET /api/indicator-exports/{export_id}/download
+```
+
+### 常见错误
+
+| HTTP 状态 | 错误码或说明 |
+|------|------|
+| 400 | `DIAGNOSIS_REPORT_ID_INVALID` 或未确认导出 |
+| 401 | 令牌缺失、失效或登录状态已过期 |
+| 403 | 当前账号无明细导出权限 |
+| 404 | `DIAGNOSIS_REPORT_NOT_FOUND`；跨医院报告同样按不存在处理 |
+| 409 | `DIAGNOSIS_EXPORT_UNAVAILABLE` 或文件不支持逐条比较 |
+| 410 | 试运行明细、上传文件或导出对象已过期 |
+| 500 | 差异工作簿生成失败 |
 
 ## 26. 指标明细与 Excel 导出 - 当前医院导出对象数组
 

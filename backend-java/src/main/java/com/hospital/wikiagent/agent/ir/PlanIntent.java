@@ -14,6 +14,7 @@ public enum PlanIntent {
     INDICATOR_SQL_PREPARE("indicator_sql_prepare"),
     INDICATOR_TRIAL_RUN("indicator_trial_run"),
     INDICATOR_DIAGNOSIS("indicator_diagnosis"),
+    INDICATOR_DIFFERENCE_DIAGNOSIS("indicator_difference_diagnosis"),
     RULE_CHANGE_PREVIEW("rule_change_preview"),
     UPLOAD_ANALYSIS("upload_analysis"),
     IMPLEMENTATION_VALIDATION("implementation_validation"),

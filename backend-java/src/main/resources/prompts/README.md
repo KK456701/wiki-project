@@ -4,7 +4,7 @@
 
 | 文件 | LLM 角色 | 使用者 | 禁止事项 |
 |---|---|---|---|
-| `planner-system.txt` | Planner / 业务目标规划器 | `ModelRequestPlanner` | 不选工具、不写 SQL、不生成执行步骤 |
+| `planner-system.txt` | Planner / 业务目标规划器 | `ModelRequestPlanner` | 识别普通诊断与双方结果差异；不选工具、不写 SQL、不生成执行步骤 |
 | `planner-repair.txt` | Planner / JSON 修复器 | `ModelRequestPlanner` | 仅修复一次，不改变用户目标 |
 | `replanner-instruction.txt` | Replanner / 方向重规划器 | `ModelRequestPlanner.replan` | 仅处理允许的方向性错误、最多一次、不处理数据库或权限故障 |
 | `indicator-candidate-disambiguator.txt` | 指标候选消歧器 | `HybridIndicatorResolver` | 只能从服务端候选 rule_id 中选择，不识别意图、不选择工具 |
@@ -12,3 +12,7 @@
 | `final-answer-correction.txt` | Final Answer / 回答纠错器 | `FinalAnswerComposer` | 仅修复空回答或工具协议泄漏；再次失败时改用已验证证据模板 |
 
 修改提示词时必须保持上述业务边界，并在 Trace 中记录提示词版本。
+
+结果差异诊断没有单独的 LLM 提示词。Planner 只产出
+`indicator_difference_diagnosis` 业务意图，后续范围、结构、口径、记录集合、数据质量和
+结论代码全部由 Java `IndicatorDifferenceDiagnosisWorkflow` 确定性执行。

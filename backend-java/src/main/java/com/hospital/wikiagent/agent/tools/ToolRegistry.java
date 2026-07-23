@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.diagnosis.IndicatorDiagnosisTools;
+import com.hospital.wikiagent.agent.diagnosis.IndicatorDifferenceDiagnosisWorkflow;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
@@ -30,23 +31,38 @@ public class ToolRegistry {
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
+            IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
             UploadedIndicatorTools uploadTools,
             ImplementationValidationTools validationTools) {
-        this(rules, sqlTools, diagnosisTools, uploadTools, validationTools, true);
+        this(rules, sqlTools, diagnosisTools, differenceDiagnosisWorkflow, uploadTools, validationTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, null, null, null, true);
+        this(rules, sqlTools, null, null, null, null, true);
+    }
+
+    /**
+     * 保留既有测试和嵌入式调用的构造契约；生产 Spring 注入使用包含差异 Workflow 的
+     * 完整构造器。
+     */
+    public ToolRegistry(
+            RuleReadRepository rules,
+            IndicatorSqlTools sqlTools,
+            IndicatorDiagnosisTools diagnosisTools,
+            UploadedIndicatorTools uploadTools,
+            ImplementationValidationTools validationTools) {
+        this(rules, sqlTools, diagnosisTools, null, uploadTools, validationTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, null, null, null, false);
+        this(rules, null, null, null, null, null, false);
     }
 
     private ToolRegistry(
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
+            IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
             UploadedIndicatorTools uploadTools,
             ImplementationValidationTools validationTools,
             boolean migrateSqlTools) {
@@ -146,6 +162,18 @@ public class ToolRegistry {
                     (context, state) -> state.currentRuleId() != null,
                     (input, context) -> diagnosisTools.diagnose((IndicatorDiagnosisTools.Input) input, context)));
         }
+        if (differenceDiagnosisWorkflow != null) {
+            register(values, new AgentTool(
+                    "diagnose_indicator_difference",
+                    IndicatorDifferenceDiagnosisWorkflow.Input.class,
+                    Set.of(),
+                    Duration.ofSeconds(150),
+                    AgentTool.RiskLevel.CONTROLLED_EXECUTION,
+                    true,
+                    (context, state) -> state.currentRuleId() != null,
+                    (input, context) -> differenceDiagnosisWorkflow.diagnose(
+                            (IndicatorDifferenceDiagnosisWorkflow.Input) input, context)));
+        }
         if (uploadTools != null) {
             register(values, new AgentTool(
                     "analyze_uploaded_indicators",
@@ -176,6 +204,7 @@ public class ToolRegistry {
                 "prepare_indicator_sql",
                 "trial_run_indicator_sql",
                 "diagnose_indicator_issue",
+                "diagnose_indicator_difference",
                 "analyze_uploaded_indicators",
                 "validate_indicator_implementation")) {
             if (!values.containsKey(name)) {

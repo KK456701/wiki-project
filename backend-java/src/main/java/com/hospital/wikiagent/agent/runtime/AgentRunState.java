@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * 实现 {@code AgentRunState} 对应的领域职责。
@@ -28,6 +29,7 @@ public class AgentRunState {
     private final List<ToolResult> lastToolResults = new ArrayList<>();
     private final Map<String, ToolResult> toolResultCache = new HashMap<>();
     private final Map<String, Integer> toolCallCounts = new LinkedHashMap<>();
+    private Consumer<WorkflowProgress> progressReporter = progress -> { };
 
     public String currentRuleId() {
         return currentRuleId;
@@ -133,5 +135,32 @@ public class AgentRunState {
         int count = toolCallCounts.getOrDefault(fingerprint, 0) + 1;
         toolCallCounts.put(fingerprint, count);
         return count;
+    }
+
+    /**
+     * 注入单轮、非持久化的 Workflow 进度观察器。领域工具只上报安全汇总，不能在这里
+     * 传递 SQL 正文或患者级行。
+     */
+    public void progressReporter(Consumer<WorkflowProgress> reporter) {
+        progressReporter = reporter == null ? progress -> { } : reporter;
+    }
+
+    public void reportProgress(WorkflowProgress progress) {
+        if (progress != null) progressReporter.accept(progress);
+    }
+
+    public record WorkflowProgress(
+            String nodeName,
+            String nodeLabel,
+            String status,
+            long durationMs,
+            Map<String, Object> safeOutput) {
+        public WorkflowProgress {
+            nodeName = nodeName == null ? "workflow_stage" : nodeName;
+            nodeLabel = nodeLabel == null ? "推进业务流程" : nodeLabel;
+            status = status == null ? "success" : status;
+            durationMs = Math.max(0, durationMs);
+            safeOutput = safeOutput == null ? Map.of() : Map.copyOf(safeOutput);
+        }
     }
 }

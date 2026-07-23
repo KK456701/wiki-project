@@ -793,6 +793,22 @@ export async function createUploadComparisonExport(
   return readJson<IndicatorExport>(response)
 }
 
+export async function createDiagnosisReportExport(
+  token: string,
+  reportId: string,
+  confirmed: boolean,
+): Promise<IndicatorExport> {
+  const response = await fetch(
+    `/api/diagnosis-reports/${encodeURIComponent(reportId)}/exports`,
+    {
+      method: 'POST',
+      headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed }),
+    },
+  )
+  return readJson<IndicatorExport>(response)
+}
+
 export async function downloadIndicatorExport(
   token: string,
   value: IndicatorExport,

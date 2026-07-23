@@ -1,0 +1,18 @@
+schema_version: diagnosis-profiles-v1
+rule_id: MQSI2025_001
+profiles:
+  - profile_id: national_2025
+    label: 国家标准2025口径
+    source_level: national
+    source_version: "2025"
+    status: approved
+    hospital_ids: ["*"]
+    effective_from: "2025-01-01"
+    effective_to: null
+    baseline_equivalent: true
+    parameter_overrides:
+      transfer_minutes_threshold: 2880
+    difference_dimensions:
+      - 入院后48小时内转科
+      - 转入和转出科室均非ICU
+    evidence_keywords: [国标, 国家标准, 48小时, 非ICU]

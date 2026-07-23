@@ -37,6 +37,7 @@ public class EvidenceLedger implements EvidenceRecorder {
             "stat_start", "stat_end", "stat_start_time", "stat_end_time",
             "numerator_count", "denominator_count", "result_value", "sample_count",
             "file_key", "sheet_count", "row_count", "columns", "summary",
+            "contains_detail_records", "file_evidence_type",
             "file_name", "looks_like_indicator_data", "uploaded_rule_id",
             "uploaded_rule_name", "uploaded_stat_period", "uploaded_numerator",
             "uploaded_denominator", "uploaded_rate", "system_rule_id",
@@ -54,6 +55,9 @@ public class EvidenceLedger implements EvidenceRecorder {
             "system_only_numerator_count", "uploaded_only_numerator_count",
             "classification_difference_count", "confirmed_findings",
             "report_id", "report_schema_version", "overall_status", "stages",
+            "conclusion_code", "stopped_layer", "cause_confirmed",
+            "affected_record_count", "baseline_result", "external_evidence",
+            "baseline_run_id", "baseline_sql_id", "evidence_limit",
             "passed_stages", "warning_stages", "failed_stages", "skipped_stages",
             "target_level", "current_effective_level", "requested", "current_effective",
             "field_changes", "impact", "message");
@@ -65,6 +69,7 @@ public class EvidenceLedger implements EvidenceRecorder {
             Map.entry("prepare_indicator_sql", List.of("sql_validation")),
             Map.entry("trial_run_indicator_sql", List.of("trial_run")),
             Map.entry("diagnose_indicator_issue", List.of("diagnosis")),
+            Map.entry("diagnose_indicator_difference", List.of("difference_diagnosis_report")),
             Map.entry("preview_rule_change", List.of("rule_change_preview")),
             Map.entry("analyze_uploaded_indicators", List.of("file_analysis")),
             Map.entry("validate_indicator_implementation", List.of("implementation_validation_report")));

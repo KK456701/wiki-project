@@ -60,6 +60,31 @@ class PlanValidatorTest {
     }
 
     @Test
+    void requiresDifferenceReportOutputAndExplicitPeriod() {
+        RequestPlan invalidOutput = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
+                "比较双方结果",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", null),
+                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01"),
+                List.of(RequestedOutput.DIAGNOSIS),
+                List.of(),
+                List.of());
+        assertThat(validator.validate(invalidOutput).code()).isEqualTo("PLAN_INTENT_MISMATCH");
+
+        RequestPlan valid = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
+                "比较双方结果",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", null),
+                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01"),
+                List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
+                List.of(),
+                List.of());
+        assertThat(validator.validate(valid).ok()).isTrue();
+    }
+
+    @Test
     void resolvesChineseMonthRangeWithoutTrustingPlannerDates() {
         TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
                 Instant.parse("2026-07-21T08:00:00Z"),

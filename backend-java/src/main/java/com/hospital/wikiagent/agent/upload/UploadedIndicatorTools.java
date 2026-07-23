@@ -91,6 +91,11 @@ public class UploadedIndicatorTools {
         data.put("sheet_count", workbook.sheets().size());
         data.put("row_count", workbook.totalRows());
         data.put("columns", safeColumns(workbook));
+        boolean containsDetailRecords = workbook.sheets().stream().anyMatch(SheetPreview::detailExport);
+        data.put("contains_detail_records", containsDetailRecords);
+        data.put("file_evidence_type", containsDetailRecords
+                ? "detail"
+                : uploadedValues.hasAny() ? "summary" : "unknown");
         data.put("summary", "已解析 " + upload.originalName() + "，共 "
                 + workbook.totalRows() + " 行数据。");
         data.put("looks_like_indicator_data", uploadedValues.hasAny() || identity.ruleId() != null);

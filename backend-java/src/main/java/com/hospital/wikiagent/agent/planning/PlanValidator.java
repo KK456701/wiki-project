@@ -51,13 +51,23 @@ public class PlanValidator {
                     "指标试运行计划缺少具体结果输出目标。",
                     FallbackCategory.USER_CLARIFICATION);
         }
+        if (plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS
+                && !outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)) {
+            return PlanValidation.invalid(
+                    "PLAN_INTENT_MISMATCH",
+                    "差异诊断计划缺少分层诊断报告输出目标。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
         boolean needsDatabase = outputs.contains(RequestedOutput.TRIAL_RESULT)
-                || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT);
+                || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
+                || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT);
         boolean needsTime = outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
+                || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)
                 || plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
                 || plan.intent() == PlanIntent.INDICATOR_TRIAL_RUN
+                || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS
                 || plan.intent() == PlanIntent.IMPLEMENTATION_VALIDATION;
 
         if (needsDatabase && constraints.contains("no_database_access")) {

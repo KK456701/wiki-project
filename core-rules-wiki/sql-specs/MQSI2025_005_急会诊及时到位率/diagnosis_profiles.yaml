@@ -1,0 +1,30 @@
+schema_version: diagnosis-profiles-v1
+rule_id: MQSI2025_005
+profiles:
+  - profile_id: national_2025_10m
+    label: 国家标准2025版10分钟口径
+    source_level: national
+    source_version: "2025"
+    status: approved
+    hospital_ids: ["*"]
+    effective_from: "2025-01-01"
+    effective_to: null
+    parameter_overrides:
+      arrive_minutes_threshold: 10
+    difference_dimensions:
+      - 急会诊到位阈值为10分钟
+    evidence_keywords: [国标, 国家标准, 10分钟, 十分钟]
+  - profile_id: hospital_001_20m
+    label: 本院20分钟生效口径
+    source_level: hospital
+    source_version: hospital_001_2026-07-05T21:22:02
+    status: approved
+    hospital_ids: [hospital_001]
+    effective_from: "2026-07-05"
+    effective_to: null
+    baseline_equivalent: true
+    parameter_overrides:
+      arrive_minutes_threshold: 20
+    difference_dimensions:
+      - 急会诊到位阈值为20分钟
+    evidence_keywords: [本院, 20分钟, 二十分钟]

@@ -99,3 +99,18 @@ calculation:
     - {field: from_dept_id, label: 转出科室, sensitivity: none}
     - {field: to_dept_id, label: 转入科室, sensitivity: none}
     - {field: transfer_minutes, label: 转科耗时（分钟）, sensitivity: none}
+quality_checks:
+  - id: admission_required_fields
+    type: required_not_null
+    fields: [admission_id, admit_time]
+    description: 入院流水号和入院时间不能为空
+  - id: duplicate_admission
+    type: duplicate_key
+    fields: [admission_id]
+    description: 同一统计范围内入院流水号不应重复进入分母
+  - id: transfer_before_admission
+    type: timestamp_order
+    earlier_field: admit_time
+    later_field: transfer_time
+    allow_later_null: true
+    description: 转科时间不得早于入院时间

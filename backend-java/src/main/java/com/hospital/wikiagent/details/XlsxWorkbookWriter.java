@@ -58,6 +58,24 @@ public class XlsxWorkbookWriter {
             String hospitalId,
             String actorId,
             Instant createdAt) {
+        return writeUploadComparisonWorkbook(
+                path, comparison, uploadedFileName, hospitalId, actorId, createdAt, Map.of());
+    }
+
+    /**
+     * 生成逐条对比工作簿，并在来源为分层诊断报告时附加诊断摘要和数据质量汇总。
+     *
+     * <p>报告参数只允许包含持久化报告中的安全汇总；患者行仍由 {@link RowComparison}
+     * 提供，因此诊断报告表与通用 Trace 不会成为患者明细的旁路存储。</p>
+     */
+    public Path writeUploadComparisonWorkbook(
+            Path path,
+            RowComparison comparison,
+            String uploadedFileName,
+            String hospitalId,
+            String actorId,
+            Instant createdAt,
+            Map<String, Object> diagnosisReport) {
         if (!comparison.available()) {
             throw new IllegalArgumentException("当前上传文件不支持逐条差异导出");
         }
@@ -105,18 +123,101 @@ public class XlsxWorkbookWriter {
                 .map(row -> systemFields.stream().map(row::get).toList()).toList();
         List<List<Object>> uploadedOnlyRows = comparison.uploadedOnlyRows().stream()
                 .map(row -> uploadedFields.stream().map(row::get).toList()).toList();
-        List<SheetData> sheets = List.of(
-                new SheetData("对比摘要", metadata, List.of("分类", "数量"), summaryRows),
-                comparisonSheet("双方都有_" + comparison.bothCount(),
-                        "按匹配字段识别为同一业务记录；字段差异列列出值不一致的字段。",
-                        matchedHeaders, matchedRows),
-                comparisonSheet("仅系统有_" + comparison.systemOnlyCount(),
-                        "当前系统试运行明细中存在、上传文件中未匹配到的记录。",
-                        List.copyOf(systemFields), systemOnlyRows),
-                comparisonSheet("仅上传文件有_" + comparison.uploadedOnlyCount(),
-                        "上传文件中存在、当前系统试运行明细中未匹配到的记录。",
-                        List.copyOf(uploadedFields), uploadedOnlyRows));
+        List<SheetData> sheets = new ArrayList<>();
+        if (diagnosisReport != null && !diagnosisReport.isEmpty()) {
+            sheets.add(diagnosisSummarySheet(diagnosisReport));
+        }
+        sheets.add(new SheetData("对比摘要", metadata, List.of("分类", "数量"), summaryRows));
+        sheets.add(comparisonSheet("双方都有_" + comparison.bothCount(),
+                "按匹配字段识别为同一业务记录；字段差异列列出值不一致的字段。",
+                matchedHeaders, matchedRows));
+        sheets.add(comparisonSheet("仅系统有_" + comparison.systemOnlyCount(),
+                "当前系统试运行明细中存在、上传文件中未匹配到的记录。",
+                List.copyOf(systemFields), systemOnlyRows));
+        sheets.add(comparisonSheet("仅上传文件有_" + comparison.uploadedOnlyCount(),
+                "上传文件中存在、当前系统试运行明细中未匹配到的记录。",
+                List.copyOf(uploadedFields), uploadedOnlyRows));
+        if (diagnosisReport != null && !diagnosisReport.isEmpty()) {
+            sheets.add(dataQualitySummarySheet(diagnosisReport));
+        }
         return write(path, sheets);
+    }
+
+    private static SheetData diagnosisSummarySheet(Map<String, Object> report) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("诊断报告编号", value(report, "report_id"));
+        metadata.put("指标编号", value(report, "rule_id"));
+        metadata.put("统计开始", value(report, "stat_start"));
+        metadata.put("统计结束", value(report, "stat_end"));
+        metadata.put("结论代码", value(report, "conclusion_code"));
+        metadata.put("停止层级", value(report, "stopped_layer"));
+        metadata.put("确认原因", value(report, "user_summary"));
+        metadata.put("影响记录数", value(report, "affected_record_count"));
+        metadata.put("证据限制", value(report, "evidence_limit"));
+        List<List<Object>> rows = new ArrayList<>();
+        for (Map<String, Object> layer : maps(report.get("layers"))) {
+            rows.add(List.of(
+                    value(layer, "layer"),
+                    value(layer, "node_name"),
+                    value(layer, "status"),
+                    value(layer, "cause_confirmed"),
+                    value(layer, "duration_ms")));
+        }
+        return new SheetData(
+                "诊断摘要",
+                metadata,
+                List.of("层级", "阶段", "状态", "已确认原因", "耗时毫秒"),
+                List.copyOf(rows));
+    }
+
+    private static SheetData dataQualitySummarySheet(Map<String, Object> report) {
+        List<List<Object>> rows = new ArrayList<>();
+        for (Map<String, Object> layer : maps(report.get("layers"))) {
+            if (!"6".equals(String.valueOf(value(layer, "layer")))) continue;
+            for (Map<String, Object> check : maps(layer.get("checks"))) {
+                rows.add(List.of(
+                        value(check, "check_id"),
+                        value(check, "type"),
+                        value(check, "status"),
+                        value(check, "affected_count"),
+                        firstValue(check, "description", "message")));
+            }
+        }
+        if (rows.isEmpty()) {
+            rows.add(List.of("", "", "未执行或无可导出异常", 0, ""));
+        }
+        return new SheetData(
+                "数据质量异常",
+                Map.of("说明", "这里只保存允许列表质量规则的安全汇总；患者级异常行不写入诊断报告。"),
+                List.of("检查编号", "规则类型", "状态", "影响记录数", "说明"),
+                List.copyOf(rows));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> maps(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                result.add((Map<String, Object>) map);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static Object value(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        return value == null ? "" : value;
+    }
+
+    private static Object firstValue(
+            Map<String, Object> source,
+            String first,
+            String second) {
+        Object value = source.get(first);
+        return value == null || String.valueOf(value).isBlank()
+                ? value(source, second)
+                : value;
     }
 
     private static SheetData comparisonSheet(

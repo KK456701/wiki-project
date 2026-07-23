@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -200,6 +201,39 @@ public class WikiRuleKnowledgeSource {
         result.put("relations", listOfMaps(mapping.get("relations")));
         result.put("rule_source", "wiki");
         return result;
+    }
+
+    /**
+     * 返回同一指标可用于反事实诊断的已治理口径配置。
+     *
+     * <p>候选只允许来自指标 SQL 规格目录内的 YAML，不接受模型或用户提供 SQL。
+     * 医院范围在知识源层先过滤，生效时间和最大执行数量由诊断 Workflow 再约束。</p>
+     */
+    public List<Map<String, Object>> diagnosticProfiles(String ruleId, String hospitalId) {
+        Path path = findSpecFile(ruleId, "rule_sql_spec.yaml").getParent()
+                .resolve("diagnosis_profiles.yaml");
+        if (!Files.isRegularFile(path)) {
+            return List.of();
+        }
+        return listOfMaps(yaml(path).get("profiles")).stream()
+                .filter(profile -> "approved".equalsIgnoreCase(text(profile.get("status"))))
+                .filter(profile -> {
+                    List<String> hospitals = stringList(profile.get("hospital_ids"));
+                    return hospitals.isEmpty() || hospitals.contains("*")
+                            || (hospitalId != null && hospitals.contains(hospitalId));
+                })
+                .map(profile -> Collections.unmodifiableMap(new LinkedHashMap<>(profile)))
+                .toList();
+    }
+
+    /**
+     * 读取允许列表式数据质量规则。规则只能声明检查类型和业务字段，不能携带 SQL。
+     */
+    public List<Map<String, Object>> dataQualityRules(String ruleId) {
+        Map<String, Object> spec = yaml(findSpecFile(ruleId, "rule_sql_spec.yaml"));
+        return listOfMaps(spec.get("quality_checks")).stream()
+                .map(item -> Map.copyOf(new LinkedHashMap<>(item)))
+                .toList();
     }
 
     private List<Map<String, Object>> rules() {
@@ -397,6 +431,12 @@ public class WikiRuleKnowledgeSource {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        return list.stream().map(String::valueOf).map(String::strip)
+                .filter(item -> !item.isBlank()).toList();
     }
 
     private static List<Map<String, Object>> listOfMaps(Object value) {

@@ -42,6 +42,7 @@ export interface ChatMessage {
   comparisonRunId?: string
   comparisonFileToken?: string
   comparisonExports?: Array<{ runId: string; fileToken: string }>
+  diagnosisReportIds?: string[]
   evidence: EvidenceStep[]
   stageLabel?: string
   stageKind?: StageKind
@@ -62,6 +63,7 @@ const toolLabels: Record<string, string> = {
   prepare_indicator_sql: '生成并校验受控 SQL',
   trial_run_indicator_sql: '执行只读试运行',
   diagnose_indicator_issue: '分析指标异常',
+  diagnose_indicator_difference: '执行指标差异分层诊断',
   create_indicator_draft: '生成指标工作草稿',
   preview_rule_change: '预览本院口径变化',
   analyze_uploaded_indicators: '分析上传的指标文件',
@@ -85,6 +87,14 @@ const nodeLabels: Record<string, string> = {
   final_answer_llm: '生成最终回答',
   prepared_sql_answer: '生成受控 SQL 回答',
   implementation_validation_answer: '生成实施验收回答',
+  difference_diagnosis_layer_1: '诊断范围预检',
+  difference_diagnosis_layer_2: '实时结构核验',
+  difference_diagnosis_layer_3: '执行当前口径',
+  difference_diagnosis_layer_4: '试运行候选口径',
+  difference_diagnosis_layer_5: '核对记录集合',
+  difference_diagnosis_layer_6: '检查数据质量',
+  difference_diagnosis_conclusion: '生成诊断结论',
+  difference_diagnosis_answer: '整理差异诊断回答',
   response_guard: '检查回答协议',
   memory_save: '保存会话上下文',
   compound_split: '拆分复合指标请求',
@@ -181,8 +191,10 @@ function restoreUser(): HospitalUser | null {
 function setAgentContent(message: ChatMessage, value: string) {
   const detailMarker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
   const comparisonMarker = /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\}\}/g
+  const diagnosisMarker = /\{\{diagnosis_export:(DDR_[A-Za-z0-9_-]+)\}\}/g
   const detailMatches = Array.from(value.matchAll(detailMarker))
   const comparisonMatches = Array.from(value.matchAll(comparisonMarker))
+  const diagnosisMatches = Array.from(value.matchAll(diagnosisMarker))
   const detailMatch = detailMatches[0]
   const comparisonMatch = comparisonMatches[0]
   if (detailMatch) message.detailRunId = detailMatch[1]
@@ -196,7 +208,11 @@ function setAgentContent(message: ChatMessage, value: string) {
       runId: match[1], fileToken: match[2],
     }))
   }
+  if (diagnosisMatches.length) {
+    message.diagnosisReportIds = diagnosisMatches.map((match) => match[1])
+  }
   message.content = value.replace(detailMarker, '').replace(comparisonMarker, '')
+    .replace(diagnosisMarker, '')
     .replace(/\n{3,}/g, '\n\n').trim()
 }
 

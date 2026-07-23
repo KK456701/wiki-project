@@ -176,6 +176,61 @@ class IndicatorDetailServiceTest {
     }
 
     @Test
+    void diagnosisComparisonExportAddsDiagnosisAndQualitySheets() throws Exception {
+        var sourceExport = service.createExport(principal, "RUN_001", true);
+        var sourceDownload = service.resolveDownload(principal, sourceExport.exportId());
+        UploadProperties uploadProperties = new UploadProperties();
+        uploadProperties.setRoot(temp.resolve("diagnosis-uploads"));
+        uploadProperties.setMaxRowsPerSheet(5001);
+        UploadStorage uploads = new UploadStorage(uploadProperties);
+        var uploaded = uploads.store(new MockMultipartFile(
+                "file", sourceExport.fileName(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Files.readAllBytes(sourceDownload.path())), principal);
+        XlsxWorkbookReader reader = new XlsxWorkbookReader(uploadProperties);
+        UploadComparisonExportService comparisons = new UploadComparisonExportService(
+                service, repository, uploads, reader, new UploadDetailComparator(),
+                new XlsxWorkbookWriter(), new HospitalAuthRepository(jdbc),
+                detailProperties(), Clock.fixed(NOW, ZoneOffset.UTC));
+        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                uploaded.fileKey().getBytes(StandardCharsets.UTF_8));
+        Map<String, Object> quality = Map.of(
+                "layer", 6,
+                "node_name", "检查数据质量",
+                "status", "warning",
+                "cause_confirmed", false,
+                "duration_ms", 12,
+                "checks", List.of(Map.of(
+                        "check_id", "missing_admission_id",
+                        "type", "required_not_null",
+                        "status", "confirmed",
+                        "affected_count", 1,
+                        "description", "入院流水号不能为空")));
+        Map<String, Object> report = Map.of(
+                "report_id", "DDR_test",
+                "rule_id", "MQSI2025_005",
+                "stat_start", "2026-01-01T00:00:00",
+                "stat_end", "2026-02-01T00:00:00",
+                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE",
+                "stopped_layer", 6,
+                "user_summary", "发现质量异常但尚不能确认差值来源。",
+                "affected_record_count", 1,
+                "evidence_limit", "仅表示当前证据下内部一致。",
+                "layers", List.of(quality));
+
+        var exported = comparisons.createForDiagnosis(
+                principal, "RUN_001", token, true, report);
+        var download = service.resolveDownload(principal, exported.exportId());
+        var workbook = reader.read(new StoredUpload(
+                "diagnosis.xlsx", exported.fileName(), Files.size(download.path()), download.path()));
+
+        assertThat(workbook.sheets()).extracting("name").containsExactly(
+                "诊断摘要", "对比摘要", "双方都有_2", "仅系统有_0",
+                "仅上传文件有_0", "数据质量异常");
+        assertThat(workbook.sheets().get(5).rowCount()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
     void rejectsChangedBusinessCountsAndDoesNotPublishReadySnapshot() throws Exception {
         seedSuccessfulRun("RUN_002", 1, 3);
 

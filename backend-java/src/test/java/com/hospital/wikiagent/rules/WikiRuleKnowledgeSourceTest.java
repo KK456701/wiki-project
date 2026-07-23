@@ -38,6 +38,20 @@ class WikiRuleKnowledgeSourceTest {
         assertThat((java.util.List<?>) mapping.get("items")).isNotEmpty();
     }
 
+    @Test
+    void readsOnlyApprovedVisibleDiagnosisProfilesAndQualityRules() {
+        var consultProfiles = source.diagnosticProfiles("MQSI2025_005", "hospital_001");
+        var otherHospitalProfiles = source.diagnosticProfiles("MQSI2025_005", "hospital_999");
+        var qualityRules = source.dataQualityRules("MQSI2025_001");
+
+        assertThat(consultProfiles).extracting(profile -> profile.get("profile_id"))
+                .containsExactly("national_2025_10m", "hospital_001_20m");
+        assertThat(otherHospitalProfiles).extracting(profile -> profile.get("profile_id"))
+                .containsExactly("national_2025_10m");
+        assertThat(qualityRules).extracting(rule -> rule.get("type"))
+                .contains("required_not_null", "duplicate_key", "timestamp_order");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> objectMap(Object value) {
         return (Map<String, Object>) value;

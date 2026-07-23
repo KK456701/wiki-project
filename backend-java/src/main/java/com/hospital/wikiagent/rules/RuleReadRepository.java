@@ -217,6 +217,16 @@ public class RuleReadRepository {
         return result;
     }
 
+    /** 返回 Wiki 中已审批、当前医院可见的诊断候选口径。 */
+    public List<Map<String, Object>> diagnosticProfiles(String ruleId, String hospitalId) {
+        return wiki == null ? List.of() : wiki.diagnosticProfiles(ruleId, hospitalId);
+    }
+
+    /** 返回不含任意 SQL 的允许列表式数据质量检查。 */
+    public List<Map<String, Object>> dataQualityRules(String ruleId) {
+        return wiki == null ? List.of() : wiki.dataQualityRules(ruleId);
+    }
+
     /** 只生成字段级差异预览；不提交、审批、发布或写入规则。 */
     public Map<String, Object> previewChange(
             String ruleId, String hospitalId, String changeDescription) {

@@ -4,7 +4,11 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import { useAgentStore } from '../stores/agent'
-import { createUploadComparisonExport, downloadIndicatorExport } from '../api/agent'
+import {
+  createDiagnosisReportExport,
+  createUploadComparisonExport,
+  downloadIndicatorExport,
+} from '../api/agent'
 
 const store = useAgentStore()
 const accountId = ref('user_001')
@@ -17,6 +21,7 @@ const selectedDetailRunId = ref('')
 const uploadInput = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLElement | null>(null)
 const exportingComparison = ref('')
+const exportingDiagnosis = ref('')
 
 const activeEvidence = computed(() => store.latestAgentMessage?.evidence || [])
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
@@ -96,6 +101,21 @@ async function exportComparison(runId?: string, fileToken?: string) {
     store.error = error instanceof Error ? error.message : '逐条差异表导出失败。'
   } finally {
     exportingComparison.value = ''
+  }
+}
+
+async function exportDiagnosis(reportId?: string) {
+  if (!reportId || exportingDiagnosis.value) return
+  if (!window.confirm('诊断导出可能包含患者级业务明细。确认仅在授权范围内使用并立即下载吗？')) return
+  exportingDiagnosis.value = reportId
+  store.error = ''
+  try {
+    const created = await createDiagnosisReportExport(store.token, reportId, true)
+    await downloadIndicatorExport(store.token, created)
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '诊断明细导出失败。'
+  } finally {
+    exportingDiagnosis.value = ''
   }
 }
 </script>
@@ -202,6 +222,15 @@ async function exportComparison(runId?: string, fileToken?: string) {
               :disabled="exportingComparison === comparison.runId"
               @click="exportComparison(comparison.runId, comparison.fileToken)"
             >{{ exportingComparison === comparison.runId ? '正在生成差异表…' : `导出第 ${comparisonIndex + 1} 个逐条差异 Excel →` }}</button>
+            <button
+              v-for="reportId in message.diagnosisReportIds || []"
+              v-show="canExportDetails"
+              :key="reportId"
+              type="button"
+              class="detail-link"
+              :disabled="exportingDiagnosis === reportId"
+              @click="exportDiagnosis(reportId)"
+            >{{ exportingDiagnosis === reportId ? '正在生成诊断明细…' : '导出诊断明细 Excel →' }}</button>
             <button v-if="message.traceId" type="button" class="trace-link" @click="openTrace(message.traceId)">查看链路 →</button>
           </div>
         </article>

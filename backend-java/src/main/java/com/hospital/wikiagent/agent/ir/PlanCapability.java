@@ -16,6 +16,7 @@ public enum PlanCapability {
     PREPARE_VERIFIED_SQL("prepare_verified_sql"),
     EXECUTE_TRIAL_RUN("execute_trial_run"),
     DIAGNOSE_INDICATOR("diagnose_indicator"),
+    DIAGNOSE_INDICATOR_DIFFERENCE("diagnose_indicator_difference"),
     PREVIEW_RULE_CHANGE("preview_rule_change"),
     ANALYZE_UPLOADED_FILE("analyze_uploaded_file"),
     VALIDATE_IMPLEMENTATION("validate_implementation"),

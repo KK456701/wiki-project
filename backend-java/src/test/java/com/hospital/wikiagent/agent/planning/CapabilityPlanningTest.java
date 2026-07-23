@@ -52,6 +52,29 @@ class CapabilityPlanningTest {
     }
 
     @Test
+    void compilesDifferenceDiagnosisIntoSingleDeterministicWorkflowCapability() {
+        RequestPlan plan = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
+                "解释用户文件与系统结果差异",
+                new RequestPlan.TargetIndicator("患者入院48小时内转科的比例", "MQSI2025_001"),
+                new RequestPlan.TimeExpression(
+                        "2026年1月至3月", "2026-01-01 00:00:00", "2026-04-01 00:00:00"),
+                List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
+                List.of(),
+                List.of());
+
+        CompiledPlanIR ir = compiler.compile(plan);
+
+        assertThat(ir.nodes()).extracting(CompiledPlanIR.PlanNode::capability).containsExactly(
+                PlanCapability.RESOLVE_INDICATOR,
+                PlanCapability.RESOLVE_EFFECTIVE_RULE,
+                PlanCapability.RESOLVE_TIME_RANGE,
+                PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
+                PlanCapability.COMPOSE_ANSWER);
+    }
+
+    @Test
     void controllerAndDispatchExposeOnlyTheCompiledTool() {
         RequestPlan plan = trialPlan();
         PlanValidation validation = PlanValidation.valid(new PlanValidation.ResolvedTimeRange(
@@ -111,6 +134,17 @@ class CapabilityPlanningTest {
         PlanValidation validation = PlanValidation.valid(null);
 
         assertThat(AgentStateController.stateFacts(state, validation)).contains("diagnosis");
+    }
+
+    @Test
+    void differenceDiagnosisReportCompletesFactInsteadOfRepeatingWorkflow() {
+        AgentRunState state = new AgentRunState();
+        state.lastToolResults().add(ToolResult.success(
+                "DIFFERENCE_DIAGNOSIS_COMPLETED", "差异诊断已完成。",
+                Map.of("report_id", "DDR_001", "conclusion_code", "SYSTEM_RESULT_VERIFIED")));
+
+        assertThat(AgentStateController.stateFacts(state, PlanValidation.valid(null)))
+                .contains("difference_diagnosis_report");
     }
 
     @Test

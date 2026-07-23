@@ -46,6 +46,8 @@ import com.hospital.wikiagent.agent.planning.PlanningExecution;
 import com.hospital.wikiagent.agent.planning.ReplanPolicy;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
+import com.hospital.wikiagent.agent.upload.UploadedFilePlanningContext;
+import com.hospital.wikiagent.agent.upload.UploadedFilePlanningContext.PlanningContext;
 
 /**
  * 执行单指标 Compiled Plan：装载会话、调用 Planner、按状态机调用受控工具、
@@ -82,6 +84,7 @@ public class AgentRunner {
     private final FinalAnswerComposer finalAnswer;
     private final AgentConversationMemory conversations;
     private final AgentFailureRouter failureRouter;
+    private final UploadedFilePlanningContext uploadPlanningContext;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -95,7 +98,8 @@ public class AgentRunner {
             EvidenceVerifier verifier,
             FinalAnswerComposer finalAnswer,
             AgentConversationMemory conversations,
-            AgentFailureRouter failureRouter) {
+            AgentFailureRouter failureRouter,
+            UploadedFilePlanningContext uploadPlanningContext) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -107,6 +111,7 @@ public class AgentRunner {
         this.finalAnswer = finalAnswer;
         this.conversations = conversations;
         this.failureRouter = failureRouter;
+        this.uploadPlanningContext = uploadPlanningContext;
     }
 
     public AgentRunner(
@@ -122,7 +127,7 @@ public class AgentRunner {
             AgentConversationMemory conversations) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
                 gateway, verifier, finalAnswer, conversations,
-                new AgentFailureRouter(new ReplanPolicy()));
+                new AgentFailureRouter(new ReplanPolicy()), null);
     }
 
     public AgentRunner(
@@ -222,9 +227,14 @@ public class AgentRunner {
             }
         }
         long compileStarted = TraceEvents.started();
-        RequestPlan enrichedPlan = normalizeExplicitImplementationValidation(
-                request.query(), enrichFromResolvedIndicator(
-                        enrichFromConversation(modelPlan.plan(), conversation), resolvedIndicator));
+        PlanningContext fileContext = resolveUploadPlanningContext(request);
+        RequestPlan enrichedPlan = normalizeExplicitDifferenceDiagnosis(
+                request.query(), normalizeExplicitImplementationValidation(
+                        request.query(), enrichFromResolvedIndicator(
+                                enrichFromConversation(
+                                        enrichFromUploadedFile(modelPlan.plan(), fileContext),
+                                        conversation),
+                                resolvedIndicator)));
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
         // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
@@ -244,6 +254,17 @@ public class AgentRunner {
 
         AgentRunState state = new AgentRunState();
         state.subtaskId(subtaskId);
+        state.progressReporter(progress -> TraceEvents.recorded(
+                observer,
+                traceId,
+                progress.nodeName(),
+                "code",
+                progress.status(),
+                progress.durationMs(),
+                subtaskId,
+                Map.of("workflow_version", "indicator-difference-diagnosis-v1"),
+                progress.safeOutput(),
+                "capability", "diagnose_indicator_difference"));
         state.currentRuleId(first(
                 planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
         state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
@@ -428,9 +449,15 @@ public class AgentRunner {
                     "rule_id=" + safe(state.currentRuleId())
                             + "; evidence_ids=" + state.evidenceIds(),
                     compiled.planId()));
-            RequestPlan plan = normalizeExplicitImplementationValidation(
-                    request.query(), enrichFromResolvedIndicator(
-                            enrichFromConversation(raw.plan(), conversation), resolvedIndicator));
+            RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
+                    request.query(), normalizeExplicitImplementationValidation(
+                            request.query(), enrichFromResolvedIndicator(
+                                    enrichFromConversation(
+                                            enrichFromUploadedFile(
+                                                    raw.plan(),
+                                                    resolveUploadPlanningContext(request)),
+                                            conversation),
+                                    resolvedIndicator)));
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
@@ -503,9 +530,13 @@ public class AgentRunner {
                         "evidence_ids", state.evidenceIds()), eventValues(
                         "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
-        // SQL 展示和实施验收可由确定性代码直接回答，避免模型改写已校验 SQL 或状态。
-        String deterministicAnswer = composeImplementationValidationAnswer(plan, state);
-        String deterministicNode = "implementation_validation_answer";
+        // SQL、实施验收和差异归因均由确定性代码回答，避免模型改写已验证事实。
+        String deterministicAnswer = composeDifferenceDiagnosisAnswer(plan, state);
+        String deterministicNode = "difference_diagnosis_answer";
+        if (deterministicAnswer == null) {
+            deterministicAnswer = composeImplementationValidationAnswer(plan, state);
+            deterministicNode = "implementation_validation_answer";
+        }
         if (deterministicAnswer == null) {
             deterministicAnswer = composePreparedSqlAnswer(plan, state);
             deterministicNode = "prepared_sql_answer";
@@ -516,8 +547,11 @@ public class AgentRunner {
                     answerStarted, state.subtaskId(), Map.of(
                             "verified_evidence_count", evidence.size()), Map.of(
                             "answer_length", deterministicAnswer.length()),
-                    "workflow_version", deterministicNode.equals("prepared_sql_answer")
-                            ? "prepared-sql-answer-v2" : "implementation-validation-mvp-v1");
+                    "workflow_version", switch (deterministicNode) {
+                        case "prepared_sql_answer" -> "prepared-sql-answer-v2";
+                        case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
+                        default -> "implementation-validation-mvp-v1";
+                    });
             long guardStarted = TraceEvents.started();
             String answerContent = appendExportMarker(deterministicAnswer, state, request.principal());
             TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
@@ -615,7 +649,8 @@ public class AgentRunner {
                 state.validatedSqlIds().add(sqlId.toString());
             }
         }
-        if ("INDICATOR_DIAGNOSED".equals(result.code())) {
+        if ("INDICATOR_DIAGNOSED".equals(result.code())
+                || "DIFFERENCE_DIAGNOSIS_COMPLETED".equals(result.code())) {
             Object reportId = result.data().get("report_id");
             if (reportId != null && !reportId.toString().isBlank()) {
                 state.lastDiagnosisId(reportId.toString());
@@ -678,6 +713,50 @@ public class AgentRunner {
         return new RequestPlan(
                 plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+    }
+
+    /**
+     * 使用上传文件中已解析的非患者元数据补全缺失计划字段。
+     *
+     * <p>这里只补空值，因此不会覆盖用户本轮明确输入；调用顺序位于会话补全之前，确保
+     * 文件统计区间优先于历史会话区间。文件与本轮明确区间的冲突仍由 Workflow 预检
+     * 负责阻断并要求用户确认。</p>
+     */
+    private static RequestPlan enrichFromUploadedFile(
+            RequestPlan plan,
+            PlanningContext file) {
+        if (file == null) return plan;
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        if (target.rawName().isBlank() && target.ruleId() == null
+                && (file.ruleId() != null || file.ruleName() != null)) {
+            target = new RequestPlan.TargetIndicator(
+                    first(file.ruleName(), file.ruleId()), file.ruleId());
+        }
+        RequestPlan.TimeExpression time = plan.timeExpression();
+        if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
+                && file.hasTimeRange()) {
+            time = new RequestPlan.TimeExpression(
+                    first(file.rawPeriod(), "上传文件统计区间"),
+                    file.statStart(),
+                    file.statEnd());
+        }
+        return new RequestPlan(
+                plan.schemaVersion(), plan.intent(), plan.goal(), target, time,
+                plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+    }
+
+    private PlanningContext resolveUploadPlanningContext(AgentRunRequest request) {
+        if (uploadPlanningContext == null || request.fileKey() == null
+                || request.fileKey().isBlank()) {
+            return PlanningContext.empty();
+        }
+        try {
+            return uploadPlanningContext.resolve(
+                    request.fileKey(), request.principal().hospitalId());
+        } catch (RuntimeException ignored) {
+            // 规划阶段不得将文件解析异常转换成猜测值；正式错误由受控上传工具返回。
+            return PlanningContext.empty();
+        }
     }
 
     private static RequestPlan enrichFromResolvedIndicator(
@@ -753,6 +832,52 @@ public class AgentRunner {
         return values;
     }
 
+    /**
+     * 对明确的“双方结果不一致”表达做服务端兜底路由。
+     *
+     * <p>Planner 仍会给出完整 RequestPlan；此处只在用户文本已经明确包含比较对象和差异
+     * 诉求时收敛为分层诊断，避免 4B 模型把上传对比误判成普通文件分析或通用异常诊断。
+     * 单纯“指标为什么偏低”没有双方比较对象，不会命中本分支。</p>
+     */
+    private static RequestPlan normalizeExplicitDifferenceDiagnosis(
+            String query,
+            RequestPlan plan) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        boolean differencePhrase = List.of(
+                "不一样", "不一致", "差异", "差在哪", "为什么我们",
+                "为什么你们", "为什么系统", "与系统核对", "和系统核对",
+                "与本院对比", "和本院对比", "具体差异记录")
+                .stream().anyMatch(compact::contains);
+        boolean twoSided = List.of("我们", "我方", "用户", "文件", "表格")
+                .stream().anyMatch(compact::contains)
+                && List.of("系统", "你们", "本院", "平台")
+                .stream().anyMatch(compact::contains);
+        boolean explicitCompare = compact.contains("对比") || compact.contains("核对");
+        boolean pureUploadAnalysis = plan.intent() == PlanIntent.UPLOAD_ANALYSIS
+                && !differencePhrase && !twoSided && !explicitCompare;
+        if (pureUploadAnalysis || !(differencePhrase || twoSided || explicitCompare)) {
+            return plan;
+        }
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        if (target.rawName().isBlank() && target.ruleId() == null && query != null) {
+            target = new RequestPlan.TargetIndicator(query, null);
+        }
+        RequestPlan.TimeExpression time = plan.timeExpression();
+        if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
+                && query != null) {
+            time = new RequestPlan.TimeExpression(query, null, null);
+        }
+        return new RequestPlan(
+                plan.schemaVersion(),
+                PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
+                plan.goal(),
+                target,
+                time,
+                List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
+                plan.constraints(),
+                plan.semanticAmbiguities());
+    }
+
     private static RequestPlan normalizeExplicitImplementationValidation(
             String query,
             RequestPlan plan) {
@@ -816,6 +941,60 @@ public class AgentRunner {
                             ? FailureClass.classify(failureCode).value()
                             : null);
         }
+    }
+
+    /**
+     * 差异报告使用确定性模板呈现，避免模型把“证据不足”改写成未经确认的原因。
+     */
+    @SuppressWarnings("unchecked")
+    private static String composeDifferenceDiagnosisAnswer(
+            RequestPlan plan,
+            AgentRunState state) {
+        if (!plan.requestedOutputs().contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)) {
+            return null;
+        }
+        ToolResult report = null;
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (candidate.ok() && "DIFFERENCE_DIAGNOSIS_COMPLETED".equals(candidate.code())) {
+                report = candidate;
+                break;
+            }
+        }
+        if (report == null) return null;
+        Map<String, Object> data = report.data();
+        Map<String, Object> baseline = data.get("baseline_result") instanceof Map<?, ?> raw
+                ? (Map<String, Object>) raw : Map.of();
+        Map<String, Object> external = data.get("external_evidence") instanceof Map<?, ?> raw
+                ? (Map<String, Object>) raw : Map.of();
+        StringBuilder answer = new StringBuilder("# 指标结果差异诊断\n\n");
+        answer.append("- 报告编号：").append(data.getOrDefault("report_id", "—")).append('\n');
+        answer.append("- 统计区间：").append(data.getOrDefault("stat_start", "—"))
+                .append(" 至 ").append(data.getOrDefault("stat_end", "—")).append('\n');
+        answer.append("- 结论代码：").append(data.getOrDefault("conclusion_code", "—")).append('\n');
+        answer.append("- 停止层级：第 ").append(data.getOrDefault("stopped_layer", "—")).append(" 层\n\n");
+        if (!baseline.isEmpty()) {
+            answer.append("## 当前生效口径结果\n\n")
+                    .append("- 分子：").append(baseline.getOrDefault("numerator_count", "—")).append('\n')
+                    .append("- 分母：").append(baseline.getOrDefault("denominator_count", "—")).append('\n')
+                    .append("- 指标值：").append(baseline.getOrDefault("result_value", "—")).append("%\n\n");
+        }
+        if (!external.isEmpty()) {
+            answer.append("## 用户或文件结果\n\n")
+                    .append("- 分子：").append(external.getOrDefault("numerator", "未提供")).append('\n')
+                    .append("- 分母：").append(external.getOrDefault("denominator", "未提供")).append('\n')
+                    .append("- 指标值：").append(external.getOrDefault("rate", "未提供")).append("\n\n");
+        }
+        answer.append("## 诊断结论\n\n")
+                .append(data.getOrDefault("user_summary", "诊断已完成。")).append('\n');
+        if (data.get("confirmed_findings") instanceof List<?> findings && !findings.isEmpty()) {
+            answer.append("\n已确认事实：\n\n");
+            findings.forEach(item -> answer.append("- ").append(markdown(item)).append('\n'));
+        }
+        answer.append("\n证据限制：")
+                .append(data.getOrDefault("evidence_limit",
+                        "未发现系统异常不等于用户结果必然错误。"));
+        return answer.toString();
     }
 
     @SuppressWarnings("unchecked")
@@ -1056,6 +1235,22 @@ public class AgentRunner {
             String content,
             AgentRunState state,
             com.hospital.wikiagent.auth.HospitalPrincipal principal) {
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            if (!candidate.ok() || !"DIFFERENCE_DIAGNOSIS_COMPLETED".equals(candidate.code())) {
+                continue;
+            }
+            String reportId = String.valueOf(candidate.data().getOrDefault("report_id", ""));
+            if (!reportId.isBlank() && !principal.mustChangePassword()
+                    && principal.permissions().contains("indicator_detail_export")) {
+                String marker = "{{diagnosis_export:" + reportId + "}}";
+                return content.contains(marker) ? content
+                        : content.stripTrailing()
+                                + "\n\n本次诊断支持导出当前证据允许的系统明细或逐条差异表：\n\n"
+                                + marker;
+            }
+            return content;
+        }
         ToolResult uploadAnalysis = null;
         for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
             ToolResult candidate = state.lastToolResults().get(index);

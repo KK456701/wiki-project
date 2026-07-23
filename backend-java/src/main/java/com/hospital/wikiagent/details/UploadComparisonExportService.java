@@ -92,6 +92,32 @@ public class UploadComparisonExportService {
             String runId,
             String fileToken,
             boolean confirmed) {
+        return createInternal(principal, runId, fileToken, confirmed, java.util.Map.of());
+    }
+
+    /**
+     * 为已持久化的分层诊断报告生成对比工作簿。
+     *
+     * <p>患者级记录仍从短期明细快照和原上传文件现取；{@code diagnosisReport} 仅用于
+     * 增加诊断摘要、停止层级、确认结论和质量检查汇总，不得包含患者原始行。</p>
+     */
+    public ExportSummary createForDiagnosis(
+            HospitalPrincipal principal,
+            String runId,
+            String fileToken,
+            boolean confirmed,
+            java.util.Map<String, Object> diagnosisReport) {
+        return createInternal(
+                principal, runId, fileToken, confirmed,
+                diagnosisReport == null ? java.util.Map.of() : diagnosisReport);
+    }
+
+    private ExportSummary createInternal(
+            HospitalPrincipal principal,
+            String runId,
+            String fileToken,
+            boolean confirmed,
+            java.util.Map<String, Object> diagnosisReport) {
         requireExportPermission(principal);
         if (!confirmed) {
             throw error("UPLOAD_COMPARISON_EXPORT_CONFIRM_REQUIRED",
@@ -132,7 +158,7 @@ public class UploadComparisonExportService {
             rejectSymlink(target.getParent());
             writer.writeUploadComparisonWorkbook(
                     temporary, comparison, upload.originalName(), principal.hospitalId(),
-                    principal.accountId(), now);
+                    principal.accountId(), now, diagnosisReport);
             move(temporary, target);
             repository.markExportReady(exportId, sha256(target));
             ExportRecord record = repository.export(exportId)

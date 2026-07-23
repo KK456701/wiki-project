@@ -92,6 +92,37 @@ public class IndicatorSqlTools {
     }
 
     public ToolResult prepare(PrepareInput input, ToolExecutionContext context) {
+        return prepareInternal(input, Map.of(), null, context);
+    }
+
+    /**
+     * 为分层差异诊断准备一个受治理的候选口径 SQL 对象。
+     *
+     * <p>候选只能覆盖当前规则已声明的参数，SQL 模板、字段映射和验证流程仍与正常试运行
+     * 完全一致。这样历史口径可以做反事实计算，但不能借机注入新字段或任意 SQL。</p>
+     */
+    public ToolResult prepareDiagnostic(
+            PrepareInput input,
+            String profileId,
+            Map<String, Object> parameterOverrides,
+            ToolExecutionContext context) {
+        String normalizedProfile = profileId == null ? "" : profileId.strip();
+        if (normalizedProfile.isBlank() || normalizedProfile.length() > 128) {
+            return failure("validation_failed", "DIAGNOSIS_PROFILE_INVALID",
+                    "候选口径编号无效。", false);
+        }
+        return prepareInternal(
+                input,
+                parameterOverrides == null ? Map.of() : Map.copyOf(parameterOverrides),
+                normalizedProfile,
+                context);
+    }
+
+    private ToolResult prepareInternal(
+            PrepareInput input,
+            Map<String, Object> parameterOverrides,
+            String diagnosticProfileId,
+            ToolExecutionContext context) {
         AgentRunState state = context.runState();
         if (state.currentRuleId() == null || !state.currentRuleId().equals(input.ruleId())) {
             return failure("validation_failed", "RULE_NOT_VERIFIED", "该指标尚未经过规则搜索或读取，不能准备 SQL。", false);
@@ -140,6 +171,18 @@ public class IndicatorSqlTools {
         }
 
         Map<String, Object> params = objectMap(rule.get("effective_params"));
+        if (!params.keySet().containsAll(parameterOverrides.keySet())) {
+            return failure("validation_failed", "DIAGNOSIS_PROFILE_PARAMETER_INVALID",
+                    "候选口径包含当前规则未声明的参数。", false);
+        }
+        for (Map.Entry<String, Object> entry : parameterOverrides.entrySet()) {
+            Object value = entry.getValue();
+            if (value instanceof Map<?, ?> || value instanceof List<?>) {
+                return failure("validation_failed", "DIAGNOSIS_PROFILE_PARAMETER_INVALID",
+                        "候选口径参数必须是标量值。", false);
+            }
+            params.put(entry.getKey(), value);
+        }
         String statStart = start.format(SQL_TIME);
         String statEnd = end.format(SQL_TIME);
         String sourceId = sourceId(context);
@@ -179,6 +222,9 @@ public class IndicatorSqlTools {
         data.put("stat_start", statStart);
         data.put("stat_end", statEnd);
         data.put("expires_at", sqlObject.expiresAt().toString());
+        if (diagnosticProfileId != null) {
+            data.put("diagnostic_profile_id", diagnosticProfileId);
+        }
         return ToolResult.success(
                 "SQL_OBJECT_PREPARED", "SQL 已完成确定性生成和只读安全校验，可进行受控试运行。", data);
     }

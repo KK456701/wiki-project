@@ -74,3 +74,14 @@ calculation:
     - {field: request_time, label: 申请时间, sensitivity: none}
     - {field: arrive_time, label: 到位时间, sensitivity: none}
     - {field: arrive_minutes, label: 到位耗时（分钟）, sensitivity: none}
+quality_checks:
+  - id: consult_required_fields
+    type: required_not_null
+    fields: [request_time]
+    description: 急会诊申请时间不能为空
+  - id: arrival_before_request
+    type: timestamp_order
+    earlier_field: request_time
+    later_field: arrive_time
+    allow_later_null: true
+    description: 到位时间不得早于申请时间

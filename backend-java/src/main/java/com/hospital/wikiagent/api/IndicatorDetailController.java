@@ -23,6 +23,7 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.details.DetailContracts.DetailPage;
 import com.hospital.wikiagent.details.DetailContracts.ExportSummary;
 import com.hospital.wikiagent.details.DetailContracts.SnapshotSummary;
+import com.hospital.wikiagent.details.DiagnosisReportExportService;
 import com.hospital.wikiagent.details.IndicatorDetailService;
 import com.hospital.wikiagent.details.UploadComparisonExportService;
 
@@ -39,14 +40,17 @@ public class IndicatorDetailController {
     private final HospitalAuthService auth;
     private final IndicatorDetailService details;
     private final UploadComparisonExportService comparisonExports;
+    private final DiagnosisReportExportService diagnosisExports;
 
     public IndicatorDetailController(
             HospitalAuthService auth,
             IndicatorDetailService details,
-            UploadComparisonExportService comparisonExports) {
+            UploadComparisonExportService comparisonExports,
+            DiagnosisReportExportService diagnosisExports) {
         this.auth = auth;
         this.details = details;
         this.comparisonExports = comparisonExports;
+        this.diagnosisExports = diagnosisExports;
     }
 
     @PostMapping("/api/sql-runs/{run_id}/details")
@@ -93,6 +97,22 @@ public class IndicatorDetailController {
                 .cacheControl(CacheControl.noStore())
                 .body(comparisonExports.create(
                         principal(authorization), runId, fileToken, confirmed));
+    }
+
+    /**
+     * 根据差异诊断报告生成受权限保护的 Excel。请求体只需要用户确认标志，
+     * 文件编号、试运行编号和医院范围均从服务端报告对象解析。
+     */
+    @PostMapping("/api/diagnosis-reports/{report_id}/exports")
+    public ResponseEntity<ExportSummary> createDiagnosisExport(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable("report_id") String reportId,
+            @RequestBody(required = false) ExportCreateRequest request) {
+        boolean confirmed = request != null && request.confirmed();
+        return ResponseEntity.status(201)
+                .cacheControl(CacheControl.noStore())
+                .body(diagnosisExports.create(
+                        principal(authorization), reportId, confirmed));
     }
 
     @GetMapping("/api/indicator-exports")

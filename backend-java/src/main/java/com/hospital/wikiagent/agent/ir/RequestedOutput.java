@@ -15,6 +15,7 @@ public enum RequestedOutput {
     PREPARED_SQL_HANDLE("prepared_sql_handle"),
     TRIAL_RESULT("trial_result"),
     DIAGNOSIS("diagnosis"),
+    DIFFERENCE_DIAGNOSIS_REPORT("difference_diagnosis_report"),
     CHANGE_PREVIEW("change_preview"),
     FILE_ANALYSIS("file_analysis"),
     IMPLEMENTATION_VALIDATION_REPORT("implementation_validation_report"),
