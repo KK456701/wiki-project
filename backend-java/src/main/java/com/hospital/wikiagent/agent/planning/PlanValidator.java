@@ -34,6 +34,23 @@ public class PlanValidator {
                     FallbackCategory.SECURITY_DENIAL);
         }
         Set<RequestedOutput> outputs = Set.copyOf(plan.requestedOutputs());
+        // 意图与输出目标的矛盾属于方向性计划错误，必须交给 FailureRouter 决定是否
+        // Replan；不能混入 Planner 的 JSON 修复，否则会丢失原计划和明确失败原因。
+        if (plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
+                && (!outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)
+                || outputs.contains(RequestedOutput.TRIAL_RESULT))) {
+            return PlanValidation.invalid(
+                    "PLAN_INTENT_MISMATCH",
+                    "SQL 准备意图只能生成受控 SQL，不能同时要求执行试运行。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
+        if (plan.intent() == PlanIntent.INDICATOR_TRIAL_RUN
+                && !outputs.contains(RequestedOutput.TRIAL_RESULT)) {
+            return PlanValidation.invalid(
+                    "PLAN_INTENT_MISMATCH",
+                    "指标试运行计划缺少具体结果输出目标。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
         boolean needsDatabase = outputs.contains(RequestedOutput.TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT);
         boolean needsTime = outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)

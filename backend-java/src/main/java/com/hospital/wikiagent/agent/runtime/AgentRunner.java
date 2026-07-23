@@ -32,6 +32,8 @@ import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerResult;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.ReplannerInput;
 import com.hospital.wikiagent.agent.planning.AgentStateController;
+import com.hospital.wikiagent.agent.planning.AgentFailureRouter;
+import com.hospital.wikiagent.agent.planning.AgentFailureRouter.FailureRoute;
 import com.hospital.wikiagent.agent.planning.CapabilityDispatchException;
 import com.hospital.wikiagent.agent.planning.CapabilitySpecRegistry;
 import com.hospital.wikiagent.agent.planning.ControllerDecision;
@@ -50,7 +52,8 @@ import com.hospital.wikiagent.agent.tools.ToolGateway;
  * 校验证据并生成最终回答。模型不能在这里绕过 Controller 自由调用工具。
  *
  * <p>每轮执行严格遵循“加载会话 → 规划 → 编译与校验 → 状态控制 → 工具网关 →
- * Evidence 校验 → 回答”的顺序。只有 {@link ReplanPolicy} 认定为语义计划错误时才允许一次
+ * Evidence 校验 → 回答”的顺序。所有失败先由 {@link AgentFailureRouter} 统一分类，只有
+ * {@link ReplanPolicy} 认定为语义计划错误时才允许一次
  * Replan；权限、数据库、缺时间和证据冲突等执行错误会直接终止，避免重复走同一失败路径。</p>
  */
 @Component
@@ -78,7 +81,7 @@ public class AgentRunner {
     private final EvidenceVerifier verifier;
     private final FinalAnswerComposer finalAnswer;
     private final AgentConversationMemory conversations;
-    private final ReplanPolicy replanPolicy;
+    private final AgentFailureRouter failureRouter;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -92,7 +95,7 @@ public class AgentRunner {
             EvidenceVerifier verifier,
             FinalAnswerComposer finalAnswer,
             AgentConversationMemory conversations,
-            ReplanPolicy replanPolicy) {
+            AgentFailureRouter failureRouter) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -103,7 +106,7 @@ public class AgentRunner {
         this.verifier = verifier;
         this.finalAnswer = finalAnswer;
         this.conversations = conversations;
-        this.replanPolicy = replanPolicy;
+        this.failureRouter = failureRouter;
     }
 
     public AgentRunner(
@@ -118,7 +121,8 @@ public class AgentRunner {
             FinalAnswerComposer finalAnswer,
             AgentConversationMemory conversations) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
-                gateway, verifier, finalAnswer, conversations, new ReplanPolicy());
+                gateway, verifier, finalAnswer, conversations,
+                new AgentFailureRouter(new ReplanPolicy()));
     }
 
     public AgentRunner(
@@ -245,6 +249,28 @@ public class AgentRunner {
         applyResolvedTime(state, validation);
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId());
+
+        // 计划校验失败也必须先进入统一失败路由。方向性错误可以在调用任何工具前纠正一次；
+        // 缺时间、权限和数据库冲突等不可重规划问题仍按原校验结果直接兜底。
+        if (!validation.ok()) {
+            ReplanOutcome replanned = tryReplan(
+                    request, observer, traceId, state, planned, compiled,
+                    validation.code(), validation.message(), conversation, resolvedIndicator);
+            if (replanned != null) {
+                planned = replanned.planned();
+                execution = replanned.execution();
+                compiled = execution.compiledPlan();
+                validation = execution.validation();
+                applyResolvedTime(state, validation);
+            } else {
+                ControllerDecision fallback = controller.nextDecision(compiled, validation, state);
+                AgentRunResult result = finishFallback(
+                        observer, traceId, sessionId, state, planned.plan(), compiled, fallback);
+                saveConversation(observer, traceId, subtaskId, conversation,
+                        request.principal(), result.answer(), state);
+                return result;
+            }
+        }
 
         // 有界循环只推进尚未满足的事实；MAX_STEPS 是最后一道失控保护。
         while (state.stepCount() < MAX_STEPS) {
@@ -382,8 +408,17 @@ public class AgentRunner {
             String failureReason,
             ConversationSnapshot conversation,
             HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
-        if (!replanPolicy.canReplan(state, failureCode)) return null;
-        replanPolicy.recordFailure(state, compiled.planId());
+        long routeStarted = TraceEvents.started();
+        FailureRoute route = failureRouter.route(state, failureCode);
+        TraceEvents.completed(observer, traceId, "failure_router", "code", routeStarted,
+                state.subtaskId(), Map.of(
+                        "failure_code", route.failureCode(),
+                        "failure_class", route.failureClass().value(),
+                        "replan_count", state.replanCount()), Map.of(
+                        "action", route.action().name()),
+                "failure_class", route.failureClass().value());
+        if (!route.shouldReplan()) return null;
+        failureRouter.recordReplan(state, compiled.planId());
         long started = TraceEvents.started();
         try {
             PlannerResult raw = planner.replan(new ReplannerInput(
@@ -398,7 +433,7 @@ public class AgentRunner {
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
-            if (!replanPolicy.accepts(state, alternative.planId())) {
+            if (!failureRouter.acceptsAlternative(state, alternative.planId())) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
                         state.subtaskId(), "REPLAN_REPEATED_FAILED_PATH",
                         "重规划重复了已经失败的计划方向。",

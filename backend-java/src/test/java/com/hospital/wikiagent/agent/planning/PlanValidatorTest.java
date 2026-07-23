@@ -30,6 +30,25 @@ class PlanValidatorTest {
     }
 
     @Test
+    void classifiesIntentAndOutputConflictAsReplannableSemanticFailure() {
+        RequestPlan conflicting = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_SQL_PREPARE,
+                "生成 SQL 但又要求试运行",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", null),
+                new RequestPlan.TimeExpression("", null, null),
+                List.of(RequestedOutput.TRIAL_RESULT),
+                List.of(),
+                List.of());
+
+        PlanValidation result = validator.validate(conflicting);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("PLAN_INTENT_MISMATCH");
+        assertThat(result.failureClass()).isEqualTo(FailureClass.SEMANTIC_PLAN_ERROR);
+    }
+
+    @Test
     void acceptsExplicitHalfOpenPeriod() {
         PlanValidation result = validator.validate(plan(
                 List.of(),

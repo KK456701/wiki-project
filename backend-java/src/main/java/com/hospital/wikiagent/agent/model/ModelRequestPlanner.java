@@ -4,9 +4,7 @@ import java.time.LocalDate;
 
 import org.springframework.stereotype.Component;
 
-import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
-import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -104,15 +102,6 @@ public class ModelRequestPlanner {
             RequestPlan value = objectMapper.readValue(ModelJsonExtractor.firstObject(raw), RequestPlan.class);
             if (!RequestPlan.VERSION.equals(value.schemaVersion())) {
                 throw new IllegalArgumentException("RequestPlan 版本不匹配");
-            }
-            if (value.intent() == PlanIntent.INDICATOR_SQL_PREPARE
-                    && (!value.requestedOutputs().contains(RequestedOutput.PREPARED_SQL_HANDLE)
-                    || value.requestedOutputs().contains(RequestedOutput.TRIAL_RESULT))) {
-                throw new IllegalArgumentException("SQL 准备意图的输出目标不合法");
-            }
-            if (value.intent() == PlanIntent.INDICATOR_TRIAL_RUN
-                    && !value.requestedOutputs().contains(RequestedOutput.TRIAL_RESULT)) {
-                throw new IllegalArgumentException("指标试运行缺少 trial_result 输出目标");
             }
             return value;
         } catch (PlannerOutputException exception) {

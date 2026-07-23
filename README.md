@@ -41,13 +41,19 @@ flowchart TD
     S -->|多个| C["服务端拆分独立子任务"]
     S -->|一个| P["Planner：生成 RequestPlan"]
     C --> P
-    P --> IR["Compiler / Validator：生成 CompiledPlan IR"]
-    IR --> SC["State Controller：查找缺失事实"]
+    P --> IR["Compiler / Validator：生成并校验 CompiledPlan IR"]
+    IR -->|计划有效| SC["State Controller：查找缺失事实"]
+    IR -->|计划校验失败| FR["Failure Router：统一失败分类"]
     SC --> D["Deterministic Dispatch：唯一工具与参数"]
     D --> G["ToolGateway：权限、校验、超时、缓存、并发"]
     G --> T["Wiki / SQL / DBHub / 上传 / 诊断工具"]
     T --> E["Evidence Ledger + Verifier"]
     E --> SC
+    D -->|参数编译失败| FR
+    T -->|工具执行失败| FR
+    FR -->|方向性语义错误且未重规划| RP["Replanner：最多一次"]
+    RP --> IR
+    FR -->|缺时间、权限、数据库或普通工具错误| FB["澄清 / 安全拒绝 / 系统兜底"]
     SC -->|事实完整| F["Final Answer：仅消费 VerifiedEvidence"]
     F --> V["Vue 3 对话、导出入口和查看链路"]
 ```

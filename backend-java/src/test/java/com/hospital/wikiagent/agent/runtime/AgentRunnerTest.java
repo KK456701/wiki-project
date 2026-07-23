@@ -1,6 +1,7 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.time.LocalDateTime;
 import java.util.ArrayDeque;
@@ -55,8 +56,6 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import static org.mockito.Mockito.mock;
-
 class AgentRunnerTest {
     private ToolGateway gateway;
 
@@ -132,6 +131,75 @@ class AgentRunnerTest {
         assertThat(store.verifications.values())
                 .allMatch(value -> "verified".equals(value.status()));
         assertThat(models.calls).isEqualTo(2);
+    }
+
+    @Test
+    void replansSemanticValidationFailureBeforeCallingTools() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        ToolRegistry tools = new ToolRegistry(ruleRepository(objectMapper));
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker(
+                """
+                {
+                  "schema_version": "request-plan-v1",
+                  "intent": "indicator_sql_prepare",
+                  "goal": "错误理解的初始目标",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {"raw_text": ""},
+                  "requested_outputs": ["trial_result"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """,
+                """
+                {
+                  "schema_version": "request-plan-v1",
+                  "intent": "rule_explanation",
+                  "goal": "纠正后解释指标定义和公式",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {"raw_text": ""},
+                  "requested_outputs": ["definition", "formula"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """,
+                "急会诊及时到位率 = 分子 ÷ 分母 × 100%。");
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper),
+                capabilities,
+                new AgentStateController(capabilities),
+                new DeterministicDispatch(),
+                gateway,
+                verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper));
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "急会诊及时到位率怎么算？", "session_001", "ollama-test", null,
+                "request_001", "trace_001", null, "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
+                events::add,
+                new HybridIndicatorResolver.ResolvedIndicator(
+                        "急会诊及时到位率", "急会诊及时到位率", "MQSI2025_005",
+                        "RULE:MQSI2025_005", "rule", 1.0, 0, 9));
+
+        assertThat(result.stopReason()).isEqualTo("final_answer");
+        assertThat(result.requestPlan().goal()).isEqualTo("纠正后解释指标定义和公式");
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .containsExactly("get_effective_rule");
+        assertThat(models.calls).isEqualTo(3);
     }
 
     @Test

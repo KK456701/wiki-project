@@ -5,7 +5,7 @@
 ## 模块职责
 
 - `agent/ir`：`RequestPlan`、`CompiledPlanIR` 和失败分类。
-- `agent/planning`：能力注册、计划编译与校验、状态控制、确定性分派、一次受限 Replan。
+- `agent/planning`：能力注册、计划编译与校验、状态控制、确定性分派、统一失败路由和一次受限 Replan。
 - `agent/runtime`：单指标执行循环、多指标 fan-out/fan-in 和 Trace 事件。
 - `agent/tools`：工具注册、类型化上下文、策略判断和调用网关。
 - `agent/evidence`：Evidence 记录、验证、过期和跨医院隔离。

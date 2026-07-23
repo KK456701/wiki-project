@@ -408,6 +408,7 @@ public class AgentTraceService {
             case "plan_replan" -> "重新规划业务目标";
             case "plan_compile" -> "编译业务计划";
             case "plan_validate" -> "校验业务计划";
+            case "failure_router" -> "路由失败处理";
             case "state_controller" -> "选择下一业务能力";
             case "deterministic_tool_dispatch" -> "编译受控工具调用";
             case "tool_result" -> "执行并观察工具结果";
@@ -432,6 +433,7 @@ public class AgentTraceService {
             case "indicator_llm_disambiguation" -> "LLM 只能从服务端候选 rule_id 中消歧。";
             case "planner_llm" -> "LLM 只生成业务 RequestPlan，不选择工具。";
             case "plan_replan" -> "仅在允许的方向性错误下由 LLM 重规划一次。";
+            case "failure_router" -> "统一判断本次失败应重规划一次，还是直接澄清、拒绝或兜底。";
             case "state_controller" -> "根据未完成事实选择下一项业务能力。";
             case "deterministic_tool_dispatch" -> "服务端按 CapabilitySpec 编译工具与参数。";
             case "plan_verify" -> "只接受医院、规则、周期和对象链一致的 Evidence。";
