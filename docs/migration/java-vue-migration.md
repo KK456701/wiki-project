@@ -255,3 +255,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start-python-runtime.ps1
 - Trace 的 `memory_save` 节点增加安全的 `rule_id`、`stat_start`、`stat_end`，便于判断多轮上下文是否正确落盘。
 - 后续加固：明确的“这个 SQL/脚本怎么写”追问在上一轮规则与统计区间完整、且本轮未指定新时间时，由 `followup_plan_resolve` 代码节点直接生成 `indicator_sql_prepare` 业务计划。本地 8B 不再为重复事实二次生成 JSON；若本轮出现新时间，仍回到正常 Planner 与确定性时间解析链路。
 - 会话组件的 `JdbcTemplate + ObjectMapper` 构造器已显式标注为 Spring 注入入口，避免框架误选仅供单元测试使用的私有 `noop` 构造器；生产会话现在真实写入 SQLite，并继续保留进程内降级缓存。
+
+## 8. 2026-07-23 候选口径跨轮身份修复
+
+- Planner 在候选口径追问中只返回指标名称、漏掉 `rule_id` 时，Runner 会先核对该名称是否与上一轮已确认指标相同；确认相同后补全规则编号，再执行目标一致性校验和候选 profile 查询。
+- 该补全仅接受空名称、明确指代词、完全相同的规则名称或规则编号，不会把上一轮规则覆盖到用户本轮提出的新指标。
+- SQLite 会话表升级改为只读取目标表的零行元数据，不再枚举整个运行库，避免表较多时触发 `too many terms in compound SELECT`。新建库脚本同步包含候选 profile 字段。

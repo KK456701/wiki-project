@@ -164,8 +164,7 @@ class AgentRunnerTest {
                   "intent": "indicator_caliber_simulation",
                   "goal": "按候选口径解释结果",
                   "target_indicator": {
-                    "raw_name": "急会诊及时到位率",
-                    "rule_id": "MQSI2025_005"
+                    "raw_name": "急会诊及时到位率"
                   },
                   "target_caliber": {"raw_text": "什么口径"},
                   "time_expression": {
@@ -183,6 +182,23 @@ class AgentRunnerTest {
                 wrongCandidatePlan,
                 "当前结果依据本院生效规则，分子分母口径如下。");
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentConversationMemory conversations = mock(AgentConversationMemory.class);
+        org.mockito.Mockito.when(conversations.open(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq("session_caliber_current")))
+                .thenReturn(new AgentConversationMemory.ConversationSnapshot(
+                        "hospital_001:user_001:session_caliber_current",
+                        "session_caliber_current",
+                        "用户：急会诊及时到位率从一月到现在是多少？",
+                        "{\"active_rule_id\":\"MQSI2025_005\"}",
+                        "MQSI2025_005",
+                        "急会诊及时到位率",
+                        null,
+                        null,
+                        "2026-01-01T00:00:00",
+                        "2026-07-23T00:00:00",
+                        "RUN_001",
+                        null));
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(
                         models, modelRegistry, properties,
@@ -197,7 +213,7 @@ class AgentRunnerTest {
                 new FinalAnswerComposer(
                         models, modelRegistry, properties,
                         new PromptCatalog(), objectMapper),
-                AgentConversationMemory.noop(),
+                conversations,
                 new AgentFailureRouter(new ReplanPolicy()),
                 null,
                 new PlanGoalAlignmentValidator(rules));

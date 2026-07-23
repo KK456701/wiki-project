@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.sql.DriverManager;
 import java.util.Map;
 import java.util.Set;
 
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
@@ -19,6 +21,44 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 class AgentConversationMemoryTest {
+    @Test
+    void migratesLegacySqliteConversationTableWithoutScanningWholeDatabase() throws Exception {
+        var connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+        var source = new SingleConnectionDataSource(connection, true);
+        try {
+            JdbcTemplate jdbc = new JdbcTemplate(source);
+            jdbc.execute("""
+                    CREATE TABLE med_agent_java_message (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      session_key VARCHAR(512) NOT NULL,
+                      hospital_id VARCHAR(128) NOT NULL,
+                      user_id VARCHAR(128) NOT NULL,
+                      role VARCHAR(16) NOT NULL,
+                      content TEXT NOT NULL,
+                      rule_id VARCHAR(128),
+                      rule_name VARCHAR(255),
+                      stat_start VARCHAR(40),
+                      stat_end VARCHAR(40),
+                      run_id VARCHAR(80),
+                      upload_file_key VARCHAR(255),
+                      created_at VARCHAR(40) NOT NULL
+                    )
+                    """);
+            AgentConversationMemory memory = new AgentConversationMemory(
+                    jdbc, new ObjectMapper());
+
+            memory.initialize();
+
+            var columns = jdbc.queryForList(
+                    "PRAGMA table_info(med_agent_java_message)").stream()
+                    .map(row -> String.valueOf(row.get("name")))
+                    .toList();
+            assertThat(columns).contains("caliber_profile_id", "caliber_label");
+        } finally {
+            source.destroy();
+        }
+    }
+
     @Test
     void persistsEightTurnContextWithTenantScopedSessionKey() {
         DataSource source = new EmbeddedDatabaseBuilder()

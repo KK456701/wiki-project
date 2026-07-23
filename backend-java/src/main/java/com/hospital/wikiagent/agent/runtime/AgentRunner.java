@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.Base64;
 import java.util.regex.Matcher;
@@ -958,10 +959,12 @@ public class AgentRunner {
             RequestPlan plan,
             ConversationSnapshot conversation) {
         RequestPlan.TargetIndicator target = plan.targetIndicator();
-        if (target.rawName().isBlank() && target.ruleId() == null
-                && conversation.ruleId() != null) {
+        if (target.ruleId() == null
+                && conversation.ruleId() != null
+                && canReuseConversationIndicator(target.rawName(), conversation)) {
             target = new RequestPlan.TargetIndicator(
-                    first(conversation.ruleName(), conversation.ruleId()), conversation.ruleId());
+                    first(target.rawName(), conversation.ruleName(), conversation.ruleId()),
+                    conversation.ruleId());
         }
         RequestPlan.TargetCaliber caliber = plan.targetCaliber();
         if (caliber.rawText().isBlank() && caliber.profileId() == null
@@ -979,6 +982,31 @@ public class AgentRunner {
         return new RequestPlan(
                 plan.schemaVersion(), plan.intent(), plan.goal(), target, caliber, time,
                 plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+    }
+
+    /**
+     * 判断 Planner 返回的“只有名称、没有 rule_id”的目标是否仍是上一轮指标。
+     *
+     * <p>不能因为存在历史指标就覆盖任意新名称，否则用户切换指标时可能串用旧规则。
+     * 这里只接受空名称、明确指代词或去除空格标点后完全相同的名称；新指标仍交给
+     * HybridIndicatorResolver 重新确认。</p>
+     */
+    private static boolean canReuseConversationIndicator(
+            String rawName,
+            ConversationSnapshot conversation) {
+        String target = normalizeIndicatorReference(rawName);
+        if (target.isBlank()
+                || Set.of("这个指标", "该指标", "当前指标", "这个", "它").contains(target)) {
+            return true;
+        }
+        String previousName = normalizeIndicatorReference(conversation.ruleName());
+        String previousId = normalizeIndicatorReference(conversation.ruleId());
+        return target.equals(previousName) || target.equals(previousId);
+    }
+
+    private static String normalizeIndicatorReference(String value) {
+        return value == null ? "" : value.strip().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[\\s，。、“”‘’：:；;？?（）()【】\\[\\]_-]+", "");
     }
 
     /**

@@ -794,6 +794,8 @@ CREATE TABLE IF NOT EXISTS med_agent_java_message (
   content TEXT NOT NULL,
   rule_id TEXT,
   rule_name TEXT,
+  caliber_profile_id TEXT,
+  caliber_label TEXT,
   stat_start TEXT,
   stat_end TEXT,
   run_id TEXT,

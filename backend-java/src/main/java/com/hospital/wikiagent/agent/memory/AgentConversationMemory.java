@@ -256,23 +256,29 @@ public class AgentConversationMemory {
     /**
      * 为已存在的轻量运行库补充 v2 会话列。
      *
-     * <p>SQLite 与 H2 都支持 {@code ADD COLUMN}，重复列错误表示迁移已经完成，
-     * 因此可以安全忽略。这里不引入数据库迁移框架，仍保持单进程轻量部署。</p>
+     * <p>旧实现使用 {@code DatabaseMetaData#getColumns(null, null, null, null)}
+     * 枚举整个 SQLite 库。当库内表较多时，SQLite JDBC 会生成超长复合查询并报
+     * “too many terms in compound SELECT”，导致迁移被整体跳过。这里改为对目标表
+     * 执行零行查询，只读取其 ResultSetMetaData，不扫描其他业务表。</p>
      */
-    private void ensureColumn(String name, String type) throws java.sql.SQLException {
-        if (jdbc == null || jdbc.getDataSource() == null) return;
-        try (Connection connection = jdbc.getDataSource().getConnection();
-                java.sql.ResultSet columns = connection.getMetaData().getColumns(
-                        null, null, null, null)) {
-            while (columns.next()) {
-                if ("med_agent_java_message".equalsIgnoreCase(
-                        columns.getString("TABLE_NAME"))
-                        && name.equalsIgnoreCase(columns.getString("COLUMN_NAME"))) {
-                    return;
-                }
-            }
-        }
+    private void ensureColumn(String name, String type) {
+        if (jdbc == null || hasColumn(name)) return;
         jdbc.execute("ALTER TABLE med_agent_java_message ADD COLUMN " + name + " " + type);
+    }
+
+    private boolean hasColumn(String name) {
+        Boolean found = jdbc.query(
+                "SELECT * FROM med_agent_java_message WHERE 1 = 0",
+                result -> {
+                    java.sql.ResultSetMetaData metadata = result.getMetaData();
+                    for (int index = 1; index <= metadata.getColumnCount(); index++) {
+                        if (name.equalsIgnoreCase(metadata.getColumnName(index))) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+        return Boolean.TRUE.equals(found);
     }
 
     private static ContextValues contextValues(
