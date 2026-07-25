@@ -115,6 +115,35 @@ public class ClarificationPromptFactory {
                 "INDICATOR_NOT_FOUND", message, null, hospitalId, originalQuery, List.of());
     }
 
+    /**
+     * 用户用“这两个指标”“这些指标”等复数指代提问，但没有给出可解析的指标名。
+     *
+     * <p>单指标流水线无法凭一个复数指代安全地猜出目标；Planner 又常把它误判为
+     * 对上一轮单个指标的追问并给出高置信度。这里主动反问，请用户从目录中
+     * 明确选择要处理的指标（支持多选）。</p>
+     */
+    public AgentClarification indicatorMultipleReference(
+            String hospitalId, String originalQuery) {
+        return indicatorPrompt(
+                "INDICATOR_MULTIPLE_REFERENCE",
+                "您提到了多个指标，请先选择要处理的指标。",
+                null, hospitalId, originalQuery, List.of());
+    }
+
+    /**
+     * 判断 query 是否用复数指代引用指标（如“这两个指标”“这些指标”“哪几个指标”）。
+     *
+     * <p>只匹配“限定词/数量词 + 指标”的紧邻组合，避免误伤“分子分母分别是什么”这类
+     * 单指标问句。检测为复数指代且指标不可解析时，服务端应反问而不是猜测。</p>
+     */
+    public static boolean referencesMultipleIndicators(String query) {
+        if (query == null) return false;
+        String compact = query.replaceAll("\\s+", "");
+        return java.util.regex.Pattern.compile(
+                "(这两个|那两个|两个|这些|那些|多个|几个|哪些|哪两个)指标")
+                .matcher(compact).find();
+    }
+
     private AgentClarification indicatorPrompt(
             String code,
             String message,

@@ -311,6 +311,31 @@ public class AgentRunner {
                     clarificationMessage, "clarification", traceId, sessionId,
                     0, enrichedPlan, null, clarification);
         }
+        // 复数指标指代兜底：用户说“这两个指标”“这些指标”但没给出可解析的指标名时，
+        // Planner 常会误判为对上一轮单个指标的追问并给出高置信度，从而静默生成
+        // 猜中指标的 SQL。单指标流水线无法满足复数请求，这里主动反问让用户明确选择。
+        if (ClarificationPromptFactory.referencesMultipleIndicators(request.query())) {
+            long pluralStarted = TraceEvents.started();
+            AgentClarification pluralClarification = clarificationPrompts.indicatorMultipleReference(
+                    request.principal().hospitalId(), request.query());
+            String pluralMessage = "您提到了多个指标，请先选择要处理的指标：";
+            TraceEvents.completed(observer, traceId, "multiple_indicator_clarification", "code",
+                    pluralStarted, subtaskId, Map.of(),
+                    Map.of("options_count", pluralClarification.options().size(),
+                            "clarification_kind", "indicator_multiple"));
+            emit(observer, "clarification_required", traceId, 0, eventValues(
+                    "message", pluralMessage,
+                    "code", "INDICATOR_MULTIPLE_REFERENCE",
+                    "fallback_category", "USER_CLARIFICATION",
+                    "clarification", pluralClarification,
+                    "stop_reason", "clarification"));
+            emit(observer, "agent_done", traceId, 0, Map.of(
+                    "stop_reason", "clarification", "status", "incomplete",
+                    "step_count", 0));
+            return new AgentRunResult(
+                    pluralMessage, "clarification", traceId, sessionId,
+                    0, enrichedPlan, null, pluralClarification);
+        }
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
 
