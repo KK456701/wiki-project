@@ -31,6 +31,10 @@ tools/wxp-mcp/output/
 
 # Java / Vue 迁移构建产物。
 backend-java/target/
+backend-java/src/main/resources/static/
 frontend-vue/node_modules/
 frontend-vue/dist/
 frontend-vue/.vite/
+
+# 临时文件（测试截图、导出文档等）。
+tmp/

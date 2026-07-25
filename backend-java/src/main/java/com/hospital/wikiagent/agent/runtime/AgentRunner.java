@@ -267,27 +267,40 @@ public class AgentRunner {
             }
         }
         PlanningContext fileContext = resolveUploadPlanningContext(request);
-        RequestPlan enrichedPlan = normalizeExplicitDifferenceDiagnosis(
+        RequestPlan enrichedPlan = downgradeUnsupportedDifferenceDiagnosis(
+                request.query(), request.fileKey(),
+                normalizeExplicitDifferenceDiagnosis(
                 request.query(), normalizeExplicitImplementationValidation(
                         request.query(), upgradeToTrialRun(
                                 request.query(), enrichFromResolvedIndicator(
                                         enrichFromConversation(
                                                 enrichFromUploadedFile(modelPlan.plan(), fileContext),
                                                 conversation),
-                                        resolvedIndicator))));
+                                        resolvedIndicator)))));
         // 低置信度意图澄清：在编译前检查 Planner 的置信度
         double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
         if (enrichedPlan.confidence() < threshold) {
             long clarificationStarted = TraceEvents.started();
-            AgentClarification clarification = buildIntentClarification(enrichedPlan);
+            // 如果 Planner 给出了具体指标名但解析不出 ruleId，真正模糊的是指标而非意图，
+            // 应请用户从目录重选指标，避免静默回退到上一轮指标算错对象。
+            RequestPlan.TargetIndicator lowTarget = enrichedPlan.targetIndicator();
+            boolean indicatorUnresolved = lowTarget.ruleId() == null && !lowTarget.rawName().isBlank();
+            AgentClarification clarification = indicatorUnresolved
+                    ? clarificationPrompts.indicatorUnresolved(
+                            request.principal().hospitalId(), request.query(), lowTarget.rawName())
+                    : buildIntentClarification(enrichedPlan);
+            String clarificationMessage = indicatorUnresolved
+                    ? "未能匹配到您说的指标，请确认要处理的指标："
+                    : "无法确定您的意图，请确认您想要的操作：";
             TraceEvents.completed(observer, traceId, "low_confidence_clarification", "code",
                     clarificationStarted, subtaskId, Map.of(
                             "confidence", enrichedPlan.confidence(),
                             "threshold", threshold),
-                    Map.of("options_count", clarification.options().size()));
+                    Map.of("options_count", clarification.options().size(),
+                            "clarification_kind", indicatorUnresolved ? "indicator" : "intent"));
             emit(observer, "clarification_required", traceId, 0, eventValues(
-                    "message", "无法确定您的意图，请确认您想要的操作：",
-                    "code", "LOW_CONFIDENCE_INTENT",
+                    "message", clarificationMessage,
+                    "code", indicatorUnresolved ? "INDICATOR_NOT_FOUND" : "LOW_CONFIDENCE_INTENT",
                     "fallback_category", "USER_CLARIFICATION",
                     "clarification", clarification,
                     "stop_reason", "clarification"));
@@ -295,7 +308,7 @@ public class AgentRunner {
                     "stop_reason", "clarification", "status", "incomplete",
                     "step_count", 0));
             return new AgentRunResult(
-                    "无法确定您的意图，请确认您想要的操作。", "clarification", traceId, sessionId,
+                    clarificationMessage, "clarification", traceId, sessionId,
                     0, enrichedPlan, null, clarification);
         }
         PlannerResult planned = new PlannerResult(
@@ -317,6 +330,8 @@ public class AgentRunner {
         state.currentRuleId(first(
                 planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
         state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
+        state.lastIntent(planned.plan().intent().value());
+        state.lastRuleName(planned.plan().targetIndicator().rawName());
 
         // 在编译 IR 之前核对原问题和模型计划。只有真正的方向性冲突才触发一次
         // Replanner；正常计划不会增加模型调用。
@@ -669,7 +684,9 @@ public class AgentRunner {
                     "rule_id=" + safe(state.currentRuleId())
                             + "; evidence_ids=" + state.evidenceIds(),
                     failedPlanId));
-            RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
+            RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
+                    request.query(), request.fileKey(),
+                    normalizeExplicitDifferenceDiagnosis(
                     request.query(), normalizeExplicitImplementationValidation(
                             request.query(), upgradeToTrialRun(
                                     request.query(), enrichFromResolvedIndicator(
@@ -678,7 +695,7 @@ public class AgentRunner {
                                                             raw.plan(),
                                                             resolveUploadPlanningContext(request)),
                                                     conversation),
-                                            resolvedIndicator))));
+                                            resolvedIndicator)))));
             String alternativeId = precompilePlanId(plan);
             if (!failureRouter.acceptsAlternative(state, alternativeId)) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
@@ -747,7 +764,9 @@ public class AgentRunner {
                     "rule_id=" + safe(state.currentRuleId())
                             + "; evidence_ids=" + state.evidenceIds(),
                     compiled.planId()));
-            RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
+            RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
+                    request.query(), request.fileKey(),
+                    normalizeExplicitDifferenceDiagnosis(
                     request.query(), normalizeExplicitImplementationValidation(
                             request.query(), upgradeToTrialRun(
                                     request.query(), enrichFromResolvedIndicator(
@@ -756,7 +775,7 @@ public class AgentRunner {
                                                             raw.plan(),
                                                             resolveUploadPlanningContext(request)),
                                                     conversation),
-                                            resolvedIndicator))));
+                                            resolvedIndicator)))));
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
@@ -1031,6 +1050,9 @@ public class AgentRunner {
             ConversationSnapshot conversation) {
         String structured = "请求携带状态：\n" + safe(request.structuredState())
                 + "\n服务端会话状态：\n" + safe(conversation.structuredSummary());
+        if (conversation.evidenceContext() != null && !conversation.evidenceContext().isBlank()) {
+            structured += "\n已验证证据（上一轮工具结果）：\n" + conversation.evidenceContext();
+        }
         String history = join(conversation.recentHistory(), request.recentHistory());
         return new AgentRunRequest(
                 request.query(), conversation.sessionId(), request.modelId(), request.fileKey(),
@@ -1062,9 +1084,7 @@ public class AgentRunner {
             time = new RequestPlan.TimeExpression(
                     "沿用上一轮统计区间", conversation.statStart(), conversation.statEnd());
         }
-        return new RequestPlan(
-                plan.schemaVersion(), plan.intent(), plan.goal(), target, caliber, time,
-                plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+        return plan.withTargetIndicator(target).withTargetCaliber(caliber).withTimeExpression(time);
     }
 
     /**
@@ -1117,9 +1137,7 @@ public class AgentRunner {
                     file.statStart(),
                     file.statEnd());
         }
-        return new RequestPlan(
-                plan.schemaVersion(), plan.intent(), plan.goal(), target, plan.targetCaliber(), time,
-                plan.requestedOutputs(), plan.constraints(), plan.semanticAmbiguities());
+        return plan.withTargetIndicator(target).withTimeExpression(time);
     }
 
     private PlanningContext resolveUploadPlanningContext(AgentRunRequest request) {
@@ -1140,11 +1158,8 @@ public class AgentRunner {
             RequestPlan plan,
             HybridIndicatorResolver.ResolvedIndicator resolved) {
         if (resolved == null) return plan;
-        return new RequestPlan(
-                plan.schemaVersion(), plan.intent(), plan.goal(),
-                new RequestPlan.TargetIndicator(resolved.canonicalName(), resolved.ruleId()),
-                plan.targetCaliber(), plan.timeExpression(), plan.requestedOutputs(), plan.constraints(),
-                plan.semanticAmbiguities());
+        return plan.withTargetIndicator(
+                new RequestPlan.TargetIndicator(resolved.canonicalName(), resolved.ruleId()));
     }
 
     /**
@@ -1233,7 +1248,37 @@ public class AgentRunner {
     }
 
     /**
-     * 对明确的“双方结果不一致”表达做服务端兜底路由。
+     * 差异诊断降级：如果意图是 INDICATOR_DIFFERENCE_DIAGNOSIS 但没有上传文件、
+     * 也没有明确比较对象文本，自动降级为 INDICATOR_DIAGNOSIS。
+     *
+     * <p>差异诊断需要外部比较对象（上传 Excel、明确“和系统对比”等）。
+     * 单纯“结果不对”“数值有问题”属于异常诊断，不应走差异对比流程。</p>
+     */
+    private static RequestPlan downgradeUnsupportedDifferenceDiagnosis(
+            String query, String fileKey, RequestPlan plan) {
+        if (plan.intent() != PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS) {
+            return plan;
+        }
+        // 有上传文件时保持差异诊断
+        if (fileKey != null && !fileKey.isBlank()) {
+            return plan;
+        }
+        // 有明确比较对象文本时保持差异诊断
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        boolean hasComparisonTarget = List.of(
+                "对比", "核对", "比较", "和系统", "与系统", "和文件",
+                "与文件", "和表格", "与表格", "我们", "我方", "上传")
+                .stream().anyMatch(compact::contains);
+        if (hasComparisonTarget) {
+            return plan;
+        }
+        // 无外部比较对象，降级为异常诊断
+        return plan.withIntent(PlanIntent.INDICATOR_DIAGNOSIS)
+                .withRequestedOutputs(List.of(RequestedOutput.DIAGNOSIS));
+    }
+    
+    /**
+     * 对明确的“双方结果不一致”表达做服务端兖底路由。
      *
      * <p>Planner 仍会给出完整 RequestPlan；此处只在用户文本已经明确包含比较对象和差异
      * 诉求时收敛为分层诊断，避免 4B 模型把上传对比误判成普通文件分析或通用异常诊断。
@@ -1267,16 +1312,10 @@ public class AgentRunner {
                 && query != null) {
             time = new RequestPlan.TimeExpression(query, null, null);
         }
-        return new RequestPlan(
-                plan.schemaVersion(),
-                PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
-                plan.goal(),
-                target,
-                plan.targetCaliber(),
-                time,
-                List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
-                plan.constraints(),
-                plan.semanticAmbiguities());
+        return plan.withIntent(PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS)
+                .withTargetIndicator(target)
+                .withTimeExpression(time)
+                .withRequestedOutputs(List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT));
     }
 
     private static RequestPlan normalizeExplicitImplementationValidation(
@@ -1295,16 +1334,10 @@ public class AgentRunner {
                 && query != null) {
             time = new RequestPlan.TimeExpression(query, null, null);
         }
-        return new RequestPlan(
-                plan.schemaVersion(),
-                PlanIntent.IMPLEMENTATION_VALIDATION,
-                plan.goal(),
-                target,
-                plan.targetCaliber(),
-                time,
-                List.of(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT),
-                plan.constraints(),
-                plan.semanticAmbiguities());
+        return plan.withIntent(PlanIntent.IMPLEMENTATION_VALIDATION)
+                .withTargetIndicator(target)
+                .withTimeExpression(time)
+                .withRequestedOutputs(List.of(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT));
     }
 
     /**
@@ -1325,34 +1358,18 @@ public class AgentRunner {
         if (plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
                 && plan.requestedOutputs().contains(RequestedOutput.PREPARED_SQL_HANDLE)
                 && !compact.contains("sql") && !compact.contains("脚本")) {
-            return new RequestPlan(
-                    plan.schemaVersion(),
-                    PlanIntent.INDICATOR_TRIAL_RUN,
-                    plan.goal(),
-                    plan.targetIndicator(),
-                    plan.targetCaliber(),
-                    plan.timeExpression(),
-                    plan.requestedOutputs().stream()
+            return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+                    .withRequestedOutputs(plan.requestedOutputs().stream()
                             .map(o -> o == RequestedOutput.PREPARED_SQL_HANDLE
                                     ? RequestedOutput.TRIAL_RESULT : o)
-                            .toList(),
-                    plan.constraints(),
-                    plan.semanticAmbiguities());
+                            .toList());
         }
 
         // 2) RULE_EXPLANATION → TRIAL_RUN：用户提供了具体时间范围（提供时间意味着想算出结果）
         if (plan.intent() == PlanIntent.RULE_EXPLANATION
                 && hasExplicitTimeRange(plan, compact)) {
-            return new RequestPlan(
-                    plan.schemaVersion(),
-                    PlanIntent.INDICATOR_TRIAL_RUN,
-                    plan.goal(),
-                    plan.targetIndicator(),
-                    plan.targetCaliber(),
-                    plan.timeExpression(),
-                    List.of(RequestedOutput.TRIAL_RESULT),
-                    plan.constraints(),
-                    plan.semanticAmbiguities());
+            return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+                    .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT));
         }
 
         return plan;

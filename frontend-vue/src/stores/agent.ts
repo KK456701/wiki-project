@@ -254,11 +254,19 @@ export const useAgentStore = defineStore('agent', {
     latestFileKey: '',
     latestFileName: '',
     messages: [] as ChatMessage[],
-    running: false,
+    // 运行状态按会话隔离：sessionId -> 是否正在请求。
+    // 这样在 A 会话请求进行中，仍可以在 B 会话并行提问。
+    runningSessions: {} as Record<string, boolean>,
+    // 各会话运行中的实时消息引用：sessionId -> 正在生成的 agent 消息。
+    // 切换对话时消息列表会被数据库快照替换，但请求仍在后台继续；
+    // 凭此引用可在切回该会话时把实时进度重新挂回列表。
+    activeRunMessages: {} as Record<string, ChatMessage>,
     error: '',
   }),
   getters: {
     isAuthenticated: () => true,
+    /** 当前会话是否正在请求（供模板与发送拦截使用）。 */
+    running: (state): boolean => Boolean(state.runningSessions[state.sessionId]),
     latestAgentMessage: (state): ChatMessage | undefined => [...state.messages].reverse().find((message) => message.role === 'agent'),
   },
   actions: {
@@ -310,6 +318,11 @@ export const useAgentStore = defineStore('agent', {
     },
     /** 恢复指定历史会话的消息记录 */
     async restoreSession(sessionId: string) {
+      // 必须在 await 之前先抓住运行中的消息引用：
+      // 若请求恰好在下拉会话的 await 期间完成，finally 会先删除 activeRunMessages，
+      // 等 await 返回后再读就是 undefined，导致运行中的消息丢失。
+      // 提前捕获的引用是响应式代理，请求完成时会被更新为最终内容，挂回去即可看到结果。
+      const runningMessage = this.activeRunMessages[sessionId]
       try {
         const historyMessages = await getSessionMessages(this.token, sessionId)
         this.sessionId = sessionId
@@ -325,6 +338,11 @@ export const useAgentStore = defineStore('agent', {
           status: 'complete' as const,
           evidence: [],
         }))
+        // 如果该会话仍有后台运行中的请求，把实时消息重新挂回列表，
+        // 让用户切回来时能看到正在处理的进度，而不是误以为请求消失。
+        if (runningMessage && !this.messages.some((message) => message.id === runningMessage.id)) {
+          this.messages.push(runningMessage)
+        }
       } catch (error) {
         this.error = error instanceof Error ? error.message : '恢复会话失败'
       }
@@ -351,6 +369,9 @@ export const useAgentStore = defineStore('agent', {
     async send(query: string) {
       const normalized = query.trim()
       if (!normalized || this.running) return
+      // 记录本轮请求所属的会话与消息标识。切换对话会把消息列表整个替换，
+      // 导致进行中的消息被摘掉；完成后需要能判断是否要重新拉取。
+      const requestSessionId = this.sessionId
       const pendingClarification = [...this.messages].reverse().find(
         (message) => message.role === 'agent'
           && message.awaitingClarification
@@ -358,7 +379,7 @@ export const useAgentStore = defineStore('agent', {
       )
       if (pendingClarification) pendingClarification.clarificationResolved = true
       this.error = ''
-      this.running = true
+      this.runningSessions[requestSessionId] = true
       const userMessage: ChatMessage = {
         id: makeId('message'), role: 'user', content: normalized, status: 'complete', evidence: [],
       }
@@ -371,6 +392,9 @@ export const useAgentStore = defineStore('agent', {
       // 如果继续修改 push 前的原始对象，页面通常只会在 this.running 变化时看到最终状态。
       const activeMessage = this.messages[this.messages.length - 1]
       setStage(activeMessage, '准备运行', 'code')
+      // 记下本轮运行中的消息。切换对话会替换消息列表，但请求仍在后台继续，
+      // 切回该会话时凭此引用把实时进度重新挂回列表。
+      this.activeRunMessages[requestSessionId] = activeMessage
 
       try {
         await streamAgent(this.token, {
@@ -403,7 +427,15 @@ export const useAgentStore = defineStore('agent', {
         this.error = activeMessage.content
       } finally {
         finishTiming(activeMessage)
-        this.running = false
+        this.runningSessions[requestSessionId] = false
+        delete this.activeRunMessages[requestSessionId]
+        // 后端在用户切换对话后仍会继续计算并将会话写入数据库。
+        // 如果本轮消息已被切换动作摘掉、且用户仍停留在该会话，
+        // 完成后从后端重新拉取消息，保证结果能正常显示。
+        if (this.sessionId === requestSessionId
+            && !this.messages.some((message) => message.id === agentMessage.id)) {
+          await this.restoreSession(requestSessionId).catch(() => undefined)
+        }
       }
     },
     applyEvent(message: ChatMessage, event: AgentEvent) {

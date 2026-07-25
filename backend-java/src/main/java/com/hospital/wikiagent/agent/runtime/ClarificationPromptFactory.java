@@ -101,6 +101,20 @@ public class ClarificationPromptFactory {
                 recommended);
     }
 
+    /**
+     * Planner 给出了具体指标名但服务端无法解析出 ruleId（例如追问只带模糊名称、
+     * 或该名称不在生效目录中）。此时应请用户从目录重新选择指标，
+     * 而不是静默回退到上一轮指标。
+     */
+    public AgentClarification indicatorUnresolved(
+            String hospitalId, String originalQuery, String mention) {
+        String message = mention == null || mention.isBlank()
+                ? "未能将您提到的指标匹配到正式指标，请重新选择。"
+                : "未能将“" + mention + "”匹配到正式指标，请重新选择或输入更完整的名称。";
+        return indicatorPrompt(
+                "INDICATOR_NOT_FOUND", message, null, hospitalId, originalQuery, List.of());
+    }
+
     private AgentClarification indicatorPrompt(
             String code,
             String message,

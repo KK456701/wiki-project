@@ -182,6 +182,9 @@ public class CompoundAgentRuntime {
                 "subtask_count", outcomes.size()));
         AgentRunState memoryState = new AgentRunState();
         memoryState.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
+        memoryState.lastIntent("compound");
+        memoryState.lastRuleName(split.tasks().stream()
+                .map(SubtaskSpec::target).collect(java.util.stream.Collectors.joining("、")));
         conversations.appendAssistant(conversation, request.principal(), answer, memoryState);
         return new AgentRunResult(
                 answer, stopReason, traceId, conversation.sessionId(), steps,

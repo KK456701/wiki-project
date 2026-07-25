@@ -126,6 +126,35 @@ public class JdbcJsonlEvidenceStore implements EvidenceStore {
                 .filter(value -> "verified".equals(value.status()));
     }
 
+    @Override
+    public List<EvidenceEnvelope> recentByRule(String hospitalId, String ruleId, int limit) {
+        if (hospitalId == null || ruleId == null || limit <= 0) {
+            return List.of();
+        }
+        try {
+            return jdbc.query("""
+                    SELECT * FROM med_agent_evidence
+                    WHERE hospital_id = ? AND rule_id = ?
+                      AND safe_payload_json IS NOT NULL AND safe_payload_json <> '{}'
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """, (result, row) -> new EvidenceEnvelope(
+                    result.getString("schema_version"), result.getString("evidence_id"),
+                    result.getString("trace_id"), result.getString("subtask_id"),
+                    result.getString("fact_type"), result.getString("hospital_id"),
+                    result.getString("rule_id"), result.getString("rule_version"),
+                    result.getString("stat_start"), result.getString("stat_end"),
+                    result.getString("source_tool"), result.getString("source_object_id"),
+                    result.getString("input_fingerprint"), result.getString("result_fingerprint"),
+                    result.getString("confidentiality"), parseInstant(result.getString("created_at")),
+                    parseInstant(result.getString("expires_at")), result.getString("payload_ref"),
+                    readMap(result.getString("safe_payload_json"))),
+                    hospitalId, ruleId, Math.min(limit, 5));
+        } catch (RuntimeException exception) {
+            return List.of();
+        }
+    }
+
     private void append(String event, Object payload) {
         Map<String, Object> record = new LinkedHashMap<>();
         record.put("event", event);

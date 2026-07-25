@@ -25,6 +25,26 @@ const sessionList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(true)
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
+// 侧边栏实际渲染的列表：后端会话列表 + 正在处理但还未写入列表的会话。
+// 新对话的第一条消息处理时，后端还没来得及把会话返回给前端，
+// 这里临时补一个条目，让“处理中”的旋转图标有地方显示。
+const displaySessionList = computed<SessionSummary[]>(() => {
+  const list = [...sessionList.value]
+  for (const [sid, isRunning] of Object.entries(store.runningSessions)) {
+    if (!isRunning) continue
+    if (list.some((session) => session.session_id === sid)) continue
+    const firstUser = sid === store.sessionId
+      ? store.messages.find((message) => message.role === 'user')
+      : undefined
+    list.unshift({
+      session_id: sid,
+      title: firstUser?.content?.trim().slice(0, 24) || '新对话',
+      last_message_at: new Date().toISOString(),
+      message_count: store.messages.length,
+    })
+  }
+  return list
+})
 const suggestions = [
   '急会诊及时到位率怎么算？',
   '患者入院 48 小时内转科的比例从一月份到现在是多少？',
@@ -165,17 +185,18 @@ async function exportDiagnosis(reportId?: string) {
         </header>
         <ul class="session-list">
           <li
-            v-for="session in sessionList"
+            v-for="session in displaySessionList"
             :key="session.session_id"
             class="session-item"
             :class="{ active: session.session_id === store.sessionId }"
             @click="switchSession(session.session_id)"
           >
+            <span v-if="store.runningSessions[session.session_id]" class="session-spinner" title="处理中"></span>
             <span class="session-title">{{ session.title }}</span>
             <button type="button" class="session-delete" title="删除" @click="removeSession(session.session_id, $event)">×</button>
           </li>
         </ul>
-        <p v-if="!sessionList.length" class="sidebar-empty">暂无历史对话</p>
+        <p v-if="!displaySessionList.length" class="sidebar-empty">暂无历史对话</p>
       </aside>
 
       <div ref="conversation" class="conversation-panel">

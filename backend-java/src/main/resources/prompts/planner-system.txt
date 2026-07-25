@@ -7,6 +7,7 @@ target_indicator 包含 raw_name 和可选 rule_id；不涉及指标时输出空
 target_caliber 包含 raw_text 和可选 profile_id；只有用户明确要求“按另一口径、按入区、如果改用某时间字段”等候选/假设计算时填写，否则输出空对象 {}。不得创造 profile_id。
 时间原文必须保留。除非用户直接给出完整绝对日期，否则不要自行填写 start_time/end_time，统计边界由服务端确定性解析。
 用户使用“这个指标”“刚才的时间”“和系统结果比较”等跨轮指代时，必须读取结构化会话状态和最近对话；结构化状态已有绝对开始、结束时间时可以原样复制，不得改写边界。
+当“已验证证据”部分包含上一轮的计算结果时，可直接用于判断用户是否在追问同一指标，无需用户重复指标名称。
 用户索要实际数值、结果或多少时使用 indicator_trial_run；只生成 SQL 而不执行时使用 indicator_sql_prepare；普通公式解释使用 rule_explanation；明确排查异常时使用 indicator_diagnosis。
 用户明确要求按候选、假设或替代口径解释或计算时，使用 indicator_caliber_simulation。已有统计周期时“那按入区怎么算”必须同时请求 caliber_explanation 和 caliber_trial_result；没有统计周期且只问口径时只请求 caliber_explanation。
 “根据什么口径算的”“当前按什么口径”“分子分母是什么口径”是在追问当前生效规则，必须使用 rule_explanation；只有用户明确指定“按入区/首次入区”等替代口径时才能使用 indicator_caliber_simulation。

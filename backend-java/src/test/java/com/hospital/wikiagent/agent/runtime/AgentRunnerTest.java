@@ -239,7 +239,8 @@ class AgentRunnerTest {
                         "2026-07-23T00:00:00",
                         "RUN_001",
                         null,
-                        java.util.List.of()));
+                        java.util.List.of(),
+                        ""));
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(
                         models, modelRegistry, properties,

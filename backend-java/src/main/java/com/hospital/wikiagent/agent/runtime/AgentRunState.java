@@ -33,6 +33,8 @@ public class AgentRunState {
     private final Map<String, ToolResult> toolResultCache = new HashMap<>();
     private final Map<String, Integer> toolCallCounts = new LinkedHashMap<>();
     private Consumer<WorkflowProgress> progressReporter = progress -> { };
+    private String lastIntent;
+    private String lastRuleName;
 
     public String currentRuleId() {
         return currentRuleId;
@@ -180,6 +182,25 @@ public class AgentRunState {
 
     public void reportProgress(WorkflowProgress progress) {
         if (progress != null) progressReporter.accept(progress);
+    }
+
+    /**
+     * 记录本轮 Planner 确认的意图和指标名，供会话记忆生成代码摘要（digest）。
+     */
+    public void lastIntent(String value) {
+        lastIntent = value == null || value.isBlank() ? null : value.strip();
+    }
+
+    public String lastIntent() {
+        return lastIntent;
+    }
+
+    public void lastRuleName(String value) {
+        lastRuleName = value == null || value.isBlank() ? null : value.strip();
+    }
+
+    public String lastRuleName() {
+        return lastRuleName;
     }
 
     public record WorkflowProgress(

@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.evidence.EvidenceEnvelope;
+import com.hospital.wikiagent.agent.evidence.EvidenceStore;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -36,6 +38,7 @@ public class AgentConversationMemory {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final EvidenceStore evidenceStore;
     private final Map<String, List<Message>> fallback = new ConcurrentHashMap<>();
     private final Map<String, ContextValues> fallbackContext = new ConcurrentHashMap<>();
     // 上一轮复合澄清确认的整批指标名，按存储键记住。历史 ## 小节被长 SQL 挤掉时，
@@ -43,14 +46,24 @@ public class AgentConversationMemory {
     private final Map<String, List<String>> compoundTargets = new ConcurrentHashMap<>();
 
     @Autowired
-    public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper,
+            @Autowired(required = false) EvidenceStore evidenceStore) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.evidenceStore = evidenceStore;
+    }
+
+    /**
+     * 兼容测试和内部构造的两参数入口，不注入 EvidenceStore。
+     */
+    public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this(jdbc, objectMapper, null);
     }
 
     private AgentConversationMemory() {
         this.jdbc = null;
         this.objectMapper = null;
+        this.evidenceStore = null;
     }
 
     public static AgentConversationMemory noop() {
@@ -87,6 +100,7 @@ public class AgentConversationMemory {
                     """.formatted(identity));
             ensureColumn("caliber_profile_id", "VARCHAR(128)");
             ensureColumn("caliber_label", "VARCHAR(255)");
+            ensureColumn("digest", "VARCHAR(512)");
         } catch (Exception exception) {
             // 运行库不可用时仍允许服务启动；具体消息会进入租户隔离的内存兜底。
             LOGGER.warn("Unable to initialize Agent conversation memory table; fallback remains enabled: {}",
@@ -153,7 +167,8 @@ public class AgentConversationMemory {
                 structuredSummary,
                 ruleId, ruleName, caliberProfileId, caliberLabel,
                 statStart, statEnd, runId, uploadFileKey,
-                compoundTargets.getOrDefault(key, List.of()));
+                compoundTargets.getOrDefault(key, List.of()),
+                buildEvidenceContext(principal.hospitalId(), ruleId));
     }
 
     public void appendUser(
@@ -167,7 +182,7 @@ public class AgentConversationMemory {
                 conversation.ruleId(), conversation.ruleName(),
                 conversation.caliberProfileId(), conversation.caliberLabel(),
                 conversation.statStart(), conversation.statEnd(), conversation.lastRunId(),
-                first(uploadFileKey, conversation.uploadFileKey()), Instant.now().toString()));
+                first(uploadFileKey, conversation.uploadFileKey()), Instant.now().toString(), null));
     }
 
     public void appendAssistant(
@@ -177,12 +192,13 @@ public class AgentConversationMemory {
             AgentRunState state) {
         ContextValues values = contextValues(state, conversation);
         fallbackContext.put(conversation.storageKey(), values);
+        String digest = generateDigest(state, content);
         append(new Message(
                 conversation.storageKey(), principal.hospitalId(), principal.userId(),
                 "assistant", limited(content, 12_000), values.ruleId(), values.ruleName(),
                 values.caliberProfileId(), values.caliberLabel(),
                 values.statStart(), values.statEnd(), values.runId(), values.uploadFileKey(),
-                Instant.now().toString()));
+                Instant.now().toString(), digest));
     }
 
     /**
@@ -216,7 +232,7 @@ public class AgentConversationMemory {
                         SELECT session_key, hospital_id, user_id, role, content,
                                rule_id, rule_name, caliber_profile_id, caliber_label,
                                stat_start, stat_end, run_id,
-                               upload_file_key, created_at
+                               upload_file_key, created_at, digest
                         FROM med_agent_java_message
                         WHERE session_key = ?
                         ORDER BY id DESC
@@ -230,7 +246,8 @@ public class AgentConversationMemory {
                         result.getString("caliber_label"),
                         result.getString("stat_start"),
                         result.getString("stat_end"), result.getString("run_id"),
-                        result.getString("upload_file_key"), result.getString("created_at")),
+                        result.getString("upload_file_key"), result.getString("created_at"),
+                        result.getString("digest")),
                         key, MAX_MESSAGES);
                 Collections.reverse(rows);
                 return merge(rows, fallback.getOrDefault(key, List.of()));
@@ -251,14 +268,14 @@ public class AgentConversationMemory {
                         INSERT INTO med_agent_java_message (
                           session_key, hospital_id, user_id, role, content, rule_id, rule_name,
                           caliber_profile_id, caliber_label, stat_start, stat_end, run_id,
-                          upload_file_key, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          upload_file_key, created_at, digest
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         message.sessionKey(), message.hospitalId(), message.userId(), message.role(),
                         message.content(), message.ruleId(), message.ruleName(),
                         message.caliberProfileId(), message.caliberLabel(),
                         message.statStart(), message.statEnd(), message.runId(),
-                        message.uploadFileKey(), message.createdAt());
+                        message.uploadFileKey(), message.createdAt(), message.digest());
             } catch (RuntimeException exception) {
                 LOGGER.warn("Unable to persist Agent conversation memory; using fallback for session key hash={}: {}",
                         Integer.toHexString(message.sessionKey().hashCode()), exception.getMessage());
@@ -388,15 +405,39 @@ public class AgentConversationMemory {
     }
 
     private static String history(List<Message> messages) {
+        if (messages.isEmpty()) {
+            return "";
+        }
+        // 最近 6 条（约 3 轮）为完整区，每条限 800 字符；
+        // 更早的消息为摘要区：user 保留前 150 字符，assistant 用 digest 替代。
+        int recentCount = Math.min(6, messages.size());
+        int summaryEnd = messages.size() - recentCount;
         StringBuilder value = new StringBuilder();
-        for (Message message : messages) {
+        // 摘要区
+        for (int i = 0; i < summaryEnd; i++) {
+            Message message = messages.get(i);
             String role = "assistant".equals(message.role()) ? "助手" : "用户";
-            String line = role + "：" + limited(message.content(), 2_000) + "\n";
-            if (value.length() + line.length() > MAX_HISTORY_CHARS) {
-                int overflow = value.length() + line.length() - MAX_HISTORY_CHARS;
-                value.delete(0, Math.min(overflow, value.length()));
+            String body;
+            if ("assistant".equals(message.role())) {
+                body = message.digest() != null && !message.digest().isBlank()
+                        ? "[摘要] " + message.digest()
+                        : limited(message.content(), 100) + "…";
+            } else {
+                body = limited(message.content(), 150)
+                        + (message.content() != null && message.content().length() > 150 ? "…" : "");
             }
-            value.append(line);
+            value.append(role).append("：").append(body).append("\n");
+        }
+        // 完整区
+        for (int i = summaryEnd; i < messages.size(); i++) {
+            Message message = messages.get(i);
+            String role = "assistant".equals(message.role()) ? "助手" : "用户";
+            value.append(role).append("：").append(limited(message.content(), 800)).append("\n");
+        }
+        // 总量上限
+        if (value.length() > MAX_HISTORY_CHARS) {
+            int overflow = value.length() - MAX_HISTORY_CHARS;
+            value.delete(0, Math.min(overflow, value.length()));
         }
         return value.toString().strip();
     }
@@ -427,6 +468,120 @@ public class AgentConversationMemory {
         if (value != null && !String.valueOf(value).isBlank()) {
             values.put(key, value);
         }
+    }
+
+    // ─── Evidence 上下文和回答摘要 ─────────────────────────────────────────────────
+
+    /**
+     * 按当前指标检索最近已验证 Evidence，生成紧凑文本摘要注入 Planner 上下文。
+     * 纯代码拼接，不调用 LLM。
+     */
+    private String buildEvidenceContext(String hospitalId, String ruleId) {
+        if (evidenceStore == null || hospitalId == null || ruleId == null) {
+            return "";
+        }
+        try {
+            List<EvidenceEnvelope> envelopes = evidenceStore.recentByRule(hospitalId, ruleId, 3);
+            if (envelopes.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder();
+            for (EvidenceEnvelope envelope : envelopes) {
+                sb.append("[EV] ").append(envelope.factType()).append(": ");
+                sb.append(formatPayload(envelope.safePayload()));
+                sb.append("\n");
+            }
+            return sb.toString().strip();
+        } catch (RuntimeException exception) {
+            return "";
+        }
+    }
+
+    private static String formatPayload(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return "无摘要";
+        }
+        StringBuilder sb = new StringBuilder();
+        appendIfPresent(sb, payload, "numerator_count", "分子");
+        appendIfPresent(sb, payload, "denominator_count", "分母");
+        appendIfPresent(sb, payload, "result_value", "结果");
+        appendIfPresent(sb, payload, "sample_count", "样本");
+        appendIfPresent(sb, payload, "sql_id", "sql_id");
+        appendIfPresent(sb, payload, "sql_status", "状态");
+        appendIfPresent(sb, payload, "stat_start", "开始");
+        appendIfPresent(sb, payload, "stat_end", "结束");
+        appendIfPresent(sb, payload, "stat_start_time", "开始");
+        appendIfPresent(sb, payload, "stat_end_time", "结束");
+        appendIfPresent(sb, payload, "caliber_label", "口径");
+        appendIfPresent(sb, payload, "rule_name", "指标");
+        appendIfPresent(sb, payload, "diagnose_status", "诊断状态");
+        appendIfPresent(sb, payload, "user_summary", "摘要");
+        if (sb.isEmpty()) {
+            // 没有命中已知字段时，取前 3 个键值对
+            int count = 0;
+            for (Map.Entry<String, Object> entry : payload.entrySet()) {
+                if (count++ >= 3) break;
+                if (!sb.isEmpty()) sb.append(", ");
+                sb.append(entry.getKey()).append("=").append(entry.getValue());
+            }
+        }
+        return sb.toString();
+    }
+
+    private static void appendIfPresent(
+            StringBuilder sb, Map<String, Object> payload, String key, String label) {
+        Object value = payload.get(key);
+        if (value != null && !String.valueOf(value).isBlank()) {
+            if (!sb.isEmpty()) sb.append(", ");
+            sb.append(label).append("=").append(value);
+        }
+    }
+
+    /**
+     * 根据本轮意图和指标名生成代码摘要（digest），不调用 LLM。
+     * 用于更早轮次的历史压缩，让 Planner 用极少 token 了解之前做了什么。
+     */
+    private static String generateDigest(AgentRunState state, String content) {
+        if (state == null) {
+            return firstSentence(content, 80);
+        }
+        String intent = state.lastIntent();
+        String name = state.lastRuleName() != null ? state.lastRuleName() : "该指标";
+        if (intent == null || intent.isBlank()) {
+            return firstSentence(content, 80);
+        }
+        return switch (intent) {
+            case "rule_explanation" -> "已解释" + name + "的定义、公式和本院口径";
+            case "indicator_sql_prepare" -> "已为" + name + "生成并校验 SQL";
+            case "indicator_trial_run" -> "已计算" + name + "的结果"
+                    + (state.statStart() != null
+                            ? "（" + state.statStart() + " 至 " + state.statEnd() + "）" : "");
+            case "indicator_diagnosis" -> "已诊断" + name + "的异常原因";
+            case "indicator_caliber_simulation" -> "已模拟" + name + "的候选口径计算";
+            case "indicator_difference_diagnosis" -> "已完成" + name + "的差异对比诊断";
+            case "upload_analysis" -> "已分析上传文件";
+            case "implementation_validation" -> "已完成" + name + "的实施验收";
+            case "compound" -> "已处理" + name;
+            default -> firstSentence(content, 80);
+        };
+    }
+
+    private static String firstSentence(String content, int limit) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        String stripped = content.strip();
+        // 取第一个换行或句号之前的内容
+        int end = stripped.length();
+        for (int i = 0; i < stripped.length() && i < limit; i++) {
+            char c = stripped.charAt(i);
+            if (c == '\n' || c == '。' || c == '！') {
+                end = i + 1;
+                break;
+            }
+        }
+        end = Math.min(end, limit);
+        return stripped.substring(0, end) + (stripped.length() > end ? "…" : "");
     }
 
     // ─── 会话管理查询 ───────────────────────────────────────────────────────────
@@ -556,9 +711,11 @@ public class AgentConversationMemory {
             String statEnd,
             String lastRunId,
             String uploadFileKey,
-            List<String> compoundTargets) {
+            List<String> compoundTargets,
+            String evidenceContext) {
         public ConversationSnapshot {
             compoundTargets = compoundTargets == null ? List.of() : List.copyOf(compoundTargets);
+            evidenceContext = evidenceContext == null ? "" : evidenceContext;
         }
     }
 
@@ -587,6 +744,7 @@ public class AgentConversationMemory {
             String statEnd,
             String runId,
             String uploadFileKey,
-            String createdAt) {
+            String createdAt,
+            String digest) {
     }
 }

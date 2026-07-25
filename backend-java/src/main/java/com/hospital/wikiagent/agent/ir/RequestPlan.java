@@ -71,6 +71,35 @@ public record RequestPlan(
         confidence = confidence == null ? 1.0 : confidence;
     }
 
+    /**
+     * 返回仅替换意图、其余字段（含 confidence）保持不变的新计划。
+     * 转换型富化必须使用这类 with 方法，避免重建时丢失 Planner 给出的置信度。
+     */
+    public RequestPlan withIntent(PlanIntent newIntent) {
+        return new RequestPlan(schemaVersion, newIntent, goal, targetIndicator, targetCaliber,
+                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withTargetIndicator(TargetIndicator newTarget) {
+        return new RequestPlan(schemaVersion, intent, goal, newTarget, targetCaliber,
+                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withTargetCaliber(TargetCaliber newCaliber) {
+        return new RequestPlan(schemaVersion, intent, goal, targetIndicator, newCaliber,
+                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withTimeExpression(TimeExpression newTime) {
+        return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
+                newTime, requestedOutputs, constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withRequestedOutputs(List<RequestedOutput> newOutputs) {
+        return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
+                timeExpression, newOutputs, constraints, semanticAmbiguities, confidence);
+    }
+
     public record TargetIndicator(String rawName, String ruleId) {
         public TargetIndicator {
             rawName = rawName == null ? "" : rawName.strip();

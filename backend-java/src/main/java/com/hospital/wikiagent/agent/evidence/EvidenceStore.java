@@ -12,4 +12,13 @@ public interface EvidenceStore {
     void saveVerification(EvidenceVerification value);
     Optional<EvidenceEnvelope> loadEvidence(String evidenceId);
     Optional<EvidenceVerification> loadVerified(String evidenceId);
+
+    /**
+     * 按医院和指标检索最近已保存的 Evidence，用于下一轮 Planner 上下文注入。
+     * 只返回 safe_payload 非空的记录，按创建时间倒序，最多 limit 条。
+     */
+    default java.util.List<EvidenceEnvelope> recentByRule(
+            String hospitalId, String ruleId, int limit) {
+        return java.util.List.of();
+    }
 }
