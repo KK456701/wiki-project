@@ -100,6 +100,15 @@ public record RequestPlan(
                 timeExpression, newOutputs, constraints, semanticAmbiguities, confidence);
     }
 
+    /**
+     * 返回仅替换置信度、其余字段保持不变的新计划。
+     * 用于模型输出缺少 confidence 字段时的确定性降级，避免静默按 1.0 处理。
+     */
+    public RequestPlan withConfidence(Double newConfidence) {
+        return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
+                timeExpression, requestedOutputs, constraints, semanticAmbiguities, newConfidence);
+    }
+
     public record TargetIndicator(String rawName, String ruleId) {
         public TargetIndicator {
             rawName = rawName == null ? "" : rawName.strip();

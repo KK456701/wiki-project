@@ -803,3 +803,11 @@ CREATE TABLE IF NOT EXISTS med_agent_java_message (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_java_message_session ON med_agent_java_message(session_key, id);
+
+CREATE TABLE IF NOT EXISTS med_agent_compound_target (
+  session_key TEXT NOT NULL,
+  position INT NOT NULL,
+  target_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (session_key, position)
+);

@@ -135,7 +135,8 @@ class AgentRunnerTest {
                   },
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """,
                 RULE_TEMPLATE_ANSWER);
@@ -214,7 +215,8 @@ class AgentRunnerTest {
                   },
                   "requested_outputs": ["caliber_explanation"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """;
         QueueInvoker models = new QueueInvoker(
@@ -308,7 +310,8 @@ class AgentRunnerTest {
                   "time_expression": {"raw_text": ""},
                   "requested_outputs": ["trial_result"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """,
                 """
@@ -320,7 +323,8 @@ class AgentRunnerTest {
                   "time_expression": {"raw_text": ""},
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """,
                 RULE_TEMPLATE_ANSWER);
@@ -401,7 +405,8 @@ class AgentRunnerTest {
                   },
                   "requested_outputs": ["trial_result"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """,
                 TRIAL_TEMPLATE_ANSWER);
@@ -492,7 +497,8 @@ class AgentRunnerTest {
                   },
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """,
                 TRIAL_TEMPLATE_ANSWER);
@@ -568,7 +574,8 @@ class AgentRunnerTest {
                   },
                   "requested_outputs": ["prepared_sql_handle"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
@@ -702,7 +709,8 @@ class AgentRunnerTest {
                   "time_expression": {},
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": []
+                  "semantic_ambiguities": [],
+                  "confidence": 0.9
                 }
                 """);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);

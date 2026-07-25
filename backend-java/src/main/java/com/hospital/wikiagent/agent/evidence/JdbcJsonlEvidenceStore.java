@@ -132,11 +132,18 @@ public class JdbcJsonlEvidenceStore implements EvidenceStore {
             return List.of();
         }
         try {
-            return jdbc.query("""
-                    SELECT * FROM med_agent_evidence
-                    WHERE hospital_id = ? AND rule_id = ?
-                      AND safe_payload_json IS NOT NULL AND safe_payload_json <> '{}'
-                    ORDER BY created_at DESC
+            // 只返回已通过 EvidenceVerifier 验证（status='verified'）且未过期的 Evidence。
+            // Evidence 在验证之前就已写入台账，之后可能被判定为 rejected；若不过滤，
+            // 被拒绝或未验证的结果会被注入下一轮 Planner 上下文，造成跨轮事实污染。
+            List<EvidenceEnvelope> rows = jdbc.query("""
+                    SELECT e.* FROM med_agent_evidence e
+                    WHERE e.hospital_id = ? AND e.rule_id = ?
+                      AND e.safe_payload_json IS NOT NULL AND e.safe_payload_json <> '{}'
+                      AND EXISTS (
+                        SELECT 1 FROM med_agent_evidence_verification v
+                        WHERE v.evidence_id = e.evidence_id AND v.status = 'verified'
+                      )
+                    ORDER BY e.created_at DESC
                     LIMIT ?
                     """, (result, row) -> new EvidenceEnvelope(
                     result.getString("schema_version"), result.getString("evidence_id"),
@@ -150,6 +157,12 @@ public class JdbcJsonlEvidenceStore implements EvidenceStore {
                     parseInstant(result.getString("expires_at")), result.getString("payload_ref"),
                     readMap(result.getString("safe_payload_json"))),
                     hospitalId, ruleId, Math.min(limit, 5));
+            // expires_at 以 ISO 字符串存储，字符串比较在精度不一致时不可靠，
+            // 故在内存中按 Instant 语义过滤：仅保留永久有效（null）或未过期的记录。
+            Instant now = Instant.now();
+            return rows.stream()
+                    .filter(envelope -> envelope.expiresAt() == null || envelope.expiresAt().isAfter(now))
+                    .toList();
         } catch (RuntimeException exception) {
             return List.of();
         }

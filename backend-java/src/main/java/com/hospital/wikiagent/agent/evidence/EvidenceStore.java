@@ -15,7 +15,8 @@ public interface EvidenceStore {
 
     /**
      * 按医院和指标检索最近已保存的 Evidence，用于下一轮 Planner 上下文注入。
-     * 只返回 safe_payload 非空的记录，按创建时间倒序，最多 limit 条。
+     * 只返回 safe_payload 非空、已通过验证（status='verified'）且未过期的记录，
+     * 按创建时间倒序，最多 limit 条。被拒绝或未验证的 Evidence 不会被返回。
      */
     default java.util.List<EvidenceEnvelope> recentByRule(
             String hospitalId, String ruleId, int limit) {

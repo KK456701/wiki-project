@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
@@ -19,6 +20,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Component
 public class ModelRequestPlanner {
     public static final String VERSION = "model-request-planner-v2";
+
+    /**
+     * 模型输出缺少 confidence 字段时使用的降级值。
+     * 低于默认阈值 0.7，会触发确定性澄清而不是静默按 1.0 直接执行。
+     */
+    private static final double MISSING_CONFIDENCE = 0.0;
 
     private final AgentModelInvoker models;
     private final AgentModelRegistry registry;
@@ -140,9 +147,16 @@ public class ModelRequestPlanner {
 
     private RequestPlan parseAndValidate(String raw) {
         try {
-            RequestPlan value = objectMapper.readValue(ModelJsonExtractor.firstObject(raw), RequestPlan.class);
+            JsonNode node = objectMapper.readTree(ModelJsonExtractor.firstObject(raw));
+            RequestPlan value = objectMapper.treeToValue(node, RequestPlan.class);
             if (!RequestPlan.VERSION.equals(value.schemaVersion())) {
                 throw new IllegalArgumentException("RequestPlan 版本不匹配");
+            }
+            // 模型输出缺少 confidence 时不能静默按 1.0 处理：小模型漏输置信度
+            // 并不代表意图一定正确。降级为低置信度以触发确定性澄清，把判断权
+            // 交还用户；确定性构造路径仍可通过兼容构造器显式传 1.0。
+            if (!node.has("confidence") || node.get("confidence").isNull()) {
+                value = value.withConfidence(MISSING_CONFIDENCE);
             }
             return value;
         } catch (PlannerOutputException exception) {

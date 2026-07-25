@@ -101,6 +101,17 @@ public class AgentConversationMemory {
             ensureColumn("caliber_profile_id", "VARCHAR(128)");
             ensureColumn("caliber_label", "VARCHAR(255)");
             ensureColumn("digest", "VARCHAR(512)");
+            // 复合指标确认目标需要随会话持久化，服务重启后仍可恢复，
+            // 供后续纯时间补充/指代追问重新展开为复合，与消息持久化能力保持一致。
+            jdbc.execute("""
+                    CREATE TABLE IF NOT EXISTS med_agent_compound_target (
+                      session_key VARCHAR(512) NOT NULL,
+                      position INT NOT NULL,
+                      target_name VARCHAR(255) NOT NULL,
+                      created_at VARCHAR(40) NOT NULL,
+                      PRIMARY KEY (session_key, position)
+                    )
+                    """);
         } catch (Exception exception) {
             // 运行库不可用时仍允许服务启动；具体消息会进入租户隔离的内存兜底。
             LOGGER.warn("Unable to initialize Agent conversation memory table; fallback remains enabled: {}",
@@ -167,7 +178,7 @@ public class AgentConversationMemory {
                 structuredSummary,
                 ruleId, ruleName, caliberProfileId, caliberLabel,
                 statStart, statEnd, runId, uploadFileKey,
-                compoundTargets.getOrDefault(key, List.of()),
+                loadCompoundTargets(key),
                 buildEvidenceContext(principal.hospitalId(), ruleId));
     }
 
@@ -222,6 +233,54 @@ public class AgentConversationMemory {
         }
         if (cleaned.size() >= 2) {
             compoundTargets.put(conversation.storageKey(), List.copyOf(cleaned));
+            persistCompoundTargets(conversation.storageKey(), cleaned);
+        }
+    }
+
+    /**
+     * 读取会话的复合指标确认目标：优先持久化数据库记录，数据库不可用时
+     * 回退到进程内缓存，保证服务重启后仍能恢复复合目标。
+     */
+    private List<String> loadCompoundTargets(String key) {
+        if (jdbc != null) {
+            try {
+                List<String> rows = jdbc.query("""
+                        SELECT target_name FROM med_agent_compound_target
+                        WHERE session_key = ?
+                        ORDER BY position ASC
+                        """, (result, row) -> result.getString("target_name"), key);
+                if (!rows.isEmpty()) {
+                    return List.copyOf(rows);
+                }
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Unable to load compound targets for session key hash={}: {}",
+                        Integer.toHexString(key.hashCode()), exception.getMessage());
+            }
+        }
+        return compoundTargets.getOrDefault(key, List.of());
+    }
+
+    /**
+     * 把复合指标确认目标持久化到数据库（先删后插以保持顺序）。
+     * 写入失败仅告警；进程内缓存已更新，同进程追问不受影响。
+     */
+    private void persistCompoundTargets(String key, List<String> targets) {
+        if (jdbc == null) {
+            return;
+        }
+        try {
+            jdbc.update("DELETE FROM med_agent_compound_target WHERE session_key = ?", key);
+            int position = 0;
+            for (String target : targets) {
+                jdbc.update("""
+                        INSERT INTO med_agent_compound_target (
+                          session_key, position, target_name, created_at
+                        ) VALUES (?, ?, ?, ?)
+                        """, key, position++, target, Instant.now().toString());
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to persist compound targets for session key hash={}: {}",
+                    Integer.toHexString(key.hashCode()), exception.getMessage());
         }
     }
 
@@ -475,6 +534,9 @@ public class AgentConversationMemory {
     /**
      * 按当前指标检索最近已验证 Evidence，生成紧凑文本摘要注入 Planner 上下文。
      * 纯代码拼接，不调用 LLM。
+     *
+     * <p>每条证据除结果摘要外还携带证据号、来源运行对象和记录时间，
+     * 让 Planner 能区分不同统计区间/口径/来源的多份结果，避免混淆哪条对应当前请求。</p>
      */
     private String buildEvidenceContext(String hospitalId, String ruleId) {
         if (evidenceStore == null || hospitalId == null || ruleId == null) {
@@ -489,6 +551,14 @@ public class AgentConversationMemory {
             for (EvidenceEnvelope envelope : envelopes) {
                 sb.append("[EV] ").append(envelope.factType()).append(": ");
                 sb.append(formatPayload(envelope.safePayload()));
+                // 证据溯源元数据：证据号 + 来源对象（RUN_/SQL_ 等）+ 记录时间。
+                sb.append(" ｜ 证据号=").append(envelope.evidenceId());
+                if (envelope.sourceObjectId() != null && !envelope.sourceObjectId().isBlank()) {
+                    sb.append(", 来源=").append(envelope.sourceObjectId());
+                }
+                if (envelope.createdAt() != null) {
+                    sb.append(", 记录于=").append(envelope.createdAt());
+                }
                 sb.append("\n");
             }
             return sb.toString().strip();
@@ -588,7 +658,7 @@ public class AgentConversationMemory {
 
     /**
      * 查询当前用户的所有会话摘要，按最后消息时间倒序。
-     * 标题取该会话第一条 user 消息的前 60 个字符。
+     * 标题取该会话时间上第一条 user 消息的前 60 个字符（而非字典序最小）。
      */
     public List<SessionSummary> listSessions(HospitalPrincipal principal) {
         if (jdbc == null) {
@@ -597,14 +667,16 @@ public class AgentConversationMemory {
         String prefix = "agent:" + principal.hospitalId() + ":" + principal.userId() + ":";
         try {
             return jdbc.query("""
-                    SELECT session_key,
-                           MIN(CASE WHEN role = 'user' THEN content END) AS title,
-                           MAX(created_at) AS last_at,
+                    SELECT m1.session_key,
+                           (SELECT m2.content FROM med_agent_java_message m2
+                            WHERE m2.session_key = m1.session_key AND m2.role = 'user'
+                            ORDER BY m2.id ASC LIMIT 1) AS title,
+                           MAX(m1.created_at) AS last_at,
                            COUNT(*) AS message_count
-                    FROM med_agent_java_message
-                    WHERE session_key LIKE ? ESCAPE '\\'
-                    GROUP BY session_key
-                    ORDER BY MAX(created_at) DESC
+                    FROM med_agent_java_message m1
+                    WHERE m1.session_key LIKE ? ESCAPE '\\'
+                    GROUP BY m1.session_key
+                    ORDER BY MAX(m1.created_at) DESC
                     LIMIT 100
                     """, (result, row) -> {
                 String key = result.getString("session_key");
@@ -626,7 +698,9 @@ public class AgentConversationMemory {
     }
 
     /**
-     * 查询指定会话的全部消息，按时间正序返回。
+     * 查询指定会话的消息，按时间正序返回。
+     * 会话超过 200 条时只保留最近 200 条（而非最早 200 条），避免恢复会话时
+     * 丢失最新对话、只看到最早的历史。
      */
     public List<SessionMessage> getSessionMessages(HospitalPrincipal principal, String sessionId) {
         if (jdbc == null) {
@@ -636,10 +710,14 @@ public class AgentConversationMemory {
         try {
             return jdbc.query("""
                     SELECT role, content, rule_id, rule_name, stat_start, stat_end, run_id, created_at
-                    FROM med_agent_java_message
-                    WHERE session_key = ?
+                    FROM (
+                      SELECT id, role, content, rule_id, rule_name, stat_start, stat_end, run_id, created_at
+                      FROM med_agent_java_message
+                      WHERE session_key = ?
+                      ORDER BY id DESC
+                      LIMIT 200
+                    ) recent_messages
                     ORDER BY id ASC
-                    LIMIT 200
                     """, (result, row) -> new SessionMessage(
                     result.getString("role"),
                     result.getString("content"),
@@ -665,6 +743,7 @@ public class AgentConversationMemory {
         String key = storageKey(principal, sessionId);
         try {
             jdbc.update("DELETE FROM med_agent_java_message WHERE session_key = ?", key);
+            jdbc.update("DELETE FROM med_agent_compound_target WHERE session_key = ?", key);
             fallback.remove(key);
             fallbackContext.remove(key);
             compoundTargets.remove(key);
