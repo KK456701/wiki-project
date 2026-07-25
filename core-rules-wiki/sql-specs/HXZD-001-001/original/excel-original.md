@@ -1,0 +1,230 @@
+---
+page_type: sql_original
+rule_id: HXZD-001-001
+source_status: raw_imported
+executable: false
+contains_unresolved_tokens: true
+updated_at: 2026-07-25
+---
+
+# 原始 SQL 存档：患者入院48小时内转科的比例
+
+> ⚠️ 本文件为 Excel 导出的原始 SQL，包含未解析标记（#EQUALS、#ETC、#{NOLOCK}、#NAME?），不可直接执行。
+
+## 源表 / 事件抽取 SQL
+
+```sql
+SELECT
+ DISTINCT 
+ t1.ENCOUNTER_ID AS bizId,
+ t1.FIRST_ADMITTED_TO_WARD_AT AS eventAt,
+ GETDATE() AS extractAt,
+ '1' AS mrasTargetDefinitionId,
+ 'V2.0' as version, 
+ t1.ENCOUNTER_ID AS encounterId,
+ t1.FULL_NAME AS personName,
+ t1.IMRN as imrn,
+ -- 如果 t2 的科室为空则取 t1 的当前科室
+ COALESCE(t2.ORIGIN_DEPT_ID, t1.CURRENT_DEPT_ID) AS currentDeptId,
+ -- 科室名称根据最终选定的科室 ID 关联
+ o1.ORG_NAME AS currentDeptName,
+ -- 同理，病房 ID 取 COALESCE
+ COALESCE(t2.ORIGIN_WARD_ID, t1.CURRENT_WARD_ID) AS currentWardId,
+ o2.ORG_NAME AS currentWardName,
+ t1.FIRST_ADMITTED_TO_WARD_AT AS admittedToWardAt, 
+ t1.DISCHARGED_FROM_WARD_AT AS wardDischargedAt,
+ t3.EMPLOYEE_ID AS currentAdmitterId,
+ t4.EMPLOYEE_NAME AS currentAdmitterName,
+ t1.HOSPITAL_SOID AS hospitalSoid,
+ t1.SOURCE_HOSPITAL_AREA_ID AS hospitalAreaId,
+ CASE WHEN t1.IS_DEL = '1' THEN 1 ELSE 0 END AS isDel,
+ -- 若无转移记录，该字段为 NULL
+ CASE WHEN DATEDIFF(HOUR, t1.FIRST_ADMITTED_TO_WARD_AT, t2.INPAT_TRANSFER_AT) < 48 THEN 98175 ELSE 98176 END AS transferWithinTwoDay,
+ '' AS memo
+FROM
+ INPATIENT_ENCOUNTER t1 
+ LEFT JOIN (
+    SELECT t.*,
+           ROW_NUMBER() OVER (PARTITION BY ENCOUNTER_ID ORDER BY CREATED_AT ASC) AS rn
+    FROM INPAT_TRANSFER t
+    WHERE t.IS_DEL = '0'
+      AND (t.INPAT_TRANSFER_TYPE_CODE = '399549991' 
+           OR (t.INPAT_TRANSFER_TYPE_CODE = '399549990' AND t.ORIGIN_DEPT_ID <> t.DESTINATION_DEPT_ID))
+      AND t.ORIGIN_DEPT_ID NOT IN (select ORG_ID from ORGANIZATION where ORG_NO IN ('12800000','42800000','42800200','31301','22800000','33802','34001','22800100','22800200','42800100','12800200','27401','12800100'))
+      AND t.ORIGIN_WARD_ID NOT IN (select ORG_ID from ORGANIZATION where ORG_NO IN ('12800000','42800000','42800200','31301','22800000','33802','34001','22800100','22800200','42800100','12800200','27401','12800100'))
+      AND t.DESTINATION_DEPT_ID NOT IN (select ORG_ID from ORGANIZATION where ORG_NO IN ('12800000','42800000','42800200','31301','22800000','33802','34001','22800100','22800200','42800100','12800200','27401','12800100'))
+      AND t.DESTINATION_WARD_ID NOT IN (select ORG_ID from ORGANIZATION where ORG_NO IN ('12800000','42800000','42800200','31301','22800000','33802','34001','22800100','22800200','42800100','12800200','27401','12800100'))
+ ) t2 ON t1.ENCOUNTER_ID = t2.ENCOUNTER_ID AND t2.rn = 1
+ -- 科室名称关联：使用 COALESCE 后的科室 ID
+ LEFT JOIN ORGANIZATION o1 ON COALESCE(t2.ORIGIN_DEPT_ID, t1.CURRENT_DEPT_ID) = o1.ORG_ID
+ -- 病房名称关联：使用 COALESCE 后的病房 ID
+ LEFT JOIN ORGANIZATION o2 ON COALESCE(t2.ORIGIN_WARD_ID, t1.CURRENT_WARD_ID) = o2.ORG_ID
+ LEFT JOIN INPATIENT_PARTICIPANT t3 ON t1.ENCOUNTER_ID = t3.ENCOUNTER_ID AND t3.IS_DEL = 0 AND t3.INPAT_PARTICIPANT_TYPE_CODE = 1000098
+ LEFT JOIN EMPLOYEE_INFO t4 ON t3.EMPLOYEE_ID = t4.EMPLOYEE_ID 
+WHERE
+ 1 = 1  
+ AND t1.INPAT_ENC_BIZ_TYPE_CODE <> 399552157 
+ #EQUALS{:syncType; increment; AND (t1.MODIFIED_AT BETWEEN :startTime AND :endTime OR t2.MODIFIED_AT BETWEEN :startTime AND :endTime)}
+ #EQUALS{:syncType; single; AND t1.ENCOUNTER_ID in (select ENCOUNTER_ID from INPATIENT_ENCOUNTER where DISCHARGED_FROM_WARD_AT is null or DISCHARGED_FROM_WARD_AT BETWEEN :startTime and :endTime)}
+ #EQUALS{:syncType; outHosp; AND t1.ENCOUNTER_ID in (select ENCOUNTER_ID from INPATIENT_ENCOUNTER where DISCHARGED_FROM_WARD_AT BETWEEN :startTime and :endTime)}
+```
+
+## 目标表－概览 SQL
+
+```sql
+--概览，查询出目标值，各个指标编码是固定的   
+ WITH TargetValue AS (   
+     SELECT    
+         TARGET_COMP_VAL/100.0 AS target_value    
+     FROM    
+         MRAS_TARGET_DEFINITION #{NOLOCK}   
+     WHERE    
+         TARGET_NO = 'HXZD-001-001'   
+ ),   
+ -- 按照科室来进行分组查询，用来查询哪个科室不达标   
+ DeptOrderStats AS (   
+   SELECT 
+    event.CURRENT_DEPT_ID,
+       event.CURRENT_DEPT_NAME AS "科室名称",   
+    COUNT(CASE WHEN TRANSFER_WITHIN_TWO_DAY = '98175' THEN 1 ELSE NULL END) AS '分子入院48小时内转科患者人次数',
+    COUNT(1) AS '分母同期入院患者总人次数',
+    CASE WHEN COUNT(1) = 0 THEN 0  ELSE COUNT(CASE WHEN TRANSFER_WITHIN_TWO_DAY = '98175' THEN 1 ELSE NULL END) * 1.0 / COUNT(1) * 1.0 END AS '监测情况' 
+   FROM 
+    MRAS_BUSINESS_FIRSTVISIT event #{NOLOCK}
+   WHERE 
+    #NAME?
+    #EQUALS{:onlySearchFeilds; ONLY_SEARCH_FEILDS;  1 = 0 ; 1=1}
+    AND event.ADMITTED_TO_WARD_AT BETWEEN :marptBeginAt and :marptEndAt
+    GROUP BY
+         event.CURRENT_DEPT_ID, event.CURRENT_DEPT_NAME   
+ ),   
+ #NAME?   
+ TotalStats AS (   
+     SELECT   
+         SUM(分子入院48小时内转科患者人次数) AS "分子入院48小时内转科患者人次数",   
+         SUM(分母同期入院患者总人次数) AS "分母同期入院患者总人次数",   
+         CASE    
+             WHEN SUM(分母同期入院患者总人次数) = 0 THEN 0    
+             ELSE SUM(分子入院48小时内转科患者人次数) * 1.0 / SUM(分母同期入院患者总人次数)    
+         END AS "监测情况",   
+         (SELECT target_value FROM TargetValue) AS "目标值"   
+     FROM DeptOrderStats   
+ )   
+ #NAME?   
+ SELECT   
+     t.*,   
+   CASE WHEN t.监测情况 >= t.目标值 THEN '否' ELSE '是' END AS "是否达标", 
+     STUFF((   
+         SELECT ', ' + 科室名称    
+         FROM DeptOrderStats    
+         WHERE 分母同期入院患者总人次数 > 0    
+           AND 监测情况 >= (SELECT target_value FROM TargetValue)   
+         FOR XML PATH('')   
+     ), 1, 2, '') AS "未达标科室列表"   
+ FROM TotalStats t
+```
+
+## 目标表－科室统计 SQL
+
+```sql
+--科室统计  
+ WITH TargetValue AS (   
+     SELECT    
+         TARGET_COMP_VAL/100.0 AS target_value    
+     FROM    
+         MRAS_TARGET_DEFINITION #{NOLOCK}   
+     WHERE    
+         TARGET_NO = 'HXZD-001-001'   
+ ),   
+ #NAME?   
+ DeptStats AS (   
+   SELECT 
+    event.CURRENT_DEPT_ID AS "当前科室编码",
+    event.CURRENT_DEPT_NAME AS "当前科室名称",
+    COUNT(CASE WHEN TRANSFER_WITHIN_TWO_DAY = '98175' THEN 1 ELSE NULL END) AS "分子入院48小时内转科患者人次数",
+    COUNT(1) AS "分母同期入院患者总人次数",
+    CASE WHEN COUNT(1) = 0 THEN 0  ELSE COUNT(CASE WHEN TRANSFER_WITHIN_TWO_DAY = '98175' THEN 1 ELSE NULL END) * 1.0 / COUNT(1) * 1.0 END AS "监测情况" 
+   FROM 
+    MRAS_BUSINESS_FIRSTVISIT event  #{NOLOCK}
+   WHERE 
+    #NAME?
+    #EQUALS{:onlySearchFeilds; ONLY_SEARCH_FEILDS; 1 = 0 ; 1= 1}
+    AND event.ADMITTED_TO_WARD_AT BETWEEN :marptBeginAt and :marptEndAt 
+    #ETC{AND event.CURRENT_DEPT_ID IN (:deptIdIn)}
+   GROUP BY  event.CURRENT_DEPT_ID,event.CURRENT_DEPT_NAME 
+ ),   
+ #NAME?   
+ TempResults AS (   
+     SELECT   
+         d.当前科室编码,   
+         d.当前科室名称,   
+         d.分子入院48小时内转科患者人次数,   
+         d.分母同期入院患者总人次数,   
+         d.监测情况,   
+         (SELECT target_value FROM TargetValue) AS "目标值",   
+         CASE    
+    WHEN (SELECT target_value FROM TargetValue) IS NULL THEN NULL
+             WHEN d.分母同期入院患者总人次数 = 0 THEN '无数据'   
+             WHEN d.监测情况 < (SELECT target_value FROM TargetValue) THEN '达标'   
+             ELSE '未达标'   
+         END AS "对比结果"   
+     FROM    
+         DeptStats d   
+   WHERE 1 = 1  
+   #NAME? 
+   #EQUALS{:qualified; 98175; AND d.监测情况 < (SELECT target_value FROM TargetValue) ; } 
+   #NAME? 
+   #EQUALS{:qualified; 98176; AND d.监测情况 >= (SELECT target_value FROM TargetValue) ; } 
+ )   
+ #NAME?   
+ SELECT * FROM TempResults
+```
+
+## 目标表－患者明细 SQL
+
+```sql
+"SELECT
+event.ENCOUNTER_ID ,
+event.ENCOUNTER_ID AS ""ROWNUM"", 
+event.CURRENT_DEPT_ID AS ""当前科室编码"",
+event.CURRENT_DEPT_NAME AS ""当前科室"",
+event.IMRN AS ""住院号"",
+event.PERSON_NAME AS ""患者姓名"",
+event.CURRENT_ADMITTER_NAME AS ""责任医师"",
+team.ORG_NAME as ""TEAM_NAME"",
+team.ORG_ID as ""TEAM_ID"",
+team.ORG_NO as ""TEAM_NO"",
+team.ORG_NAME as ""当前医疗组"",
+event.ADMITTED_TO_WARD_AT AS ""入区时间"",
+event.WARD_DISCHARGED_AT AS ""出区时间"",
+t1.INPAT_TRANSFER_AT AS ""转科时间"",
+DATEDIFF(HOUR,event.ADMITTED_TO_WARD_AT,t1.INPAT_TRANSFER_AT)  AS ""转科时间-入院时间"",
+o1.ORG_NAME AS ""转出科室"",
+o2.ORG_NAME AS ""转入科室"",
+CASE WHEN  (TRANSFER_WITHIN_TWO_DAY = 98175 AND  DATEDIFF(HOUR,event.ADMITTED_TO_WARD_AT,t1.INPAT_TRANSFER_AT) < 48) THEN '是' ELSE '否' END AS ""是否48小时内转科"" ,
+CASE WHEN  (TRANSFER_WITHIN_TWO_DAY = 98175 AND  DATEDIFF(HOUR,event.ADMITTED_TO_WARD_AT,t1.INPAT_TRANSFER_AT) < 48) THEN 98175 ELSE 98175 END AS ""standFlag""
+FROM
+MRAS_BUSINESS_FIRSTVISIT event  #{NOLOCK}
+LEFT JOIN INPAT_TRANSFER t1  #{NOLOCK}  ON event.ENCOUNTER_ID = t1.ENCOUNTER_ID
+  LEFT JOIN ORGANIZATION o1  #{NOLOCK}   ON t1.ORIGIN_DEPT_ID = o1.ORG_ID
+  LEFT JOIN ORGANIZATION o2  #{NOLOCK}  ON t1.DESTINATION_DEPT_ID = o2.ORG_ID
+LEFT JOIN INPATIENT_ENCOUNTER inp #{NOLOCK}  ON event.ENCOUNTER_ID = inp.ENCOUNTER_ID
+LEFT JOIN MRAS_ORGANIZATION team #{NOLOCK}  ON team.ORG_ID = inp.CURRENT_MEDICAL_GROUP_ID
+WHERE
+--布局组件设置提升效率
+#EQUALS{:onlySearchFeilds; ONLY_SEARCH_FEILDS;  1 = 0 ; 1=1}
+AND event.ADMITTED_TO_WARD_AT BETWEEN :marptBeginAt and :marptEndAt
+AND t1.INPAT_TRANSFER_ID IS NOT NULL 
+AND (t1.INPAT_TRANSFER_TYPE_CODE = '399549991' OR (t1.INPAT_TRANSFER_TYPE_CODE = '399549990' AND t1.ORIGIN_DEPT_ID <> t1.DESTINATION_DEPT_ID))
+AND t1.IS_DEL = 0 
+AND event.VERSION = 'V2.0'
+AND event.IS_DEL = 0
+#ETC{AND t1.ORIGIN_DEPT_ID IN (:oriDeptIdIn)}
+#ETC{AND event.CURRENT_DEPT_ID IN (:deptIdIn)}
+#ETC{ AND event.HOSPITAL_AREA_ID IN (:hospitalAreaList) }
+#EQUALS{:status; 98175; AND DATEDIFF(HOUR,event.ADMITTED_TO_WARD_AT,t1.INPAT_TRANSFER_AT) < 48 AND t1.ORIGIN_DEPT_ID NOT IN (SELECT ORG_ID FROM BUSINESS_UNIT_X_BU_TYPE WHERE IS_DEL = 0 AND BU_TYPE_CODE = '399001827')
+AND t1.ORIGIN_WARD_ID NOT IN (SELECT ORG_ID FROM BUSINESS_UNIT_X_BU_TYPE WHERE IS_DEL = 0 AND BU_TYPE_CODE = '399001827')
+AND t1.DESTINATION_DEPT_ID NOT IN (SELECT ORG_ID FROM BUSINESS_UNIT_X_BU_TYPE WHERE IS_DEL = 0 AND BU_TYPE_CODE = '399001827')
+AND t1.DESTINATION_WARD_ID NOT IN (SELECT ORG_ID FROM BUSINESS_UNIT_X_BU_TYPE WHERE IS_DEL = 0 AND BU_TYPE_CODE = '399001827') ; }
+#EQUALS{:status; 98176; AND DATEDIFF(HOUR,event.ADMITTED_TO_WARD_AT,t1.INPAT_TRANSFER_AT) >= 48 ; }'"
+```

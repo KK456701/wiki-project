@@ -1,0 +1,8 @@
+{
+  "HXZD-001-001": {
+    "title": "患者入院48小时内转科的比例",
+    "page": "wiki/indicators/HXZD-001-001/index.md",
+    "system_id": "HXZD-001",
+    "default_profile": "HXZD-001-001-company-default"
+  }
+}
