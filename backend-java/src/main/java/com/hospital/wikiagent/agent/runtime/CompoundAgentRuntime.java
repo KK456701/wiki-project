@@ -17,6 +17,9 @@ import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.hospital.wikiagent.agent.batch.BatchIndicatorRuntime;
+import com.hospital.wikiagent.agent.batch.BatchRequestDetector;
+import com.hospital.wikiagent.agent.batch.BatchRequestSpec;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.model.AgentModelRegistry;
@@ -41,6 +44,8 @@ public class CompoundAgentRuntime {
     private final AgentConversationMemory conversations;
     private final HybridIndicatorResolver indicatorResolver;
     private final ClarificationPromptFactory clarificationPrompts;
+    private final BatchRequestDetector batchDetector;
+    private final BatchIndicatorRuntime batchRuntime;
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -66,7 +71,6 @@ public class CompoundAgentRuntime {
         this(runner, splitter, models, properties, conversations, indicatorResolver, null);
     }
 
-    @Autowired
     public CompoundAgentRuntime(
             AgentRunner runner,
             CompoundRequestSplitter splitter,
@@ -75,6 +79,21 @@ public class CompoundAgentRuntime {
             AgentConversationMemory conversations,
             HybridIndicatorResolver indicatorResolver,
             ClarificationPromptFactory clarificationPrompts) {
+        this(runner, splitter, models, properties, conversations, indicatorResolver,
+                clarificationPrompts, null, null);
+    }
+
+    @Autowired
+    public CompoundAgentRuntime(
+            AgentRunner runner,
+            CompoundRequestSplitter splitter,
+            AgentModelRegistry models,
+            AgentModelProperties properties,
+            AgentConversationMemory conversations,
+            HybridIndicatorResolver indicatorResolver,
+            ClarificationPromptFactory clarificationPrompts,
+            BatchRequestDetector batchDetector,
+            BatchIndicatorRuntime batchRuntime) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
@@ -82,6 +101,8 @@ public class CompoundAgentRuntime {
         this.conversations = conversations;
         this.indicatorResolver = indicatorResolver;
         this.clarificationPrompts = clarificationPrompts;
+        this.batchDetector = batchDetector;
+        this.batchRuntime = batchRuntime;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -89,6 +110,14 @@ public class CompoundAgentRuntime {
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        // “计算所有指标结果”走确定性批量路径：意图由正则检测器确定，指标身份可枚举、
+        // 时间来自父请求，全程 0 次 LLM 调用。未挂载批量组件时回退原有复合路径。
+        if (batchDetector != null && batchRuntime != null) {
+            BatchRequestSpec batchSpec = batchDetector.detect(request.query());
+            if (batchSpec.batch()) {
+                return batchRuntime.run(request, observer, batchSpec);
+            }
+        }
         long splitStarted = TraceEvents.started();
         var conversation = conversations.open(request.principal(), request.sessionId());
         HybridIndicatorResolver.Resolution resolution = indicatorResolver == null

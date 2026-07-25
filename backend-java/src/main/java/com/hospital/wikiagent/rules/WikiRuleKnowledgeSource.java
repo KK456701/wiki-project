@@ -145,6 +145,7 @@ public class WikiRuleKnowledgeSource {
         result.put("national_rule", nationalRule);
         result.put("national_params", map(spec.get("default_params")));
         result.put("effective_params", effectiveParams);
+        result.put("result_unit", text(map(spec.get("result")).get("unit")));
         result.put("national_version", nationalRule.get("version"));
         result.put("hospital_version", overrideItem == null ? null
                 : overrideItem.getOrDefault("hospital_version", overrideItem.get("version")));

@@ -195,7 +195,7 @@ public class CapabilitySpecRegistry {
         visited.add(capability);
     }
 
-    static List<CapabilitySpec> defaultSpecs() {
+    public static List<CapabilitySpec> defaultSpecs() {
         return List.of(
                 spec(PlanCapability.RESOLVE_INDICATOR, Set.of(), Set.of("rule_identity"),
                         "search_indicator_rules", CapabilitySpecRegistry::indicatorQuery, "rule_identity"),

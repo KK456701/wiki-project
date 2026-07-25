@@ -28,6 +28,8 @@ public class AgentModelProperties {
     private double traceTimeoutWarningRate = 0.05;
     private String evidenceJsonlPath = "runtime/agent_evidence_java.jsonl";
     private double confidenceThreshold = 0.7;
+    private int batchMaxIndicators = 35;
+    private int batchWorkerConcurrency = 4;
     private List<ModelDefinition> models = new ArrayList<>();
 
     public String getDefaultModel() { return defaultModel; }
@@ -60,6 +62,10 @@ public class AgentModelProperties {
     public void setEvidenceJsonlPath(String value) { evidenceJsonlPath = value; }
     public double getConfidenceThreshold() { return confidenceThreshold; }
     public void setConfidenceThreshold(double value) { confidenceThreshold = value; }
+    public int getBatchMaxIndicators() { return batchMaxIndicators; }
+    public void setBatchMaxIndicators(int value) { batchMaxIndicators = value; }
+    public int getBatchWorkerConcurrency() { return batchWorkerConcurrency; }
+    public void setBatchWorkerConcurrency(int value) { batchWorkerConcurrency = value; }
     public List<ModelDefinition> getModels() { return models; }
     public void setModels(List<ModelDefinition> value) {
         models = value == null ? new ArrayList<>() : new ArrayList<>(value);
