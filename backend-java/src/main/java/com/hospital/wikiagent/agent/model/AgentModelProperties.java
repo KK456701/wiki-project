@@ -27,6 +27,7 @@ public class AgentModelProperties {
     private double traceToolFailureWarningRate = 0.05;
     private double traceTimeoutWarningRate = 0.05;
     private String evidenceJsonlPath = "runtime/agent_evidence_java.jsonl";
+    private double confidenceThreshold = 0.7;
     private List<ModelDefinition> models = new ArrayList<>();
 
     public String getDefaultModel() { return defaultModel; }
@@ -57,6 +58,8 @@ public class AgentModelProperties {
     public void setTraceTimeoutWarningRate(double value) { traceTimeoutWarningRate = value; }
     public String getEvidenceJsonlPath() { return evidenceJsonlPath; }
     public void setEvidenceJsonlPath(String value) { evidenceJsonlPath = value; }
+    public double getConfidenceThreshold() { return confidenceThreshold; }
+    public void setConfidenceThreshold(double value) { confidenceThreshold = value; }
     public List<ModelDefinition> getModels() { return models; }
     public void setModels(List<ModelDefinition> value) {
         models = value == null ? new ArrayList<>() : new ArrayList<>(value);

@@ -6,10 +6,16 @@ import {
   logoutHospital,
   streamAgent,
   uploadIndicatorFile,
+  createSession,
+  listSessions,
+  getSessionMessages,
+  deleteSession,
   type AgentCapabilities,
   type AgentClarification,
   type AgentEvent,
   type HospitalUser,
+  type SessionSummary,
+  type SessionMessage,
 } from '../api/agent'
 
 export interface EvidenceStep {
@@ -192,14 +198,6 @@ function makeId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)}`
 }
 
-function restoreUser(): HospitalUser | null {
-  try {
-    return JSON.parse(sessionStorage.getItem('vueHospitalUser') || 'null') as HospitalUser | null
-  } catch {
-    return null
-  }
-}
-
 function setAgentContent(message: ChatMessage, value: string) {
   const detailMarker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
   const comparisonMarker = /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\}\}/g
@@ -248,11 +246,11 @@ function normalizeClarification(
 
 export const useAgentStore = defineStore('agent', {
   state: () => ({
-    token: sessionStorage.getItem('vueHospitalToken') || '',
-    user: restoreUser() as HospitalUser | null,
+    token: 'guest',
+    user: { userId: 'guest_user', accountId: 'guest', hospitalId: 'hospital_001', permissions: ['indicator_detail_view', 'indicator_detail_export'] } as HospitalUser,
     capabilities: null as AgentCapabilities | null,
     selectedModel: '',
-    sessionId: makeId('session').slice(0, 48),
+    sessionId: localStorage.getItem('vueAgentSessionId') || makeId('session').slice(0, 48),
     latestFileKey: '',
     latestFileName: '',
     messages: [] as ChatMessage[],
@@ -260,7 +258,7 @@ export const useAgentStore = defineStore('agent', {
     error: '',
   }),
   getters: {
-    isAuthenticated: (state) => Boolean(state.token && state.user),
+    isAuthenticated: () => true,
     latestAgentMessage: (state): ChatMessage | undefined => [...state.messages].reverse().find((message) => message.role === 'agent'),
   },
   actions: {
@@ -275,7 +273,7 @@ export const useAgentStore = defineStore('agent', {
     async logout() {
       await logoutHospital(this.token).catch(() => undefined)
       this.token = ''
-      this.user = null
+      this.user = { userId: 'guest_user', accountId: 'guest', hospitalId: 'demo_hospital', permissions: [] }
       this.capabilities = null
       this.messages = []
       sessionStorage.removeItem('vueHospitalToken')
@@ -290,12 +288,53 @@ export const useAgentStore = defineStore('agent', {
           : ids[0] || ''
       }
     },
-    newSession() {
-      this.sessionId = makeId('session').slice(0, 48)
+    async newSession() {
+      try {
+        this.sessionId = await createSession(this.token)
+      } catch {
+        this.sessionId = makeId('session').slice(0, 48)
+      }
+      localStorage.setItem('vueAgentSessionId', this.sessionId)
       this.latestFileKey = ''
       this.latestFileName = ''
       this.messages = []
       this.error = ''
+    },
+    /** 加载历史会话列表 */
+    async loadSessionList(): Promise<SessionSummary[]> {
+      try {
+        return await listSessions(this.token)
+      } catch {
+        return []
+      }
+    },
+    /** 恢复指定历史会话的消息记录 */
+    async restoreSession(sessionId: string) {
+      try {
+        const historyMessages = await getSessionMessages(this.token, sessionId)
+        this.sessionId = sessionId
+        localStorage.setItem('vueAgentSessionId', sessionId)
+        this.latestFileKey = ''
+        this.latestFileName = ''
+        this.error = ''
+        const list = Array.isArray(historyMessages) ? historyMessages : []
+        this.messages = list.map((message: SessionMessage) => ({
+          id: makeId('message'),
+          role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
+          content: message.content || '',
+          status: 'complete' as const,
+          evidence: [],
+        }))
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '恢复会话失败'
+      }
+    },
+    /** 删除指定会话 */
+    async removeSession(sessionId: string) {
+      await deleteSession(this.token, sessionId)
+      if (this.sessionId === sessionId) {
+        await this.newSession()
+      }
     },
     async upload(file: File) {
       const result = await uploadIndicatorFile(this.token, file)

@@ -390,9 +390,7 @@ public class ClarificationPromptFactory {
     }
 
     private static String resumePrefix(String originalQuery, String action) {
-        String original = safe(originalQuery);
-        if (original.length() > 300) original = original.substring(0, 300) + "…";
-        return "继续处理上一条请求“" + original + "”。" + action;
+        return action;
     }
 
     private static String first(String... values) {

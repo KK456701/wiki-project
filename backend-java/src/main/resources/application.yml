@@ -78,6 +78,15 @@ wiki:
         model: ${OLLAMA_THINKING_MODEL:qwen3:8b}
         base-url: ${OLLAMA_BASE_URL:http://127.0.0.1:11434}
         thinking: true
+      - id: aliyun-qwen-plus
+        name: Qwen-Plus 7B（阿里云百炼 API）
+        provider: openai-compatible
+        model: ${DASHSCOPE_QWEN_PLUS_MODEL:qwen-plus}
+        base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        completions-path: /chat/completions
+        api-key: ${DASHSCOPE_API_KEY:}
+        thinking: false
+        enable-thinking: false
       - id: aliyun-qwen3-14b
         name: Qwen3 14B（阿里云百炼 API）
         provider: openai-compatible

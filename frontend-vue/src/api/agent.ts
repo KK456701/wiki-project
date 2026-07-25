@@ -921,3 +921,57 @@ export async function streamAgent(
   const finalEvent = parseSseBlock(buffer)
   if (finalEvent) onEvent(finalEvent)
 }
+
+// ─── 会话管理 ───────────────────────────────────────────────────────────────────
+
+export interface SessionSummary {
+  session_id: string
+  title: string
+  last_message_at: string
+  message_count: number
+}
+
+export interface SessionMessage {
+  role: string
+  content: string
+  rule_id?: string
+  rule_name?: string
+  stat_start?: string
+  stat_end?: string
+  run_id?: string
+  created_at: string
+}
+
+/** 创建新会话，后端生成 session_id */
+export async function createSession(token: string): Promise<string> {
+  const response = await fetch('/api/agent/sessions', {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  const payload = await readJson<{ session_id: string }>(response)
+  return payload.session_id
+}
+
+/** 获取当前用户的历史会话列表 */
+export async function listSessions(token: string): Promise<SessionSummary[]> {
+  const response = await fetch('/api/agent/sessions', {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
+}
+
+/** 恢复指定会话的消息记录 */
+export async function getSessionMessages(token: string, sessionId: string): Promise<SessionMessage[]> {
+  const response = await fetch(`/api/agent/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
+}
+
+/** 删除指定会话 */
+export async function deleteSession(token: string, sessionId: string): Promise<void> {
+  await fetch(`/api/agent/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+    headers: authHeaders(token),
+  })
+}

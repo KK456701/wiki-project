@@ -145,6 +145,21 @@ public class TimeRangeResolver {
         return null;
     }
 
+    /**
+     * SQL 准备意图未给统计时间时使用的默认周期：本月起至当前时刻。
+     * SQL 只把时间作为参数套入模板、不执行数据库，因此可用默认周期生成并标注可调整；
+     * 而试运行等要算出真实数值的意图不能用默认周期，以免误导。
+     */
+    public ResolvedTimeRange defaultRange() {
+        LocalDateTime now = LocalDateTime.now(clock);
+        LocalDateTime start = monthStart(now.getYear(), now.getMonthValue());
+        // 月初 00:00:00 可能与 now 相等，此时回退到“近 30 天”保证区间有效。
+        if (start == null || !start.isBefore(now)) {
+            start = now.minusDays(30);
+        }
+        return new ResolvedTimeRange(start, now, "本月（默认统计周期）", true);
+    }
+
     private static String normalize(String value) {
         String raw = value == null ? "" : value.replaceAll("\\s+", "");
         raw = raw.replaceFirst("(?:的)?(?:结果|数据|指标值)$", "");

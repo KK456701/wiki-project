@@ -56,7 +56,7 @@ class ClarificationPromptFactoryTest {
         assertThat(result.options()).extracting(value -> value.label()).containsExactly(
                 "急会诊及时到位率", "患者入院 48 小时内转科的比例");
         assertThat(result.options().get(0).group()).isEqualTo("推荐匹配");
-        assertThat(result.resumePrefix()).contains("这两个指标的 SQL 怎么写");
+        assertThat(result.resumePrefix()).isEqualTo("我选择的指标是：");
     }
 
     @Test

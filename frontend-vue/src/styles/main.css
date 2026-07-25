@@ -120,7 +120,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .identity span { grid-row: span 2; align-self: center; padding: 5px 8px; border-radius: 20px; color: var(--teal-dark); background: var(--mint); }
 .identity small { color: var(--muted); }
 
-.workspace { max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: calc(100vh - 188px); }
+.workspace { max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: calc(100vh - 188px); }
+
+/* 左侧历史对话侧边栏 */
+.session-sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--paper); overflow: hidden; }
+.sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 14px 12px; border-bottom: 1px solid var(--line); }
+.sidebar-head h3 { margin: 0; font-size: 14px; color: var(--ink); }
+.sidebar-new { padding: 4px 10px; font-size: 12px; border: 1px solid var(--teal); border-radius: 14px; color: var(--teal); background: transparent; }
+.sidebar-new:hover { background: var(--mint); }
+.session-list { list-style: none; margin: 0; padding: 6px 0; overflow-y: auto; flex: 1; }
+.session-item { display: flex; align-items: center; gap: 6px; padding: 10px 14px; cursor: pointer; border-left: 3px solid transparent; transition: background .15s; }
+.session-item:hover { background: #e9f3f0; }
+.session-item.active { background: var(--mint); border-left-color: var(--teal); }
+.session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink); }
+.session-delete { flex: 0 0 20px; height: 20px; display: none; place-items: center; border: 0; background: transparent; color: var(--muted); font-size: 15px; border-radius: 4px; }
+.session-item:hover .session-delete { display: grid; }
+.session-delete:hover { color: var(--danger); background: rgba(180,67,50,.08); }
+.sidebar-empty { padding: 24px 14px; color: var(--muted); font-size: 13px; text-align: center; }
 .conversation-panel { min-width: 0; padding: 44px clamp(28px, 5vw, 80px); overflow: auto; }
 .welcome-panel { max-width: 980px; padding: clamp(34px, 5vw, 70px); background: var(--paper); border: 1px solid var(--line); border-left: 6px solid var(--teal); box-shadow: 0 24px 65px rgba(31,76,68,.09); }
 .welcome-panel h1 { max-width: 780px; margin: 18px 0 24px; font-size: clamp(38px, 5vw, 70px); line-height: 1.08; letter-spacing: -.055em; }
@@ -322,7 +338,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .login-shell { grid-template-columns: 1fr; }.login-story { min-height: 42vh; padding: 48px 32px; }.login-story h1 { font-size: 54px; }.contract-stamp { display: none; }
   .login-card { margin: 30px; }
   .topbar { height: auto; padding: 13px 16px; align-items: flex-start; }.topbar-controls { flex-wrap: wrap; justify-content: flex-end; }.identity, .topbar-controls code { display: none; }
-  .workspace { grid-template-columns: 1fr; }.evidence-rail { display: none; }.conversation-panel { padding: 28px 18px; }.message-card { max-width: calc(100% - 56px); }
+  .workspace { grid-template-columns: 1fr; }.session-sidebar { display: none; }.evidence-rail { display: none; }.conversation-panel { padding: 28px 18px; }.message-card { max-width: calc(100% - 56px); }
   .message-card .message-head, .message-owner { align-items: flex-start; flex-direction: column; gap: 7px; }.message-outcome { align-self: stretch; justify-content: space-between; }
   .clarification-option-grid { grid-template-columns: 1fr; }.clarification-free-text { grid-template-columns: 1fr; }.clarification-free-text button { width: 100%; }
   .composer { left: 8px; right: 8px; bottom: 8px; }.file-chip { display: none; }

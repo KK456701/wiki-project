@@ -137,10 +137,19 @@ public class PlanValidator {
         }
         ResolvedTimeRange resolved = needsTime ? timeResolver.resolve(plan.timeExpression()) : null;
         if (needsTime && resolved == null) {
-            return PlanValidation.invalid(
-                    "TIME_RANGE_AMBIGUOUS",
-                    "请明确需要统计的开始时间和结束时间。",
-                    FallbackCategory.USER_CLARIFICATION);
+            // 纯 SQL 准备（只生成受控 SQL、不执行试运行）未给时间时，用默认统计周期兜底，
+            // 并在回答里标注可调整；试运行等要算出真实数值的意图仍必须让用户明确时间。
+            boolean sqlPrepareOnly = (plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
+                    || outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE))
+                    && !outputs.contains(RequestedOutput.TRIAL_RESULT);
+            if (sqlPrepareOnly) {
+                resolved = timeResolver.defaultRange();
+            } else {
+                return PlanValidation.invalid(
+                        "TIME_RANGE_AMBIGUOUS",
+                        "请明确需要统计的开始时间和结束时间。",
+                        FallbackCategory.USER_CLARIFICATION);
+            }
         }
         return PlanValidation.valid(resolved);
     }

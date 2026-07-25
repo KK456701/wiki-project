@@ -81,17 +81,21 @@ public class HospitalAuthService {
         return result;
     }
 
+    /** 移除强制鉴权：未携带有效 token 时返回访客身份，所有请求以 guest 用户执行。 */
     public HospitalPrincipal authenticate(String token) {
+        if (token == null || token.isEmpty()) {
+            return guest();
+        }
         LocalDateTime now = now();
         AuthRecords.Session session = repository.findSessionByTokenHash(hashToken(token)).orElse(null);
         if (session == null || session.revokedAt() != null) {
-            throw auth("登录已失效，请重新登录", "AUTH_SESSION_INVALID", HttpStatus.UNAUTHORIZED);
+            return guest();
         }
         if (!session.expiresAt().isAfter(now)) {
-            throw auth("登录已过期，请重新登录", "AUTH_SESSION_EXPIRED", HttpStatus.UNAUTHORIZED);
+            return guest();
         }
         if (!"active".equals(session.status())) {
-            throw auth("账号已停用，请联系管理员", "AUTH_ACCOUNT_DISABLED", HttpStatus.FORBIDDEN);
+            return guest();
         }
         Set<String> permissions = repository.permissions(session.userId());
         HospitalPrincipal principal = new HospitalPrincipal(
@@ -103,6 +107,16 @@ public class HospitalAuthService {
                 session.sessionId());
         repository.touchSession(session.sessionId(), now);
         return principal;
+    }
+
+    private HospitalPrincipal guest() {
+        return new HospitalPrincipal(
+                "guest_user",
+                "guest",
+                "hospital_001",
+                java.util.Set.of("indicator_detail_view", "indicator_detail_export"),
+                false,
+                "guest_session");
     }
 
     public LoginResult changePassword(HospitalPrincipal principal, String currentPassword, String newPassword) {

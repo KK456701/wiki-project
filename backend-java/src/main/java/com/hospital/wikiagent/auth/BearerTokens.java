@@ -11,20 +11,11 @@ public final class BearerTokens {
     private BearerTokens() {
     }
 
+    /** 移除强制鉴权：未携带 token 时返回空字符串，由 authenticate 发放访客身份。 */
     public static String require(String authorization) {
         if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            throw new HospitalAuthException(
-                    "请先登录后继续操作",
-                    "AUTH_SESSION_REQUIRED",
-                    HttpStatus.UNAUTHORIZED);
+            return "";
         }
-        String token = authorization.substring(7).strip();
-        if (token.isEmpty()) {
-            throw new HospitalAuthException(
-                    "请先登录后继续操作",
-                    "AUTH_SESSION_REQUIRED",
-                    HttpStatus.UNAUTHORIZED);
-        }
-        return token;
+        return authorization.substring(7).strip();
     }
 }

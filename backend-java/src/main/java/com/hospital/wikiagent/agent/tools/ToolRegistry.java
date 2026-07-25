@@ -17,6 +17,7 @@ import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
+import com.hospital.wikiagent.rules.RuleNotFoundException;
 
 /**
  * 注册运行时允许调用的工具及其输入类型、风险等级、权限前置条件和超时。
@@ -96,8 +97,18 @@ public class ToolRegistry {
                 null,
                 (input, context) -> {
                     RuleReferenceInput arguments = (RuleReferenceInput) input;
-                    Map<String, Object> data = rules.effectiveRule(
-                            arguments.ruleId(), context.agentContext().hospitalId());
+                    Map<String, Object> data;
+                    try {
+                        data = rules.effectiveRule(
+                                arguments.ruleId(), context.agentContext().hospitalId());
+                    } catch (RuleNotFoundException exception) {
+                        // 该指标在本医院没有可读取的生效规则（或规则未入库）。
+                        // 返回结构化失败而非抛异常，避免复合请求中单个指标失败拖垮整体回答。
+                        return ToolResult.failure(
+                                "failed", "EFFECTIVE_RULE_NOT_FOUND",
+                                "未找到指标 " + arguments.ruleId() + " 在本院的生效规则，可能尚未配置本院口径或未入库。",
+                                false);
+                    }
                     return ToolResult.success(
                             "EFFECTIVE_RULE_FOUND",
                             "已读取 " + data.getOrDefault("rule_name", arguments.ruleId()) + " 的生效规则。",

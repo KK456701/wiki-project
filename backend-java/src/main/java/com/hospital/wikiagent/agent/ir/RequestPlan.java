@@ -16,7 +16,8 @@ public record RequestPlan(
         TimeExpression timeExpression,
         List<RequestedOutput> requestedOutputs,
         List<String> constraints,
-        List<SemanticAmbiguity> semanticAmbiguities) {
+        List<SemanticAmbiguity> semanticAmbiguities,
+        Double confidence) {
 
     public static final String VERSION = "request-plan-v2";
 
@@ -34,7 +35,24 @@ public record RequestPlan(
             List<String> constraints,
             List<SemanticAmbiguity> semanticAmbiguities) {
         this(schemaVersion, intent, goal, targetIndicator, null, timeExpression,
-                requestedOutputs, constraints, semanticAmbiguities);
+                requestedOutputs, constraints, semanticAmbiguities, null);
+    }
+
+    /**
+     * 兼容不使用 confidence 字段的调用方。
+     */
+    public RequestPlan(
+            String schemaVersion,
+            PlanIntent intent,
+            String goal,
+            TargetIndicator targetIndicator,
+            TargetCaliber targetCaliber,
+            TimeExpression timeExpression,
+            List<RequestedOutput> requestedOutputs,
+            List<String> constraints,
+            List<SemanticAmbiguity> semanticAmbiguities) {
+        this(schemaVersion, intent, goal, targetIndicator, targetCaliber, timeExpression,
+                requestedOutputs, constraints, semanticAmbiguities, null);
     }
 
     public RequestPlan {
@@ -50,6 +68,7 @@ public record RequestPlan(
         requestedOutputs = requestedOutputs == null ? List.of() : List.copyOf(requestedOutputs);
         constraints = constraints == null ? List.of() : constraints.stream().map(String::strip).toList();
         semanticAmbiguities = semanticAmbiguities == null ? List.of() : List.copyOf(semanticAmbiguities);
+        confidence = confidence == null ? 1.0 : confidence;
     }
 
     public record TargetIndicator(String rawName, String ruleId) {

@@ -38,6 +38,9 @@ public class AgentConversationMemory {
     private final ObjectMapper objectMapper;
     private final Map<String, List<Message>> fallback = new ConcurrentHashMap<>();
     private final Map<String, ContextValues> fallbackContext = new ConcurrentHashMap<>();
+    // 上一轮复合澄清确认的整批指标名，按存储键记住。历史 ## 小节被长 SQL 挤掉时，
+    // 供拆分器在纯时间补充/指代追问下重新展开为复合，避免退化成单指标。
+    private final Map<String, List<String>> compoundTargets = new ConcurrentHashMap<>();
 
     @Autowired
     public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper) {
@@ -149,7 +152,8 @@ public class AgentConversationMemory {
                 history(messages),
                 structuredSummary,
                 ruleId, ruleName, caliberProfileId, caliberLabel,
-                statStart, statEnd, runId, uploadFileKey);
+                statStart, statEnd, runId, uploadFileKey,
+                compoundTargets.getOrDefault(key, List.of()));
     }
 
     public void appendUser(
@@ -179,6 +183,30 @@ public class AgentConversationMemory {
                 values.caliberProfileId(), values.caliberLabel(),
                 values.statStart(), values.statEnd(), values.runId(), values.uploadFileKey(),
                 Instant.now().toString()));
+    }
+
+    /**
+     * 记住本轮复合澄清确认的整批指标名，供后续纯时间补充/指代追问重新展开为复合。
+     *
+     * <p>只保存指标名文本（安全字段），不保存 SQL 或患者数据；少于 2 个指标不记录，
+     * 单指标会话不会被误判为复合。最多保留 3 个，与拆分器硬上限一致。</p>
+     */
+    public void rememberCompoundTargets(ConversationSnapshot conversation, List<String> targets) {
+        if (conversation == null || targets == null) {
+            return;
+        }
+        List<String> cleaned = new ArrayList<>();
+        for (String target : targets) {
+            if (target != null && !target.isBlank()) {
+                cleaned.add(target.strip());
+            }
+            if (cleaned.size() >= 3) {
+                break;
+            }
+        }
+        if (cleaned.size() >= 2) {
+            compoundTargets.put(conversation.storageKey(), List.copyOf(cleaned));
+        }
     }
 
     private List<Message> load(String key) {
@@ -401,6 +429,120 @@ public class AgentConversationMemory {
         }
     }
 
+    // ─── 会话管理查询 ───────────────────────────────────────────────────────────
+
+    /**
+     * 查询当前用户的所有会话摘要，按最后消息时间倒序。
+     * 标题取该会话第一条 user 消息的前 60 个字符。
+     */
+    public List<SessionSummary> listSessions(HospitalPrincipal principal) {
+        if (jdbc == null) {
+            return List.of();
+        }
+        String prefix = "agent:" + principal.hospitalId() + ":" + principal.userId() + ":";
+        try {
+            return jdbc.query("""
+                    SELECT session_key,
+                           MIN(CASE WHEN role = 'user' THEN content END) AS title,
+                           MAX(created_at) AS last_at,
+                           COUNT(*) AS message_count
+                    FROM med_agent_java_message
+                    WHERE session_key LIKE ? ESCAPE '\\'
+                    GROUP BY session_key
+                    ORDER BY MAX(created_at) DESC
+                    LIMIT 100
+                    """, (result, row) -> {
+                String key = result.getString("session_key");
+                String sessionId = key.startsWith(prefix) ? key.substring(prefix.length()) : key;
+                String title = result.getString("title");
+                if (title != null && title.length() > 60) {
+                    title = title.substring(0, 60) + "…";
+                }
+                return new SessionSummary(
+                        sessionId,
+                        title == null || title.isBlank() ? "新对话" : title.strip(),
+                        result.getString("last_at"),
+                        result.getInt("message_count"));
+            }, prefix.replace("%", "\\%").replace("_", "\\_") + "%");
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to list sessions: {}", exception.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 查询指定会话的全部消息，按时间正序返回。
+     */
+    public List<SessionMessage> getSessionMessages(HospitalPrincipal principal, String sessionId) {
+        if (jdbc == null) {
+            return List.of();
+        }
+        String key = storageKey(principal, sessionId);
+        try {
+            return jdbc.query("""
+                    SELECT role, content, rule_id, rule_name, stat_start, stat_end, run_id, created_at
+                    FROM med_agent_java_message
+                    WHERE session_key = ?
+                    ORDER BY id ASC
+                    LIMIT 200
+                    """, (result, row) -> new SessionMessage(
+                    result.getString("role"),
+                    result.getString("content"),
+                    result.getString("rule_id"),
+                    result.getString("rule_name"),
+                    result.getString("stat_start"),
+                    result.getString("stat_end"),
+                    result.getString("run_id"),
+                    result.getString("created_at")), key);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to load session messages: {}", exception.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * 删除指定会话的全部消息。
+     */
+    public void deleteSession(HospitalPrincipal principal, String sessionId) {
+        if (jdbc == null) {
+            return;
+        }
+        String key = storageKey(principal, sessionId);
+        try {
+            jdbc.update("DELETE FROM med_agent_java_message WHERE session_key = ?", key);
+            fallback.remove(key);
+            fallbackContext.remove(key);
+            compoundTargets.remove(key);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to delete session: {}", exception.getMessage());
+        }
+    }
+
+    /** 生成一个新的会话 ID。 */
+    public static String newSessionId() {
+        return "session_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 24);
+    }
+
+    // ─── 会话管理数据载体 ─────────────────────────────────────────────────────────
+
+    public record SessionSummary(
+            String sessionId,
+            String title,
+            String lastMessageAt,
+            int messageCount) {
+    }
+
+    public record SessionMessage(
+            String role,
+            String content,
+            String ruleId,
+            String ruleName,
+            String statStart,
+            String statEnd,
+            String runId,
+            String createdAt) {
+    }
+
     public record ConversationSnapshot(
             String storageKey,
             String sessionId,
@@ -413,7 +555,11 @@ public class AgentConversationMemory {
             String statStart,
             String statEnd,
             String lastRunId,
-            String uploadFileKey) {
+            String uploadFileKey,
+            List<String> compoundTargets) {
+        public ConversationSnapshot {
+            compoundTargets = compoundTargets == null ? List.of() : List.copyOf(compoundTargets);
+        }
     }
 
     private record ContextValues(

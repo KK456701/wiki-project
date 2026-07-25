@@ -21,6 +21,6 @@ business_fields:
     required: true
     desc: 急会诊到达现场时间
   dept_id:
-    type: string
+    type: code
     required: false
     desc: 科室ID（用于排除过滤）

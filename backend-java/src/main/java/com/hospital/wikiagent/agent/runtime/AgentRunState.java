@@ -22,6 +22,7 @@ public class AgentRunState {
     private String lastDiagnosisId;
     private String statStart;
     private String statEnd;
+    private boolean statPeriodDefaulted;
     private int stepCount;
     private int replanCount;
     private final List<String> failedPlanIds = new ArrayList<>();
@@ -109,6 +110,18 @@ public class AgentRunState {
 
     public String statEnd() {
         return statEnd;
+    }
+
+    /**
+     * 标记当前统计区间是否为 SQL 准备缺时间时由服务端填充的默认周期。
+     * 为 true 时应在回答里提示用户可指定具体时间范围调整。
+     */
+    public void statPeriodDefaulted(boolean value) {
+        statPeriodDefaulted = value;
+    }
+
+    public boolean statPeriodDefaulted() {
+        return statPeriodDefaulted;
     }
 
     public int stepCount() {

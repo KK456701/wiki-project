@@ -159,8 +159,8 @@ public class IndicatorSqlTools {
         }
 
         Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
-        Map<String, Object> mapping = withExecutionDefaults(
-                rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId()));
+        Map<String, Object> rawMapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
+        Map<String, Object> mapping = withExecutionDefaults(rawMapping);
         try {
             mapping = applyDiagnosticFieldRoleOverrides(mapping, fieldRoleOverrides);
         } catch (IllegalArgumentException exception) {

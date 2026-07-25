@@ -238,7 +238,8 @@ class AgentRunnerTest {
                         "2026-01-01T00:00:00",
                         "2026-07-23T00:00:00",
                         "RUN_001",
-                        null));
+                        null,
+                        java.util.List.of()));
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(
                         models, modelRegistry, properties,
@@ -442,6 +443,87 @@ class AgentRunnerTest {
                     assertThat(value.sourceObjectId()).startsWith("RUN_");
                 });
         assertThat(store.verifications.values()).allMatch(value -> "verified".equals(value.status()));
+    }
+
+    @Test
+    void upgradesRuleExplanationToTrialRunWhenQueryContainsTimeRange() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        return List.of(Map.of(
+                                "index_value", 25.0,
+                                "numerator_count", 1,
+                                "denominator_count", 4));
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                },
+                objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        // Planner 返回 RULE_EXPLANATION，但用户查询中包含显式时间范围
+        QueueInvoker models = new QueueInvoker(
+                """
+                {
+                  "schema_version": "request-plan-v2",
+                  "intent": "rule_explanation",
+                  "goal": "解释急会诊及时到位率",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "time_expression": {
+                    "raw_text": "2026年1月至3月",
+                    "start_time": "2026-01-01T00:00:00",
+                    "end_time": "2026-04-01T00:00:00"
+                  },
+                  "requested_outputs": ["definition", "formula"],
+                  "constraints": [],
+                  "semantic_ambiguities": []
+                }
+                """,
+                TRIAL_TEMPLATE_ANSWER);
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper),
+                capabilities,
+                new AgentStateController(capabilities),
+                new DeterministicDispatch(),
+                gateway,
+                verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper));
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "计算2026-01-01到2026-03-31急会诊及时到位率", "session_001", "ollama-test", null,
+                "request_001", "trace_001", "business_test", "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of("indicator_detail_view"),
+                        false, "auth_session_001")),
+                events::add);
+
+        // 意图应被升级为 TRIAL_RUN，系统应执行计算并返回结果
+        assertThat(result.stopReason()).as(result.answer() + " " + events).isEqualTo("final_answer");
+        assertThat(result.requestPlan().intent()).isEqualTo(
+                com.hospital.wikiagent.agent.ir.PlanIntent.INDICATOR_TRIAL_RUN);
+        // 应执行 SQL 工具
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .contains("prepare_indicator_sql", "trial_run_indicator_sql");
     }
 
     @Test

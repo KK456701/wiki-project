@@ -38,11 +38,10 @@ public class IndicatorCaliberTools {
     }
 
     public ToolResult resolve(ResolveInput input, ToolExecutionContext context) {
-        List<Map<String, Object>> candidates = eligibleProfiles(
+        // 使用无时间过滤的口径列表，允许用户查询假设性口径（即使统计周期在口径生效前）
+        List<Map<String, Object>> candidates = allProfiles(
                 input.ruleId(),
-                context.agentContext().hospitalId(),
-                input.statStartTime(),
-                input.statEndTime());
+                context.agentContext().hospitalId());
         List<Map<String, Object>> matched;
         if (input.profileId() != null) {
             matched = candidates.stream()
@@ -61,7 +60,7 @@ public class IndicatorCaliberTools {
             return ToolResult.failure(
                     "validation_failed",
                     "CALIBER_PROFILE_NOT_FOUND",
-                    "未找到适用于当前医院和统计周期的已审批候选口径。",
+                    "未找到适用于当前医院的已审批候选口径。",
                     false);
         }
         if (matched.size() > 1) {
@@ -81,6 +80,13 @@ public class IndicatorCaliberTools {
                     List.of());
         }
         Map<String, Object> profile = matched.get(0);
+        // 检查口径生效时间是否与请求周期重叠，给出提示
+        LocalDate effectiveFrom = date(text(profile.get("effective_from")));
+        LocalDate requestedEnd = date(input.statEndTime());
+        String warning = null;
+        if (effectiveFrom != null && requestedEnd != null && !requestedEnd.isAfter(effectiveFrom)) {
+            warning = "该口径从 " + effectiveFrom + " 起生效，当前统计周期早于此日期。";
+        }
         AgentRunState state = context.runState();
         state.currentCaliber(
                 text(profile.get("profile_id")),
@@ -90,9 +96,11 @@ public class IndicatorCaliberTools {
         appendCurrentRule(data, input.ruleId(), context);
         if (input.statStartTime() != null) data.put("stat_start", input.statStartTime());
         if (input.statEndTime() != null) data.put("stat_end", input.statEndTime());
+        if (warning != null) data.put("effective_period_warning", warning);
         return ToolResult.success(
                 "CALIBER_PROFILE_RESOLVED",
-                "已确认候选口径：“" + data.get("caliber_label") + "”。",
+                "\u5df2\u786e\u8ba4\u5019\u9009\u53e3\u5f84\uff1a\u201c" + data.get("caliber_label") + "\u201d\u3002"
+                        + (warning != null ? " " + warning : ""),
                 data);
     }
 
@@ -185,6 +193,18 @@ public class IndicatorCaliberTools {
         LocalDate endDate = date(end);
         return rules.caliberProfiles(ruleId, hospitalId).stream()
                 .filter(profile -> applies(profile, startDate, endDate))
+                .sorted(Comparator.comparing(item -> text(item.get("profile_id"))))
+                .toList();
+    }
+
+    /**
+     * 返回所有候选口径，不按统计周期过滤。
+     *
+     * <p>用于 resolve 方法，允许用户查询假设性口径（如“如果根据入区时间怎么算”）。
+     * 口径的 effective_from/effective_to 表示其适用范围，不应阻止用户了解口径本身。</p>
+     */
+    private List<Map<String, Object>> allProfiles(String ruleId, String hospitalId) {
+        return rules.caliberProfiles(ruleId, hospitalId).stream()
                 .sorted(Comparator.comparing(item -> text(item.get("profile_id"))))
                 .toList();
     }

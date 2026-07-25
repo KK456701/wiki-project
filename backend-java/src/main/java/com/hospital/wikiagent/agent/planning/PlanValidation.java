@@ -37,12 +37,19 @@ public record PlanValidation(
     public record ResolvedTimeRange(
             LocalDateTime startTime,
             LocalDateTime endTime,
-            String rawText) {
+            String rawText,
+            boolean defaulted) {
         public ResolvedTimeRange {
             if (startTime == null || endTime == null || !startTime.isBefore(endTime)) {
                 throw new IllegalArgumentException("统计周期必须是有效的左闭右开区间");
             }
             rawText = rawText == null ? "" : rawText;
+        }
+
+        // 用户明确给出或可确定性解析的时间，defaulted=false；
+        // 仅当 SQL 准备未给时间、由服务端填默认周期时才为 true。
+        public ResolvedTimeRange(LocalDateTime startTime, LocalDateTime endTime, String rawText) {
+            this(startTime, endTime, rawText, false);
         }
     }
 }

@@ -53,6 +53,7 @@ import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 import com.hospital.wikiagent.agent.upload.UploadedFilePlanningContext;
 import com.hospital.wikiagent.agent.upload.UploadedFilePlanningContext.PlanningContext;
+import com.hospital.wikiagent.contract.AgentClarification;
 
 /**
  * 执行单指标 Compiled Plan：装载会话、调用 Planner、按状态机调用受控工具、
@@ -77,6 +78,9 @@ public class AgentRunner {
             "20\\d{2}[-年]|(?:\\d{2}|[一二三四五六七八九十]{2,4})年|"
                     + "(?:1[0-2]|0?[1-9]|[一二三四五六七八九十]{1,3})月份?|"
                     + "至今|到现在|本月|这个月|上月|今年|去年|今天|昨天");
+    /** 检测查询原文中是否存在两个以上显式日期（如 2025.01.01、2025-01-01、2025/01/01）。 */
+    private static final Pattern EXPLICIT_DATE_RANGE = Pattern.compile(
+            "20\\d{2}[.\\-/年]\\d{1,2}[.\\-/月]\\d{1,2}");
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -92,6 +96,7 @@ public class AgentRunner {
     private final UploadedFilePlanningContext uploadPlanningContext;
     private final PlanGoalAlignmentValidator alignmentValidator;
     private final ClarificationPromptFactory clarificationPrompts;
+    private final com.hospital.wikiagent.agent.model.AgentModelProperties modelProperties;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AgentRunner(
@@ -108,7 +113,8 @@ public class AgentRunner {
             AgentFailureRouter failureRouter,
             UploadedFilePlanningContext uploadPlanningContext,
             PlanGoalAlignmentValidator alignmentValidator,
-            ClarificationPromptFactory clarificationPrompts) {
+            ClarificationPromptFactory clarificationPrompts,
+            com.hospital.wikiagent.agent.model.AgentModelProperties modelProperties) {
         this.planner = planner;
         this.validator = validator;
         this.compiler = compiler;
@@ -123,6 +129,7 @@ public class AgentRunner {
         this.uploadPlanningContext = uploadPlanningContext;
         this.alignmentValidator = alignmentValidator;
         this.clarificationPrompts = clarificationPrompts;
+        this.modelProperties = modelProperties;
     }
 
     /**
@@ -144,7 +151,7 @@ public class AgentRunner {
             PlanGoalAlignmentValidator alignmentValidator) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
                 gateway, verifier, finalAnswer, conversations, failureRouter,
-                uploadPlanningContext, alignmentValidator, null);
+                uploadPlanningContext, alignmentValidator, null, null);
     }
 
     public AgentRunner(
@@ -160,7 +167,7 @@ public class AgentRunner {
             AgentConversationMemory conversations) {
         this(planner, validator, compiler, capabilities, controller, dispatch,
                 gateway, verifier, finalAnswer, conversations,
-                new AgentFailureRouter(new ReplanPolicy()), null, null, null);
+                new AgentFailureRouter(new ReplanPolicy()), null, null, null, null);
     }
 
     public AgentRunner(
@@ -214,7 +221,7 @@ public class AgentRunner {
                 conversation, request.principal(), request.query(), request.fileKey());
         String sessionId = conversation.sessionId();
         String subtaskId = requestId.contains(":subtask:") ? requestId : id("SUB_");
-        emit(observer, "agent_start", traceId, 0, Map.of("status", "running"));
+        emit(observer, "agent_start", traceId, 0, Map.of("status", "running", "session_id", sessionId));
         TraceEvents.completed(observer, traceId, "memory_load", "storage", memoryStarted,
                 subtaskId, Map.of("session_id", safe(request.sessionId())), Map.of(
                         "history_length", request.recentHistory().length(),
@@ -262,11 +269,35 @@ public class AgentRunner {
         PlanningContext fileContext = resolveUploadPlanningContext(request);
         RequestPlan enrichedPlan = normalizeExplicitDifferenceDiagnosis(
                 request.query(), normalizeExplicitImplementationValidation(
-                        request.query(), enrichFromResolvedIndicator(
-                                enrichFromConversation(
-                                        enrichFromUploadedFile(modelPlan.plan(), fileContext),
-                                        conversation),
-                                resolvedIndicator)));
+                        request.query(), upgradeToTrialRun(
+                                request.query(), enrichFromResolvedIndicator(
+                                        enrichFromConversation(
+                                                enrichFromUploadedFile(modelPlan.plan(), fileContext),
+                                                conversation),
+                                        resolvedIndicator))));
+        // 低置信度意图澄清：在编译前检查 Planner 的置信度
+        double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
+        if (enrichedPlan.confidence() < threshold) {
+            long clarificationStarted = TraceEvents.started();
+            AgentClarification clarification = buildIntentClarification(enrichedPlan);
+            TraceEvents.completed(observer, traceId, "low_confidence_clarification", "code",
+                    clarificationStarted, subtaskId, Map.of(
+                            "confidence", enrichedPlan.confidence(),
+                            "threshold", threshold),
+                    Map.of("options_count", clarification.options().size()));
+            emit(observer, "clarification_required", traceId, 0, eventValues(
+                    "message", "无法确定您的意图，请确认您想要的操作：",
+                    "code", "LOW_CONFIDENCE_INTENT",
+                    "fallback_category", "USER_CLARIFICATION",
+                    "clarification", clarification,
+                    "stop_reason", "clarification"));
+            emit(observer, "agent_done", traceId, 0, Map.of(
+                    "stop_reason", "clarification", "status", "incomplete",
+                    "step_count", 0));
+            return new AgentRunResult(
+                    "无法确定您的意图，请确认您想要的操作。", "clarification", traceId, sessionId,
+                    0, enrichedPlan, null, clarification);
+        }
         PlannerResult planned = new PlannerResult(
                 enrichedPlan, modelPlan.rawContent(), modelPlan.modelId(), modelPlan.repaired());
 
@@ -640,13 +671,14 @@ public class AgentRunner {
                     failedPlanId));
             RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
                     request.query(), normalizeExplicitImplementationValidation(
-                            request.query(), enrichFromResolvedIndicator(
-                                    enrichFromConversation(
-                                            enrichFromUploadedFile(
-                                                    raw.plan(),
-                                                    resolveUploadPlanningContext(request)),
-                                            conversation),
-                                    resolvedIndicator)));
+                            request.query(), upgradeToTrialRun(
+                                    request.query(), enrichFromResolvedIndicator(
+                                            enrichFromConversation(
+                                                    enrichFromUploadedFile(
+                                                            raw.plan(),
+                                                            resolveUploadPlanningContext(request)),
+                                                    conversation),
+                                            resolvedIndicator))));
             String alternativeId = precompilePlanId(plan);
             if (!failureRouter.acceptsAlternative(state, alternativeId)) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
@@ -717,13 +749,14 @@ public class AgentRunner {
                     compiled.planId()));
             RequestPlan plan = normalizeExplicitDifferenceDiagnosis(
                     request.query(), normalizeExplicitImplementationValidation(
-                            request.query(), enrichFromResolvedIndicator(
-                                    enrichFromConversation(
-                                            enrichFromUploadedFile(
-                                                    raw.plan(),
-                                                    resolveUploadPlanningContext(request)),
-                                            conversation),
-                                    resolvedIndicator)));
+                            request.query(), upgradeToTrialRun(
+                                    request.query(), enrichFromResolvedIndicator(
+                                            enrichFromConversation(
+                                                    enrichFromUploadedFile(
+                                                            raw.plan(),
+                                                            resolveUploadPlanningContext(request)),
+                                                    conversation),
+                                            resolvedIndicator))));
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
@@ -1274,6 +1307,124 @@ public class AgentRunner {
                 plan.semanticAmbiguities());
     }
 
+    /**
+     * 当 Planner 返回的意图暗示用户实际想执行计算时，确定性升级为 INDICATOR_TRIAL_RUN。
+     *
+     * <p>处理两种常见误分类：</p>
+     * <ul>
+     *   <li>INDICATOR_SQL_PREPARE：用户未明确要求写 SQL 时升级</li>
+     *   <li>RULE_EXPLANATION：用户提供了具体时间范围时升级（提供时间意味着想算出结果）</li>
+     * </ul>
+     */
+    private static RequestPlan upgradeToTrialRun(
+            String query,
+            RequestPlan plan) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+
+        // 1) SQL_PREPARE → TRIAL_RUN：用户未明确要求写 SQL
+        if (plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
+                && plan.requestedOutputs().contains(RequestedOutput.PREPARED_SQL_HANDLE)
+                && !compact.contains("sql") && !compact.contains("脚本")) {
+            return new RequestPlan(
+                    plan.schemaVersion(),
+                    PlanIntent.INDICATOR_TRIAL_RUN,
+                    plan.goal(),
+                    plan.targetIndicator(),
+                    plan.targetCaliber(),
+                    plan.timeExpression(),
+                    plan.requestedOutputs().stream()
+                            .map(o -> o == RequestedOutput.PREPARED_SQL_HANDLE
+                                    ? RequestedOutput.TRIAL_RESULT : o)
+                            .toList(),
+                    plan.constraints(),
+                    plan.semanticAmbiguities());
+        }
+
+        // 2) RULE_EXPLANATION → TRIAL_RUN：用户提供了具体时间范围（提供时间意味着想算出结果）
+        if (plan.intent() == PlanIntent.RULE_EXPLANATION
+                && hasExplicitTimeRange(plan, compact)) {
+            return new RequestPlan(
+                    plan.schemaVersion(),
+                    PlanIntent.INDICATOR_TRIAL_RUN,
+                    plan.goal(),
+                    plan.targetIndicator(),
+                    plan.targetCaliber(),
+                    plan.timeExpression(),
+                    List.of(RequestedOutput.TRIAL_RESULT),
+                    plan.constraints(),
+                    plan.semanticAmbiguities());
+        }
+
+        return plan;
+    }
+
+    /**
+     * 判断查询原文中是否包含明确的统计时间范围。
+     *
+     * <p>仅检查查询文本中的日期模式，不检查计划的 time_expression
+     * （因为 time_expression 可能是从对话上下文继承的）。</p>
+     */
+    private static boolean hasExplicitTimeRange(RequestPlan plan, String compact) {
+        if (compact.isBlank()) return false;
+        // 检测显式日期模式，如 2025.01.01、2025-01-01、2025/01/01、2025年1月
+        return EXPLICIT_DATE_RANGE.matcher(compact).find();
+    }
+
+    /**
+     * 为低置信度意图生成澄清选项，供用户选择。
+     *
+     * <p>根据 Planner 识别的意图和语义歧义生成 2-3 个候选意图选项，
+     * 用户选择后将作为下一轮 query 的 prepend 上下文重新进入 Planner。</p>
+     */
+    private static AgentClarification buildIntentClarification(RequestPlan plan) {
+        List<AgentClarification.Option> options = new ArrayList<>();
+        String indicatorName = plan.targetIndicator().rawName();
+        // 根据当前识别的意图生成候选选项
+        switch (plan.intent()) {
+            case RULE_EXPLANATION -> {
+                options.add(new AgentClarification.Option(
+                        "intent:rule_explanation", "查看口径定义", "我想了解这个指标的定义和计算公式",
+                        "解释 " + indicatorName + " 的定义、公式和分子分母口径", ""));
+                options.add(new AgentClarification.Option(
+                        "intent:trial_run", "计算结果", "我想得到这个指标的实际计算数值",
+                        "执行 SQL 并返回 " + indicatorName + " 的统计结果", ""));
+                options.add(new AgentClarification.Option(
+                        "intent:sql_prepare", "查看 SQL", "我只想看看用于计算的 SQL 语句",
+                        "生成但不执行 " + indicatorName + " 的计算 SQL", ""));
+            }
+            case INDICATOR_SQL_PREPARE -> {
+                options.add(new AgentClarification.Option(
+                        "intent:sql_prepare", "查看 SQL", "我只想看看用于计算的 SQL 语句",
+                        "生成但不执行 " + indicatorName + " 的计算 SQL", ""));
+                options.add(new AgentClarification.Option(
+                        "intent:trial_run", "计算结果", "我想得到这个指标的实际计算数值",
+                        "执行 SQL 并返回 " + indicatorName + " 的统计结果", ""));
+            }
+            default -> {
+                options.add(new AgentClarification.Option(
+                        "intent:" + plan.intent().value(), "当前意图", "继续按系统识别的意图执行",
+                        "系统认为您想要：" + plan.goal(), ""));
+                options.add(new AgentClarification.Option(
+                        "intent:rule_explanation", "查看口径定义", "我想了解指标的定义和公式",
+                        "解释 " + indicatorName + " 的口径", ""));
+                options.add(new AgentClarification.Option(
+                        "intent:trial_run", "计算结果", "我想得到指标的实际计算数值",
+                        "执行 SQL 并返回 " + indicatorName + " 的统计结果", ""));
+            }
+        }
+        return new AgentClarification(
+                "LOW_CONFIDENCE_INTENT",
+                "intent",
+                "意图确认",
+                "系统不太确定您的意图，请选择您想要的操作：",
+                "您可以选择以下选项，或直接输入更具体的描述",
+                "single",
+                options,
+                true,
+                "或者输入更具体的描述...",
+                "");
+    }
+
     @SuppressWarnings("unchecked")
     private static void emitImplementationValidationStages(
             AgentRunObserver observer,
@@ -1549,6 +1700,10 @@ public class AgentRunner {
         answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
                 .append(" 至 ").append(prepared.data().get("stat_end")).append("（左闭右开）\n");
         answer.append("- 参数：").append(prepared.data().getOrDefault("parameters", Map.of())).append('\n');
+        if (state.statPeriodDefaulted()) {
+            answer.append("\n> 未指定统计时间，已默认用本月至今生成 SQL；"
+                    + "如需其他区间，直接告诉我具体起止时间即可调整。\n");
+        }
         answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
         return answer.toString();
     }
@@ -1688,6 +1843,7 @@ public class AgentRunner {
             state.statPeriod(
                     validation.resolvedTime().startTime().format(EVIDENCE_TIME),
                     validation.resolvedTime().endTime().format(EVIDENCE_TIME));
+            state.statPeriodDefaulted(validation.resolvedTime().defaulted());
         }
     }
 
@@ -1773,6 +1929,7 @@ public class AgentRunner {
         value.put("requested_outputs", plan.requestedOutputs().stream().map(Enum::name).toList());
         value.put("constraints", plan.constraints());
         value.put("semantic_ambiguities", ambiguities);
+        value.put("confidence", plan.confidence());
         return value;
     }
 

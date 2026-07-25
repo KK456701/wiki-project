@@ -101,7 +101,7 @@ public class CompoundAgentRuntime {
         }
         SplitResult split = splitter.split(
                 request.query(), conversation.recentHistory(), request.principal().hospitalId(),
-                resolution.indicators());
+                resolution.indicators(), conversation.compoundTargets());
         if (!split.compound()) {
             var resolved = resolution.indicators().size() == 1
                     ? resolution.indicators().get(0) : null;
@@ -109,6 +109,10 @@ public class CompoundAgentRuntime {
         }
         conversations.appendUser(
                 conversation, request.principal(), request.query(), request.fileKey());
+        // 确认为复合后，把整批指标名写入结构态；下一轮只补时间/指代时，
+        // 即使历史 ## 小节被长 SQL 挤掉，仍能恢复整批重新展开为复合。
+        conversations.rememberCompoundTargets(
+                conversation, split.tasks().stream().map(SubtaskSpec::target).toList());
         String traceId = first(request.traceId(), id("TRACE_"));
         String requestId = first(request.requestId(), id("REQ_"));
         TraceEvents.completed(observer, traceId, "compound_split", "code", splitStarted,
@@ -121,6 +125,7 @@ public class CompoundAgentRuntime {
                         "splitter_version", CompoundRequestSplitter.VERSION));
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running",
+                "session_id", conversation.sessionId(),
                 "compound", true,
                 "subtask_count", split.tasks().size(),
                 "splitter_version", CompoundRequestSplitter.VERSION));
@@ -332,7 +337,8 @@ public class CompoundAgentRuntime {
         AgentRunState state = new AgentRunState();
         conversations.appendAssistant(conversation, request.principal(), answer, state);
         emit(observer, "agent_start", traceId, 0, Map.of(
-                "status", "running", "resolver_version", HybridIndicatorResolver.VERSION));
+                "status", "running", "session_id", conversation.sessionId(),
+                "resolver_version", HybridIndicatorResolver.VERSION));
         emit(observer, "clarification_required", traceId, 0, Map.of(
                 "message", answer,
                 "code", "INDICATOR_AMBIGUOUS",
