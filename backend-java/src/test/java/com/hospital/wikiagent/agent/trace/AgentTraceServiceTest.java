@@ -76,6 +76,10 @@ class AgentTraceServiceTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> node = ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(0);
         assertThat(node.get("node_title")).isEqualTo("执行并观察工具结果");
+        assertThat(node)
+                .containsEntry("flow_stage", "execution")
+                .containsEntry("flow_stage_title", "工具与数据库执行")
+                .containsEntry("flow_stage_order", 4);
         assertThat(String.valueOf(node.get("input_data"))).contains("[已脱敏]")
                 .contains("__完整输入末尾__")
                 .doesNotContain("SELECT secret");
@@ -84,6 +88,12 @@ class AgentTraceServiceTest {
         assertThat(String.valueOf(node.get("output_data"))).contains("SQL_001");
         assertThat(String.valueOf(trace.get("flow_edges")))
                 .contains("from_node_id", "to_node_id", "sequence");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> answerNode =
+                ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(1);
+        assertThat(answerNode)
+                .containsEntry("flow_stage", "answer")
+                .containsEntry("flow_stage_order", 6);
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);
 

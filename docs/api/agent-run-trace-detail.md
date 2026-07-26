@@ -130,7 +130,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 | `trace_version` | string | 否 | 链路数据结构版本，当前固定为 `java-agent-trace-v2`。 |
 | `timing_summary` | object | 否 | 按节点类型聚合的耗时汇总，见 4.5。 |
 | `nodes` | array | 否 | 逐节点执行明细，按执行顺序排列，见 4.2。 |
-| `flow_edges` | array | 否 | 流程图边。`edge_type` 为 `sequence`、`parent`、`replan` 或 `failure`。历史数据缺父节点时按同泳道顺序派生。 |
+| `flow_edges` | array | 否 | 分层架构图的实际连接边。`edge_type` 为 `sequence`、`parent`、`replan` 或 `failure`。历史数据缺父节点时按同泳道顺序派生。 |
 | `evidence` | array | 否 | 本次运行沉淀的已核验证据列表，见 4.3。 |
 
 ### 4.2 `nodes[]` — 节点执行明细
@@ -173,6 +173,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 | `created_at` | string | 否 | 节点记录创建时间。 |
 | `node_title` | string | 否 | **【派生】** 节点中文标题（供 UI 展示），如"规划业务目标""执行并观察工具结果"。 |
 | `processing_summary` | string | 否 | **【派生】** 该节点处理逻辑的中文一句话说明。 |
+| `flow_stage` | string | 否 | **【派生】** 稳定架构阶段 ID：`context`、`planning`、`compilation`、`execution`、`verification` 或 `answer`。 |
+| `flow_stage_title` | string | 否 | **【派生】** 架构阶段中文标题。 |
+| `flow_stage_order` | integer | 否 | **【派生】** 架构阶段顺序，取值 1～6。 |
 | `input_data` | object \| array \| string | 否 | **【派生】** 由 `input_summary` 解析得到的结构化对象；解析失败时回退为原始字符串，无内容时为 `{}`。 |
 | `output_data` | object \| array \| string | 否 | **【派生】** 由 `output_summary` 解析得到的结构化对象；规则同上。 |
 | `capability_readiness` | object | 是 | **【派生】** 将内部状态拆成知识治理、SQL展示、双库概览、科室明细和患者明细五项能力；仅相关节点返回。 |
@@ -282,7 +285,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
   "ended_at": "2026-07-24T19:35:21",
   "duration_ms": 15234,
   "created_at": "2026-07-24T19:35:06",
-  "trace_version": "java-agent-trace-v1",
+  "trace_version": "java-agent-trace-v2",
   "timing_summary": { "llm_ms": 8200, "tool_ms": 6100, "code_ms": 700, "storage_ms": 234 },
   "nodes": [
     {
@@ -320,6 +323,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
       "created_at": "2026-07-24T19:35:06",
       "node_title": "规划业务目标",
       "processing_summary": "LLM 只生成业务 RequestPlan，不选择工具。",
+      "flow_stage": "planning",
+      "flow_stage_title": "规划与目标校验",
+      "flow_stage_order": 2,
       "input_data": { "user_query": "计算2026-01-01到2026-03-31急会诊及时到位率" },
       "output_data": { "intent": "INDICATOR_TRIAL_RUN", "confidence": 0.94 }
     }
@@ -346,8 +352,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 ## 7. 前端对接要点
 
 1. **入参/出参渲染**：优先使用节点的 `input_data` / `output_data`（已解析为对象），`*_summary` 仅作兼容备用。
-2. **链路树**：用 `parent_node_id` + `subtask_id` 构建层级；同级按 `sequence` 排序。
-3. **时间轴**：用 `started_offset_ms`（相对运行起点偏移）+ `duration_ms` 绘制甘特图，用 `exclusive_duration_ms` 展示独占耗时。
+2. **架构分层**：按 `flow_stage_order` 从左到右分为六个阶段，同阶段节点按 `sequence` 纵向排列。
+3. **连接与泳道**：使用 `flow_edges` 绘制顺序、父子、Replan 和失败分支；按 `subtask_id` 划分主任务与多指标子任务泳道。
 4. **中文展示**：`node_title` / `processing_summary` 已由后端提供中文文案，无需前端再做名称映射。
 5. **状态判断**：运行是否结束看 `ended_at` / `final_status`；`running` 表示仍在进行。
 6. **脱敏**：SQL 正文、token、患者原始行等敏感数据已在后端剔除或替换为 `[已脱敏]`，前端无需额外处理。

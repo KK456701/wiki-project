@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -116,8 +117,12 @@ public class AgentTraceService {
         for (Map<String, Object> node : nodes) {
             Map<String, Object> value = new LinkedHashMap<>(node);
             String name = text(value.get("node_name"));
+            FlowStage stage = flowStage(name, text(value.get("node_type")));
             value.put("node_title", title(name));
             value.put("processing_summary", processing(name));
+            value.put("flow_stage", stage.id());
+            value.put("flow_stage_title", stage.title());
+            value.put("flow_stage_order", stage.order());
             value.put("input_data", decode(text(value.get("input_summary"))));
             Object outputData = decode(text(value.get("output_summary")));
             value.put("output_data", outputData);
@@ -133,6 +138,108 @@ public class AgentTraceService {
         trace.put("trace_version", VERSION);
         trace.put("timing_summary", timing(enhanced));
         return trace;
+    }
+
+    /**
+     * 将实现级节点归并为稳定的业务架构阶段。
+     *
+     * <p>阶段字段由后端统一派生，避免不同前端各自维护节点名称映射。新增或历史未知
+     * 节点会按节点类型安全归类，仍可进入架构图而不会从链路中消失。</p>
+     */
+    private static FlowStage flowStage(String name, String nodeType) {
+        String safeName = first(name, "");
+        if (Set.of(
+                "memory_load",
+                "indicator_rule_match",
+                "indicator_semantic_retrieval",
+                "indicator_llm_disambiguation",
+                "compound_split").contains(safeName)) {
+            return FlowStage.CONTEXT;
+        }
+        if (safeName.startsWith("plan_alignment")
+                || Set.of(
+                        "planner_llm",
+                        "followup_plan_resolve",
+                        "plan_goal_alignment",
+                        "plan_replan",
+                        "low_confidence_clarification",
+                        "multiple_indicator_clarification",
+                        "unsupported_feature_guard").contains(safeName)) {
+            return FlowStage.PLANNING;
+        }
+        if (Set.of(
+                "plan_compile",
+                "plan_validate",
+                "state_controller",
+                "deterministic_tool_dispatch",
+                "failure_router").contains(safeName)) {
+            return FlowStage.COMPILATION;
+        }
+        if (safeName.startsWith("difference_diagnosis_layer_")
+                || safeName.startsWith("dual_")
+                || Set.of(
+                        "tool_result",
+                        "source_extraction_prepare",
+                        "source_data_extraction",
+                        "business_overview",
+                        "real_overview",
+                        "compound_subtask",
+                        "metadata_sync_dbhub").contains(safeName)
+                || "tool".equals(nodeType)
+                || "database".equals(nodeType)) {
+            return FlowStage.EXECUTION;
+        }
+        if (Set.of(
+                "plan_verify",
+                "response_guard",
+                "difference_diagnosis_conclusion",
+                "dual_diagnosis_conclusion").contains(safeName)) {
+            return FlowStage.VERIFICATION;
+        }
+        if (Set.of(
+                "final_answer_llm",
+                "prepared_sql_answer",
+                "caliber_options_answer",
+                "caliber_simulation_answer",
+                "difference_diagnosis_answer",
+                "compound_merge",
+                "memory_save").contains(safeName)) {
+            return FlowStage.ANSWER;
+        }
+        if ("storage".equals(nodeType)) return FlowStage.ANSWER;
+        if ("llm".equals(nodeType)) return FlowStage.PLANNING;
+        return FlowStage.EXECUTION;
+    }
+
+    private enum FlowStage {
+        CONTEXT("context", "上下文与指标识别", 1),
+        PLANNING("planning", "规划与目标校验", 2),
+        COMPILATION("compilation", "IR编译与能力选择", 3),
+        EXECUTION("execution", "工具与数据库执行", 4),
+        VERIFICATION("verification", "Evidence验证与安全检查", 5),
+        ANSWER("answer", "回答组织与会话保存", 6);
+
+        private final String id;
+        private final String title;
+        private final int order;
+
+        FlowStage(String id, String title, int order) {
+            this.id = id;
+            this.title = title;
+            this.order = order;
+        }
+
+        String id() {
+            return id;
+        }
+
+        String title() {
+            return title;
+        }
+
+        int order() {
+            return order;
+        }
     }
 
     /**

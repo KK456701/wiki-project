@@ -14,7 +14,6 @@ const error = ref('')
 const trace = ref<Record<string, unknown> | null>(null)
 const typeFilter = ref('all')
 const statusFilter = ref('all')
-const viewMode = ref<'flow' | 'list'>('flow')
 const selectedNode = ref<TraceNode | null>(null)
 
 const nodes = computed(() => Array.isArray(trace.value?.nodes)
@@ -27,9 +26,6 @@ const filteredNodes = computed(() => nodes.value.filter((node) =>
   (typeFilter.value === 'all' || String(node.node_type || 'code') === typeFilter.value)
   && (statusFilter.value === 'all' || String(node.status || '') === statusFilter.value),
 ))
-const duration = computed(() => Math.max(1, Number(trace.value?.duration_ms || 0), ...nodes.value.map((node) =>
-  Number(node.started_offset_ms || 0) + Number(node.duration_ms || 0),
-)))
 const timing = computed(() => (trace.value?.timing_summary || {}) as Record<string, number>)
 const slowest = computed(() => [...nodes.value].sort((left, right) =>
   Number(right.duration_ms || 0) - Number(left.duration_ms || 0),
@@ -74,7 +70,6 @@ watch(() => props.traceId, async (traceId) => {
   loading.value = true
   error.value = ''
   selectedNode.value = null
-  viewMode.value = 'flow'
   try {
     trace.value = await loadAgentRun(props.token, traceId)
   } catch (reason) {
@@ -86,12 +81,6 @@ watch(() => props.traceId, async (traceId) => {
 
 function nodeTitle(node: TraceNode): string {
   return String(node.node_title || node.node_name || '未命名节点')
-}
-
-function barStyle(node: TraceNode) {
-  const left = Math.max(0, Number(node.started_offset_ms || 0) / duration.value * 100)
-  const width = Math.max(.8, Number(node.duration_ms || 0) / duration.value * 100)
-  return { left: `${Math.min(99, left)}%`, width: `${Math.min(100 - left, width)}%` }
 }
 
 function pretty(value: unknown): string {
@@ -158,10 +147,6 @@ function planValue(name: string): unknown {
           <article><span>代码 / 存储</span><strong>{{ Number(timing.code_ms || 0) + Number(timing.storage_ms || 0) }}ms</strong></article>
         </section>
         <section class="trace-toolbar">
-          <div class="trace-view-tabs">
-            <button type="button" :class="{ active: viewMode === 'flow' }" @click="viewMode = 'flow'">流程图</button>
-            <button type="button" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'">节点列表</button>
-          </div>
           <label>节点类型<select v-model="typeFilter"><option value="all">全部</option><option value="llm">LLM</option><option value="code">代码</option><option value="tool">工具</option><option value="database">数据库</option><option value="storage">存储</option></select></label>
           <label>状态<select v-model="statusFilter"><option value="all">全部</option><option value="success">成功</option><option value="failed">失败</option></select></label>
           <span>{{ nodes.length }} 个节点 · {{ evidence.length }} 条 Evidence</span>
@@ -169,12 +154,12 @@ function planValue(name: string): unknown {
         <section v-if="slowest.length" class="trace-slowest">
           <strong>最慢节点</strong>
           <button v-for="node in slowest" :key="`slow-${String(node.node_id)}`"
-            type="button" @click="selectedNode = node; viewMode = 'flow'">
+            type="button" @click="selectedNode = node">
             {{ nodeTitle(node) }} {{ Number(node.duration_ms || 0) }}ms
           </button>
         </section>
 
-        <section v-if="viewMode === 'flow'" class="trace-flow-layout">
+        <section class="trace-flow-layout">
           <div class="trace-flow-stage">
             <TraceFlowGraph
               :nodes="filteredNodes"
@@ -252,30 +237,6 @@ function planValue(name: string): unknown {
             </div>
           </aside>
         </section>
-
-        <div v-else class="trace-list">
-          <article v-for="(node, index) in filteredNodes" :key="String(node.node_id || index)"
-            class="trace-node" :data-type="String(node.node_type || 'code')"
-            :data-status="String(node.status || '')">
-            <div class="node-sequence">{{ String(index + 1).padStart(2, '0') }}</div>
-            <div>
-              <div class="node-heading">
-                <strong>{{ nodeTitle(node) }} <code>{{ String(node.node_name || '') }}</code></strong>
-                <span>{{ Number(node.duration_ms || 0) }}ms</span>
-              </div>
-              <p>{{ String(node.processing_summary || node.node_name || '') }}</p>
-              <div class="trace-waterfall"><i :style="barStyle(node)"></i></div>
-              <small>{{ String(node.node_type || 'code') }} · {{ String(node.status || '-') }} · 泳道 {{ String(node.subtask_id || 'root') }} · +{{ Number(node.started_offset_ms || 0) }}ms</small>
-              <details class="trace-data">
-                <summary>输入、输出与节点配置</summary>
-                <div><strong>输入参数</strong><pre>{{ pretty(node.input_data) }}</pre></div>
-                <div><strong>输出参数</strong><pre>{{ pretty(node.output_data) }}</pre></div>
-                <p>能力：{{ String(node.capability || '-') }} · 工具：{{ String(node.tool_name || '-') }} · 模型：{{ String(node.model_id || node.llm_model || '-') }} · FailureClass：{{ String(node.failure_class || '-') }}</p>
-              </details>
-            </div>
-          </article>
-          <p v-if="!filteredNodes.length" class="drawer-state">当前筛选下没有可展示的节点。</p>
-        </div>
         <details v-if="evidence.length" class="trace-evidence">
           <summary>Evidence 来源（{{ evidence.length }}）</summary>
           <pre>{{ pretty(evidence) }}</pre>
