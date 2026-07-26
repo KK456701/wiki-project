@@ -26,6 +26,7 @@ import com.hospital.wikiagent.agent.evidence.EvidenceLedger;
 import com.hospital.wikiagent.agent.evidence.EvidenceStore;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerification;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.model.AgentModelInvoker;
@@ -188,7 +189,7 @@ class AgentRunnerTest {
     }
 
     @Test
-    void correctsCurrentCaliberFollowupBeforeIrWhenSmallModelKeepsChoosingSimulation() {
+    void resolvesCurrentCaliberFollowupDeterministicallyBeforePlanner() {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .build();
@@ -200,30 +201,7 @@ class AgentRunnerTest {
         EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
         EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
         gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
-        String wrongCandidatePlan = """
-                {
-                  "schema_version": "request-plan-v2",
-                  "intent": "indicator_caliber_simulation",
-                  "goal": "按候选口径解释结果",
-                  "target_indicator": {
-                    "raw_name": "急会诊及时到位率"
-                  },
-                  "target_caliber": {"raw_text": "什么口径"},
-                  "time_expression": {
-                    "raw_text": "沿用上一轮",
-                    "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-02-01T00:00:00"
-                  },
-                  "requested_outputs": ["caliber_explanation"],
-                  "constraints": [],
-                  "semantic_ambiguities": [],
-                  "confidence": 0.9
-                }
-                """;
-        QueueInvoker models = new QueueInvoker(
-                wrongCandidatePlan,
-                wrongCandidatePlan,
-                RULE_TEMPLATE_ANSWER);
+        QueueInvoker models = new QueueInvoker(RULE_TEMPLATE_ANSWER);
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentConversationMemory conversations = mock(AgentConversationMemory.class);
         org.mockito.Mockito.when(conversations.open(
@@ -283,10 +261,12 @@ class AgentRunnerTest {
                 .containsExactly("get_effective_rule");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
-                .contains("plan_goal_alignment", "plan_replan",
-                        "plan_alignment_deterministic_fallback")
-                .doesNotContain("plan_alignment_review_llm");
-        assertThat(models.calls).isEqualTo(3);
+                .contains("followup_plan_resolve", "plan_goal_alignment")
+                .doesNotContain(
+                        "planner_llm", "plan_replan",
+                        "plan_alignment_deterministic_fallback",
+                        "plan_alignment_review_llm");
+        assertThat(models.calls).isEqualTo(1);
     }
 
     @Test
@@ -738,6 +718,69 @@ class AgentRunnerTest {
                 .contains("prepare_indicator_sql")
                 .doesNotContain("trial_run_indicator_sql");
         assertThat(models.calls).isZero();
+    }
+
+    @Test
+    void resolvesNumeratorFollowupWithoutPlannerAndUsesFocusedTemplate() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules());
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker("""
+                # 急会诊及时到位率
+
+                ## 分子口径
+
+                及时到位次数。
+                """);
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentConversationMemory memory = AgentConversationMemory.noop();
+        HospitalPrincipal principal = new HospitalPrincipal(
+                "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
+        var conversation = memory.open(principal, "session_numerator_followup");
+        AgentRunState previousState = new AgentRunState();
+        previousState.currentRuleId("HXZD-003-001");
+        previousState.lastRuleName("急会诊及时到位率");
+        previousState.lastIntent(PlanIntent.RULE_EXPLANATION.value());
+        memory.appendAssistant(
+                conversation,
+                principal,
+                "急会诊及时到位率的完整口径如下。",
+                previousState);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper), capabilities,
+                new AgentStateController(capabilities), new DeterministicDispatch(), gateway, verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                memory);
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "分子是什么口径",
+                "session_numerator_followup", "ollama-test", null,
+                "request_numerator_followup", "trace_numerator_followup",
+                "business_test", "{}", "", principal), events::add);
+
+        assertThat(result.stopReason()).as(result.answer()).isEqualTo("final_answer");
+        assertThat(result.requestPlan().intent()).isEqualTo(PlanIntent.RULE_EXPLANATION);
+        assertThat(result.requestPlan().explanationFocuses())
+                .containsExactly(ExplanationFocus.NUMERATOR);
+        assertThat(result.answer())
+                .contains("## 分子口径", "及时到位次数")
+                .doesNotContain("## 分母口径", "## 口径摘要");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("followup_plan_resolve", "final_answer_llm")
+                .doesNotContain("planner_llm");
+        assertThat(models.calls).isEqualTo(1);
     }
 
     @Test

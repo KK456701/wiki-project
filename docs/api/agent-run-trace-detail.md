@@ -154,6 +154,17 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 | `sql_id` | string | 是 | 受控 SQL 对象 ID。 |
 | `run_id` | string | 是 | 试运行 ID。 |
 | `rule_id` | string | 是 | 关联指标规则 ID。 |
+
+Planner 或跨轮确定性计划解析节点的输出还可能包含
+`explanation_focuses`。该字段来自 `RequestPlan v3`，取值为
+`overview`、`definition`、`formula`、`numerator`、`denominator`、
+`time_dimension`、`deduplication`、`exclusions` 或 `version_scope`。
+它表示本轮规则解释实际要回答的部分，而不是新的顶层意图。历史节点缺少该字段时，
+前端与服务端均按 `overview` 展示。
+
+当“分子是什么”“分母怎么算”等追问能够从结构化会话唯一确定指标和关注点时，
+链路使用 `followup_plan_resolve` 代码节点，并在输出中记录
+`explanation_focuses` 和跳过 Planner 的原因；不会伪装成一次 LLM Planner 调用。
 | `llm_model` | string | 是 | LLM 模型名（历史字段，与 `model_id` 含义相近）。 |
 | `started_at` | string | 否 | 节点开始时间（本地时间 ISO 格式）。 |
 | `ended_at` | string | 是 | 节点结束时间。 |

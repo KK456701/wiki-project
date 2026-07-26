@@ -37,6 +37,29 @@ public class AnswerContractValidator {
                 return "回答缺少模板必需章节：" + section;
             }
         }
+        if (!template.explanationFocuses().isEmpty()
+                && !template.explanationFocuses().contains(
+                        com.hospital.wikiagent.agent.ir.ExplanationFocus.OVERVIEW)) {
+            List<String> allowed = template.explanationFocuses().stream()
+                    .map(AnswerTemplateRegistry::sectionTitle)
+                    .toList();
+            for (String section : List.of(
+                    "## 口径摘要",
+                    "## 计算口径",
+                    "## 指标定义",
+                    "## 计算公式",
+                    "## 分子口径",
+                    "## 分母口径",
+                    "## 统计时间",
+                    "## 去重规则",
+                    "## 排除条件",
+                    "## 版本与适用范围",
+                    "## 实施信息")) {
+                if (!allowed.contains(section) && content.contains(section)) {
+                    return "分项回答包含用户未请求的章节：" + section;
+                }
+            }
+        }
         if (template.preserveTrialNumbers()) {
             Map<String, Object> trial = latest(
                     evidence, List.of("caliber_trial_result", "trial_run"));

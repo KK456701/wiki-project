@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.evidence.VerifiedEvidence;
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 import com.hospital.wikiagent.agent.model.AnswerTemplateRegistry.AnswerTemplate;
@@ -22,7 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Component
 public class FinalAnswerComposer {
-    public static final String VERSION = "final-answer-composer-v3";
+    public static final String VERSION = "final-answer-composer-v4";
 
     private final AgentModelInvoker models;
     private final AgentModelRegistry registry;
@@ -66,7 +67,8 @@ public class FinalAnswerComposer {
     public FinalAnswerResult compose(FinalAnswerInput input) {
         String modelId = input.modelId() == null || input.modelId().isBlank()
                 ? registry.defaultModelId() : input.modelId();
-        AnswerTemplate template = templates.resolve(input.intent(), input.requestedOutputs());
+        AnswerTemplate template = templates.resolve(
+                input.intent(), input.requestedOutputs(), input.explanationFocuses());
         String userPrompt = buildUserPrompt(input, template);
         String raw = models.complete(
                 modelId, prompts.finalAnswer(), userPrompt, properties.getFinalAnswerTimeout()).content();
@@ -104,6 +106,13 @@ public class FinalAnswerComposer {
         return templates.resolve(intent, requestedOutputs);
     }
 
+    public AnswerTemplate selectTemplate(
+            PlanIntent intent,
+            List<RequestedOutput> requestedOutputs,
+            List<ExplanationFocus> explanationFocuses) {
+        return templates.resolve(intent, requestedOutputs, explanationFocuses);
+    }
+
     private String buildUserPrompt(FinalAnswerInput input, AnswerTemplate template) {
         List<Map<String, Object>> evidence = input.evidence().stream().map(item -> {
             Map<String, Object> value = new LinkedHashMap<>();
@@ -126,6 +135,8 @@ public class FinalAnswerComposer {
                     + "计划意图：" + input.intent().value() + "\n"
                     + "输出目标：" + input.requestedOutputs().stream()
                             .map(RequestedOutput::value).toList() + "\n"
+                    + "本轮规则解释关注点：" + input.explanationFocuses().stream()
+                            .map(ExplanationFocus::value).toList() + "\n"
                     + "最近对话（仅用于指代，不作为数值证据）：\n" + safe(input.recentHistory()) + "\n"
                     + "VerifiedEvidence：\n" + objectMapper.writeValueAsString(evidence) + "\n\n"
                     + "本轮回答模板：" + template.id() + "@" + template.version()
@@ -233,42 +244,98 @@ public class FinalAnswerComposer {
             append(value, "统计区间", period(sql));
             return value.toString().strip();
         }
-        if (!rule.isEmpty()) {
-            String name = firstText(rule.get("rule_name"), "该指标");
-            StringBuilder value = new StringBuilder("# ").append(name).append("\n\n")
-                    .append("> **口径速览**  \n")
-                    .append("> 以下内容来自当前已验证的本院生效口径；未提供的内容不会推测补充。\n\n")
+        if (!rule.isEmpty()) return renderRuleFallback(rule, template.explanationFocuses());
+        return "";
+    }
+
+    private static String renderRuleFallback(
+            Map<String, Object> rule,
+            List<ExplanationFocus> requestedFocuses) {
+        List<ExplanationFocus> focuses = requestedFocuses == null || requestedFocuses.isEmpty()
+                ? List.of(ExplanationFocus.OVERVIEW)
+                : requestedFocuses;
+        String name = firstText(rule.get("rule_name"), "该指标");
+        Map<String, Object> calculation = objectMap(rule.get("calculation_definition"));
+        String definition = firstText(rule.get("definition"), "当前证据未提供");
+        String formula = firstText(rule.get("formula"), "当前证据未提供");
+        String numerator = firstText(
+                calculation.get("numerator_caliber"),
+                calculation.get("numerator"),
+                rule.get("numerator_rule"),
+                "当前证据未提供");
+        String denominator = firstText(
+                calculation.get("denominator_caliber"),
+                calculation.get("denominator"),
+                rule.get("denominator_rule"),
+                "当前证据未提供");
+        String timeDimension = firstText(
+                timeDimensionLabel(calculation.get("time_dimension")),
+                timeDimensionLabel(rule.get("period_time_field")),
+                timeDimensionLabel(rule.get("period_time")),
+                "当前证据未提供");
+        String deduplication = firstText(
+                calculation.get("dedup_key"),
+                rule.get("distinct_key"),
+                rule.get("deduplication"),
+                "当前证据未提供");
+        String exclusions = firstText(
+                calculation.get("exclusions"),
+                rule.get("exclude_rule"),
+                rule.get("exclusion_rule"),
+                "当前证据未提供");
+        if (focuses.contains(ExplanationFocus.OVERVIEW)) {
+            return new StringBuilder("# ").append(name).append("\n\n")
+                    .append("> **口径速览**  \n> ")
+                    .append(definition).append("\n\n")
                     .append("## 口径摘要\n\n")
                     .append("| 项目 | 内容 |\n|---|---|\n")
-                    .append("| 指标定义 | ").append(firstText(
-                            rule.get("definition"), "当前证据未提供")).append(" |\n")
+                    .append("| 指标定义 | ").append(definition).append(" |\n")
                     .append("| 规则编号 | ").append(firstText(
                             rule.get("rule_id"), "当前证据未提供")).append(" |\n")
                     .append("| 规则版本 | ").append(firstText(
                             rule.get("hospital_version"), rule.get("version"),
-                            "当前证据未提供")).append(" |\n")
-                    .append("| 生效层级 | ").append(firstText(
-                            rule.get("effective_level"), "当前证据未提供")).append(" |\n\n")
-                    .append("## 计算口径\n\n");
-            append(value, "计算公式", rule.get("formula"));
-            append(value, "分子口径", rule.get("numerator_rule"));
-            append(value, "分母口径", rule.get("denominator_rule"));
-            append(value, "统计时间字段", firstText(
-                    rule.get("period_time_field"), rule.get("period_time")));
-            append(value, "去重方式", firstText(
-                    rule.get("distinct_key"), rule.get("deduplication")));
-            append(value, "排除条件", firstText(
-                    rule.get("exclude_rule"), rule.get("exclusion_rule")));
-            value.append("\n## 实施信息\n\n");
-            append(value, "生效状态", firstText(
-                    rule.get("implementation_status"), rule.get("status")));
-            append(value, "字段映射", rule.get("mapping_status"));
-            append(value, "SQL 状态", rule.get("sql_status"));
-            value.append("\n> **使用说明**  \n")
-                    .append("> 当前证据未提供国标对比结论，不能据此判断本院口径与国标是否一致。\n");
-            return value.toString().strip();
+                            rule.get("national_version"), "当前证据未提供")).append(" |\n")
+                    .append("| 生效层级 | ").append(effectiveLevelLabel(
+                            rule.get("effective_level"))).append(" |\n\n")
+                    .append("## 计算口径\n\n")
+                    .append("- 计算公式：").append(formula).append("\n")
+                    .append("- 分子口径：").append(numerator).append("\n")
+                    .append("- 分母口径：").append(denominator).append("\n")
+                    .append("- 统计时间：").append(timeDimension).append("\n")
+                    .append("- 去重规则：").append(deduplication).append("\n")
+                    .append("- 排除条件：").append(exclusions).append("\n")
+                    .toString().strip();
         }
-        return "";
+        StringBuilder answer = new StringBuilder("# ").append(name).append("\n\n");
+        for (ExplanationFocus focus : focuses) {
+            answer.append(AnswerTemplateRegistry.sectionTitle(focus)).append("\n\n");
+            answer.append(switch (focus) {
+                case DEFINITION -> definition;
+                case FORMULA -> formula;
+                case NUMERATOR -> numerator;
+                case DENOMINATOR -> denominator;
+                case TIME_DIMENSION -> timeDimension;
+                case DEDUPLICATION -> deduplication;
+                case EXCLUSIONS -> exclusions;
+                case VERSION_SCOPE -> "规则编号："
+                        + firstText(rule.get("rule_id"), "当前证据未提供")
+                        + "；规则版本："
+                        + firstText(rule.get("hospital_version"), rule.get("version"),
+                                rule.get("national_version"), "当前证据未提供")
+                        + "；生效层级："
+                        + effectiveLevelLabel(rule.get("effective_level")) + "。";
+                case OVERVIEW -> "";
+            }).append("\n\n");
+        }
+        return answer.toString().strip();
+    }
+
+    private static String effectiveLevelLabel(Object raw) {
+        String value = firstText(raw);
+        if ("company".equalsIgnoreCase(value)) return "公司公版口径";
+        if ("hospital".equalsIgnoreCase(value)) return "本院覆盖口径";
+        if ("national".equalsIgnoreCase(value)) return "国家口径";
+        return value.isBlank() ? "当前证据未提供" : value;
     }
 
     private static String dualComparisonSection(Map<String, Object> trial) {
@@ -370,6 +437,7 @@ public class FinalAnswerComposer {
             String planGoal,
             PlanIntent intent,
             List<RequestedOutput> requestedOutputs,
+            List<ExplanationFocus> explanationFocuses,
             String modelId,
             LocalDate currentDate,
             String recentHistory,
@@ -381,8 +449,23 @@ public class FinalAnswerComposer {
                 LocalDate currentDate,
                 String recentHistory,
                 List<VerifiedEvidence> evidence) {
-            this(userMessage, planGoal, PlanIntent.UNKNOWN, List.of(), modelId,
+            this(userMessage, planGoal, PlanIntent.UNKNOWN, List.of(),
+                    List.of(ExplanationFocus.OVERVIEW), modelId,
                     currentDate, recentHistory, evidence);
+        }
+
+        public FinalAnswerInput(
+                String userMessage,
+                String planGoal,
+                PlanIntent intent,
+                List<RequestedOutput> requestedOutputs,
+                String modelId,
+                LocalDate currentDate,
+                String recentHistory,
+                List<VerifiedEvidence> evidence) {
+            this(userMessage, planGoal, intent, requestedOutputs,
+                    List.of(ExplanationFocus.OVERVIEW),
+                    modelId, currentDate, recentHistory, evidence);
         }
 
         public FinalAnswerInput {
@@ -391,6 +474,9 @@ public class FinalAnswerComposer {
             }
             intent = intent == null ? PlanIntent.UNKNOWN : intent;
             requestedOutputs = requestedOutputs == null ? List.of() : List.copyOf(requestedOutputs);
+            explanationFocuses = explanationFocuses == null || explanationFocuses.isEmpty()
+                    ? List.of(ExplanationFocus.OVERVIEW)
+                    : explanationFocuses.stream().filter(java.util.Objects::nonNull).distinct().toList();
             currentDate = currentDate == null ? LocalDate.now() : currentDate;
             evidence = evidence == null ? List.of() : List.copyOf(evidence);
         }

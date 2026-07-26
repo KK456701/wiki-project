@@ -121,6 +121,27 @@ function humanOutput(value: string): string {
   return labels[value] || value
 }
 
+function humanFocus(value: string): string {
+  const labels: Record<string, string> = {
+    OVERVIEW: '完整口径',
+    DEFINITION: '指标定义',
+    FORMULA: '计算公式',
+    NUMERATOR: '分子口径',
+    DENOMINATOR: '分母口径',
+    TIME_DIMENSION: '统计时间',
+    DEDUPLICATION: '去重规则',
+    EXCLUSIONS: '排除条件',
+    VERSION_SCOPE: '版本与适用范围',
+  }
+  return labels[value] || value
+}
+
+function focusLabels(value: unknown): string {
+  return Array.isArray(value)
+    ? value.map((item) => humanFocus(String(item))).join('、')
+    : '完整口径'
+}
+
 function planValue(name: string): unknown {
   return normalizedPlan.value[name]
 }
@@ -187,6 +208,7 @@ function planValue(name: string): unknown {
                 <p>{{ String(plannerInput.planner_skip_reason || '指标和目标可由会话状态唯一确定。') }}</p>
                 <div><strong>确定性意图</strong><span>{{ humanIntent(String(plannerOutput.intent || '')) }}</span></div>
                 <div><strong>需要输出</strong><span>{{ pretty(plannerOutput.requested_outputs) }}</span></div>
+                <div><strong>回答关注点</strong><span>{{ focusLabels(plannerOutput.explanation_focuses) }}</span></div>
               </section>
 
               <section v-if="isPlannerNode" class="planner-readable">
@@ -197,6 +219,7 @@ function planValue(name: string): unknown {
                 <div><strong>target_caliber · 替代口径</strong><pre>{{ pretty(planValue('target_caliber')) }}</pre></div>
                 <div><strong>time_expression · 统计区间</strong><pre>{{ pretty(planValue('time_expression')) }}</pre></div>
                 <div><strong>requested_outputs · 最终输出</strong><span>{{ compiledImpact.outputs.join('、') || '未提供' }}</span></div>
+                <div><strong>explanation_focuses · 规则解释关注点</strong><span>{{ focusLabels(planValue('explanation_focuses')) }}</span></div>
                 <div><strong>constraints · 用户限制</strong><pre>{{ pretty(planValue('constraints')) }}</pre></div>
                 <div><strong>semantic_ambiguities · 未决项</strong><pre>{{ pretty(planValue('semantic_ambiguities')) }}</pre></div>
                 <div><strong>confidence · 意图置信度</strong><span>{{ String(planValue('confidence') ?? '未提供') }}</span></div>

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import com.hospital.wikiagent.agent.evidence.EvidenceEnvelope;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerification;
 import com.hospital.wikiagent.agent.evidence.VerifiedEvidence;
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
@@ -259,12 +260,57 @@ class FinalAnswerComposerTest {
                 .contains(
                         "## 口径摘要",
                         "## 计算口径",
-                        "## 实施信息",
-                        "本院生效口径",
-                        "当前证据未提供国标对比结论")
+                        "本院覆盖口径")
+                .doesNotContain("## 实施信息")
                 .doesNotContain("当前采用国家口径", "本院与国标一致");
         assertThat(invoker.prompts.get(1))
                 .contains("错误表述为当前国家口径", "rule-explanation@v1");
+    }
+
+    @Test
+    void focusedNumeratorAnswerRejectsFullReportAndFallsBackToNumeratorOnly() {
+        String fullReport = """
+                # 患者入院 48 小时内转科的比例
+
+                ## 口径摘要
+
+                完整口径。
+
+                ## 分子口径
+
+                入院后 0 至 48 小时内非 ICU 转科人次数。
+
+                ## 分母口径
+
+                同期入院患者总人次数。
+                """;
+        CapturingInvoker invoker = new CapturingInvoker(fullReport, fullReport);
+        AgentModelProperties properties = AgentModelRegistryTest.properties();
+        FinalAnswerComposer composer = new FinalAnswerComposer(
+                invoker,
+                new AgentModelRegistry(properties),
+                properties,
+                new PromptCatalog(),
+                new ObjectMapper());
+
+        var result = composer.compose(new FinalAnswerComposer.FinalAnswerInput(
+                "分子是什么口径",
+                "解释当前指标分子口径",
+                PlanIntent.RULE_EXPLANATION,
+                List.of(RequestedOutput.EXPLANATION),
+                List.of(ExplanationFocus.NUMERATOR),
+                "ollama-test",
+                LocalDate.of(2026, 7, 26),
+                "",
+                List.of(verifiedRuleEvidence())));
+
+        assertThat(result.templateId()).isEqualTo("rule-numerator");
+        assertThat(result.deterministicFallback()).isTrue();
+        assertThat(result.content())
+                .contains("## 分子口径", "入院后 0 至 48 小时内非 ICU 转科人次数")
+                .doesNotContain("## 口径摘要", "## 分母口径", "## 实施信息");
+        assertThat(invoker.prompts.get(1))
+                .contains("用户未请求的章节", "rule-numerator@v1");
     }
 
     private static VerifiedEvidence verifiedEvidence() {

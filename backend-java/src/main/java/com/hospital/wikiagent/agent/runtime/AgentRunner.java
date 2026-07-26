@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier.VerificationExpectations;
 import com.hospital.wikiagent.agent.ir.CompiledPlanIR;
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
 import com.hospital.wikiagent.agent.ir.FailureClass;
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
@@ -261,22 +262,29 @@ public class AgentRunner {
         PlannerResult modelPlan;
         RequestPlan followupPlan = deterministicSqlFollowup(
                 request.query(), conversation, request.recentHistory(), resolvedIndicator);
+        if (followupPlan == null) {
+            followupPlan = deterministicRuleExplanationFollowup(
+                    request.query(), conversation, resolvedIndicator);
+        }
         if (followupPlan != null) {
-            // “这个 SQL 怎么写”已由上一轮结构化状态给出指标与周期，无需再次让小模型猜测。
+            // 明确的 SQL 或规则分项追问可由结构化会话唯一确定，无需再次让小模型猜测。
             long followupStarted = TraceEvents.started();
             modelPlan = new PlannerResult(
-                    followupPlan, "deterministic-sql-followup", request.modelId(), false);
+                    followupPlan, "deterministic-followup", request.modelId(), false);
+            String skipReason = followupPlan.intent() == PlanIntent.RULE_EXPLANATION
+                    ? "指标和规则解释关注点可由结构化会话状态唯一确定"
+                    : "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定";
             TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
                     followupStarted, subtaskId, eventValues(
                             "query", request.query(),
                             "planner_invoked", false,
-                            "planner_skip_reason",
-                            "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定",
+                            "planner_skip_reason", skipReason,
                             "context_rule_id", followupPlan.targetIndicator().ruleId(),
                             "context_stat_start", followupPlan.timeExpression().startTime(),
                             "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
                             "intent", followupPlan.intent().name(),
                             "requested_outputs", followupPlan.requestedOutputs(),
+                            "explanation_focuses", followupPlan.explanationFocuses(),
                             "decision", "未调用 LLM Planner"));
         } else {
             emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
@@ -947,7 +955,8 @@ public class AgentRunner {
                 "rule_id", state.currentRuleId(), "sql_id", sqlId);
         // 模板选择只依赖已校验的计划，不允许模型自行挑选版式。即使下方某些高风险报告
         // 使用确定性代码渲染，Trace 也记录与该意图对应的模板编号和版本。
-        var selectedTemplate = finalAnswer.selectTemplate(plan.intent(), plan.requestedOutputs());
+        var selectedTemplate = finalAnswer.selectTemplate(
+                plan.intent(), plan.requestedOutputs(), plan.explanationFocuses());
         // SQL、候选口径模拟和差异归因由确定性代码回答，避免模型改写
         // 高风险事实；其他意图由 Final Answer LLM 按本轮选中的模板组织。
         String deterministicAnswer = composeDifferenceDiagnosisAnswer(plan, state);
@@ -998,12 +1007,14 @@ public class AgentRunner {
         emit(observer, "model_start", traceId, state.stepCount(), Map.of("message", "生成最终回答"));
         long finalStarted = TraceEvents.started();
         var answer = finalAnswer.compose(new FinalAnswerInput(
-                request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(), modelId,
+                request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(),
+                plan.explanationFocuses(), modelId,
                 LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
         TraceEvents.completed(observer, traceId, "final_answer_llm", "llm", finalStarted,
                 state.subtaskId(), Map.of(
                         "query", request.query(),
                         "verified_evidence_count", evidence.size(),
+                        "explanation_focuses", plan.explanationFocuses(),
                         "answer_template_id", answer.templateId(),
                         "answer_template_version", answer.templateVersion()),
                 Map.of(
@@ -1320,6 +1331,104 @@ public class AgentRunner {
                 List.of(RequestedOutput.PREPARED_SQL_HANDLE),
                 List.of(),
                 List.of());
+    }
+
+    /**
+     * 将明确的规则分项追问转换为确定性计划。
+     *
+     * <p>该方法只识别“分子、分母、公式、时间、去重、排除、版本”等封闭业务词。
+     * 指标身份必须已由本轮解析或结构化会话确认。替代口径表达必须继续交给候选口径
+     * 解析链，不能在这里误当成当前规则解释。</p>
+     */
+    private static RequestPlan deterministicRuleExplanationFollowup(
+            String query,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        String compact = query == null
+                ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (compact.isBlank()
+                || compact.contains("sql")
+                || compact.contains("脚本")
+                || compact.contains("其他口径")
+                || compact.contains("还有哪些口径")
+                || compact.contains("可选口径")
+                || hasAlternativeCaliberCue(compact)) {
+            return null;
+        }
+
+        List<ExplanationFocus> focuses = new ArrayList<>();
+        if (compact.contains("定义") || compact.contains("含义") || compact.contains("什么意思")) {
+            focuses.add(ExplanationFocus.DEFINITION);
+        }
+        if (compact.contains("公式")) focuses.add(ExplanationFocus.FORMULA);
+        if (compact.contains("分子")) focuses.add(ExplanationFocus.NUMERATOR);
+        if (compact.contains("分母")) focuses.add(ExplanationFocus.DENOMINATOR);
+        if (compact.contains("统计时间")
+                || compact.contains("时间字段")
+                || compact.contains("按什么时间")
+                || compact.contains("根据什么时间")
+                || compact.contains("入院还是入区")) {
+            focuses.add(ExplanationFocus.TIME_DIMENSION);
+        }
+        if (compact.contains("去重")) focuses.add(ExplanationFocus.DEDUPLICATION);
+        if (compact.contains("排除") || compact.contains("剔除")) {
+            focuses.add(ExplanationFocus.EXCLUSIONS);
+        }
+        if (compact.contains("版本")
+                || compact.contains("生效层级")
+                || compact.contains("适用范围")
+                || compact.contains("规则编号")) {
+            focuses.add(ExplanationFocus.VERSION_SCOPE);
+        }
+        if (focuses.isEmpty()
+                && (compact.contains("什么口径")
+                        || compact.contains("当前口径")
+                        || compact.contains("根据什么口径"))) {
+            focuses.add(ExplanationFocus.OVERVIEW);
+        }
+        if (focuses.isEmpty()) return null;
+
+        String ruleId = first(
+                resolvedIndicator == null ? null : resolvedIndicator.ruleId(),
+                conversation.ruleId());
+        if (ruleId == null) return null;
+        String ruleName = first(
+                resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
+                conversation.ruleName(), ruleId);
+        List<RequestedOutput> outputs = new ArrayList<>();
+        if (focuses.contains(ExplanationFocus.DEFINITION)) {
+            outputs.add(RequestedOutput.DEFINITION);
+        }
+        if (focuses.contains(ExplanationFocus.FORMULA)) {
+            outputs.add(RequestedOutput.FORMULA);
+        }
+        if (outputs.isEmpty() || focuses.size() > outputs.size()) {
+            outputs.add(RequestedOutput.EXPLANATION);
+        }
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.RULE_EXPLANATION,
+                "解释“" + ruleName + "”的"
+                        + focuses.stream().map(ExplanationFocus::value).toList(),
+                new RequestPlan.TargetIndicator(ruleName, ruleId),
+                new RequestPlan.TargetCaliber("", null),
+                new RequestPlan.TimeExpression("", null, null),
+                outputs.stream().distinct().toList(),
+                focuses,
+                List.of(),
+                List.of(),
+                1.0);
+    }
+
+    private static boolean hasAlternativeCaliberCue(String compact) {
+        return compact.contains("如果")
+                || compact.contains("假设")
+                || compact.contains("改用")
+                || compact.contains("换成")
+                || compact.contains("按入区")
+                || compact.contains("根据入区")
+                || compact.contains("按首次入区")
+                || compact.contains("根据首次入区");
     }
 
     private static List<String> historyTimes(String history) {
@@ -2084,6 +2193,8 @@ public class AgentRunner {
         value.put("target_caliber", targetCaliber);
         value.put("time_expression", timeExpression);
         value.put("requested_outputs", plan.requestedOutputs().stream().map(Enum::name).toList());
+        value.put("explanation_focuses",
+                plan.explanationFocuses().stream().map(Enum::name).toList());
         value.put("constraints", plan.constraints());
         value.put("semantic_ambiguities", ambiguities);
         value.put("confidence", plan.confidence());

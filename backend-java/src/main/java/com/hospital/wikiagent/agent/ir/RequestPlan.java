@@ -15,11 +15,13 @@ public record RequestPlan(
         TargetCaliber targetCaliber,
         TimeExpression timeExpression,
         List<RequestedOutput> requestedOutputs,
+        List<ExplanationFocus> explanationFocuses,
         List<String> constraints,
         List<SemanticAmbiguity> semanticAmbiguities,
         Double confidence) {
 
-    public static final String VERSION = "request-plan-v2";
+    public static final String VERSION = "request-plan-v3";
+    public static final String LEGACY_VERSION = "request-plan-v2";
 
     /**
      * 兼容项目内仍使用 v1 形状构造计划的调用方。序列化协议已经升级为 v2，
@@ -35,7 +37,8 @@ public record RequestPlan(
             List<String> constraints,
             List<SemanticAmbiguity> semanticAmbiguities) {
         this(schemaVersion, intent, goal, targetIndicator, null, timeExpression,
-                requestedOutputs, constraints, semanticAmbiguities, null);
+                requestedOutputs, List.of(ExplanationFocus.OVERVIEW),
+                constraints, semanticAmbiguities, null);
     }
 
     /**
@@ -52,7 +55,27 @@ public record RequestPlan(
             List<String> constraints,
             List<SemanticAmbiguity> semanticAmbiguities) {
         this(schemaVersion, intent, goal, targetIndicator, targetCaliber, timeExpression,
-                requestedOutputs, constraints, semanticAmbiguities, null);
+                requestedOutputs, List.of(ExplanationFocus.OVERVIEW),
+                constraints, semanticAmbiguities, null);
+    }
+
+    /**
+     * 兼容 v2 形状且显式携带 confidence 的既有调用方。
+     */
+    public RequestPlan(
+            String schemaVersion,
+            PlanIntent intent,
+            String goal,
+            TargetIndicator targetIndicator,
+            TargetCaliber targetCaliber,
+            TimeExpression timeExpression,
+            List<RequestedOutput> requestedOutputs,
+            List<String> constraints,
+            List<SemanticAmbiguity> semanticAmbiguities,
+            Double confidence) {
+        this(schemaVersion, intent, goal, targetIndicator, targetCaliber, timeExpression,
+                requestedOutputs, List.of(ExplanationFocus.OVERVIEW),
+                constraints, semanticAmbiguities, confidence);
     }
 
     public RequestPlan {
@@ -66,6 +89,7 @@ public record RequestPlan(
         targetCaliber = targetCaliber == null ? new TargetCaliber("", null) : targetCaliber;
         timeExpression = timeExpression == null ? new TimeExpression("", null, null) : timeExpression;
         requestedOutputs = requestedOutputs == null ? List.of() : List.copyOf(requestedOutputs);
+        explanationFocuses = normalizeFocuses(explanationFocuses);
         constraints = constraints == null ? List.of() : constraints.stream().map(String::strip).toList();
         semanticAmbiguities = semanticAmbiguities == null ? List.of() : List.copyOf(semanticAmbiguities);
         confidence = confidence == null ? 1.0 : confidence;
@@ -77,27 +101,44 @@ public record RequestPlan(
      */
     public RequestPlan withIntent(PlanIntent newIntent) {
         return new RequestPlan(schemaVersion, newIntent, goal, targetIndicator, targetCaliber,
-                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+                timeExpression, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
     }
 
     public RequestPlan withTargetIndicator(TargetIndicator newTarget) {
         return new RequestPlan(schemaVersion, intent, goal, newTarget, targetCaliber,
-                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+                timeExpression, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
     }
 
     public RequestPlan withTargetCaliber(TargetCaliber newCaliber) {
         return new RequestPlan(schemaVersion, intent, goal, targetIndicator, newCaliber,
-                timeExpression, requestedOutputs, constraints, semanticAmbiguities, confidence);
+                timeExpression, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
     }
 
     public RequestPlan withTimeExpression(TimeExpression newTime) {
         return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
-                newTime, requestedOutputs, constraints, semanticAmbiguities, confidence);
+                newTime, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
     }
 
     public RequestPlan withRequestedOutputs(List<RequestedOutput> newOutputs) {
         return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
-                timeExpression, newOutputs, constraints, semanticAmbiguities, confidence);
+                timeExpression, newOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withExplanationFocuses(List<ExplanationFocus> newFocuses) {
+        return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
+                timeExpression, requestedOutputs, newFocuses,
+                constraints, semanticAmbiguities, confidence);
+    }
+
+    public RequestPlan withSchemaVersion(String newSchemaVersion) {
+        return new RequestPlan(newSchemaVersion, intent, goal, targetIndicator, targetCaliber,
+                timeExpression, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, confidence);
     }
 
     /**
@@ -106,7 +147,8 @@ public record RequestPlan(
      */
     public RequestPlan withConfidence(Double newConfidence) {
         return new RequestPlan(schemaVersion, intent, goal, targetIndicator, targetCaliber,
-                timeExpression, requestedOutputs, constraints, semanticAmbiguities, newConfidence);
+                timeExpression, requestedOutputs, explanationFocuses,
+                constraints, semanticAmbiguities, newConfidence);
     }
 
     public record TargetIndicator(String rawName, String ruleId) {
@@ -148,5 +190,16 @@ public record RequestPlan(
 
     private static String normalizeNullable(String value) {
         return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private static List<ExplanationFocus> normalizeFocuses(List<ExplanationFocus> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of(ExplanationFocus.OVERVIEW);
+        }
+        List<ExplanationFocus> normalized = values.stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        return normalized.isEmpty() ? List.of(ExplanationFocus.OVERVIEW) : normalized;
     }
 }

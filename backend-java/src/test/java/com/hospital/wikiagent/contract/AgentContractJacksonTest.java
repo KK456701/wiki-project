@@ -9,6 +9,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import java.util.List;
 
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
 import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
@@ -86,11 +87,33 @@ class AgentContractJacksonTest {
         RequestPlan restored = objectMapper.readValue(payload, RequestPlan.class);
 
         assertThat(payload).contains(
-                "\"schema_version\":\"request-plan-v2\"",
+                "\"schema_version\":\"request-plan-v3\"",
                 "\"indicator_trial_run\"",
                 "\"target_indicator\"",
+                "\"explanation_focuses\":[\"overview\"]",
                 "\"trial_result\"");
         assertThat(restored.intent()).isEqualTo(PlanIntent.INDICATOR_TRIAL_RUN);
         assertThat(restored.targetIndicator().ruleId()).isEqualTo("MQSI2025_005");
+    }
+
+    @Test
+    void defaultsMissingExplanationFocusAndReadsLegacyV2Plan() throws Exception {
+        RequestPlan restored = objectMapper.readValue("""
+                {
+                  "schema_version": "request-plan-v2",
+                  "intent": "rule_explanation",
+                  "goal": "解释指标分子",
+                  "target_indicator": {"raw_name": "急会诊及时到位率"},
+                  "target_caliber": {},
+                  "time_expression": {},
+                  "requested_outputs": ["explanation"],
+                  "constraints": [],
+                  "semantic_ambiguities": [],
+                  "confidence": 1.0
+                }
+                """, RequestPlan.class);
+
+        assertThat(restored.explanationFocuses())
+                .containsExactly(ExplanationFocus.OVERVIEW);
     }
 }

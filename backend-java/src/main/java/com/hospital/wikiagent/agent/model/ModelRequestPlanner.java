@@ -184,8 +184,12 @@ public class ModelRequestPlanner {
         try {
             JsonNode node = objectMapper.readTree(ModelJsonExtractor.firstObject(raw));
             RequestPlan value = objectMapper.treeToValue(node, RequestPlan.class);
-            if (!RequestPlan.VERSION.equals(value.schemaVersion())) {
+            if (!RequestPlan.VERSION.equals(value.schemaVersion())
+                    && !RequestPlan.LEGACY_VERSION.equals(value.schemaVersion())) {
                 throw new IllegalArgumentException("RequestPlan 版本不匹配");
+            }
+            if (RequestPlan.LEGACY_VERSION.equals(value.schemaVersion())) {
+                value = value.withSchemaVersion(RequestPlan.VERSION);
             }
             // 模型输出缺少 confidence 时不能静默按 1.0 处理：小模型漏输置信度
             // 并不代表意图一定正确。降级为低置信度以触发确定性澄清，把判断权
