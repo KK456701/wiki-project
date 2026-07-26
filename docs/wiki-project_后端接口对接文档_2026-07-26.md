@@ -147,6 +147,16 @@ Content-Type: application/json
 
 字段和元数据检查是 SQL 执行安全门禁，不属于已删除的指标实施工作台。
 
+元数据请求中的 `db_name` 仅允许 `winex_all_dev` 或 `winex_aima`；省略时固定使用
+业务库 `winex_all_dev`。服务端不会把未知或退役数据源静默回退到业务库。
+
+| 错误码 | 含义 |
+|---|---|
+| `DB_SOURCE_RETIRED` | 请求引用退役数据源；历史 Trace 仍可查看，但不得重新执行 |
+| `DB_SOURCE_ROLE_INVALID` | 数据源不是允许的业务库或真实库角色 |
+| `DUAL_DATABASE_CONFIG_INCOMPLETE` | 两个角色、工具或数据库配置不完整 |
+| `DUAL_DATABASE_SCHEMA_INCOMPATIBLE` | 两库字段、函数或结果契约尚未通过同构验证 |
+
 ### 2.8 医学术语
 
 | 方法 | 路径 |

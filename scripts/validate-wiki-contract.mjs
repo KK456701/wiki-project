@@ -5,6 +5,7 @@
  * 该脚本供本地验收和CI使用。它只读取文件，不修改知识库。
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +30,10 @@ function json(path) {
   return JSON.parse(readFileSync(path, 'utf-8'));
 }
 
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 function fail(errors) {
   console.error(`❌ Wiki机器契约校验失败：\n- ${errors.join('\n- ')}`);
   process.exit(1);
@@ -40,6 +45,7 @@ if (!existsSync(ruleIndexPath)) fail(['缺少 indexes/rule_index.json']);
 
 const ruleIndex = json(ruleIndexPath);
 const rules = Array.isArray(ruleIndex.rules) ? ruleIndex.rules : [];
+const legacySnapshot = String(ruleIndex.release_id || '').startsWith('KB-LEGACY-');
 if (!['hxzd-runtime-v1', 'hxzd-runtime-v2'].includes(ruleIndex.schema_version)) {
   errors.push(`schema_version无效：${ruleIndex.schema_version || '空'}`);
 }
@@ -58,6 +64,51 @@ if (releaseManifest) {
   if (!releaseManifest.model_id || !releaseManifest.prompt_version
       || !/^[a-f0-9]{64}$/.test(String(releaseManifest.prompt_sha256 || ''))) {
     errors.push('发布清单缺少模型或提示词版本信息');
+  }
+}
+const correctionManifestPath = join(WIKI_ROOT, 'sql-correction-manifest.json');
+if (!existsSync(correctionManifestPath)) {
+  if (legacySnapshot) {
+    console.warn('⚠️ 当前为迁移期旧快照，缺少SQL修复清单；新候选发布时必须补齐。');
+  } else {
+    errors.push('缺少sql-correction-manifest.json');
+  }
+} else {
+  const correctionManifest = json(correctionManifestPath);
+  const corrections = Array.isArray(correctionManifest.corrections)
+    ? correctionManifest.corrections : [];
+  const allowedTypes = new Set([
+    'invalid_nolock_placeholder',
+    'invalid_nolock_syntax',
+    'dangling_where_and',
+    'invalid_control_character',
+  ]);
+  if (correctionManifest.schema_version !== 'sql-correction-manifest-v1') {
+    errors.push('SQL修复清单版本无效');
+  }
+  if (correctionManifest.release_id !== ruleIndex.release_id) {
+    errors.push('SQL修复清单与规则索引的release_id不一致');
+  }
+  if (Number(correctionManifest.correction_count) !== corrections.length) {
+    errors.push('SQL修复清单数量不一致');
+  }
+  for (const correction of corrections) {
+    if (!allowedTypes.has(correction.type)) {
+      errors.push(`SQL修复类型不在允许列表：${correction.type || '空'}`);
+    }
+    if (!correction.rule_id || !correction.profile_id
+        || !Number.isInteger(correction.line) || correction.line < 1
+        || correction.before === correction.after) {
+      errors.push('SQL修复记录缺少规则、Profile、行号或实际差异');
+      continue;
+    }
+    const sqlPath = join(WIKI_ROOT, String(correction.sql_path || ''));
+    if (!existsSync(sqlPath)) {
+      errors.push(`SQL修复记录引用文件不存在：${correction.sql_path || '空'}`);
+    } else if (sha256(readFileSync(sqlPath, 'utf-8').trimEnd())
+        !== correction.execution_sha256) {
+      errors.push(`SQL修复后哈希不一致：${correction.sql_path}`);
+    }
   }
 }
 if (expectedIndicators != null && rules.length !== expectedIndicators) {

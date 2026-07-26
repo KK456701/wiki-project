@@ -84,6 +84,9 @@ class IndicatorSqlToolsTest {
         assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
         assertThat(prepared.data()).containsKeys(
                 "sql_id", "context_digest", "stat_start", "stat_end", "sql_preview", "parameters");
+        assertThat(prepared.data())
+                .containsEntry("source_role", "business")
+                .containsEntry("db_source_id", "business_test");
         assertThat(prepared.data().get("sql_preview").toString()).startsWith("SELECT");
         assertThat(prepared.data()).doesNotContainKey("sql_text");
 
@@ -95,6 +98,7 @@ class IndicatorSqlToolsTest {
                 .containsEntry("numerator_count", 1L)
                 .containsEntry("denominator_count", 4L)
                 .containsEntry("result_value", 25.0)
+                .containsEntry("source_role", "business")
                 .containsEntry("source", "business_test");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isEqualTo(1);
@@ -111,6 +115,25 @@ class IndicatorSqlToolsTest {
         assertThat(result.ok()).isFalse();
         assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
         assertThat(result.summary()).contains("2026-02-01T00:00");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
+    }
+
+    @Test
+    void rejectsRetiredDatabaseBeforeCreatingSqlObject() {
+        AgentRuntimeContext retiredContext = new AgentRuntimeContext(
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(),
+                        false, "session_001"),
+                "request-1", "trace-1", "win60_qa_991827");
+
+        ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
+                "HXZD-003-001",
+                "2026-01-01T00:00:00",
+                "2026-02-01T00:00:00"), executionContext(retiredContext, state));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("DB_SOURCE_RETIRED");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
     }

@@ -109,7 +109,7 @@ class UploadDetailComparatorTest {
                         new DetailColumn("arrive_minutes", "到位耗时（分钟）", "none")),
                 Instant.parse("2026-07-21T08:00:00Z"),
                 Instant.parse("2026-07-22T08:00:00Z"), false,
-                "win60_qa_991827", List.of("INPATIENT_CONSULT_APPLY"));
+                "winex_all_dev", List.of("INPATIENT_CONSULT_APPLY"));
     }
 
     private static Map<String, Object> raw(

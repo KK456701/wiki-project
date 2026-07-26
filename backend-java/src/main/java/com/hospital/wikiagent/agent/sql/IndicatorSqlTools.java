@@ -24,7 +24,9 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
+import com.hospital.wikiagent.dbhub.DatabaseSourceException;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
+import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -240,7 +242,12 @@ public class IndicatorSqlTools {
         }
         String statStart = start.format(SQL_TIME);
         String statEnd = end.format(SQL_TIME);
-        String sourceId = sourceId(context);
+        String sourceId;
+        try {
+            sourceId = sourceId(context);
+        } catch (DatabaseSourceException exception) {
+            return failure("forbidden", exception.code(), exception.getMessage(), false);
+        }
         Map<String, Object> diagnosticExecution = new LinkedHashMap<>();
         diagnosticExecution.put("profile_id", rule.get("profile_id"));
         if (diagnosticProfileId != null) {
@@ -272,6 +279,7 @@ public class IndicatorSqlTools {
         data.put("rule_id", input.ruleId());
         data.put("profile_id", rule.get("profile_id"));
         data.put("hospital_id", context.agentContext().hospitalId());
+        data.put("source_role", sourceRole(sourceId));
         data.put("db_source_id", sourceId);
         data.put("context_digest", digest);
         data.put("dialect", sqlObject.dialect());
@@ -346,6 +354,11 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
         boolean dualRequired = dualDatabaseWorkflow != null && dualDatabaseWorkflow.required();
+        if ("win60_qa_991827".equalsIgnoreCase(sql.dbSourceId())) {
+            return failure("unavailable", "DB_SOURCE_RETIRED",
+                    "该 SQL 对象引用的数据库已经退役，不能重新执行；请重新发起指标计算。",
+                    false);
+        }
         if (!dualRequired && sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
                 && !sql.dbSourceId().equals(businessQuery.sourceId())) {
             return failure("error", "TRIAL_SOURCE_MISMATCH", "试运行数据源与 SQL 对象不一致，结果已拒绝。", false);
@@ -355,6 +368,7 @@ public class IndicatorSqlTools {
         bound.put("hospital_id", context.agentContext().hospitalId());
         bound.put("start_time", sql.statStart());
         bound.put("end_time", sql.statEnd());
+        addTemplateParameterAliases(bound);
         String executable;
         try {
             executable = binder.bind(sql.sqlText(), bound);
@@ -380,11 +394,26 @@ public class IndicatorSqlTools {
             }
             long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
             Map<String, Object> first = rows.isEmpty() ? Map.of() : rows.get(0);
-            Number resultValue = number(value(first, "index_value"));
-            Long numerator = longValue(value(first, "numerator_count"));
-            Long denominator = longValue(value(first, "denominator_count"));
+            Map<String, Object> resultMapping = objectMap(currentRule.get("result_mapping"));
+            String resultColumn = first(
+                    text(resultMapping.get("index_value")), "index_value");
+            String numeratorColumn = first(
+                    text(resultMapping.get("numerator_count")), "numerator_count");
+            String denominatorColumn = first(
+                    text(resultMapping.get("denominator_count")), "denominator_count");
+            Number resultValue = number(value(first, resultColumn));
+            Long numerator = longValue(value(first, numeratorColumn));
+            Long denominator = longValue(value(first, denominatorColumn));
             if (denominator == null) {
                 denominator = longValue(value(first, "sample_count"));
+            }
+            Number verifiedValue = verifiedPercentage(resultValue, numerator, denominator);
+            if (verifiedValue == null && resultValue != null && numerator != null && denominator != null) {
+                return failure("validation_failed", "NUMERIC_RESULT_INCONSISTENT",
+                        "SQL返回指标值与分子分母复算结果不一致，本次结果已拒绝。", false);
+            }
+            if (verifiedValue != null) {
+                resultValue = verifiedValue;
             }
             String status = resultValue == null ? "empty" : "success";
             Map<String, Object> runContext = new LinkedHashMap<>(sql.contextSnapshot());
@@ -403,6 +432,7 @@ public class IndicatorSqlTools {
             data.put("duration_ms", durationMs);
             data.put("source", businessQuery.sourceId());
             data.put("hospital_id", context.agentContext().hospitalId());
+            data.put("source_role", sourceRole(sql.dbSourceId()));
             data.put("db_source_id", sql.dbSourceId());
             data.put("rule_id", sql.ruleId());
             data.put("profile_id", profileId);
@@ -527,8 +557,25 @@ public class IndicatorSqlTools {
         result.put("params", params);
         result.put("stat_start", start);
         result.put("stat_end", end);
+        result.put("source_role", sourceRole(sourceId));
         result.put("db_source_id", sourceId);
         return result;
+    }
+
+    /**
+     * 将持久化的数据源编号转换为稳定角色。SQL 对象仍保留 source_id 以兼容旧表结构，
+     * 同时在上下文快照中显式保存角色，后续 Evidence、Trace 和明细不会仅凭数据库名称猜测。
+     */
+    private String sourceRole(String sourceId) {
+        if (businessQuery instanceof IndicatorDatabaseQueryClient roleClient
+                && sourceId != null
+                && sourceId.equalsIgnoreCase(roleClient.sourceId(DatabaseRole.REAL))) {
+            return DatabaseRole.REAL.value();
+        }
+        if (sourceId != null && sourceId.equalsIgnoreCase(businessQuery.sourceId())) {
+            return DatabaseRole.BUSINESS.value();
+        }
+        return "retired_or_invalid";
     }
 
     private Map<String, Object> withExecutionDefaults(Map<String, Object> raw) {
@@ -654,6 +701,21 @@ public class IndicatorSqlTools {
         return number == null ? null : number.longValue();
     }
 
+    private static Number verifiedPercentage(Number returned, Long numerator, Long denominator) {
+        if (numerator == null || denominator == null) {
+            return returned;
+        }
+        double calculated = denominator == 0
+                ? 0.0
+                : numerator.doubleValue() * 100.0 / denominator.doubleValue();
+        if (returned != null && Math.abs(returned.doubleValue() - calculated) > 0.011) {
+            return null;
+        }
+        // 对外契约历史上使用 JSON number（Double）。这里先按两位小数复算，再返回
+        // Double，避免 25.00 与 25.0 因 Java 数值类型不同导致 Evidence/回答契约误判。
+        return Math.round(calculated * 100.0) / 100.0;
+    }
+
     private static boolean transientConnectionFailure(String message) {
         String value = message == null ? "" : message.toLowerCase(Locale.ROOT);
         return List.of("socket hang up", "connection lost", "connection reset", "connection aborted", "连接中断", "连接已断开")
@@ -662,7 +724,42 @@ public class IndicatorSqlTools {
 
     private String sourceId(ToolExecutionContext context) {
         String requested = context.agentContext().dbSourceId();
-        return requested == null || requested.isBlank() ? businessQuery.sourceId() : requested;
+        if (requested == null || requested.isBlank()
+                || requested.equalsIgnoreCase(businessQuery.sourceId())
+                || requested.equalsIgnoreCase(DbHubProperties.BUSINESS_SOURCE_ID)) {
+            return businessQuery.sourceId();
+        }
+        if ("win60_qa_991827".equalsIgnoreCase(requested)) {
+            throw DatabaseSourceException.retired();
+        }
+        /*
+         * 真实库只允许由双库 Workflow 在服务端按 DatabaseRole.REAL 选择。普通聊天
+         * 请求不能直接指定真实库或任意 DBHub source-id，防止绕过抽取和双库核对。
+         */
+        throw DatabaseSourceException.invalid();
+    }
+
+    /**
+     * 兼容知识库原始模板中的参数名，不改写SQL正文。别名值只能来自服务端已经
+     * 确认的统计周期和医院范围，模型和浏览器不能借此注入额外参数。
+     */
+    private static void addTemplateParameterAliases(Map<String, Object> parameters) {
+        Object start = parameters.get("start_time");
+        Object end = parameters.get("end_time");
+        Object hospitalScope = parameters.get("hospital_scope_value");
+        if (start != null) {
+            parameters.putIfAbsent("startTime", start);
+            parameters.putIfAbsent("marptBeginAt", start);
+        }
+        if (end != null) {
+            parameters.putIfAbsent("endTime", end);
+            parameters.putIfAbsent("marptEndAt", end);
+        }
+        if (hospitalScope != null) {
+            parameters.putIfAbsent("hospital_soid", hospitalScope);
+        } else if (parameters.get("hospital_soid") != null) {
+            parameters.put("hospital_scope_value", parameters.get("hospital_soid"));
+        }
     }
 
     private static ToolResult failure(String status, String code, String summary, boolean retryable) {
@@ -689,6 +786,15 @@ public class IndicatorSqlTools {
 
     private static String text(Object value) {
         return value == null ? "" : value.toString();
+    }
+
+    private static String first(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return "";
     }
 
     public record InspectInput(String ruleId) {

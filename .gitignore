@@ -38,6 +38,7 @@ frontend-vue/.vite/
 
 # 临时文件（测试截图、导出文档等）。
 tmp/
+.tmp/
 /output/
 /.vscode/
 

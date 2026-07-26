@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
@@ -59,9 +60,10 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         when(rules.effectiveRule("MQSI2025_001", "hospital_001")).thenReturn(rule());
         when(rules.fieldMapping("MQSI2025_001", "hospital_001")).thenReturn(mapping());
         when(rules.dataQualityRules("MQSI2025_001")).thenReturn(List.of());
-        when(metadata.listTables("TEST_DB", "dbo")).thenReturn(List.of(
+        when(metadata.listTables(DatabaseRole.BUSINESS, "TEST_DB", "dbo")).thenReturn(List.of(
                 Map.of("TABLE_NAME", "encounter")));
-        when(metadata.listColumns("TEST_DB", "dbo", "encounter")).thenReturn(List.of(
+        when(metadata.listColumns(
+                DatabaseRole.BUSINESS, "TEST_DB", "dbo", "encounter")).thenReturn(List.of(
                 column("hospital_id", "varchar"),
                 column("admission_id", "varchar"),
                 column("admit_time", "datetime")));
@@ -69,7 +71,8 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
     @Test
     void stopsAtRealtimeStructureWhenRequiredTableIsMissing() {
-        when(metadata.listTables("TEST_DB", "dbo")).thenReturn(List.of());
+        when(metadata.listTables(DatabaseRole.BUSINESS, "TEST_DB", "dbo"))
+                .thenReturn(List.of());
         IndicatorDifferenceDiagnosisWorkflow workflow = workflow();
 
         ToolResult result = workflow.diagnose(input("我们有100人，系统只有98人"), context);
@@ -212,7 +215,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         assertThat(result.data()).containsEntry(
                 "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers")).asList().hasSize(1);
-        verify(metadata, never()).listTables(anyString(), anyString());
+        verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
     }
 
@@ -240,7 +243,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         assertThat(result.data()).containsEntry(
                 "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
-        verify(metadata, never()).listTables(anyString(), anyString());
+        verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
     }
 
@@ -269,7 +272,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         assertThat(result.data()).containsEntry(
                 "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
-        verify(metadata, never()).listTables(anyString(), anyString());
+        verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
     }
 
@@ -321,8 +324,8 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
     private IndicatorDifferenceDiagnosisWorkflow workflow() {
         DbHubProperties properties = new DbHubProperties();
-        properties.setDatabaseName("TEST_DB");
-        properties.setSchemaName("dbo");
+        properties.businessSource().setDatabaseName("TEST_DB");
+        properties.businessSource().setSchemaName("dbo");
         IndicatorBusinessQueryClient business = mock(IndicatorBusinessQueryClient.class);
         return new IndicatorDifferenceDiagnosisWorkflow(
                 rules, sql, uploads, metadata, properties,

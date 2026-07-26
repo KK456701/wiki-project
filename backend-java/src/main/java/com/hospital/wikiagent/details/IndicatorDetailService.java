@@ -172,6 +172,7 @@ public class IndicatorDetailService {
             throw error("DETAIL_CONTEXT_INVALID", "本次试运行没有可核对的分子分母，请重新试运行。",
                     HttpStatus.CONFLICT);
         }
+        ensureActiveSource(context);
         Instant now = clock.instant();
         String snapshotId = id("SNAP_");
         String relativePath = safeSegment(context.hospitalId()) + "/"
@@ -240,9 +241,8 @@ public class IndicatorDetailService {
     }
 
     /**
-     * 双库复合运行的明细必须回到产生该聚合结果的数据源查询。普通历史运行仍走原来的
-     * 单库客户端，保持旧会话兼容；只有运行上下文明示 business/real source-id 时才
-     * 选择角色化 DBHub 工具。
+     * 双库复合运行的明细必须回到产生聚合结果的固定角色。历史对象仍可用于展示审计
+     * 信息，但不能通过这里回退到已退役或未知数据库重新查询患者明细。
      */
     private List<Map<String, Object>> executeForRun(RunContext context, String sql) {
         if (businessQuery instanceof IndicatorDatabaseQueryClient roleClient) {
@@ -253,7 +253,30 @@ public class IndicatorDetailService {
                 return roleClient.execute(DatabaseRole.BUSINESS, sql);
             }
         }
-        return businessQuery.execute(sql);
+        throw error("DB_SOURCE_ROLE_INVALID",
+                "本次历史运行没有可用的业务库或真实库数据源，不能重新生成明细。",
+                HttpStatus.CONFLICT);
+    }
+
+    private void ensureActiveSource(RunContext context) {
+        if (!(businessQuery instanceof IndicatorDatabaseQueryClient roleClient)) {
+            throw error("DUAL_DATABASE_CONFIG_INCOMPLETE",
+                    "双数据库查询客户端未配置，不能生成指标明细。",
+                    HttpStatus.SERVICE_UNAVAILABLE);
+        }
+        String source = context.dbSource();
+        if (source.equalsIgnoreCase(roleClient.sourceId(DatabaseRole.BUSINESS))
+                || source.equalsIgnoreCase(roleClient.sourceId(DatabaseRole.REAL))) {
+            return;
+        }
+        if ("win60_qa_991827".equalsIgnoreCase(source)) {
+            throw error("DB_SOURCE_RETIRED",
+                    "该历史运行引用的数据库已经退役，只能查看已有审计信息，不能重新生成明细。",
+                    HttpStatus.GONE);
+        }
+        throw error("DB_SOURCE_ROLE_INVALID",
+                "本次运行的数据源不属于业务库或真实库，不能生成明细。",
+                HttpStatus.CONFLICT);
     }
 
     public DetailPage getPage(

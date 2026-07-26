@@ -140,6 +140,12 @@ docs/                         当前架构、运维记录和历史设计资料
 
 当前生成结果为 `documentation_only=42`、`draft=3`、`executable=0`。这表示 35 项指标均可检索和解释，但在医院字段契约与统一结果列映射完成验证前，当前版本不会访问 DBHub 试运行这些 Profile。
 
+生成器不会改写表、字段、JOIN、业务条件、阈值、去重、分子分母或时间边界。它只会
+机械修复非法 `NOLOCK`、`WHERE + 注释 + AND` 和无业务意义控制字符，并把原始哈希、
+执行哈希、行号及前后差异写入 `sql-correction-manifest.json`。参数别名只写入机器
+契约，由 Java 在绑定阶段适配，不修改 SQL 原文。包含修复的候选仍必须人工查看差异并
+以 `Publish -Confirmed` 明确发布。
+
 ```powershell
 node .\scripts\build-wiki-from-markdown.mjs --input ".\core-rules-wiki\raw\company\35项核心制度指标完整提取.md" --check
 node .\scripts\validate-wiki-contract.mjs --expected-indicators 35 --expected-profiles 45 --expected-sql 169
@@ -191,11 +197,17 @@ Copy-Item .\config.example.yaml .\config.yaml
 
 - `runtime_db_url`：只支持 `jdbc:sqlite:` 或兼容旧值 `sqlite+pysqlite:///`。
 - `admin_password`：不得使用示例占位值。
-- `business_db_source_id` 和对应 `dbhub_execute_tool_*`。
-- 双库模式额外设置 `DBHUB_BUSINESS_SOURCE_ID=winex_all_dev`、
+- DBHub 只允许两个角色化数据源：业务库 `winex_all_dev` 和真实库 `winex_aima`。
+  设置 `DBHUB_BUSINESS_SOURCE_ID=winex_all_dev`、
   `DBHUB_BUSINESS_EXECUTE_TOOL=execute_sql_winex_all_dev`、
+  `DBHUB_BUSINESS_DATABASE=WiNEX_All_DEV`、
   `DBHUB_REAL_SOURCE_ID=winex_aima` 和
-  `DBHUB_REAL_EXECUTE_TOOL=execute_sql_winex_aima`。工具名称必须唯一。
+  `DBHUB_REAL_EXECUTE_TOOL=execute_sql_winex_aima`、
+  `DBHUB_REAL_DATABASE=winex_aima`。工具名称必须唯一。
+- 删除旧的 `DBHUB_SOURCE_ID`、`DBHUB_EXECUTE_TOOL`、`DBHUB_DATABASE` 和
+  `DBHUB_SCHEMA`；应用检测到旧单库配置时会拒绝启动并提示迁移。
+- `business_db_hospital_scope_value=991827` 是医院范围参数，不是数据库名称；
+  SQL 原文中的 `:hospital_soid` 由 Java 绑定到该受控范围值。
 - 同事的真实抽取接口适配器合并前保持 `AGENT_EXTRACTION_MODE=disabled`；
   只有网关可用且 Wiki 双库契约完成验证后才切换为 `required`。
 - 强制双库模式下，Wiki Profile 还必须分别通过业务库和真实库的元数据/编译验证，

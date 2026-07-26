@@ -1,5 +1,7 @@
 package com.hospital.wikiagent.dbhub;
 
+import jakarta.annotation.PostConstruct;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -10,12 +12,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "wiki.dbhub")
 public class DbHubProperties {
 
+    public static final String BUSINESS_SOURCE_ID = "winex_all_dev";
+    public static final String REAL_SOURCE_ID = "winex_aima";
+
     private String apiUrl = "http://127.0.0.1:8080";
     private String mcpUrl = "http://127.0.0.1:8080/mcp";
-    private String sourceId = "win60_qa_991827";
-    private String executeTool = "execute_sql_win60_qa_991827";
-    private String databaseName = "WIN60_QA_991827";
-    private String schemaName = "WINDBA";
     private int timeoutSeconds = 10;
     private Sources sources = new Sources();
 
@@ -33,38 +34,6 @@ public class DbHubProperties {
 
     public void setMcpUrl(String mcpUrl) {
         this.mcpUrl = mcpUrl;
-    }
-
-    public String getSourceId() {
-        return sourceId;
-    }
-
-    public void setSourceId(String sourceId) {
-        this.sourceId = sourceId;
-    }
-
-    public String getExecuteTool() {
-        return executeTool;
-    }
-
-    public void setExecuteTool(String executeTool) {
-        this.executeTool = executeTool;
-    }
-
-    public String getDatabaseName() {
-        return databaseName;
-    }
-
-    public void setDatabaseName(String databaseName) {
-        this.databaseName = databaseName;
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
     }
 
     public int getTimeoutSeconds() {
@@ -92,11 +61,37 @@ public class DbHubProperties {
     }
 
     /**
+     * 启动时锁定两个允许的数据源，避免旧环境变量或遗留配置把普通查询重新导向
+     * 已退役数据库。数据库凭据仍只存在于 DBHub，本检查只校验逻辑编号和工具名。
+     */
+    @PostConstruct
+    public void validateSources() {
+        validateSource("business", businessSource(), BUSINESS_SOURCE_ID);
+        validateSource("real", realSource(), REAL_SOURCE_ID);
+        if (businessSource().getExecuteTool().equals(realSource().getExecuteTool())) {
+            throw new IllegalStateException("业务库和真实库必须配置不同的 DBHub 执行工具。");
+        }
+    }
+
+    private static void validateSource(String role, Source source, String expectedId) {
+        if (source == null || source.getSourceId().isBlank() || source.getExecuteTool().isBlank()
+                || source.getDatabaseName().isBlank() || source.getSchemaName().isBlank()) {
+            throw new IllegalStateException("DBHub " + role + " 数据源配置不完整。");
+        }
+        if (!expectedId.equalsIgnoreCase(source.getSourceId())) {
+            throw new IllegalStateException(
+                    "DBHub " + role + " 数据源只能配置为 " + expectedId + "。");
+        }
+    }
+
+    /**
      * 双库数据源只保存 DBHub 的逻辑编号和工具名称，不包含数据库凭据。
      */
     public static class Source {
         private String sourceId = "";
         private String executeTool = "";
+        private String databaseName = "";
+        private String schemaName = "dbo";
 
         public String getSourceId() {
             return sourceId;
@@ -113,11 +108,29 @@ public class DbHubProperties {
         public void setExecuteTool(String executeTool) {
             this.executeTool = executeTool == null ? "" : executeTool;
         }
+
+        public String getDatabaseName() {
+            return databaseName;
+        }
+
+        public void setDatabaseName(String databaseName) {
+            this.databaseName = databaseName == null ? "" : databaseName;
+        }
+
+        public String getSchemaName() {
+            return schemaName;
+        }
+
+        public void setSchemaName(String schemaName) {
+            this.schemaName = schemaName == null ? "" : schemaName;
+        }
     }
 
     public static class Sources {
-        private Source business = source("winex_all_dev", "execute_sql_winex_all_dev");
-        private Source real = source("winex_aima", "execute_sql_winex_aima");
+        private Source business = source(
+                BUSINESS_SOURCE_ID, "execute_sql_winex_all_dev", "WiNEX_All_DEV");
+        private Source real = source(
+                REAL_SOURCE_ID, "execute_sql_winex_aima", "winex_aima");
 
         public Source getBusiness() {
             return business;
@@ -135,10 +148,12 @@ public class DbHubProperties {
             this.real = real == null ? new Source() : real;
         }
 
-        private static Source source(String sourceId, String tool) {
+        private static Source source(String sourceId, String tool, String databaseName) {
             Source value = new Source();
             value.setSourceId(sourceId);
             value.setExecuteTool(tool);
+            value.setDatabaseName(databaseName);
+            value.setSchemaName("dbo");
             return value;
         }
     }

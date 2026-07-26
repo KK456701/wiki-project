@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.agent.model.AgentModelUnavailableException;
 import com.hospital.wikiagent.agent.model.PlannerOutputException;
+import com.hospital.wikiagent.dbhub.DatabaseSourceException;
 import com.hospital.wikiagent.details.IndicatorDetailException;
 
 /**
@@ -52,6 +53,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AgentModelUnavailableException.class)
     public ResponseEntity<Map<String, String>> model(AgentModelUnavailableException exception) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("detail", exception.getMessage(), "code", exception.code()));
+    }
+
+    @ExceptionHandler(DatabaseSourceException.class)
+    public ResponseEntity<Map<String, String>> databaseSource(DatabaseSourceException exception) {
+        return ResponseEntity.status(exception.status())
                 .body(Map.of("detail", exception.getMessage(), "code", exception.code()));
     }
 

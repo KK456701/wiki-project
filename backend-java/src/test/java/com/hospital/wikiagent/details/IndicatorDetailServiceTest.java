@@ -294,7 +294,7 @@ class IndicatorDetailServiceTest {
     }
 
     private void seedSuccessfulRun(String runId, int numerator, int denominator) throws Exception {
-        seedSuccessfulRun(runId, numerator, denominator, "win60_qa_991827");
+        seedSuccessfulRun(runId, numerator, denominator, "winex_all_dev");
     }
 
     private void seedSuccessfulRun(
@@ -318,13 +318,13 @@ class IndicatorDetailServiceTest {
                                         field("arrive_minutes", "到位耗时", "none")))),
                 "field_mapping", Map.of(
                         "hospital_id", "hospital_001",
-                        "db_name", "win60_qa_991827",
-                        "schema", "WINDBA",
+                        "db_name", "WiNEX_All_DEV",
+                        "schema", "dbo",
                         "main_table", "INPATIENT_CONSULT_APPLY",
                         "dialect", "sqlserver",
                         "query_profile", "urgent_consult_sqlserver"),
                 "execution_context", Map.of(
-                        "source_role", "winex_aima".equals(sourceId) ? "real" : "legacy",
+                        "source_role", "winex_aima".equals(sourceId) ? "real" : "business",
                         "source_id", sourceId),
                 "params", Map.of(
                         "hospital_soid", 991827,
@@ -381,7 +381,7 @@ class IndicatorDetailServiceTest {
 
         @Override
         public String sourceId() {
-            return "win60_qa_991827";
+            return "winex_all_dev";
         }
 
         @Override

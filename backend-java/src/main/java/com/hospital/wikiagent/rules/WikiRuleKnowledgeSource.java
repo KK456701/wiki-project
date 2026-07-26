@@ -163,6 +163,7 @@ public class WikiRuleKnowledgeSource {
         result.put("patient_detail_sql", patientDetailSql);
         result.put("sql_capabilities", sqlCapabilities);
         result.put("dual_database_contract", map(profile.get("dual_database_contract")));
+        result.put("result_mapping", map(profile.get("result_mapping")));
         result.put("calculation_definition", calculation(profile));
         result.put("national_calculation_definition", calculation(profile));
         result.put("field_contract", map(profile.get("field_contract")));

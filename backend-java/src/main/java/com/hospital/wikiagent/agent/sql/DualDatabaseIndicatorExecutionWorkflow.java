@@ -417,7 +417,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                         "numerator_count", numerator,
                         "denominator_count", denominator));
         return new DatabaseResult(
-                runId, databaseQuery.sourceId(role), numerator, denominator, rate);
+                runId, role.value(), databaseQuery.sourceId(role), numerator, denominator, rate);
     }
 
     private Map<String, Object> diagnoseDetails(
@@ -678,6 +678,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
 
     private record DatabaseResult(
             String runId,
+            String sourceRole,
             String sourceId,
             long numerator,
             long denominator,
@@ -685,6 +686,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         Map<String, Object> safeMap() {
             return Map.of(
                     "run_id", runId,
+                    "source_role", sourceRole,
                     "source_id", sourceId,
                     "numerator_count", numerator,
                     "denominator_count", denominator,

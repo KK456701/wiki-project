@@ -2,7 +2,7 @@
 
 DBHub 在本项目中作为医院本地部署的数据库 MCP sidecar 使用。它的作用是让 Agent 通过受控工具查看业务库有哪些表、字段、字段类型和注释，并在只读权限下执行必要的元数据查询。
 
-DBHub 不是本项目的 Python 模块，也不建议把 DBHub 源码或 `node_modules` 直接提交到仓库。医院部署时应把它作为独立本地服务启动，FastAPI 通过 `config.yaml` 中的 `dbhub_mcp_url` 调用它。
+DBHub 不是本项目的 Java 模块，也不建议把 DBHub 源码或 `node_modules` 直接提交到仓库。医院部署时应把它作为独立本地服务启动，Spring Boot 通过 `config.yaml` 中的 `dbhub_mcp_url` 调用它。
 
 ## 安全要求
 
@@ -33,18 +33,18 @@ http://127.0.0.1:8080/mcp
 ```yaml
 dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
 dbhub_timeout_seconds: 10
-dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
-dbhub_source_id_hospital_demo_data: "hospital_demo_data"
-dbhub_execute_tool_wiki_agent_runtime: "execute_sql_wiki_agent_runtime"
-dbhub_source_id_wiki_agent_runtime: "wiki_agent_runtime"
+dbhub_business_source_id: "winex_all_dev"
+dbhub_business_execute_tool: "execute_sql_winex_all_dev"
+dbhub_real_source_id: "winex_aima"
+dbhub_real_execute_tool: "execute_sql_winex_aima"
 ```
 
-当前模板默认配置两个数据库：
+当前系统只允许两个数据库：
 
-- `hospital_demo_data`：医院业务明细库，用于看业务表、字段和样例数据。
-- `wiki_agent_runtime`：Agent 运行库，用于看元数据缓存、审批记录、诊断报告等运行数据。
+- `winex_all_dev`：业务库，用于源业务数据只读查询。
+- `winex_aima`：真实库，用于抽取后数据的只读核对。
 
-两个库都只暴露只读 SQL 工具。DBHub 当前版本的 TOML 里必须使用内置工具名 `execute_sql` 和 `search_objects`；多数据源启动后，DBHub 会对外暴露成 `execute_sql_hospital_demo_data`、`execute_sql_wiki_agent_runtime` 这类带数据源后缀的工具名。查“有什么表、有什么字段”本质上也是执行只读 SQL 查询 `INFORMATION_SCHEMA`，所以 `execute_sql_*` 工具已经能满足元数据同步、表结构查看和字段查看。`search_objects_*` 作为补充工具保留，后续如果需要自然语言搜索数据库对象再接入。
+两个库都只暴露只读 SQL 工具。DBHub 当前版本的 TOML 里使用内置工具名 `execute_sql` 和 `search_objects`；多数据源启动后，对外工具名分别为 `execute_sql_winex_all_dev` 和 `execute_sql_winex_aima`。运行库继续使用应用本地 SQLite，不经 DBHub 访问。
 
 ## 离线部署建议
 
@@ -52,7 +52,7 @@ dbhub_source_id_wiki_agent_runtime: "wiki_agent_runtime"
 
 ## 项目如何使用
 
-FastAPI 已支持：
+Spring Boot 已支持：
 
 ```http
 POST /api/metadata/sync
@@ -63,7 +63,7 @@ POST /api/metadata/sync
 ```json
 {
   "hospital_id": "hospital_001",
-  "db_name": "hospital_demo_data",
+  "db_name": "winex_all_dev",
   "source": "dbhub"
 }
 ```

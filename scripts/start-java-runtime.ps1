@@ -105,17 +105,13 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_SOURCE_ID' (Get-YamlScalar $config 'dbhub_business_source_id')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_business_execute_tool')
+    Set-EnvironmentDefault 'DBHUB_BUSINESS_DATABASE' (Get-YamlScalar $config 'dbhub_business_database')
+    Set-EnvironmentDefault 'DBHUB_BUSINESS_SCHEMA' (Get-YamlScalar $config 'dbhub_business_schema')
     Set-EnvironmentDefault 'DBHUB_REAL_SOURCE_ID' (Get-YamlScalar $config 'dbhub_real_source_id')
     Set-EnvironmentDefault 'DBHUB_REAL_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_real_execute_tool')
+    Set-EnvironmentDefault 'DBHUB_REAL_DATABASE' (Get-YamlScalar $config 'dbhub_real_database')
+    Set-EnvironmentDefault 'DBHUB_REAL_SCHEMA' (Get-YamlScalar $config 'dbhub_real_schema')
     Set-EnvironmentDefault 'AGENT_EXTRACTION_MODE' (Get-YamlScalar $config 'agent_extraction_mode')
-    Set-EnvironmentDefault 'BUSINESS_DB_DATABASE' (Get-YamlScalar $config 'business_db_database')
-    Set-EnvironmentDefault 'BUSINESS_DB_SCHEMA' (Get-YamlScalar $config 'business_db_schema')
-    $sourceId = Get-YamlScalar $config 'business_db_source_id'
-    if ($sourceId) {
-        $suffix = $sourceId.ToUpperInvariant()
-        Set-EnvironmentDefault ('DBHUB_SOURCE_ID_' + $suffix) $sourceId
-        Set-EnvironmentDefault ('DBHUB_EXECUTE_TOOL_' + $suffix) (Get-YamlScalar $config ('dbhub_execute_tool_' + $sourceId))
-    }
     $proxy = Get-YamlScalar $config 'java_http_proxy_url'
     if ($proxy) {
         $uri = New-Object System.Uri($proxy)

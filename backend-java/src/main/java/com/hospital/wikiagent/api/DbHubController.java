@@ -1,7 +1,9 @@
 package com.hospital.wikiagent.api;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +26,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 @RestController
 @RequestMapping("/api/mcp/dbhub")
 public class DbHubController {
+    private static final Set<String> ALLOWED_SOURCES = Set.of(
+            DbHubProperties.BUSINESS_SOURCE_ID,
+            DbHubProperties.REAL_SOURCE_ID);
 
     private final DbHubMcpClient client;
     private final DbHubProperties properties;
@@ -37,10 +42,19 @@ public class DbHubController {
     public Map<String, Object> sources() {
         JsonNode payload = client.sources();
         JsonNode items = payload.isArray() ? payload : firstPresent(payload, "sources", "value");
+        List<JsonNode> allowed = new ArrayList<>();
+        if (items != null && items.isArray()) {
+            items.forEach(item -> {
+                String id = sourceId(item);
+                if (ALLOWED_SOURCES.stream().anyMatch(value -> value.equalsIgnoreCase(id))) {
+                    allowed.add(item);
+                }
+            });
+        }
         return Map.of(
                 "status", "ok",
                 "dbhub_http_url", properties.getApiUrl().replaceFirst("/+$", ""),
-                "sources", items == null ? List.of() : items);
+                "sources", allowed);
     }
 
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -60,5 +74,21 @@ public class DbHubController {
             }
         }
         return null;
+    }
+
+    private static String sourceId(JsonNode item) {
+        if (item == null) {
+            return "";
+        }
+        if (item.isTextual()) {
+            return item.asText("");
+        }
+        for (String field : List.of("id", "source_id", "name")) {
+            JsonNode value = item.get(field);
+            if (value != null && value.isTextual()) {
+                return value.asText("");
+            }
+        }
+        return "";
     }
 }

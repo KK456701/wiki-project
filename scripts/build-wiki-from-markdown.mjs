@@ -400,6 +400,9 @@ const PARAMETER_ALIASES = new Map([
   ['marptBeginAt', 'start_time'],
   ['endTime', 'end_time'],
   ['marptEndAt', 'end_time'],
+  // SQL原文继续使用 :hospital_soid；机器契约使用更明确的业务名称，
+  // 防止把991827误解为数据库编号。
+  ['hospital_soid', 'hospital_scope_value'],
 ]);
 
 const SQL_SERVER_FUNCTIONS = new Set([
@@ -412,19 +415,75 @@ const SQL_SERVER_FUNCTIONS = new Set([
 ]);
 
 /**
- * 只处理来源明确且语义不变的机械差异。无法确定的 Excel 错误、函数或业务条件
- * 必须留给发布门禁阻断，不能由生成器“猜一个能跑的 SQL”。
+ * 只处理可以机械证明不改变业务语义的错误，并返回逐条修复记录。
+ *
+ * 参数名、表字段、条件、JOIN、阈值、聚合和输出别名均原样保留。参数兼容由 Java
+ * 绑定适配器完成，不能借“规范化”之名改写正式 SQL。
  */
+function normalizeSqlWithCorrections(sql) {
+  if (!sql || !sql.trim()) return { sql: '', corrections: [] };
+  let value = sql;
+  const corrections = [];
+
+  function lineAt(text, index) {
+    return text.slice(0, Math.max(0, index)).split(/\r?\n/).length;
+  }
+
+  function replace(pattern, replacement, type, reason) {
+    value = value.replace(pattern, (...args) => {
+      const matched = args[0];
+      const offset = args.at(-2);
+      const next = typeof replacement === 'function'
+        ? replacement(...args)
+        : replacement;
+      if (matched !== next) {
+        corrections.push({
+          type,
+          line: lineAt(value, offset),
+          before: matched,
+          after: next,
+          reason,
+        });
+      }
+      return next;
+    });
+  }
+
+  replace(
+    /\bWITH\s*#\{NOLOCK\}/gi,
+    'WITH (NOLOCK)',
+    'invalid_nolock_placeholder',
+    '将无法执行的NOLOCK模板标记修正为SQL Server标准表提示',
+  );
+  replace(
+    /#\{NOLOCK\}/gi,
+    'WITH (NOLOCK)',
+    'invalid_nolock_placeholder',
+    '将无法执行的NOLOCK模板标记修正为SQL Server标准表提示',
+  );
+  replace(
+    /(?<!WITH )\(\s*NOLOCK\s*\)/gi,
+    'WITH (NOLOCK)',
+    'invalid_nolock_syntax',
+    '补齐SQL Server表提示所需的WITH关键字',
+  );
+  replace(
+    /(\bWHERE[ \t]*(?:\r?\n)?(?:[ \t]*--[^\r\n]*(?:\r?\n|$)[ \t]*)+)AND\b/gi,
+    (...args) => args[1],
+    'dangling_where_and',
+    'WHERE后只有注释时删除首个悬空AND，保留原条件和注释',
+  );
+  replace(
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,
+    '',
+    'invalid_control_character',
+    '移除SQL文本中不可执行且不承载业务语义的控制字符',
+  );
+  return { sql: value.trimEnd(), corrections };
+}
+
 function normalizeSql(sql) {
-  if (!sql || !sql.trim()) return '';
-  // 来源里同时存在 WITH#{NOLOCK}、#{NOLOCK} 和 (NOLOCK)。先处理带 WITH 的形式，
-  // 避免机械替换生成无效的 “WITHWITH (NOLOCK)”。
-  let value = sql.replace(/\bWITH\s*(?:#\{NOLOCK\}|\(\s*NOLOCK\s*\))/gi, 'WITH (NOLOCK)');
-  value = value.replace(/#\{NOLOCK\}/gi, 'WITH (NOLOCK)');
-  value = value.replace(/(?<!WITH )\(\s*NOLOCK\s*\)/gi, 'WITH (NOLOCK)');
-  value = value.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (full, name) =>
-    `:${PARAMETER_ALIASES.get(name) || name}`);
-  return value.trimEnd();
+  return normalizeSqlWithCorrections(sql).sql;
 }
 
 function stripSqlCommentsAndStrings(sql) {
@@ -441,6 +500,18 @@ function sqlParameters(sql) {
     [...normalizeSql(sql).matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)]
       .map(match => match[1]),
   )].sort();
+}
+
+function resultMappingCandidates(sql) {
+  const aliases = [...normalizeSql(sql).matchAll(
+    /\bAS\s+(?:\[([^\]]+)\]|"([^"]+)"|([^\s,()]+))/gi,
+  )].map(match => match[1] || match[2] || match[3]).filter(Boolean);
+  const pick = pattern => aliases.find(alias => pattern.test(alias)) || null;
+  return {
+    numerator_count: pick(/(?:^|_)numerator(?:_count)?$|分子/i),
+    denominator_count: pick(/(?:^|_)denominator(?:_count)?$|sample_count|分母/i),
+    index_value: pick(/^(?:index_value|result_value)$|指标值|监测情况|比率|比例|率$/i),
+  };
 }
 
 function sqlFunctions(sql) {
@@ -555,10 +626,16 @@ function runtimeProfile(indicator, profile) {
     configurable_parameters: profile.configurableParams,
     declared_parameters: declaredParameters(profile),
     parameter_contract: Object.fromEntries(
-      declaredParameters(profile).map(name => [name, {
-        type: /time|at$/i.test(name) ? 'datetime' : 'unknown',
-        source: ['start_time', 'end_time'].includes(name) ? 'stat_period' : 'profile_mapping',
-      }]),
+      declaredParameters(profile).map(name => {
+        const canonicalName = PARAMETER_ALIASES.get(name) || name;
+        return [name, {
+          canonical_name: canonicalName,
+          type: /time|at$/i.test(name) ? 'datetime' : 'unknown',
+          source: ['start_time', 'end_time'].includes(canonicalName)
+            ? 'stat_period'
+            : 'profile_mapping',
+        }];
+      }),
     ),
     sql_refs: {
       etl_source: sqlReference(indicator.ruleId, profileId, 'etl_source', profile.sqlSource),
@@ -571,6 +648,7 @@ function runtimeProfile(indicator, profile) {
       numerator_count: null,
       denominator_count: null,
     },
+    result_mapping_candidates: resultMappingCandidates(profile.sqlOverview || ''),
     sql_capabilities: sqlCapabilities,
     // 双库查询必须由目标医院验证同构对象和比较键后显式开启。生成器绝不根据
     // SQL 文本猜测两库兼容，从而避免尚未验证的 Profile 被误用于生产比较。
@@ -580,6 +658,14 @@ function runtimeProfile(indicator, profile) {
       verified_source_roles: [],
       business_source_role: 'business',
       real_source_role: 'real',
+      sql_hashes: {
+        business: Object.fromEntries(Object.entries(sqlCapabilities)
+          .filter(([, gate]) => gate.normalized_sha256)
+          .map(([capability, gate]) => [capability, gate.normalized_sha256])),
+        real: Object.fromEntries(Object.entries(sqlCapabilities)
+          .filter(([, gate]) => gate.normalized_sha256)
+          .map(([capability, gate]) => [capability, gate.normalized_sha256])),
+      },
       source_verification: {
         business: { metadata_status: 'unverified', compile_status: 'unverified' },
         real: { metadata_status: 'unverified', compile_status: 'unverified' },
@@ -605,12 +691,23 @@ function runtimeProfile(indicator, profile) {
     field_mapping: {
       status: 'missing',
       dialect: 'sqlserver',
-      db_name: 'winex_aima',
       main_table: profile.meta['中间表'] === '—' ? '' : (profile.meta['中间表'] || ''),
       fields: {},
       parameters: {},
       relations: [],
       query_profile: '',
+      source_roles: {
+        business: {
+          source_id: 'winex_all_dev',
+          database_name: 'WiNEX_All_DEV',
+          status: 'unverified',
+        },
+        real: {
+          source_id: 'winex_aima',
+          database_name: 'winex_aima',
+          status: 'unverified',
+        },
+      },
     },
   };
 }
@@ -644,14 +741,29 @@ function writeProfileSql(outputRoot, indicator, profile) {
     profileId,
   );
   const items = [
-    ['etl_source.sql', profile.sqlSource],
-    ['overview.sql', profile.sqlOverview],
-    ['department.sql', profile.sqlDepartment],
-    ['patient_detail.sql', profile.sqlPatientDetail],
+    ['source_extract', 'etl_source.sql', profile.sqlSource],
+    ['overview', 'overview.sql', profile.sqlOverview],
+    ['department_detail', 'department.sql', profile.sqlDepartment],
+    ['patient_detail', 'patient_detail.sql', profile.sqlPatientDetail],
   ];
-  for (const [fileName, sql] of items) {
-    if (sql && sql.trim()) writePage(join(directory, fileName), normalizeSql(sql) + '\n');
+  const result = [];
+  for (const [capability, fileName, sql] of items) {
+    if (!sql || !sql.trim()) continue;
+    const normalized = normalizeSqlWithCorrections(sql);
+    writePage(join(directory, fileName), normalized.sql + '\n');
+    for (const correction of normalized.corrections) {
+      result.push({
+        rule_id: indicator.ruleId,
+        profile_id: profileId,
+        capability,
+        sql_path: `sql-specs/${indicator.ruleId}/profiles/${profileId}/${fileName}`,
+        raw_sha256: sha256(sql),
+        execution_sha256: sha256(normalized.sql),
+        ...correction,
+      });
+    }
   }
+  return result;
 }
 
 // ─── 生成：指标主页面 ────────────────────────────────────────────────────────────
@@ -1125,6 +1237,9 @@ function validateStaging(outputRoot, indicators) {
   ];
   const missing = requiredIndexes.filter(fileName =>
     !existsSync(join(outputRoot, 'indexes', fileName)));
+  if (!existsSync(join(outputRoot, 'sql-correction-manifest.json'))) {
+    missing.push('sql-correction-manifest.json');
+  }
   for (const indicator of indicators) {
     if (!existsSync(join(outputRoot, 'wiki', 'indicators', indicator.ruleId, 'index.md'))) {
       missing.push(`wiki/indicators/${indicator.ruleId}/index.md`);
@@ -1165,6 +1280,7 @@ function replaceGeneratedContent(stagingRoot) {
     'sql-specs',
     'indexes',
     'index.md',
+    'sql-correction-manifest.json',
     'release-manifest.json',
   ];
   const moved = [];
@@ -1269,6 +1385,7 @@ function main() {
   const relationIndex = {};
   const retrievalCards = [];
   const ngramIndex = {};
+  const sqlCorrections = [];
   const sourceRelative = options.sourcePath
     || inputPath.replace(`${WIKI_ROOT}\\`, '').replaceAll('\\', '/');
 
@@ -1285,7 +1402,7 @@ function main() {
     for (const profile of indicator.profiles) {
       const { fileName, content: profileContent } = generateProfilePage(indicator, profile);
       writePage(join(profilesDir, fileName), profileContent);
-      writeProfileSql(outputRoot, indicator, profile);
+      sqlCorrections.push(...writeProfileSql(outputRoot, indicator, profile));
     }
 
     // 人读规格保留默认方案摘要；机器运行契约和SQL按每个Profile独立保存。
@@ -1412,6 +1529,13 @@ function main() {
     release_id: releaseId,
     gram_size: 2,
     entries: ngramIndex,
+  }, null, 2), 'utf-8');
+  writeFileSync(join(outputRoot, 'sql-correction-manifest.json'), JSON.stringify({
+    schema_version: 'sql-correction-manifest-v1',
+    release_id: releaseId,
+    requires_human_confirmation: sqlCorrections.length > 0,
+    correction_count: sqlCorrections.length,
+    corrections: sqlCorrections,
   }, null, 2), 'utf-8');
 
   // 8. 生成总索引页

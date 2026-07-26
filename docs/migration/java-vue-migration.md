@@ -201,8 +201,10 @@ app/ + web/                FastAPI 回退实现与旧前端，稳定窗口结束
 ```powershell
 # Java 服务（默认配置仍为影子模式）
 cd F:\A-wiki-project\backend-java
-$env:DBHUB_SOURCE_ID_WIN60_QA_991827 = "win60_qa_991827"
-$env:DBHUB_EXECUTE_TOOL_WIN60_QA_991827 = "execute_sql_win60_qa_991827"
+$env:DBHUB_BUSINESS_SOURCE_ID = "winex_all_dev"
+$env:DBHUB_BUSINESS_EXECUTE_TOOL = "execute_sql_winex_all_dev"
+$env:DBHUB_REAL_SOURCE_ID = "winex_aima"
+$env:DBHUB_REAL_EXECUTE_TOOL = "execute_sql_winex_aima"
 mvn -s maven-settings.xml test
 mvn -s maven-settings.xml spring-boot:run
 

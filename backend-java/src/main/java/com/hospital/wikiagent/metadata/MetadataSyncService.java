@@ -12,8 +12,10 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.trace.AgentTraceService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.dbhub.DatabaseSourceException;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.metadata.MetadataRepository.FieldMapping;
 import com.hospital.wikiagent.metadata.MetadataRepository.Snapshot;
@@ -42,9 +44,12 @@ public class MetadataSyncService {
     }
 
     public Map<String, Object> overview(HospitalPrincipal principal, String requestedDatabase) {
-        String databaseName = database(requestedDatabase);
-        return repository.overview(
-                principal.hospitalId(), databaseName, properties.getSourceId());
+        DatabaseTarget target = database(requestedDatabase);
+        Map<String, Object> result = new LinkedHashMap<>(repository.overview(
+                principal.hospitalId(), target.databaseName(), target.source().getSourceId()));
+        result.put("source_id", target.source().getSourceId());
+        result.put("source_role", target.role().value());
+        return java.util.Collections.unmodifiableMap(result);
     }
 
     public Map<String, Object> sync(
@@ -59,26 +64,28 @@ public class MetadataSyncService {
         if (source != null && !source.isBlank() && !"dbhub".equalsIgnoreCase(source)) {
             throw new IllegalArgumentException("Java 主链路只允许通过 DBHub 同步业务库元数据。");
         }
-        String databaseName = database(requestedDatabase);
+        DatabaseTarget target = database(requestedDatabase);
+        String databaseName = target.databaseName();
         String traceId = id("TRACE_");
         String batchId = id("META_");
         traces.start(traceId, null, principal, "metadata_sync:" + databaseName);
         long started = System.currentTimeMillis();
         try {
             List<FieldMapping> mappings = repository.fieldMappings(
-                    principal.hospitalId(), properties.getSourceId(), databaseName);
+                    principal.hospitalId(), target.source().getSourceId(), databaseName);
             Snapshot previous = mappedPrevious(
                     repository.loadCurrent(principal.hospitalId(), databaseName), mappings);
-            Snapshot current = collect(databaseName, mappings);
+            Snapshot current = collect(target, mappings);
             List<Map<String, Object>> changes = diff(previous, current);
             repository.persist(
-                    principal.hospitalId(), databaseName, catalog.sourceName(), batchId,
+                    principal.hospitalId(), databaseName, catalog.sourceName(target.role()), batchId,
                     current, changes);
             List<Map<String, Object>> affected = MetadataRepository.affectedRules(changes, mappings);
             long duration = Math.max(0, System.currentTimeMillis() - started);
             traces.recordStandaloneNode(traceId, node(
                     "metadata_sync_dbhub", "database", "success", started, duration,
-                    Map.of("source_id", properties.getSourceId(), "database", databaseName,
+                    Map.of("source_id", target.source().getSourceId(),
+                            "source_role", target.role().value(), "database", databaseName,
                             "mapped_table_count", mappedTables(mappings).size()),
                     Map.of("batch_id", batchId, "table_count", current.tables().size(),
                             "column_count", current.columns().size(), "change_count", changes.size())));
@@ -91,7 +98,8 @@ public class MetadataSyncService {
             long duration = Math.max(0, System.currentTimeMillis() - started);
             traces.recordStandaloneNode(traceId, node(
                     "metadata_sync_dbhub", "database", "failed", started, duration,
-                    Map.of("source_id", properties.getSourceId(), "database", databaseName),
+                    Map.of("source_id", target.source().getSourceId(),
+                            "source_role", target.role().value(), "database", databaseName),
                     Map.of("error", safeMessage(exception))));
             traces.finishStandalone(traceId, "failed", "metadata_sync",
                     safeMessage(exception), 1);
@@ -99,9 +107,10 @@ public class MetadataSyncService {
         }
     }
 
-    private Snapshot collect(String databaseName, List<FieldMapping> mappings) {
+    private Snapshot collect(DatabaseTarget target, List<FieldMapping> mappings) {
+        String databaseName = target.databaseName();
         List<Map<String, Object>> rawTables = catalog.listTables(
-                databaseName, properties.getSchemaName());
+                target.role(), databaseName, target.source().getSchemaName());
         Map<String, Map<String, Object>> tables = new LinkedHashMap<>();
         for (Map<String, Object> raw : rawTables) {
             Map<String, Object> table = normalize(raw);
@@ -116,7 +125,7 @@ public class MetadataSyncService {
         for (String tableName : mappedTables(mappings)) {
             tables.putIfAbsent(tableName.toLowerCase(Locale.ROOT), mappedTable(tableName));
             for (Map<String, Object> raw : catalog.listColumns(
-                    databaseName, properties.getSchemaName(), tableName)) {
+                    target.role(), databaseName, target.source().getSchemaName(), tableName)) {
                 Map<String, Object> column = normalize(raw);
                 String returnedTable = first(text(column.get("table_name")), tableName);
                 String columnName = text(column.get("column_name"));
@@ -198,13 +207,31 @@ public class MetadataSyncService {
                 .toList());
     }
 
-    private String database(String requested) {
-        if (requested == null || requested.isBlank()
-                || requested.equalsIgnoreCase(properties.getSourceId())
-                || requested.equalsIgnoreCase(properties.getDatabaseName())) {
-            return properties.getDatabaseName();
+    private DatabaseTarget database(String requested) {
+        if (requested == null || requested.isBlank()) {
+            return target(DatabaseRole.BUSINESS, properties.businessSource());
         }
-        throw new IllegalArgumentException("当前迁移版只允许同步已配置的 DBHub 业务库。");
+        String value = requested.strip();
+        if ("win60_qa_991827".equalsIgnoreCase(value)
+                || "WIN60_QA_991827".equalsIgnoreCase(value)) {
+            throw DatabaseSourceException.retired();
+        }
+        if (matches(value, properties.businessSource())) {
+            return target(DatabaseRole.BUSINESS, properties.businessSource());
+        }
+        if (matches(value, properties.realSource())) {
+            return target(DatabaseRole.REAL, properties.realSource());
+        }
+        throw DatabaseSourceException.invalid();
+    }
+
+    private static boolean matches(String requested, DbHubProperties.Source source) {
+        return requested.equalsIgnoreCase(source.getSourceId())
+                || requested.equalsIgnoreCase(source.getDatabaseName());
+    }
+
+    private static DatabaseTarget target(DatabaseRole role, DbHubProperties.Source source) {
+        return new DatabaseTarget(role, source, source.getDatabaseName());
     }
 
     private static List<String> mappedTables(List<FieldMapping> mappings) {
@@ -224,9 +251,11 @@ public class MetadataSyncService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("hospital_id", hospitalId);
         result.put("db_name", databaseName);
-        result.put("source_id", properties.getSourceId());
+        DatabaseTarget target = database(databaseName);
+        result.put("source_id", target.source().getSourceId());
+        result.put("source_role", target.role().value());
         result.put("has_snapshot", true);
-        result.put("metadata_source", catalog.sourceName());
+        result.put("metadata_source", catalog.sourceName(target.role()));
         result.put("synced_at", java.time.LocalDateTime.now().toString());
         result.put("table_count", snapshot.tables().size());
         result.put("column_count", snapshot.columns().size());
@@ -235,6 +264,12 @@ public class MetadataSyncService {
         result.put("affected_rules", affected);
         result.put("trace_id", traceId);
         return result;
+    }
+
+    private record DatabaseTarget(
+            DatabaseRole role,
+            DbHubProperties.Source source,
+            String databaseName) {
     }
 
     private static Map<String, Object> node(

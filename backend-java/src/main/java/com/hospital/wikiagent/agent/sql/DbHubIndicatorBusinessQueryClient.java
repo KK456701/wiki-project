@@ -26,12 +26,12 @@ public class DbHubIndicatorBusinessQueryClient
 
     @Override
     public List<Map<String, Object>> execute(String sql) {
-        return client.executeSql(properties.getExecuteTool(), sql);
+        return execute(DatabaseRole.BUSINESS, sql);
     }
 
     @Override
     public String sourceId() {
-        return properties.getSourceId();
+        return sourceId(DatabaseRole.BUSINESS);
     }
 
     @Override

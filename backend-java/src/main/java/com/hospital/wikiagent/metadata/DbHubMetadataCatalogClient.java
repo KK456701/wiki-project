@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.dbhub.DbHubMcpClient;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 
@@ -24,29 +25,36 @@ public class DbHubMetadataCatalogClient implements MetadataCatalogClient {
     }
 
     @Override
-    public List<Map<String, Object>> listTables(String databaseName, String schemaName) {
+    public List<Map<String, Object>> listTables(
+            DatabaseRole role, String databaseName, String schemaName) {
         String sql = "SELECT TABLE_NAME, '' AS TABLE_COMMENT, TABLE_TYPE "
                 + "FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_CATALOG = '"
                 + literal(databaseName) + "' AND TABLE_SCHEMA = '" + literal(schemaName)
                 + "' ORDER BY TABLE_NAME";
-        return client.executeSql(properties.getExecuteTool(), sql);
+        return client.executeSql(source(role).getExecuteTool(), sql);
     }
 
     @Override
     public List<Map<String, Object>> listColumns(
-            String databaseName, String schemaName, String tableName) {
+            DatabaseRole role, String databaseName, String schemaName, String tableName) {
         String sql = "SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, DATA_TYPE AS COLUMN_TYPE, "
                 + "IS_NULLABLE, '' AS COLUMN_KEY, COLUMN_DEFAULT, '' AS COLUMN_COMMENT "
                 + "FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_CATALOG = '"
                 + literal(databaseName) + "' AND TABLE_SCHEMA = '" + literal(schemaName)
                 + "' AND TABLE_NAME = '" + literal(tableName)
                 + "' ORDER BY TABLE_NAME, ORDINAL_POSITION";
-        return client.executeSql(properties.getExecuteTool(), sql);
+        return client.executeSql(source(role).getExecuteTool(), sql);
     }
 
     @Override
-    public String sourceName() {
-        return "dbhub";
+    public String sourceName(DatabaseRole role) {
+        return source(role).getSourceId();
+    }
+
+    private DbHubProperties.Source source(DatabaseRole role) {
+        return role == DatabaseRole.BUSINESS
+                ? properties.businessSource()
+                : properties.realSource();
     }
 
     private static String literal(String value) {

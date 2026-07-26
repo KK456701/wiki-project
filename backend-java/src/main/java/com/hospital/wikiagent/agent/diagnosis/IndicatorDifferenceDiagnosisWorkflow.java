@@ -23,6 +23,7 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
@@ -255,8 +256,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         Map<String, Object> fields = objectMap(execution.mapping.get("fields"));
         Map<String, Object> contracts = objectMap(
                 objectMap(execution.rule.get("field_contract")).get("business_fields"));
-        String database = firstNonBlank(text(execution.mapping.get("db_name")), dbHub.getDatabaseName());
-        String schema = firstNonBlank(text(execution.mapping.get("schema")), dbHub.getSchemaName());
+        DbHubProperties.Source businessSource = dbHub.businessSource();
+        String database = businessSource.getDatabaseName();
+        String schema = businessSource.getSchemaName();
         Set<String> requiredTables = new LinkedHashSet<>();
         for (Object value : fields.values()) {
             PhysicalField ref = physicalField(value);
@@ -266,7 +268,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         boolean blocking = false;
         try {
             Set<String> liveTables = new LinkedHashSet<>();
-            for (Map<String, Object> row : metadataCatalog.listTables(database, schema)) {
+            for (Map<String, Object> row : metadataCatalog.listTables(
+                    DatabaseRole.BUSINESS, database, schema)) {
                 String table = valueIgnoreCase(row, "TABLE_NAME");
                 if (!table.isBlank()) liveTables.add(table.toUpperCase(Locale.ROOT));
             }
@@ -278,7 +281,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                     continue;
                 }
                 Map<String, String> liveColumns = new LinkedHashMap<>();
-                for (Map<String, Object> row : metadataCatalog.listColumns(database, schema, table)) {
+                for (Map<String, Object> row : metadataCatalog.listColumns(
+                        DatabaseRole.BUSINESS, database, schema, table)) {
                     liveColumns.put(
                             valueIgnoreCase(row, "COLUMN_NAME").toUpperCase(Locale.ROOT),
                             valueIgnoreCase(row, "DATA_TYPE").toLowerCase(Locale.ROOT));
@@ -770,6 +774,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         PhysicalField period = requireField(periodBusinessField(execution.rule), execution.mapping);
         Map<String, Object> params = objectMap(execution.rule.get("effective_params"));
         Object hospitalValue = firstPresent(
+                params.get("hospital_scope_value"),
                 params.get("hospital_soid"),
                 params.get("hospital_id"),
                 execution.context.agentContext().hospitalId());

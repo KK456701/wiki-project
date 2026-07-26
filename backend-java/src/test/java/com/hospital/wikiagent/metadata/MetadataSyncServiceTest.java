@@ -15,7 +15,9 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import com.hospital.wikiagent.agent.trace.AgentTraceService;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.dbhub.DatabaseSourceException;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.metadata.MetadataRepository.Snapshot;
 
@@ -42,7 +44,7 @@ class MetadataSyncServiceTest {
         jdbc.update("INSERT INTO med_field_mapping "
                         + "(hospital_id,rule_id,business_field,db_name,table_name,column_name,data_type,status) "
                         + "VALUES (?,?,?,?,?,?,?,?)",
-                "hospital_001", "MQSI2025_001", "admission_id", "win60_qa_991827",
+                "hospital_001", "MQSI2025_001", "admission_id", "winex_all_dev",
                 "INP_VISIT", "ADMISSION_ID", "varchar", "confirmed");
     }
 
@@ -53,12 +55,14 @@ class MetadataSyncServiceTest {
                 catalog, repository, properties, mock(AgentTraceService.class));
 
         Map<String, Object> result = service.sync(
-                principal, "hospital_001", "win60_qa_991827", "dbhub");
-        Map<String, Object> overview = service.overview(principal, "WIN60_QA_991827");
+                principal, "hospital_001", "winex_all_dev", "dbhub");
+        Map<String, Object> overview = service.overview(principal, "WiNEX_All_DEV");
 
         assertThat(result).containsEntry("table_count", 2).containsEntry("column_count", 1);
         assertThat(overview).containsEntry("has_snapshot", true)
-                .containsEntry("table_count", 2).containsEntry("column_count", 1);
+                .containsEntry("table_count", 2).containsEntry("column_count", 1)
+                .containsEntry("source_role", "business")
+                .containsEntry("source_id", "winex_all_dev");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_metadata_column WHERE hospital_id='hospital_001'",
                 Integer.class)).isEqualTo(1);
@@ -84,13 +88,38 @@ class MetadataSyncServiceTest {
                 new StubCatalog(), repository, properties, mock(AgentTraceService.class));
 
         assertThatThrownBy(() -> service.overview(principal, "other_database"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("只允许同步已配置");
+                .isInstanceOfSatisfying(DatabaseSourceException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("DB_SOURCE_ROLE_INVALID"));
+    }
+
+    @Test
+    void acceptsRealDatabaseWithoutFallingBackToBusiness() {
+        MetadataSyncService service = new MetadataSyncService(
+                new StubCatalog(), repository, properties, mock(AgentTraceService.class));
+
+        Map<String, Object> result = service.overview(principal, "winex_aima");
+
+        assertThat(result)
+                .containsEntry("db_name", "winex_aima")
+                .containsEntry("source_role", "real")
+                .containsEntry("source_id", "winex_aima")
+                .containsEntry("has_snapshot", false);
+    }
+
+    @Test
+    void rejectsRetiredDatabaseWithStableCode() {
+        MetadataSyncService service = new MetadataSyncService(
+                new StubCatalog(), repository, properties, mock(AgentTraceService.class));
+
+        assertThatThrownBy(() -> service.overview(principal, "win60_qa_991827"))
+                .isInstanceOfSatisfying(DatabaseSourceException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("DB_SOURCE_RETIRED"));
     }
 
     private static final class StubCatalog implements MetadataCatalogClient {
         @Override
-        public List<Map<String, Object>> listTables(String databaseName, String schemaName) {
+        public List<Map<String, Object>> listTables(
+                DatabaseRole role, String databaseName, String schemaName) {
             return List.of(
                     Map.of("TABLE_NAME", "INP_VISIT", "TABLE_TYPE", "BASE TABLE"),
                     Map.of("TABLE_NAME", "UNMAPPED_TABLE", "TABLE_TYPE", "BASE TABLE"));
@@ -98,7 +127,7 @@ class MetadataSyncServiceTest {
 
         @Override
         public List<Map<String, Object>> listColumns(
-                String databaseName, String schemaName, String tableName) {
+                DatabaseRole role, String databaseName, String schemaName, String tableName) {
             return List.of(Map.of(
                     "TABLE_NAME", tableName, "COLUMN_NAME", "ADMISSION_ID",
                     "DATA_TYPE", "varchar", "COLUMN_TYPE", "varchar",
@@ -106,8 +135,8 @@ class MetadataSyncServiceTest {
         }
 
         @Override
-        public String sourceName() {
-            return "dbhub";
+        public String sourceName(DatabaseRole role) {
+            return role.value();
         }
     }
 }

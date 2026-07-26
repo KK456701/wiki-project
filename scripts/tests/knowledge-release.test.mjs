@@ -80,6 +80,22 @@ test('当前来源稳定生成35项、45个Profile和169个SQL块', () => {
     assert.equal(dual.source_verification.business.metadata_status, 'unverified');
     assert.equal(dual.overview_result_mapping.numerator_count, 'numerator_count');
     assert.ok(dual.verification_blockers.includes('business_and_real_schema_not_verified'));
+    const corrections = JSON.parse(readFileSync(
+      join(output, 'sql-correction-manifest.json'),
+      'utf-8',
+    ));
+    assert.equal(corrections.schema_version, 'sql-correction-manifest-v1');
+    assert.equal(corrections.release_id, 'KB-NODE-TEST');
+    assert.equal(corrections.correction_count, 420);
+    assert.equal(
+      corrections.corrections.filter(item => item.type === 'dangling_where_and').length,
+      129,
+    );
+    assert.ok(corrections.corrections.every(item => (
+      item.raw_sha256 !== item.execution_sha256
+      && item.before !== item.after
+      && item.line >= 1
+    )));
   } finally {
     rmSync(output, { recursive: true, force: true });
   }
@@ -131,6 +147,68 @@ test('Excel错误和未知数据库函数保留文档但阻止SQL执行', () => 
     assert.ok(overview.blockers.some(value => value.includes('Excel')));
     assert.deepEqual(overview.unknown_functions, ['hospital_udf']);
     assert.equal(runtime.profiles[0].execution_status, 'documentation_only');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('只修复允许的SQL模板错误且不改写参数名称', () => {
+  const root = mkdtempSync(join(tmpdir(), 'hxzd-sql-correction-'));
+  try {
+    const input = join(root, 'draft.json');
+    const output = join(root, 'release');
+    const sql = [
+      'SELECT COUNT(*) AS [分母]',
+      'FROM dbo.encounter WITH #{NOLOCK}',
+      'WHERE',
+      '-- 保留这段业务说明',
+      'AND hospital_soid = :hospital_soid',
+      'AND admitted_at >= :startTime',
+      'AND admitted_at < :marptEndAt',
+    ].join('\n');
+    writeFileSync(input, JSON.stringify(draft(sql)), 'utf-8');
+    const result = runBuilder(input, output);
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+
+    const executionSql = readFileSync(
+      join(
+        output,
+        'sql-specs',
+        'HXZD-001-001',
+        'profiles',
+        'HXZD-001-001-company-default',
+        'overview.sql',
+      ),
+      'utf-8',
+    );
+    assert.match(executionSql, /WITH \(NOLOCK\)/);
+    assert.doesNotMatch(executionSql, /WITH #\{NOLOCK\}/);
+    assert.doesNotMatch(executionSql, /WHERE\s*--[^\r\n]*\r?\n\s*AND/i);
+    assert.match(executionSql, /:startTime/);
+    assert.match(executionSql, /:marptEndAt/);
+    assert.doesNotMatch(executionSql, /:start_time|:end_time/);
+
+    const runtime = JSON.parse(readFileSync(
+      join(output, 'sql-specs', 'HXZD-001-001', 'runtime.json'),
+      'utf-8',
+    ));
+    const profile = runtime.profiles[0];
+    assert.equal(profile.parameter_contract.startTime.canonical_name, 'start_time');
+    assert.equal(profile.parameter_contract.marptEndAt.canonical_name, 'end_time');
+    assert.equal(
+      profile.parameter_contract.hospital_soid.canonical_name,
+      'hospital_scope_value',
+    );
+    assert.equal(profile.result_mapping_candidates.denominator_count, '分母');
+
+    const manifest = JSON.parse(readFileSync(
+      join(output, 'sql-correction-manifest.json'),
+      'utf-8',
+    ));
+    assert.deepEqual(
+      [...new Set(manifest.corrections.map(item => item.type))].sort(),
+      ['dangling_where_and', 'invalid_nolock_placeholder'],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

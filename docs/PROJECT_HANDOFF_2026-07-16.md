@@ -187,7 +187,7 @@ MySQL 读取已审批指标规则和 SQL 模板
 
 当前真实业务源：
 
-- 数据库：`WIN60_QA_991827`
+- 数据库：业务库 `winex_all_dev`、真实库 `winex_aima`，均通过 DBHub 只读访问
 - Schema：`WINDBA`
 - 访问方式：DBHub MCP 只读访问
 

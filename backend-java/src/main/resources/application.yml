@@ -118,15 +118,15 @@ wiki:
   dbhub:
     api-url: ${DBHUB_API_URL:http://127.0.0.1:8080}
     mcp-url: ${DBHUB_MCP_URL:http://127.0.0.1:8080/mcp}
-    source-id: ${DBHUB_SOURCE_ID_WIN60_QA_991827:win60_qa_991827}
-    execute-tool: ${DBHUB_EXECUTE_TOOL_WIN60_QA_991827:execute_sql_win60_qa_991827}
-    database-name: ${BUSINESS_DB_DATABASE:WIN60_QA_991827}
-    schema-name: ${BUSINESS_DB_SCHEMA:WINDBA}
     timeout-seconds: 10
     sources:
       business:
         source-id: ${DBHUB_BUSINESS_SOURCE_ID:winex_all_dev}
         execute-tool: ${DBHUB_BUSINESS_EXECUTE_TOOL:execute_sql_winex_all_dev}
+        database-name: ${DBHUB_BUSINESS_DATABASE:WiNEX_All_DEV}
+        schema-name: ${DBHUB_BUSINESS_SCHEMA:dbo}
       real:
         source-id: ${DBHUB_REAL_SOURCE_ID:winex_aima}
         execute-tool: ${DBHUB_REAL_EXECUTE_TOOL:execute_sql_winex_aima}
+        database-name: ${DBHUB_REAL_DATABASE:winex_aima}
+        schema-name: ${DBHUB_REAL_SCHEMA:dbo}

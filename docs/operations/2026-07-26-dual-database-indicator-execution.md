@@ -36,13 +36,23 @@ wiki:
       business:
         source-id: winex_all_dev
         execute-tool: execute_sql_winex_all_dev
+        database-name: WiNEX_All_DEV
+        schema-name: dbo
       real:
         source-id: winex_aima
         execute-tool: execute_sql_winex_aima
+        database-name: winex_aima
+        schema-name: dbo
 ```
 
 `disabled` 保持原单库行为。`required` 不提供模拟成功：网关缺失、抽取失败、双库契约
 未验证或任一数据库执行失败都会终止本轮。
+
+普通单库试运行固定访问 `business`。旧顶层 `wiki.dbhub.source-id/execute-tool/
+database-name/schema-name` 已删除；启动时发现旧配置会直接失败。元数据接口只接受
+`winex_all_dev` 或 `winex_aima`，历史退役数据源只允许查看已有 Trace，不能重新执行
+SQL 或刷新患者明细。数字 `991827` 只作为 `hospital_scope_value` 绑定到 SQL 模板的
+`:hospital_soid`，不表示数据库。
 
 ## 抽取接口边界
 
