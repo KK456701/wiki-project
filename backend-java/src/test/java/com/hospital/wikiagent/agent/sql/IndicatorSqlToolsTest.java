@@ -181,6 +181,32 @@ class IndicatorSqlToolsTest {
                 "consult_record").ok()).isFalse();
     }
 
+    @Test
+    void allowsBusinessOrAndIgnoresKeywordsInsideCommentsAndStrings() {
+        ReadOnlySqlValidator validator = new ReadOnlySqlValidator();
+        String sql = """
+                SELECT COUNT(*) AS sample_count
+                FROM consult_record
+                WHERE request_time >= :start_time AND request_time < :end_time
+                  AND (status = 'DELETE' OR status = 'UPDATE')
+                  -- 注释中的 DROP 不代表真实语句
+                """;
+
+        assertThat(validator.validate(sql, "consult_record").ok()).isTrue();
+    }
+
+    @Test
+    void rejectsUnresolvedExcelAndTemplateArtifacts() {
+        ReadOnlySqlValidator validator = new ReadOnlySqlValidator();
+
+        assertThat(validator.validate(
+                "SELECT #NAME? FROM consult_record WHERE request_time>=:start_time AND request_time<:end_time",
+                "consult_record").ok()).isFalse();
+        assertThat(validator.validate(
+                "SELECT * FROM consult_record #{NOLOCK} WHERE request_time>=:start_time AND request_time<:end_time",
+                "consult_record").ok()).isFalse();
+    }
+
     private ToolExecutionContext executionContext(AgentRuntimeContext runtime, AgentRunState currentState) {
         return new ToolExecutionContext(
                 runtime, "subtask-1", currentState,

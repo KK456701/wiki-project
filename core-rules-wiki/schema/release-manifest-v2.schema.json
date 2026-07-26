@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-release-v2",
+  "type": "object",
+  "required": [
+    "schema_version", "release_id", "scope", "generated_at", "source_sha256",
+    "generator_version", "model_id", "prompt_version", "prompt_sha256", "counts", "files"
+  ],
+  "properties": {
+    "schema_version": {"const": "knowledge-release-v2"},
+    "release_id": {"type": "string", "pattern": "^KB-[A-Za-z0-9_-]+$"},
+    "scope": {"enum": ["company", "hospital"]},
+    "hospital_id": {"type": ["string", "null"]},
+    "base_release_id": {"type": ["string", "null"]},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "source_path": {"type": "string"},
+    "source_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "generator_version": {"type": "string"},
+    "model_id": {"type": "string"},
+    "prompt_version": {"type": "string"},
+    "prompt_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "counts": {
+      "type": "object",
+      "required": ["indicators", "profiles", "sql_blocks"],
+      "properties": {
+        "indicators": {"type": "integer", "minimum": 1},
+        "profiles": {"type": "integer", "minimum": 1},
+        "sql_blocks": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }
+  },
+  "additionalProperties": true
+}

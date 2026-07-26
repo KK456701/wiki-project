@@ -3,7 +3,7 @@ WITH TargetValue AS (
     SELECT
 TARGET_COMP_VAL/100.0 AS target_value
     FROM
-MRAS_TARGET_DEFINITION (NOLOCK)
+MRAS_TARGET_DEFINITION WITH (NOLOCK)
     WHERE
 TARGET_NO = 'HXZD-012-004'
 ),
@@ -28,7 +28,7 @@ MRAS_BUSINESS_SUR_GRADE event
   --布局组件设置提升效率
 AND event.IS_DEL = 0
   AND event.VERSION = 'V2.0'
-  AND event.EVENT_AT BETWEEN :marptBeginAt and :marptEndAt
+  AND event.EVENT_AT BETWEEN :start_time and :end_time
   and event.SURG_LEVEL_CODE in (136618,136619)
 GROUP BY event.CURRENT_DEPT_ID,event.CURRENT_DEPT_NAME
 ) a

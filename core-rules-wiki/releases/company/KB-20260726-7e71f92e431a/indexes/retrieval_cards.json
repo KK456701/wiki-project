@@ -1,0 +1,860 @@
+{
+  "schema_version": "hxzd-retrieval-v2",
+  "release_id": "KB-20260726-7e71f92e431a",
+  "cards": [
+    {
+      "rule_id": "HXZD-001-001",
+      "rule_name": "患者入院48小时内转科的比例",
+      "aliases": [
+        "患者入院48小时内转科的比例_入区时间"
+      ],
+      "keywords": [
+        "患者入院",
+        "首诊负责制度",
+        "入区时间",
+        "首诊负责"
+      ],
+      "system_id": "HXZD-001",
+      "system_name": "首诊负责制度",
+      "definition_short": "入院48小时内转科患者人次数占同期入院患者总人次数的比例。",
+      "formula_short": "分子：入院48小时内转科患者人次数 分母：同期入院患者总人次数 公式：入院48小时内转科患者人次数/同期入院患者总人次数 100%",
+      "numerator_short": "入院48小时内转科患者人次数",
+      "denominator_short": "同期入院患者总人次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-001-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-002-001",
+      "rule_name": "患者入院8小时内查房率",
+      "aliases": [
+        "患者入院8小时内查房率"
+      ],
+      "keywords": [
+        "患者入院",
+        "小时内查房率",
+        "三级查房制度",
+        "入区时间",
+        "三级查房"
+      ],
+      "system_id": "HXZD-002",
+      "system_name": "三级查房制度",
+      "definition_short": "入院8小时内开具检查或治疗医嘱的患者人次数占同期入院患者总人次数的比例。",
+      "formula_short": "分子：入院8小时内开具检查或治疗医嘱的患者人次数 分母：同期入院患者总人次数 公式：入院8小时内开具检查或治疗医嘱的患者人次数 / 同期入院患者总人次数 100%",
+      "numerator_short": "入院8小时内开具检查或治疗医嘱的患者人次数",
+      "denominator_short": "同期入院患者总人次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-002-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-002-002",
+      "rule_name": "上级医师查房记录规范率",
+      "aliases": [
+        "上级医师查房记录规范率"
+      ],
+      "keywords": [
+        "三级查房制度",
+        "出区时间",
+        "三级查房"
+      ],
+      "system_id": "HXZD-002",
+      "system_name": "三级查房制度",
+      "definition_short": "住院患者病历中上级医师查房记录规范、完整的病例数量占同期住院患者病例总数量的比例。",
+      "formula_short": "分子：住院患者病历中上级医师查房记录规范、完整的病例数量 分母：同期住院患者病例总数量 公式：住院患者病历中上级医师查房记录规范、完整的病例数量 / 同期住院患者病例总数量 100%",
+      "numerator_short": "住院患者病历中上级医师查房记录规范、完整的病例数量",
+      "denominator_short": "同期住院患者病例总数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-002-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-002-003",
+      "rule_name": "住院患者非计划手术率",
+      "aliases": [
+        "住院患者非计划手术率"
+      ],
+      "keywords": [
+        "三级查房制度",
+        "出区时间",
+        "三级查房"
+      ],
+      "system_id": "HXZD-002",
+      "system_name": "三级查房制度",
+      "definition_short": "行非计划手术的住院患者人次数占同期住院患者总人次数的比例。",
+      "formula_short": "分子：行非计划手术的住院患者人次数 分母：同期住院患者总人次数 公式：行非计划手术的住院患者人次数 / 同期住院患者总人次数 100%",
+      "numerator_short": "行非计划手术的住院患者人次数",
+      "denominator_short": "同期住院患者总人次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-002-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-003-001",
+      "rule_name": "急会诊及时到位率",
+      "aliases": [
+        "急会诊及时到位率"
+      ],
+      "keywords": [
+        "会诊制度",
+        "会诊完成时间",
+        "门急诊会诊"
+      ],
+      "system_id": "HXZD-003",
+      "system_name": "会诊制度",
+      "definition_short": "急会诊请求发出后，10分钟内到达现场的急会诊次数占同期急会诊总次数的比例。",
+      "formula_short": "分子：急会诊记录中10分钟内到位的急会诊次数 分母：同期急会诊总次数 公式：急会诊记录中10分钟内到位的急会诊次数 / 同期急会诊总次数 100%",
+      "numerator_short": "急会诊记录中10分钟内到位的急会诊次数",
+      "denominator_short": "同期急会诊总次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-003-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-003-002",
+      "rule_name": "急会诊有效率",
+      "aliases": [
+        "急会诊有效率"
+      ],
+      "keywords": [
+        "急会诊有效率",
+        "会诊制度",
+        "会诊完成时间",
+        "门急诊会诊"
+      ],
+      "system_id": "HXZD-003",
+      "system_name": "会诊制度",
+      "definition_short": "急会诊后开具相关医嘱的次数占同期急会诊总次数的比例。",
+      "formula_short": "分子：急会诊后开具相关医嘱的次数 分母：同期急会诊总次数 公式：急会诊后开具相关医嘱的次数 / 同期急会诊总次数 100%",
+      "numerator_short": "急会诊后开具相关医嘱的次数",
+      "denominator_short": "同期急会诊总次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-003-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-003-003",
+      "rule_name": "普通会诊及时完成率",
+      "aliases": [
+        "普通会诊及时完成率"
+      ],
+      "keywords": [
+        "会诊制度",
+        "会诊完成时间",
+        "会诊"
+      ],
+      "system_id": "HXZD-003",
+      "system_name": "会诊制度",
+      "definition_short": "普通会诊24小时内完成次数占同期普通会诊总次数的比例。",
+      "formula_short": "分子：普通会诊24小时内完成次数 分母：同期普通会诊总次数 公式：普通会诊24小时内完成次数 / 同期普通会诊总次数 100%",
+      "numerator_short": "普通会诊24小时内完成次数",
+      "denominator_short": "同期普通会诊总次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-003-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-003-004",
+      "rule_name": "普通会诊有效率",
+      "aliases": [
+        "普通会诊有效率"
+      ],
+      "keywords": [
+        "会诊制度",
+        "会诊完成时间",
+        "会诊"
+      ],
+      "system_id": "HXZD-003",
+      "system_name": "会诊制度",
+      "definition_short": "普通会诊结束后开具相关医嘱的次数占同期普通会诊总次数的比例。",
+      "formula_short": "分子：普通会诊结束后开具相关医嘱的次数 分母：同期普通会诊患者总次数 公式：普通会诊结束后开具相关医嘱的次数 / 同期普通会诊患者总次数 100%",
+      "numerator_short": "普通会诊结束后开具相关医嘱的次数",
+      "denominator_short": "同期普通会诊患者总次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-003-004-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-004-001",
+      "rule_name": "手术患者特级护理/一级护理出院率",
+      "aliases": [
+        "手术患者特级护理/一级护理出院率"
+      ],
+      "keywords": [
+        "分级护理制度",
+        "出区时间",
+        "分级护理"
+      ],
+      "system_id": "HXZD-004",
+      "system_name": "分级护理制度",
+      "definition_short": "手术患者出院时为特级护理/一级护理级别的患者数量占同期手术患者总数量的比例。",
+      "formula_short": "分子：手术患者出院时为特级护理/一级护理级别的患者数量 分母：同期手术患者总数量 公式：手术患者出院时为特级护理/一级护理级别的患者数量 / 同期手术患者总数量 100%",
+      "numerator_short": "手术患者出院时为特级护理/一级护理级别的患者数量",
+      "denominator_short": "同期手术患者总数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-004-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-005-001",
+      "rule_name": "四级手术患者手术当日床旁交接班占比",
+      "aliases": [
+        "四级手术患者手术当日床旁交接班占比"
+      ],
+      "keywords": [
+        "值班和交接班制度",
+        "手术完成时间",
+        "值班交接班"
+      ],
+      "system_id": "HXZD-005",
+      "system_name": "值班和交接班制度",
+      "definition_short": "四级手术患者手术当日进行床旁交接班的患者数量占同期进行四级手术的患者总数量的比例。",
+      "formula_short": "分子：四级手术患者手术当日进行床旁交接班的患者数量 分母：同期进行四级手术的患者总数量 公式：四级手术患者手术当日进行床旁交接班的患者数量 / 同期进行四级手术的患者总数量 100%",
+      "numerator_short": "四级手术患者手术当日进行床旁交接班的患者数量",
+      "denominator_short": "同期进行四级手术的患者总数量",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-005-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-006-001",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论完成率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论完成率"
+      ],
+      "keywords": [
+        "疑难病例讨论制度",
+        "出区时间",
+        "疑难病例"
+      ],
+      "system_id": "HXZD-006",
+      "system_name": "疑难病例讨论制度",
+      "definition_short": "对非计划再次住院/手术患者进行疑难病例讨论的数量占同期非计划再次住院/手术的数量的比例。",
+      "formula_short": "分子：对非计划再次住院/手术患者进行疑难病例讨论的数量 分母：同期非计划再次住院/手术的数量 公式：对非计划再次住院/手术患者进行疑难病例讨论的数量 / 同期非计划再次住院/手术的数量 100%",
+      "numerator_short": "对非计划再次住院/手术患者进行疑难病例讨论的数量",
+      "denominator_short": "同期非计划再次住院/手术的数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-006-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-006-002",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论记录完整率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论记录完整率"
+      ],
+      "keywords": [
+        "疑难病例讨论制度",
+        "出区时间",
+        "疑难病例"
+      ],
+      "system_id": "HXZD-006",
+      "system_name": "疑难病例讨论制度",
+      "definition_short": "对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量占同期对非计划再次住院/手术患者进行疑难病例讨论的数量的比例。",
+      "formula_short": "分子：对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量 分母：同期对非计划再次住院/手术患者进行疑难病例讨论的数量 公式：对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量 / 同期对非计划再次住院/手术患者进行疑难病例讨论的数量 100%",
+      "numerator_short": "对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量",
+      "denominator_short": "同期对非计划再次住院/手术患者进行疑难病例讨论的数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-006-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-006-003",
+      "rule_name": "高额异常费用患者进行疑难病例讨论的占比",
+      "aliases": [
+        "高额异常费用患者进行疑难病例讨论的占比_出区时间",
+        "高额异常费用患者进行疑难病例讨论的占比_入区时间"
+      ],
+      "keywords": [
+        "疑难病例讨论制度",
+        "出区时间",
+        "疑难病例2",
+        "入区时间"
+      ],
+      "system_id": "HXZD-006",
+      "system_name": "疑难病例讨论制度",
+      "definition_short": "对产生高额异常费用患者进行疑难病例讨论的数量占同期高额异常费用患者数量的比例。",
+      "formula_short": "分子：对产生高额异常费用患者进行疑难病例讨论的数量 分母：同期高额异常费用患者数量 公式：对产生高额异常费用患者进行疑难病例讨论的数量 / 同期高额异常费用患者数量 100%",
+      "numerator_short": "对产生高额异常费用患者进行疑难病例讨论的数量",
+      "denominator_short": "同期高额异常费用患者数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-006-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-007-001",
+      "rule_name": "急危重症患者抢救成功率",
+      "aliases": [
+        "急危重症患者抢救成功率"
+      ],
+      "keywords": [
+        "急危重患者抢救制度",
+        "出区时间",
+        "急危重患者抢救记录"
+      ],
+      "system_id": "HXZD-007",
+      "system_name": "急危重患者抢救制度",
+      "definition_short": "急危重症患者抢救成功的例次数占同期急危重症患者抢救的总例次数的比例。",
+      "formula_short": "分子：急危重症患者抢救成功的例次数 分母：同期急危重症患者抢救的总例次数 公式：急危重症患者抢救成功的例次数 / 同期急危重症患者抢救的总例次数 100%",
+      "numerator_short": "急危重症患者抢救成功的例次数",
+      "denominator_short": "同期急危重症患者抢救的总例次数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-007-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-008-001",
+      "rule_name": "术前讨论完成率",
+      "aliases": [
+        "术前讨论完成率"
+      ],
+      "keywords": [
+        "术前讨论制度",
+        "手术完成时间"
+      ],
+      "system_id": "HXZD-008",
+      "system_name": "术前讨论制度",
+      "definition_short": "完成术前讨论的手术例数占同期手术总例数的比例。",
+      "formula_short": "分子：完成术前讨论的手术例数 分母：同期手术总例数 公式：完成术前讨论的手术例数 / 同期手术总例数 100%",
+      "numerator_short": "完成术前讨论的手术例数",
+      "denominator_short": "同期手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-008-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-008-002",
+      "rule_name": "术者参加术前讨论率",
+      "aliases": [
+        "术者参加术前讨论率_病历完成时间",
+        "术者参加术前讨论率_出区时间"
+      ],
+      "keywords": [
+        "术前讨论制度",
+        "病历完成时间",
+        "出区时间",
+        "术前讨论制度V2"
+      ],
+      "system_id": "HXZD-008",
+      "system_name": "术前讨论制度",
+      "definition_short": "术者参加术前讨论的手术例数占同期进行术前讨论手术总例数的比例。",
+      "formula_short": "分子：术者参加术前讨论的手术例数 分母：同期进行术前讨论手术总例数 公式：术者参加术前讨论的手术例数 / 同期进行术前讨论手术总例数 100%",
+      "numerator_short": "术者参加术前讨论的手术例数",
+      "denominator_short": "同期进行术前讨论手术总例数",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-008-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-008-003",
+      "rule_name": "术前讨论计划手术一致率",
+      "aliases": [
+        "术前讨论计划手术一致率"
+      ],
+      "keywords": [
+        "术前讨论制度",
+        "手术完成时间"
+      ],
+      "system_id": "HXZD-008",
+      "system_name": "术前讨论制度",
+      "definition_short": "实际开展手术与术前讨论计划手术一致的手术例数占同期手术总例数的比例。",
+      "formula_short": "分子：实际开展手术与术前讨论计划手术一致的手术例数 分母：同期手术总例数 公式：实际开展手术与术前讨论计划手术一致的手术例数 / 同期手术总例数 100%",
+      "numerator_short": "实际开展手术与术前讨论计划手术一致的手术例数",
+      "denominator_short": "同期手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-008-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-008-004",
+      "rule_name": "实际手术术者与计划手术术者一致率",
+      "aliases": [
+        "实际手术术者与计划手术术者一致率"
+      ],
+      "keywords": [
+        "术前讨论制度",
+        "手术结束时间"
+      ],
+      "system_id": "HXZD-008",
+      "system_name": "术前讨论制度",
+      "definition_short": "实际开展手术术者与计划手术术者一致的手术例数占同期手术总例数的比例。",
+      "formula_short": "分子：实际开展手术术者与计划手术术者一致的手术例数 分母：同期手术总例数 公式：实际开展手术术者与计划手术术者一致的手术例数 / 同期手术总例数 100%",
+      "numerator_short": "实际开展手术术者与计划手术术者一致的手术例数",
+      "denominator_short": "同期手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-008-004-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-009-001",
+      "rule_name": "死亡病例讨论5日完成率",
+      "aliases": [
+        "死亡病例讨论5日完成率"
+      ],
+      "keywords": [
+        "死亡病例讨论",
+        "日完成率",
+        "死亡病例讨论制度",
+        "死亡时间",
+        "死亡病例"
+      ],
+      "system_id": "HXZD-009",
+      "system_name": "死亡病例讨论制度",
+      "definition_short": "患者死亡5个工作日内完成死亡病例讨论的病例数量占同期死亡病例总数量的比例。",
+      "formula_short": "分子：患者死亡5个工作日内完成死亡病例讨论的病例数量 分母：同期死亡病例总数量 公式：患者死亡5个工作日内完成死亡病例讨论的病例数量 / 同期死亡病例总数量 100%",
+      "numerator_short": "患者死亡5个工作日内完成死亡病例讨论的病例数量",
+      "denominator_short": "同期死亡病例总数量",
+      "time_dimension": "death_at",
+      "default_profile_id": "HXZD-009-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-009-002",
+      "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "aliases": [
+        "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_出院患者",
+        "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值"
+      ],
+      "keywords": [
+        "死亡病例讨论制度",
+        "死亡时间",
+        "死亡病例",
+        "死亡病例可选方案"
+      ],
+      "system_id": "HXZD-009",
+      "system_name": "死亡病例讨论制度",
+      "definition_short": "医务部门组织进行死亡病例讨论的病例数量与同期发生医疗纠纷的死亡病例数量的比值。",
+      "formula_short": "分子：医务部门组织进行死亡病例讨论的病例数量 分母：同期发生医疗纠纷的死亡病例数量 公式：医务部门组织进行死亡病例讨论的病例数量 ： 同期发生医疗纠纷的死亡病例数量",
+      "numerator_short": "医务部门组织进行死亡病例讨论的病例数量",
+      "denominator_short": "同期发生医疗纠纷的死亡病例数量",
+      "time_dimension": "death_at",
+      "default_profile_id": "HXZD-009-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "rule_name": "科主任主持死亡病例讨论率",
+      "aliases": [
+        "科主任主持死亡病例讨论率_死亡讨论记录",
+        "科主任主持死亡病例讨论率"
+      ],
+      "keywords": [
+        "死亡病例讨论制度",
+        "死亡时间",
+        "死亡病例",
+        "死亡病例可选方案"
+      ],
+      "system_id": "HXZD-009",
+      "system_name": "死亡病例讨论制度",
+      "definition_short": "死亡病例讨论由科主任主持的病例数量占同期死亡病例总数量的比例。",
+      "formula_short": "分子：死亡病例讨论由科主任主持的病例数量 分母：同期死亡病例总数量 公式：死亡病例讨论由科主任主持的病例数量 / 同期死亡病例总数量 100%",
+      "numerator_short": "死亡病例讨论由科主任主持的病例数量",
+      "denominator_short": "同期死亡病例总数量",
+      "time_dimension": "death_at",
+      "default_profile_id": "HXZD-009-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-009-004",
+      "rule_name": "死亡患者病案上传率",
+      "aliases": [
+        "死亡患者病案上传率"
+      ],
+      "keywords": [
+        "死亡病例讨论制度",
+        "死亡病例"
+      ],
+      "system_id": "HXZD-009",
+      "system_name": "死亡病例讨论制度",
+      "definition_short": "按要求完整上传本机构死亡患者病案的数量占同期应上传死亡患者病案总数量的比例。",
+      "formula_short": "分子：按要求完整上传本机构死亡患者病案的数量 分母：同期应上传死亡患者病案总数量 公式：按要求完整上传本机构死亡患者病案的数量 / 同期应上传死亡患者病案总数量 100%",
+      "numerator_short": "按要求完整上传本机构死亡患者病案的数量",
+      "denominator_short": "同期应上传死亡患者病案总数量",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": null,
+      "execution_status": "draft",
+      "execution_blockers": [
+        "方案标记为未实现"
+      ]
+    },
+    {
+      "rule_id": "HXZD-010-001",
+      "rule_name": "长期医嘱当日终止率",
+      "aliases": [
+        "长期医嘱当日终止率"
+      ],
+      "keywords": [
+        "查对制度",
+        "医嘱开立时间"
+      ],
+      "system_id": "HXZD-010",
+      "system_name": "查对制度",
+      "definition_short": "开具长期医嘱后当日终止执行的医嘱数量占同期开具长期医嘱总数量的比例。",
+      "formula_short": "分子：开具长期医嘱后当日终止执行的医嘱数量 分母：同期开具长期医嘱总数量 公式：开具长期医嘱后当日终止执行的医嘱数量 / 同期开具长期医嘱总数量 100%",
+      "numerator_short": "开具长期医嘱后当日终止执行的医嘱数量",
+      "denominator_short": "同期开具长期医嘱总数量",
+      "time_dimension": "order_at",
+      "default_profile_id": "HXZD-010-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-011-001",
+      "rule_name": "手术医师手术时间重合率",
+      "aliases": [
+        "手术医师手术时间重合率"
+      ],
+      "keywords": [
+        "手术安全核查制度",
+        "手术完成时间",
+        "手术安全"
+      ],
+      "system_id": "HXZD-011",
+      "system_name": "手术安全核查制度",
+      "definition_short": "同一时间内手术医师为同一人的手术例数占同期住院患者手术总例数的比例。",
+      "formula_short": "分子：同一时间内手术医师为同一人的手术例数 分母：同期住院患者手术总例数 公式：同一时间内手术医师为同一人的手术例数 / 同期住院患者手术总例数 100%",
+      "numerator_short": "同一时间内手术医师为同一人的手术例数",
+      "denominator_short": "同期住院患者手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-011-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-011-002",
+      "rule_name": "麻醉医师手术时间重合率",
+      "aliases": [
+        "麻醉医师手术时间重合率"
+      ],
+      "keywords": [
+        "手术安全核查制度",
+        "手术完成时间",
+        "手术安全"
+      ],
+      "system_id": "HXZD-011",
+      "system_name": "手术安全核查制度",
+      "definition_short": "同一时间内手术麻醉医师为同一人的手术例数占同期住院患者手术总例数的比例。",
+      "formula_short": "分子：同一时间内手术麻醉医师为同一人的手术例数 分母：同期住院患者手术总例数 公式：同一时间内手术麻醉医师为同一人的手术例数 / 同期住院患者手术总例数 100%",
+      "numerator_short": "同一时间内手术麻醉医师为同一人的手术例数",
+      "denominator_short": "同期住院患者手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-011-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-012-001",
+      "rule_name": "四级手术与三级手术并发症发生率比",
+      "aliases": [
+        "四级手术与三级手术并发症发生率比"
+      ],
+      "keywords": [
+        "手术分级管理制度",
+        "手术完成时间",
+        "出区时间",
+        "手术分级管理制度2"
+      ],
+      "system_id": "HXZD-012",
+      "system_name": "手术分级管理制度",
+      "definition_short": "四级手术并发症发生率与三级手术并发症发生率的比。",
+      "formula_short": "分子：四级手术并发症发生率 分母：三级手术并发症发生率 公式：四级手术并发症发生率 : 三级手术并发症发生率",
+      "numerator_short": "四级手术并发症发生率",
+      "denominator_short": "三级手术并发症发生率",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-012-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "rule_name": "四级手术与三级手术患者死亡率比",
+      "aliases": [
+        "四级手术与三级手术患者死亡率比"
+      ],
+      "keywords": [
+        "手术分级管理制度",
+        "手术完成时间",
+        "出区时间",
+        "手术分级管理制度2"
+      ],
+      "system_id": "HXZD-012",
+      "system_name": "手术分级管理制度",
+      "definition_short": "四级手术患者死亡率与三级手术患者死亡率的比。",
+      "formula_short": "分子：四级手术患者死亡率 分母：三级手术患者死亡率 公式：四级手术患者死亡率 : 三级手术患者死亡率",
+      "numerator_short": "四级手术患者死亡率",
+      "denominator_short": "三级手术患者死亡率",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-012-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "rule_name": "四级手术术前多学科讨论完成率",
+      "aliases": [
+        "四级手术术前多学科讨论完成率"
+      ],
+      "keywords": [
+        "手术分级管理制度",
+        "手术完成时间",
+        "出区时间",
+        "手术分级管理制度2"
+      ],
+      "system_id": "HXZD-012",
+      "system_name": "手术分级管理制度",
+      "definition_short": "术前完成多学科讨论的四级手术例数占同期四级手术总例数的比例。",
+      "formula_short": "分子：术前完成多学科讨论的四级手术例数 分母：同期四级手术总例数 公式：术前完成多学科讨论的四级手术例数 / 同期四级手术总例数 100%",
+      "numerator_short": "术前完成多学科讨论的四级手术例数",
+      "denominator_short": "同期四级手术总例数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-012-003-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "rule_name": "三、四级手术实际开展率",
+      "aliases": [
+        "三、四级手术实际开展率_手术完成时间",
+        "三、四级手术实际开展率_出区时间"
+      ],
+      "keywords": [
+        "手术分级管理制度",
+        "手术完成时间",
+        "出区时间",
+        "手术分级管理制度2"
+      ],
+      "system_id": "HXZD-012",
+      "system_name": "手术分级管理制度",
+      "definition_short": "实际开展的三、四级手术术种数占同期备案的三、四级手术术种数的比例。",
+      "formula_short": "分子：实际开展的三、四级手术术种数 分母：同期备案的三、四级手术术种数 公式：实际开展的三、四级手术术种数 / 同期备案的三、四级手术术种数 100%",
+      "numerator_short": "实际开展的三、四级手术术种数",
+      "denominator_short": "同期备案的三、四级手术术种数",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-012-004-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-013-001",
+      "rule_name": "新技术新项目留存转化率",
+      "aliases": [
+        "新技术新项目留存转化率"
+      ],
+      "keywords": [
+        "新技术和新项目准入制度",
+        "新技术审批通过时间"
+      ],
+      "system_id": "HXZD-013",
+      "system_name": "新技术和新项目准入制度",
+      "definition_short": "在四年的评估周期内，医院新增的技术项目在第四年继续开展的比例。",
+      "formula_short": "分子：(A + C + E) 分母：(A + B + C + D + E + F) 公式：(A + C + E) / (A + B + C + D + E + F) 100% A: 第二年新增并在第三和第四年继续开展的技术项目种类数。 B: 第二年新增并只在第三年继续开展的技术项目种类数。 C: 第二年新增并只在第四年继续开展的技术项目种类数。 D: 第二年新增并未在第三和第四年继续开展的技术项目种类数。 E: 第三年新增并在第四年继续开展的技术项目种类数。 F: 第三年新增并未在第四年开展的技术项目种类数。 分子说明(A+C+E)： A: 第二年新增并在第三和第四年继续开展的技术项目 C: 第二年新增并只在第四年继续开展的技术项目 E: 第三年新增并在第四年继续开展的技术项目 分母说明(A + B + C …",
+      "numerator_short": "(A + C + E)<br A: 第二年新增并在第三和第四年继续开展的技术项目<br C: 第二年新增并只在第四年继续开展的技术项目<br E: 第三年新增并在第四年继续开展的技术项目",
+      "denominator_short": "(A + B + C + D + E + F) <br A: 第二年新增并在第三和第四年继续开展的技术项目种类数。<br B: 第二年新增并只在第三年继续开展的技术项目种类数。<br C: 第二年新增并只在第四年继续开展的技术项目种类数。<br D: 第二年新增并未在第三和第四年继续开展的技术项目种类数。<br E: 第三年新增并在第四年继续开展的技术项目种类数。<br F: 第三年新增并未在第四年开展的技术项目种类数。",
+      "time_dimension": "admitted_to_ward_at",
+      "default_profile_id": "HXZD-013-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-014-001",
+      "rule_name": "危急值报告时间",
+      "aliases": [
+        "危急值报告时间"
+      ],
+      "keywords": [
+        "危急值报告制度",
+        "危急值接收时间",
+        "危急值报告"
+      ],
+      "system_id": "HXZD-014",
+      "system_name": "危急值报告制度",
+      "definition_short": "将出现危急值到临床科室获取危急值的时间，由长到短排序后取其中位数。",
+      "formula_short": "危急值报告时间(中位数) = X(n+1)/2, n为奇数； 危急值报告时间(中位数) = (Xn/2 + Xn/2+1)/2, n为偶数",
+      "numerator_short": "不适用（中位数指标；X为每条业务记录的报告耗时）",
+      "denominator_short": "不适用（中位数指标；n为纳入统计的有效业务记录数）",
+      "time_dimension": "report_at",
+      "default_profile_id": "HXZD-014-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-014-002",
+      "rule_name": "住院患者危急值当日及时处置率",
+      "aliases": [
+        "住院患者危急值当日及时处置率"
+      ],
+      "keywords": [
+        "危急值报告制度",
+        "危急值接收时间",
+        "危急值报告"
+      ],
+      "system_id": "HXZD-014",
+      "system_name": "危急值报告制度",
+      "definition_short": "当日处置的住院患者危急值项目数占同期临床科室接获住院患者危急值项目数的比例。",
+      "formula_short": "分子：当日处置的住院患者危急值项目数 分母：同期临床科室接获住院患者危急值项目数 公式：当日处置的住院患者危急值项目数 / 同期临床科室接获住院患者危急值项目数 100%",
+      "numerator_short": "当日处置的住院患者危急值项目数",
+      "denominator_short": "同期临床科室接获住院患者危急值项目数",
+      "time_dimension": "report_at",
+      "default_profile_id": "HXZD-014-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-015-001",
+      "rule_name": "特殊使用级抗菌药物使用会诊率",
+      "aliases": [
+        "特殊使用级抗菌药物使用会诊率_医务报批",
+        "特殊使用级抗菌药物使用会诊率_会诊管理"
+      ],
+      "keywords": [
+        "抗菌药物分级管理制度",
+        "医嘱开立时间",
+        "特殊级抗菌药物(会诊管理)"
+      ],
+      "system_id": "HXZD-015",
+      "system_name": "抗菌药物分级管理制度",
+      "definition_short": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量占同期特殊使用级抗菌药物使用医嘱总数量的比例。",
+      "formula_short": "分子：特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量 分母：同期特殊使用级抗菌药物使用医嘱总数量 公式： 特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量 / 同期特殊使用级抗菌药物使用医嘱总数量 100%",
+      "numerator_short": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+      "denominator_short": "同期特殊使用级抗菌药物使用医嘱总数量",
+      "time_dimension": "order_at",
+      "default_profile_id": "HXZD-015-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-016-001",
+      "rule_name": "临床用血后评估记录率",
+      "aliases": [
+        "临床用血后评估记录率"
+      ],
+      "keywords": [
+        "临床用血审核制度",
+        "医嘱开立时间",
+        "临床用血后评估记录"
+      ],
+      "system_id": "HXZD-016",
+      "system_name": "临床用血审核制度",
+      "definition_short": "输血治疗后规范书写评估输血记录例次数占同期临床输血治疗病例总例次数的比例。",
+      "formula_short": "分子：输血治疗后规范书写评估输血记录例次数 分母：同期临床输血治疗病例总例次数 公式：输血治疗后规范书写评估输血记录例次数 / 同期临床输血治疗病例总例次数 100%",
+      "numerator_short": "输血治疗后规范书写评估输血记录例次数",
+      "denominator_short": "同期临床输血治疗病例总例次数",
+      "time_dimension": "order_at",
+      "default_profile_id": "HXZD-016-001-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    },
+    {
+      "rule_id": "HXZD-016-002",
+      "rule_name": "术中自体血回输率",
+      "aliases": [
+        "术中自体血回输率"
+      ],
+      "keywords": [
+        "临床用血审核制度",
+        "手术完成时间",
+        "术中自体血回输"
+      ],
+      "system_id": "HXZD-016",
+      "system_name": "临床用血审核制度",
+      "definition_short": "术中使用自体血回输的患者数量占同期术中进行输血患者总数量的比例。",
+      "formula_short": "分子：术中使用自体血回输的患者数量 分母：同期术中进行输血患者总数量 公式：术中使用自体血回输的患者数量 / 同期术中进行输血患者总数量 100%",
+      "numerator_short": "术中使用自体血回输的患者数量",
+      "denominator_short": "同期术中进行输血患者总数量",
+      "time_dimension": "surgery_at",
+      "default_profile_id": "HXZD-016-002-company-default",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ]
+    }
+  ]
+}

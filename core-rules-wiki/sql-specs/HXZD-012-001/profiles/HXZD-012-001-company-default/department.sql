@@ -8,7 +8,7 @@ where
 AND event.IS_DEL = 0
 AND event.VERSION = 'V2.0'
 AND event.SURG_LEVEL_CODE IN (136619, 136618)
-AND event.EVENT_AT BETWEEN :marptBeginAt and :marptEndAt
+AND event.EVENT_AT BETWEEN :start_time and :end_time
 ) t WHERE t.rn = 1
 )
 SELECT

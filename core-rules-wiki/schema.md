@@ -157,3 +157,77 @@ updated_at: 2026-07-25                  # 必填
 5. `profile_id` 格式：`{rule_id}-{scope}-{name}`。
 6. YAML front matter 以 `---` 开头和结尾。
 7. 页面正文使用标准 Markdown 格式。
+
+---
+
+## 8. 机器发布契约
+
+页面 Front Matter 只服务于人读 Wiki。Java Runtime 不在请求期间解析 Markdown，
+而是读取不可变 release 中的以下机器契约：
+
+| 契约 | Schema | 用途 |
+|---|---|---|
+| `KnowledgeDraftV2` | `schema/knowledge-draft-v2.schema.json` | 大模型规范化后的待审核候选 |
+| `ReleaseManifestV2` | `schema/release-manifest-v2.schema.json` | 发布编号、来源、数量和文件哈希 |
+| `SqlCapabilityContractV2` | `schema/sql-capability-contract-v2.schema.json` | 四类 SQL 的独立验证状态 |
+| `HospitalKnowledgePackageV1` | `schema/hospital-knowledge-package-v1.schema.json` | 不含患者数据的医院差异回收包 |
+
+`KnowledgeDraftV2` 中每个指标和 Profile 必须携带来源位置与置信度。SQL 正文只能由
+确定性提取器写入 `sql_blocks`，模型只允许输出引用。未被任何 Profile 引用的 SQL
+块、引用不存在的 SQL 块、缺少来源或模型自行添加的物理字段都会阻止构建。
+
+## 9. 检索卡
+
+`indexes/retrieval_cards.json` 的卡片必须包含：
+
+```json
+{
+  "schema_version": "hxzd-retrieval-cards-v1",
+  "release_id": "KB-20260726-7e71f92e431a",
+  "cards": [
+    {
+      "rule_id": "HXZD-001-001",
+      "rule_name": "患者入院48小时内转科的比例",
+      "aliases": ["48小时内转科率"],
+      "system_name": "首诊负责制度",
+      "definition_short": "……",
+      "formula_short": "……",
+      "numerator_short": "……",
+      "denominator_short": "……",
+      "time_dimension": "admitted_at",
+      "default_profile_id": "HXZD-001-001-company-default",
+      "execution_status": "documentation_only"
+    }
+  ]
+}
+```
+
+`—`、`无`、`暂无`、`不适用`、`N/A` 和空白值不得进入名称、别名或关键词索引。
+检索卡、规则索引和发布清单的 `release_id` 必须一致。
+
+## 10. SQL 能力状态
+
+每个 Profile 的 `source_extract`、`overview`、`department_detail` 和
+`patient_detail` 独立保存 `SqlCapabilityContractV2`。能力只能按顺序升级：
+
+```text
+raw → normalized → static_validated
+→ metadata_validated → compile_validated
+→ trial_validated → executable
+```
+
+- 未提供 SQL：`missing`。
+- Excel 错误、模板残留、未知函数或方言待确认：`verification_required`。
+- 仅静态检查通过：`static_validated`，仍不得访问业务库。
+- `executable` 必须同时记录目标医院、对象哈希、参数/结果映射、验证时间和人工确认。
+- Profile 的某一能力可执行，不会自动提升其他能力。
+
+## 11. 不可变版本与指针
+
+- 公司版本：`releases/company/{release_id}`。
+- 医院版本：`releases/hospitals/{hospital_id}/{release_id}`。
+- 当前版本由 `pointers/*-current.json` 指向。
+- release 创建后禁止原地修改。
+- 指针使用临时文件原子替换。
+- 医院 release 必须声明 `base_release_id`。
+- Java 只有在文件清单、哈希、索引数量和 release ID 全部一致后才切换内存快照。

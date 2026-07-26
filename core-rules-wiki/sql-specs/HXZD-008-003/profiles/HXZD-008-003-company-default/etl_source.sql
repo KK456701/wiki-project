@@ -54,7 +54,7 @@ inner join MRAS_PATIENT_EVENT t2 on t1.ENCOUNTER_ID = t2.ENCOUNTER_ID and t2.EVE
 left join EMPLOYEE_INFO t3 on t1.BIZ_ATTR_ONE_ID  = t3.EMPLOYEE_ID
 LEFT JOIN VALUE_SET t4 on t1.BIZ_ATTR_TWO_NO = t4.VALUE_ID and t4.CODE_SYSTEM_ID = 64655
 where t1.EVENT_NO = 'OperationRecord' and t1.IS_DEL = 0 and t1.BIZ_ATTR_ONE_COST = 98175
-AND t2.EVENT_END_AT BETWEEN :startTime and :endTime
+AND t2.EVENT_END_AT BETWEEN :start_time and :end_time
 ) a
 left join MRAS_PATIENT_EVENT b on a.encounterId = b.ENCOUNTER_ID and b.EVENT_NO = 'PreoperativeDisc' and a.PRE_BIZ_ID = b.BIZ_ID and b.IS_DEL = 0
 left join MRAS_PATIENT_EVENT c on a.encounterId = c.ENCOUNTER_ID and c.EVENT_NO = 'EmrOperationRecord' and a.EMR_BIZ_ID = c.BIZ_ID and c.IS_DEL = 0

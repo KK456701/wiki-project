@@ -5,7 +5,7 @@ where
 AND IS_DEL = 0
 AND VERSION = 'V2.0'
 AND SURG_LEVEL_CODE IN (136619, 136618)
-AND EVENT_AT BETWEEN :marptBeginAt and :marptEndAt
+AND EVENT_AT BETWEEN :start_time and :end_time
 )
 select tt."分子-四级手术患者死亡率", tt."分母-三级手术患者死亡率", CONCAT(tt."分子-四级手术患者死亡率", ' : ', tt."分母-三级手术患者死亡率") as 监测情况 from (
 select

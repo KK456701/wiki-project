@@ -1,5 +1,6 @@
 {
-  "schema_version": "hxzd-runtime-v1",
+  "schema_version": "hxzd-runtime-v2",
+  "release_id": "KB-LEGACY-20260726",
   "generated_at": "2026-07-26",
   "rules": [
     {
@@ -90,8 +91,7 @@
       "rule_id": "HXZD-003-003",
       "rule_name": "普通会诊及时完成率",
       "aliases": [
-        "普通会诊及时完成率",
-        "—"
+        "普通会诊及时完成率"
       ],
       "category": "会诊制度",
       "national_path": "wiki/indicators/HXZD-003-003/index.md",
@@ -361,7 +361,6 @@
       "rule_id": "HXZD-012-001",
       "rule_name": "四级手术与三级手术并发症发生率比",
       "aliases": [
-        "四级手术与三级手术并发症发生率比",
         "四级手术与三级手术并发症发生率比"
       ],
       "category": "手术分级管理制度",
@@ -376,7 +375,6 @@
       "rule_id": "HXZD-012-002",
       "rule_name": "四级手术与三级手术患者死亡率比",
       "aliases": [
-        "四级手术与三级手术患者死亡率比",
         "四级手术与三级手术患者死亡率比"
       ],
       "category": "手术分级管理制度",
@@ -391,7 +389,6 @@
       "rule_id": "HXZD-012-003",
       "rule_name": "四级手术术前多学科讨论完成率",
       "aliases": [
-        "四级手术术前多学科讨论完成率",
         "四级手术术前多学科讨论完成率"
       ],
       "category": "手术分级管理制度",

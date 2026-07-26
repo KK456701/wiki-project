@@ -5,14 +5,19 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -29,22 +34,43 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Component
 public class WikiRuleKnowledgeSource {
-    private final Path root;
+    private static final long POINTER_CHECK_INTERVAL_NANOS = 1_000_000_000L;
+
+    private final Path configuredRoot;
     private final ObjectMapper objectMapper;
     private final Yaml yaml = new Yaml();
+    private final AtomicReference<KnowledgeSnapshot> snapshot;
+    private final AtomicLong lastPointerCheck = new AtomicLong();
+    private volatile long pointerModifiedAt = Long.MIN_VALUE;
 
     public WikiRuleKnowledgeSource(
             @Value("${wiki.knowledge.root:core-rules-wiki}") String root,
             ObjectMapper objectMapper) {
-        this.root = Path.of(root).toAbsolutePath().normalize();
+        this.configuredRoot = resolveConfiguredRoot(root);
         this.objectMapper = objectMapper;
+        this.snapshot = new AtomicReference<>(loadInitialSnapshot());
+    }
+
+    /**
+     * 同一份配置既要支持从仓库根目录启动，也要支持开发人员在 {@code backend-java}
+     * 子目录直接执行 Maven。仅当配置使用默认相对路径且当前目录不存在时，才回退到
+     * 相邻目录；显式绝对路径或实际存在的相对路径绝不会被改写。
+     */
+    private static Path resolveConfiguredRoot(String root) {
+        Path requested = Path.of(root).toAbsolutePath().normalize();
+        if (Files.isDirectory(requested) || Path.of(root).isAbsolute()) {
+            return requested;
+        }
+        Path sibling = Path.of("..").resolve(root).toAbsolutePath().normalize();
+        return Files.isDirectory(sibling) ? sibling : requested;
     }
 
     public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
         String normalized = normalize(query);
-        List<Map<String, Object>> matches = rules().stream()
+        Map<String, Integer> ngramHits = ngramHits(normalized);
+        List<Map<String, Object>> matches = searchableRules().stream()
                 .filter(rule -> "active".equalsIgnoreCase(text(rule.get("status"))))
-                .map(rule -> Map.entry(score(normalized, rule), rule))
+                .map(rule -> Map.entry(rankScore(normalized, rule, ngramHits), rule))
                 .filter(entry -> entry.getKey() > 0)
                 .sorted(Comparator.<Map.Entry<Integer, Map<String, Object>>>comparingInt(Map.Entry::getKey)
                         .reversed()
@@ -58,6 +84,7 @@ public class WikiRuleKnowledgeSource {
         result.put("resolved_rule_id", matches.isEmpty() ? null : matches.get(0).get("rule_id"));
         result.put("matches", matches);
         result.put("rule_source", "wiki");
+        result.put("knowledge_release_id", currentSnapshot().releaseId());
         return result;
     }
 
@@ -143,6 +170,7 @@ public class WikiRuleKnowledgeSource {
         result.put("overridden_fields", List.of());
         result.put("fallback_chain", List.of("company", "national"));
         result.put("rule_source", "wiki");
+        result.put("knowledge_release_id", currentSnapshot().releaseId());
         result.put("warnings", blockers);
         result.put("relations", relation(ruleId));
         return result;
@@ -188,6 +216,7 @@ public class WikiRuleKnowledgeSource {
         result.put("metadata_items", metadataItems);
         result.put("relations", listOfMaps(mapping.get("relations")));
         result.put("rule_source", "wiki");
+        result.put("knowledge_release_id", currentSnapshot().releaseId());
         return result;
     }
 
@@ -321,6 +350,31 @@ public class WikiRuleKnowledgeSource {
         return listOfMaps(map(json("indexes/rule_index.json")).get("rules"));
     }
 
+    /**
+     * v2优先使用预生成的紧凑检索卡；旧知识库没有检索卡时自动退回规则索引。
+     * 卡片只含模型消歧所需摘要，不包含整份Markdown或SQL正文。
+     */
+    private List<Map<String, Object>> searchableRules() {
+        List<Map<String, Object>> rules = rules();
+        Map<String, Map<String, Object>> cards = new LinkedHashMap<>();
+        try {
+            for (Map<String, Object> card
+                    : listOfMaps(map(json("indexes/retrieval_cards.json")).get("cards"))) {
+                cards.put(text(card.get("rule_id")), card);
+            }
+        } catch (IllegalStateException ignored) {
+            return rules;
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> rule : rules) {
+            Map<String, Object> merged = new LinkedHashMap<>(rule);
+            Map<String, Object> card = cards.get(text(rule.get("rule_id")));
+            if (card != null) merged.putAll(card);
+            result.add(merged);
+        }
+        return result;
+    }
+
     private Map<String, Object> findRule(String ruleId) {
         return rules().stream()
                 .filter(rule -> ruleId.equals(text(rule.get("rule_id"))))
@@ -330,12 +384,41 @@ public class WikiRuleKnowledgeSource {
 
     private Map<String, Object> resolveRule(String query) {
         String normalized = normalize(query);
-        return rules().stream()
-                .map(rule -> Map.entry(score(normalized, rule), rule))
+        Map<String, Integer> ngramHits = ngramHits(normalized);
+        return searchableRules().stream()
+                .map(rule -> Map.entry(rankScore(normalized, rule, ngramHits), rule))
                 .filter(entry -> entry.getKey() > 0)
                 .max(Comparator.comparingInt(Map.Entry::getKey))
                 .map(Map.Entry::getValue)
                 .orElse(null);
+    }
+
+    /**
+     * 使用发布时生成的二元字符倒排索引给本地相似度排序加权。倒排索引只做候选排序，
+     * 不会让一个没有任何词面相关性的指标凭空命中，因此旧版本缺少索引时可安全降级。
+     */
+    private Map<String, Integer> ngramHits(String query) {
+        if (query.length() < 2) return Map.of();
+        try {
+            Map<String, Object> entries = map(map(json("indexes/ngram_index.json")).get("entries"));
+            Map<String, Integer> result = new LinkedHashMap<>();
+            for (int index = 0; index < query.length() - 1; index++) {
+                String gram = query.substring(index, index + 2);
+                for (String ruleId : stringList(entries.get(gram))) {
+                    result.merge(ruleId, 1, Integer::sum);
+                }
+            }
+            return result;
+        } catch (IllegalStateException exception) {
+            return Map.of();
+        }
+    }
+
+    private static int rankScore(
+            String query, Map<String, Object> rule, Map<String, Integer> ngramHits) {
+        int lexical = score(query, rule);
+        if (lexical == 0) return 0;
+        return lexical + Math.min(20, ngramHits.getOrDefault(text(rule.get("rule_id")), 0) * 2);
     }
 
     private static int score(String query, Map<String, Object> rule) {
@@ -344,7 +427,9 @@ public class WikiRuleKnowledgeSource {
         candidates.add(text(rule.get("rule_id")));
         candidates.add(text(rule.get("rule_name")));
         candidates.add(text(rule.get("category")));
+        candidates.add(text(rule.get("system_name")));
         stringList(rule.get("aliases")).forEach(candidates::add);
+        stringList(rule.get("keywords")).forEach(candidates::add);
         int result = 0;
         for (String candidate : candidates) {
             String normalized = normalize(candidate);
@@ -368,19 +453,39 @@ public class WikiRuleKnowledgeSource {
 
     private Map<String, Object> match(Map<String, Object> rule) {
         String path = text(rule.get("national_path"));
-        return Map.of(
-                "rule_id", text(rule.get("rule_id")),
-                "rule_name", text(rule.get("rule_name")),
-                "category", text(rule.get("category")),
-                "content", section(read(path), "指标定义"),
-                "type", "wiki_rule",
-                "path", path);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("rule_id", text(rule.get("rule_id")));
+        result.put("rule_name", text(rule.get("rule_name")));
+        result.put("category", text(rule.get("category")));
+        result.put("content", first(text(rule.get("definition_short")),
+                section(read(path), "指标定义")));
+        result.put("formula", text(rule.get("formula_short")));
+        result.put("numerator", text(rule.get("numerator_short")));
+        result.put("denominator", text(rule.get("denominator_short")));
+        result.put("time_dimension", text(rule.get("time_dimension")));
+        result.put("execution_status", text(rule.get("execution_status")));
+        result.put("type", "wiki_rule");
+        result.put("path", path);
+        return result;
     }
 
     private Map<String, Object> hospitalMapping(String ruleId, String hospitalId) {
         if (hospitalId == null || hospitalId.isBlank()) return Map.of();
-        Path path = root.resolve("hospital-mappings").resolve(hospitalId).resolve(ruleId + ".yaml");
-        return Files.isRegularFile(path) ? yaml(path) : Map.of();
+        List<Path> candidates = new ArrayList<>();
+        Path hospitalRelease = hospitalReleaseRoot(hospitalId);
+        if (hospitalRelease != null) {
+            candidates.add(hospitalRelease.resolve("hospital-mappings")
+                    .resolve(hospitalId).resolve(ruleId + ".yaml"));
+        }
+        candidates.add(activeRoot().resolve("hospital-mappings")
+                .resolve(hospitalId).resolve(ruleId + ".yaml"));
+        candidates.add(configuredRoot.resolve("hospital-mappings")
+                .resolve(hospitalId).resolve(ruleId + ".yaml"));
+        return candidates.stream()
+                .filter(Files::isRegularFile)
+                .findFirst()
+                .map(this::yaml)
+                .orElseGet(Map::of);
     }
 
     private Map<String, Object> relation(String ruleId) {
@@ -388,15 +493,8 @@ public class WikiRuleKnowledgeSource {
     }
 
     private Object json(String relative) {
-        try {
-            Path path = root.resolve(relative).normalize();
-            if (!path.startsWith(root) || !Files.isRegularFile(path)) {
-                throw new IOException("文件不存在或路径越界");
-            }
-            return objectMapper.readValue(path.toFile(), Object.class);
-        } catch (IOException | RuntimeException exception) {
-            throw new IllegalStateException("无法读取 Wiki 机器契约: " + relative, exception);
-        }
+        KnowledgeSnapshot current = currentSnapshot();
+        return current.documents().computeIfAbsent(relative, key -> readJson(current.root(), key));
     }
 
     @SuppressWarnings("unchecked")
@@ -413,12 +511,168 @@ public class WikiRuleKnowledgeSource {
     private String read(String relative) {
         if (relative == null || relative.isBlank()) return "";
         try {
+            Path root = activeRoot();
             Path path = root.resolve(relative).normalize();
             return path.startsWith(root) && Files.isRegularFile(path)
                     ? Files.readString(path, StandardCharsets.UTF_8) : "";
         } catch (IOException exception) {
             return "";
         }
+    }
+
+    /**
+     * 返回当前完整知识快照。指针检查有一秒节流，避免每次规则读取都访问磁盘；
+     * 新版本必须先完整通过清单哈希校验，之后才一次性替换引用。
+     */
+    private KnowledgeSnapshot currentSnapshot() {
+        long now = System.nanoTime();
+        long previous = lastPointerCheck.get();
+        if (now - previous < POINTER_CHECK_INTERVAL_NANOS
+                || !lastPointerCheck.compareAndSet(previous, now)) {
+            return snapshot.get();
+        }
+        Path pointer = configuredRoot.resolve("pointers").resolve("company-current.json");
+        long modified = modifiedAt(pointer);
+        if (modified == pointerModifiedAt) return snapshot.get();
+        try {
+            KnowledgeSnapshot loaded = loadCurrentSnapshot();
+            snapshot.set(loaded);
+            pointerModifiedAt = modified;
+        } catch (RuntimeException ignored) {
+            // 发布指针或快照损坏时继续使用最后一个已验证版本，不能让半成品影响在线问答。
+        }
+        return snapshot.get();
+    }
+
+    private Path activeRoot() {
+        return currentSnapshot().root();
+    }
+
+    private KnowledgeSnapshot loadCurrentSnapshot() {
+        Path pointer = configuredRoot.resolve("pointers").resolve("company-current.json");
+        if (!Files.isRegularFile(pointer)) return legacySnapshot();
+        Map<String, Object> value = directJson(pointer);
+        Path root = configuredRoot.resolve(text(value.get("release_path"))).normalize();
+        validateReleaseRoot(root);
+        String releaseId = text(value.get("release_id"));
+        Map<String, Object> manifest = directJson(root.resolve("release-manifest.json"));
+        if (releaseId.isBlank() || !releaseId.equals(text(manifest.get("release_id")))) {
+            throw new IllegalStateException("知识版本指针与发布清单编号不一致");
+        }
+        pointerModifiedAt = modifiedAt(pointer);
+        if (!Files.isRegularFile(root.resolve("indexes").resolve("rule_index.json"))) {
+            throw new IllegalStateException("知识库缺少规则索引: " + root);
+        }
+        return new KnowledgeSnapshot(root, releaseId, new ConcurrentHashMap<>());
+    }
+
+    private KnowledgeSnapshot loadInitialSnapshot() {
+        try {
+            return loadCurrentSnapshot();
+        } catch (RuntimeException exception) {
+            // 仅首次启动允许回退迁移期兼容目录。运行过程中若新指针损坏，
+            // currentSnapshot 会保留内存中的最后一个已验证版本。
+            return legacySnapshot();
+        }
+    }
+
+    private KnowledgeSnapshot legacySnapshot() {
+        if (!Files.isRegularFile(configuredRoot.resolve("indexes").resolve("rule_index.json"))) {
+            throw new IllegalStateException("知识库缺少规则索引: " + configuredRoot);
+        }
+        return new KnowledgeSnapshot(configuredRoot, "legacy-current", new ConcurrentHashMap<>());
+    }
+
+    private Path hospitalReleaseRoot(String hospitalId) {
+        Path pointer = configuredRoot.resolve("pointers").resolve("hospitals")
+                .resolve(hospitalId + "-current.json");
+        if (!Files.isRegularFile(pointer)) return null;
+        try {
+            Map<String, Object> value = directJson(pointer);
+            if (!hospitalId.equals(text(value.get("hospital_id")))) return null;
+            Path root = configuredRoot.resolve(text(value.get("release_path"))).normalize();
+            validateReleaseRoot(root);
+            return root;
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private void validateReleaseRoot(Path root) {
+        if (!root.startsWith(configuredRoot) || !Files.isDirectory(root)) {
+            throw new IllegalStateException("知识版本路径越界或不存在");
+        }
+        Path manifestPath = root.resolve("release-manifest.json");
+        if (!Files.isRegularFile(manifestPath)) throw new IllegalStateException("知识版本缺少发布清单");
+        Map<String, Object> manifest = directJson(manifestPath);
+        if (!"knowledge-release-v2".equals(text(manifest.get("schema_version")))) {
+            throw new IllegalStateException("知识版本清单格式不受支持");
+        }
+        if (text(manifest.get("release_id")).isBlank()) {
+            throw new IllegalStateException("知识版本清单缺少release_id");
+        }
+        for (Map.Entry<String, Object> entry : map(manifest.get("files")).entrySet()) {
+            Path file = root.resolve(entry.getKey()).normalize();
+            if (!file.startsWith(root) || !Files.isRegularFile(file)
+                    || !text(entry.getValue()).equals(sha256(file))) {
+                throw new IllegalStateException("知识版本文件校验失败: " + entry.getKey());
+            }
+        }
+        Map<String, Object> rules = directJson(root.resolve("indexes").resolve("rule_index.json"));
+        Map<String, Object> cards = directJson(root.resolve("indexes").resolve("retrieval_cards.json"));
+        String releaseId = text(manifest.get("release_id"));
+        if (!releaseId.equals(text(rules.get("release_id")))
+                || !releaseId.equals(text(cards.get("release_id")))) {
+            throw new IllegalStateException("知识版本索引与发布清单编号不一致");
+        }
+    }
+
+    private Object readJson(Path root, String relative) {
+        try {
+            Path path = root.resolve(relative).normalize();
+            if (!path.startsWith(root) || !Files.isRegularFile(path)) {
+                throw new IOException("文件不存在或路径越界");
+            }
+            return objectMapper.readValue(path.toFile(), Object.class);
+        } catch (IOException | RuntimeException exception) {
+            throw new IllegalStateException("无法读取 Wiki 机器契约: " + relative, exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> directJson(Path path) {
+        try {
+            Object value = objectMapper.readValue(path.toFile(), Object.class);
+            return value instanceof Map<?, ?> source ? map(source) : Map.of();
+        } catch (IOException exception) {
+            throw new IllegalStateException("无法读取知识版本文件: " + path, exception);
+        }
+    }
+
+    private static long modifiedAt(Path path) {
+        try {
+            return Files.isRegularFile(path) ? Files.getLastModifiedTime(path).toMillis() : Long.MIN_VALUE;
+        } catch (IOException exception) {
+            return Long.MIN_VALUE;
+        }
+    }
+
+    private static String sha256(Path path) {
+        try (InputStream input = Files.newInputStream(path)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) >= 0) digest.update(buffer, 0, count);
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (Exception exception) {
+            throw new IllegalStateException("无法校验知识版本文件: " + path, exception);
+        }
+    }
+
+    private record KnowledgeSnapshot(
+            Path root,
+            String releaseId,
+            ConcurrentHashMap<String, Object> documents) {
     }
 
     private static boolean visibleToHospital(Map<String, Object> profile, String hospitalId) {

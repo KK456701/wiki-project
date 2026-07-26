@@ -14,9 +14,12 @@ import {
   rmSync,
   existsSync,
   renameSync,
+  readdirSync,
+  statSync,
 } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '..');
@@ -27,12 +30,24 @@ function parseArgs() {
   const args = process.argv.slice(2);
   let input = null;
   let checkOnly = false;
+  let outputRoot = null;
+  let releaseId = null;
+  let sourcePath = null;
+  let modelId = null;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--input' && args[i + 1]) {
       input = args[i + 1];
       i++;
     } else if (args[i] === '--check') {
       checkOnly = true;
+    } else if (args[i] === '--output-root' && args[i + 1]) {
+      outputRoot = args[++i];
+    } else if (args[i] === '--release-id' && args[i + 1]) {
+      releaseId = args[++i];
+    } else if (args[i] === '--source-path' && args[i + 1]) {
+      sourcePath = args[++i];
+    } else if (args[i] === '--model-id' && args[i + 1]) {
+      modelId = args[++i];
     }
   }
   if (!input) {
@@ -42,6 +57,10 @@ function parseArgs() {
   return {
     inputPath: resolve(PROJECT_ROOT, input),
     checkOnly,
+    outputRoot: outputRoot ? resolve(PROJECT_ROOT, outputRoot) : null,
+    releaseId,
+    sourcePath,
+    modelId,
   };
 }
 
@@ -220,6 +239,135 @@ function extractSqlBlock(text, pattern) {
   return m ? m[1].trimEnd() : '';
 }
 
+function parseKnowledgeDraft(content) {
+  const draft = JSON.parse(content);
+  if (draft.schema_version !== 'knowledge-draft-v2' || !Array.isArray(draft.indicators)) {
+    throw new Error('KnowledgeDraft必须使用knowledge-draft-v2且包含indicators数组');
+  }
+  if (!draft.source || !String(draft.source.file_name || '').trim()
+      || !/^[a-f0-9]{64}$/.test(String(draft.source.sha256 || ''))) {
+    throw new Error('KnowledgeDraft缺少有效的来源文件名或SHA-256');
+  }
+  if (!Array.isArray(draft.unresolved_questions)) {
+    throw new Error('KnowledgeDraft必须显式提供unresolved_questions数组');
+  }
+  const sqlBlocks = draft.sql_blocks && typeof draft.sql_blocks === 'object'
+    ? draft.sql_blocks : {};
+  const catalog = [];
+  const seenRuleIds = new Set();
+  const referencedBlockIds = new Set();
+  const indicators = draft.indicators.map((item, index) => {
+    const profiles = Array.isArray(item.profiles) ? item.profiles : [];
+    const ruleId = String(item.rule_id || '').trim();
+    if (!/^HXZD-\d{3}-\d{3}$/.test(ruleId)) {
+      throw new Error(`第${index + 1}项指标编号无效：${ruleId}`);
+    }
+    if (seenRuleIds.has(ruleId)) throw new Error(`KnowledgeDraft包含重复指标编号：${ruleId}`);
+    seenRuleIds.add(ruleId);
+    if (!String(item.rule_name || '').trim() || !String(item.system_name || '').trim()
+        || !String(item.definition || '').trim() || !String(item.formula || '').trim()) {
+      throw new Error(`${ruleId}缺少名称、制度、定义或公式`);
+    }
+    if (!Array.isArray(item.source_refs) || item.source_refs.length === 0
+        || !item.source_refs.every(value => String(value || '').trim())) {
+      throw new Error(`${ruleId}缺少可追溯的source_refs`);
+    }
+    if (typeof item.confidence !== 'number' || item.confidence < 0 || item.confidence > 1) {
+      throw new Error(`${ruleId}的confidence必须在0到1之间`);
+    }
+    if (profiles.length === 0) throw new Error(`${ruleId}至少需要一个Profile`);
+    catalog.push({
+      seq: index + 1,
+      systemName: String(item.system_name || '').trim(),
+      title: String(item.rule_name || '').trim(),
+      ruleId,
+      profileCount: profiles.length,
+    });
+    return {
+      ruleId,
+      title: String(item.rule_name || '').trim(),
+      systemName: String(item.system_name || '').trim(),
+      systemId: String(item.system_id || ruleId.replace(/-\d{3}$/, '')).trim(),
+      definition: String(item.definition || '').trim(),
+      formula: String(item.formula || '').trim(),
+      note: String(item.note || '').trim(),
+      significance: String(item.significance || '').trim(),
+      profiles: profiles.map((profile, profileIndex) => {
+        if (!Array.isArray(profile.source_refs) || profile.source_refs.length === 0
+            || !profile.source_refs.every(value => String(value || '').trim())) {
+          throw new Error(`${ruleId}的第${profileIndex + 1}个Profile缺少source_refs`);
+        }
+        if (typeof profile.confidence !== 'number'
+            || profile.confidence < 0 || profile.confidence > 1) {
+          throw new Error(`${ruleId}的第${profileIndex + 1}个Profile confidence无效`);
+        }
+        const refs = profile.sql_refs && typeof profile.sql_refs === 'object'
+          ? profile.sql_refs : {};
+        const resolveBlock = name => {
+          const blockId = refs[name];
+          if (!blockId) return '';
+          if (!(blockId in sqlBlocks)) {
+            throw new Error(`${ruleId}的${name}引用不存在SQL块：${blockId}`);
+          }
+          referencedBlockIds.add(blockId);
+          return String(sqlBlocks[blockId]);
+        };
+        return {
+          num: profileIndex + 1,
+          title: String(profile.profile_name || `方案${profileIndex + 1}`).trim(),
+          ruleId,
+          meta: profile.meta && typeof profile.meta === 'object' ? profile.meta : {},
+          sqlSource: resolveBlock('source_extract'),
+          sqlOverview: resolveBlock('overview'),
+          sqlDepartment: resolveBlock('department_detail'),
+          sqlPatientDetail: resolveBlock('patient_detail'),
+          numerator: String(profile.numerator || '').trim(),
+          denominator: String(profile.denominator || '').trim(),
+          numeratorCaliber: String(profile.numerator_caliber || '').trim(),
+          denominatorCaliber: String(profile.denominator_caliber || '').trim(),
+          configurableParams: String(profile.configurable_parameters || '').trim(),
+        };
+      }),
+    };
+  });
+  const referencedSqlCount = indicators.reduce((sum, indicator) => sum + indicator.profiles.reduce(
+    (value, profile) => value + [
+      profile.sqlSource, profile.sqlOverview, profile.sqlDepartment, profile.sqlPatientDetail,
+    ].filter(Boolean).length, 0), 0);
+  const unreferencedBlocks = Object.keys(sqlBlocks).filter(id => !referencedBlockIds.has(id));
+  if (unreferencedBlocks.length > 0) {
+    throw new Error(`KnowledgeDraft丢失了${unreferencedBlocks.length}个SQL块引用：${unreferencedBlocks.slice(0, 5).join('、')}`);
+  }
+  return {
+    catalog,
+    sections: catalog.map(item => ({ seq: item.seq, title: item.title, text: '' })),
+    indicators,
+    sourceSqlCount: referencedSqlCount,
+  };
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function compactText(value, maxLength = 360) {
+  const compact = String(value || '')
+    .replace(/[`*_>#|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return compact.length <= maxLength ? compact : `${compact.slice(0, maxLength - 1)}…`;
+}
+
+function validSearchTerm(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized || /^(?:—|-|无|暂无|不适用|n\/?a)$/i.test(normalized)) return '';
+  return normalized;
+}
+
+function uniqueSearchTerms(values) {
+  return [...new Set(values.map(validSearchTerm).filter(Boolean))];
+}
+
 /**
  * 将原始方案状态转换为机器可读状态。
  *
@@ -247,6 +395,117 @@ function sqlReference(ruleId, profileId, type, sql) {
   return `sql-specs/${ruleId}/profiles/${profileId}/${type}.sql`;
 }
 
+const PARAMETER_ALIASES = new Map([
+  ['startTime', 'start_time'],
+  ['marptBeginAt', 'start_time'],
+  ['endTime', 'end_time'],
+  ['marptEndAt', 'end_time'],
+]);
+
+const SQL_SERVER_FUNCTIONS = new Set([
+  'abs', 'avg', 'cast', 'ceiling', 'coalesce', 'concat', 'convert', 'count',
+  'current_timestamp', 'charindex', 'dateadd', 'datediff', 'datename', 'datepart', 'day',
+  'dense_rank', 'floor', 'format', 'getdate', 'iif', 'isnull', 'lag', 'lead',
+  'left', 'len', 'lower', 'ltrim', 'max', 'min', 'month', 'nullif', 'rank',
+  'replace', 'right', 'round', 'row_number', 'rtrim', 'stuff', 'substring',
+  'sum', 'try_cast', 'try_convert', 'upper', 'year',
+]);
+
+/**
+ * 只处理来源明确且语义不变的机械差异。无法确定的 Excel 错误、函数或业务条件
+ * 必须留给发布门禁阻断，不能由生成器“猜一个能跑的 SQL”。
+ */
+function normalizeSql(sql) {
+  if (!sql || !sql.trim()) return '';
+  // 来源里同时存在 WITH#{NOLOCK}、#{NOLOCK} 和 (NOLOCK)。先处理带 WITH 的形式，
+  // 避免机械替换生成无效的 “WITHWITH (NOLOCK)”。
+  let value = sql.replace(/\bWITH\s*(?:#\{NOLOCK\}|\(\s*NOLOCK\s*\))/gi, 'WITH (NOLOCK)');
+  value = value.replace(/#\{NOLOCK\}/gi, 'WITH (NOLOCK)');
+  value = value.replace(/(?<!WITH )\(\s*NOLOCK\s*\)/gi, 'WITH (NOLOCK)');
+  value = value.replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (full, name) =>
+    `:${PARAMETER_ALIASES.get(name) || name}`);
+  return value.trimEnd();
+}
+
+function stripSqlCommentsAndStrings(sql) {
+  return sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\r\n]*/g, ' ')
+    .replace(/N?'(?:''|[^'])*'/gi, "''")
+    .replace(/"(?:""|[^"])*"/g, '""')
+    .replace(/\[(?:\]\]|[^\]])*\]/g, '[]');
+}
+
+function sqlParameters(sql) {
+  return [...new Set(
+    [...normalizeSql(sql).matchAll(/:([A-Za-z_][A-Za-z0-9_]*)/g)]
+      .map(match => match[1]),
+  )].sort();
+}
+
+function sqlFunctions(sql) {
+  const clean = stripSqlCommentsAndStrings(normalizeSql(sql));
+  const ignored = new Set([
+    // 这些词后面可能紧跟分组括号或 SQL Server 语法括号，但并不是函数。
+    'and', 'as', 'case', 'cross', 'decimal', 'exists', 'from', 'full', 'in',
+    'inner', 'join', 'not', 'numeric', 'on', 'or', 'outer', 'over',
+    'partition', 'path', 'select', 'then', 'values', 'varchar', 'when',
+    'where', 'with',
+  ]);
+  return [...new Set(
+    [...clean.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)]
+      .map(match => match[1].toLowerCase())
+      .filter(name => !ignored.has(name)),
+  )].sort();
+}
+
+function splitSqlStatements(sql) {
+  const clean = stripSqlCommentsAndStrings(sql);
+  return clean.split(';').map(item => item.trim()).filter(Boolean);
+}
+
+function validateSqlCapability(type, rawSql) {
+  if (!rawSql || !rawSql.trim()) {
+    return {
+      capability: type,
+      status: 'missing',
+      blockers: ['来源文件未提供该类 SQL'],
+      parameters: [],
+      functions: [],
+      unknown_functions: [],
+    };
+  }
+  const normalized = normalizeSql(rawSql);
+  const clean = stripSqlCommentsAndStrings(normalized);
+  const upper = clean.trim().toUpperCase();
+  const blockers = [];
+  const errors = normalized.match(/#(?:NAME\?|EQUALS|ETC)|\{\{|\{%|#\{(?!NOLOCK\})/gi) || [];
+  if (errors.length > 0) blockers.push(`包含未解析模板或 Excel 错误：${[...new Set(errors)].join('、')}`);
+  if (splitSqlStatements(normalized).length > 1) blockers.push('包含多条 SQL 语句');
+  if (!/^(?:SELECT|WITH)\b/.test(upper)) blockers.push('不是 SELECT 或 WITH...SELECT 只读查询');
+  if (/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|MERGE|EXEC(?:UTE)?|GRANT|REVOKE)\b/i.test(clean)) {
+    blockers.push('包含写入、DDL 或过程调用关键字');
+  }
+  if (/\b(?:sp_executesql|openrowset|opendatasource)\b/i.test(clean)) {
+    blockers.push('包含动态 SQL 或外部数据源调用');
+  }
+  if (/(?:^|[^\w])#[A-Za-z_][A-Za-z0-9_]*/.test(clean)) blockers.push('包含临时表');
+  const functions = sqlFunctions(normalized);
+  const unknownFunctions = functions.filter(name => !SQL_SERVER_FUNCTIONS.has(name));
+  if (unknownFunctions.length > 0) {
+    blockers.push(`函数需要目标数据库验证：${unknownFunctions.join('、')}`);
+  }
+  return {
+    capability: type,
+    status: blockers.length === 0 ? 'static_validated' : 'verification_required',
+    blockers,
+    parameters: sqlParameters(normalized),
+    functions,
+    unknown_functions: unknownFunctions,
+    normalized_sha256: sha256(normalized),
+  };
+}
+
 function declaredParameters(profile) {
   const values = [
     profile.sqlSource,
@@ -254,8 +513,7 @@ function declaredParameters(profile) {
     profile.sqlDepartment,
     profile.sqlPatientDetail,
   ].join('\n');
-  return [...new Set([...values.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/g)].map(match => match[1]))]
-    .sort();
+  return sqlParameters(values);
 }
 
 function runtimeProfile(indicator, profile) {
@@ -270,6 +528,12 @@ function runtimeProfile(indicator, profile) {
   const denominatorRule = profile.denominator || (isMedianIndicator
     ? '不适用（中位数指标；n为纳入统计的有效业务记录数）'
     : '不适用（该指标不按分子/分母比例计算）');
+  const sqlCapabilities = {
+    source_extract: validateSqlCapability('source_extract', profile.sqlSource),
+    overview: validateSqlCapability('overview', profile.sqlOverview),
+    department_detail: validateSqlCapability('department_detail', profile.sqlDepartment),
+    patient_detail: validateSqlCapability('patient_detail', profile.sqlPatientDetail),
+  };
   return {
     profile_id: profileId,
     profile_name: profile.title,
@@ -290,6 +554,12 @@ function runtimeProfile(indicator, profile) {
     denominator_caliber: profile.denominatorCaliber,
     configurable_parameters: profile.configurableParams,
     declared_parameters: declaredParameters(profile),
+    parameter_contract: Object.fromEntries(
+      declaredParameters(profile).map(name => [name, {
+        type: /time|at$/i.test(name) ? 'datetime' : 'unknown',
+        source: ['start_time', 'end_time'].includes(name) ? 'stat_period' : 'profile_mapping',
+      }]),
+    ),
     sql_refs: {
       etl_source: sqlReference(indicator.ruleId, profileId, 'etl_source', profile.sqlSource),
       overview: sqlReference(indicator.ruleId, profileId, 'overview', profile.sqlOverview),
@@ -301,6 +571,7 @@ function runtimeProfile(indicator, profile) {
       numerator_count: null,
       denominator_count: null,
     },
+    sql_capabilities: sqlCapabilities,
     field_contract: {
       business_fields: {},
     },
@@ -321,7 +592,7 @@ function runtimeManifest(indicator) {
   const profiles = indicator.profiles.map(profile => runtimeProfile(indicator, profile));
   const defaultProfile = profiles.find(profile => profile.execution_status !== 'draft');
   return {
-    schema_version: 'hxzd-runtime-v1',
+    schema_version: 'hxzd-runtime-v2',
     rule_id: indicator.ruleId,
     rule_name: indicator.title,
     category: indicator.systemName,
@@ -352,7 +623,7 @@ function writeProfileSql(outputRoot, indicator, profile) {
     ['patient_detail.sql', profile.sqlPatientDetail],
   ];
   for (const [fileName, sql] of items) {
-    if (sql && sql.trim()) writePage(join(directory, fileName), sql.trimEnd() + '\n');
+    if (sql && sql.trim()) writePage(join(directory, fileName), normalizeSql(sql) + '\n');
   }
 }
 
@@ -363,7 +634,8 @@ function generateIndicatorPage(indicator) {
 
   const aliases = [];
   for (const p of indicator.profiles) {
-    if (p.meta['指标名称别名']) aliases.push(p.meta['指标名称别名']);
+    const alias = validSearchTerm(p.meta['指标名称别名']);
+    if (alias) aliases.push(alias);
   }
 
   const keywords = extractKeywords(indicator);
@@ -701,15 +973,58 @@ function extractKeywords(indicator) {
   for (const w of titleWords) {
     if (w.length >= 2 && w.length <= 6) keywords.add(w);
   }
-  keywords.add(indicator.systemName);
+  keywords.add(validSearchTerm(indicator.systemName));
   for (const p of indicator.profiles) {
-    if (p.meta['时间维度']) keywords.add(p.meta['时间维度']);
-    if (p.meta['关联事件']) keywords.add(p.meta['事件名称'] || p.meta['关联事件']);
+    const time = validSearchTerm(p.meta['时间维度']);
+    const event = validSearchTerm(p.meta['事件名称'] || p.meta['关联事件']);
+    if (time) keywords.add(time);
+    if (event) keywords.add(event);
   }
-  return [...keywords].slice(0, 8);
+  return uniqueSearchTerms([...keywords]).slice(0, 12);
 }
 
-function validateParsedContent(content, catalog, sections, indicators) {
+function characterNgrams(value, size = 2) {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}_]+/gu, '');
+  const result = new Set();
+  for (let index = 0; index <= normalized.length - size; index++) {
+    result.add(normalized.slice(index, index + size));
+  }
+  return [...result];
+}
+
+function retrievalCard(indicator, manifest, aliases, keywords) {
+  const defaultProfile = manifest.profiles.find(
+    profile => profile.profile_id === manifest.default_profile,
+  ) || manifest.profiles[0] || {};
+  return {
+    rule_id: indicator.ruleId,
+    rule_name: indicator.title,
+    aliases,
+    keywords,
+    system_id: indicator.systemId,
+    system_name: indicator.systemName,
+    definition_short: compactText(indicator.definition),
+    formula_short: compactText(indicator.formula),
+    numerator_short: compactText(defaultProfile.numerator_rule),
+    denominator_short: compactText(defaultProfile.denominator_rule),
+    time_dimension: defaultProfile.time_dimension || '',
+    default_profile_id: manifest.default_profile,
+    execution_status: defaultProfile.execution_status || 'documentation_only',
+    execution_blockers: defaultProfile.execution_blockers || [],
+  };
+}
+
+function addNgramIndex(index, card) {
+  const texts = [card.rule_name, card.system_name, ...card.aliases, ...card.keywords];
+  for (const gram of uniqueSearchTerms(texts).flatMap(value => characterNgrams(value))) {
+    if (!index[gram]) index[gram] = [];
+    if (!index[gram].includes(card.rule_id)) index[gram].push(card.rule_id);
+  }
+}
+
+function validateParsedContent(content, catalog, sections, indicators, sourceSqlCountOverride = null) {
   const profileCount = indicators.reduce((sum, indicator) => sum + indicator.profiles.length, 0);
   const sqlCount = indicators.reduce((sum, indicator) => sum + indicator.profiles.reduce(
     (profileSum, profile) => profileSum + [
@@ -720,15 +1035,24 @@ function validateParsedContent(content, catalog, sections, indicators) {
     ].filter(Boolean).length,
     0,
   ), 0);
-  const sourceSqlCount = [...content.matchAll(/```sql\s*\r?\n[\s\S]*?```/g)].length;
+  const sourceSqlCount = sourceSqlCountOverride == null
+    ? [...content.matchAll(/```sql\s*\r?\n[\s\S]*?```/g)].length
+    : sourceSqlCountOverride;
   const errors = [];
 
-  if (catalog.length !== 35) errors.push(`指标目录应为35项，实际${catalog.length}项`);
-  if (sections.length !== 35) errors.push(`指标章节应为35项，实际${sections.length}项`);
-  if (indicators.length !== 35) errors.push(`成功解析指标应为35项，实际${indicators.length}项`);
-  if (profileCount !== 45) errors.push(`口径方案应为45个，实际${profileCount}个`);
-  if (sourceSqlCount !== 169 || sqlCount !== 169) {
-    errors.push(`SQL块应为169个，原文${sourceSqlCount}个、解析${sqlCount}个`);
+  if (catalog.length === 0) errors.push('指标目录不能为空');
+  if (sections.length !== catalog.length) {
+    errors.push(`指标目录与章节数量不一致：目录${catalog.length}项、章节${sections.length}项`);
+  }
+  if (indicators.length !== catalog.length) {
+    errors.push(`指标目录与成功解析数量不一致：目录${catalog.length}项、解析${indicators.length}项`);
+  }
+  const declaredProfiles = catalog.reduce((sum, item) => sum + item.profileCount, 0);
+  if (profileCount !== declaredProfiles) {
+    errors.push(`目录声明${declaredProfiles}个Profile，实际解析${profileCount}个`);
+  }
+  if (sourceSqlCount !== sqlCount) {
+    errors.push(`SQL块未完整归属Profile：原文${sourceSqlCount}个、解析${sqlCount}个`);
   }
 
   const ruleIds = new Set();
@@ -745,16 +1069,11 @@ function validateParsedContent(content, catalog, sections, indicators) {
       if (profileIds.has(profileId)) errors.push(`Profile编号重复：${profileId}`);
       profileIds.add(profileId);
       const state = profileState(profile);
-      if (state.executionStatus === 'executable') {
-        const unresolved = [
-          profile.sqlOverview,
-          profile.sqlDepartment,
-          profile.sqlPatientDetail,
-        ].join('\n').match(/#(?:NAME\?|EQUALS|ETC)/);
-        if (unresolved) errors.push(`${profileId}仍包含未解析模板标记`);
-        if (!profile.numerator || !profile.denominator) {
-          errors.push(`${profileId}缺少分子或分母定义`);
-        }
+      if (!profile.numerator || !profile.denominator) {
+        const nonRatio = /中位数|不按分子|不适用/.test([
+          indicator.formula, profile.numerator, profile.denominator,
+        ].join(' '));
+        if (!nonRatio) errors.push(`${profileId}缺少分子或分母定义`);
       }
     }
   }
@@ -774,6 +1093,8 @@ function validateStaging(outputRoot, indicators) {
     'profile_index.json',
     'hospital_override_index.json',
     'relation_index.json',
+    'retrieval_cards.json',
+    'ngram_index.json',
   ];
   const missing = requiredIndexes.filter(fileName =>
     !existsSync(join(outputRoot, 'indexes', fileName)));
@@ -790,6 +1111,21 @@ function validateStaging(outputRoot, indicators) {
   }
 }
 
+function collectFileHashes(root, relative = '') {
+  const result = {};
+  const current = join(root, relative);
+  for (const name of readdirSync(current).sort()) {
+    const childRelative = relative ? `${relative}/${name}` : name;
+    const child = join(root, childRelative);
+    if (statSync(child).isDirectory()) {
+      Object.assign(result, collectFileHashes(root, childRelative));
+    } else if (childRelative !== 'release-manifest.json') {
+      result[childRelative.replaceAll('\\', '/')] = sha256(readFileSync(child));
+    }
+  }
+  return result;
+}
+
 /**
  * 生成成功并校验后再替换正式目录。替换期间任一移动失败都会恢复备份，
  * 防止半成品知识库被Java进程读取。
@@ -802,6 +1138,7 @@ function replaceGeneratedContent(stagingRoot) {
     'sql-specs',
     'indexes',
     'index.md',
+    'release-manifest.json',
   ];
   const moved = [];
   ensureDir(backupRoot);
@@ -833,7 +1170,8 @@ function replaceGeneratedContent(stagingRoot) {
 
 // ─── 主流程 ──────────────────────────────────────────────────────────────────────
 function main() {
-  const { inputPath, checkOnly } = parseArgs();
+  const options = parseArgs();
+  const { inputPath, checkOnly } = options;
   console.log(`📖 读取输入文件: ${inputPath}`);
 
   if (!existsSync(inputPath)) {
@@ -842,53 +1180,55 @@ function main() {
   }
 
   const content = readFileSync(inputPath, 'utf-8');
-  const lines = content.split('\n');
-
-  // 1. 解析指标目录
-  const catalog = parseCatalog(lines);
-  console.log(`📋 解析到 ${catalog.length} 项指标`);
-
-  if (catalog.length === 0) {
-    console.error('❌ 未能解析到指标目录表，请检查输入文件格式');
-    process.exit(1);
-  }
-
-  // 2. 按 ## N. 标题切分各指标 section
-  const sectionRegex = /^##\s*(\d+)\.\s*(.+)$/gm;
-  const sections = [];
-  let sm;
-  while ((sm = sectionRegex.exec(content)) !== null) {
-    sections.push({ seq: parseInt(sm[1]), title: sm[2].trim(), start: sm.index });
-  }
-
-  for (let i = 0; i < sections.length; i++) {
-    const end = i + 1 < sections.length ? sections[i + 1].start : content.length;
-    sections[i].text = content.slice(sections[i].start, end);
-  }
-
-  console.log(`📑 切分到 ${sections.length} 个指标 section`);
-
-  // 3. 解析每个指标
-  const indicators = [];
-  for (const sec of sections) {
-    const catalogEntry = catalog.find(c => c.seq === sec.seq);
-    if (!catalogEntry) {
-      console.warn(`⚠️ 序号 ${sec.seq} 在目录表中未找到，跳过`);
-      continue;
+  let catalog;
+  let sections;
+  let indicators;
+  let sourceSqlCount = null;
+  if (inputPath.toLowerCase().endsWith('.json')) {
+    const parsed = parseKnowledgeDraft(content);
+    ({ catalog, sections, indicators, sourceSqlCount } = parsed);
+    console.log('🧩 使用KnowledgeDraftV2机器契约');
+  } else {
+    const lines = content.split('\n');
+    catalog = parseCatalog(lines);
+    if (catalog.length === 0) {
+      console.error('❌ 未能解析到指标目录表，请检查输入文件格式');
+      process.exit(1);
     }
-    const indicator = parseIndicatorSection(sec.text, catalogEntry);
-    indicators.push(indicator);
+    const sectionRegex = /^##\s*(\d+)\.\s*(.+)$/gm;
+    sections = [];
+    let sm;
+    while ((sm = sectionRegex.exec(content)) !== null) {
+      sections.push({ seq: parseInt(sm[1]), title: sm[2].trim(), start: sm.index });
+    }
+    for (let i = 0; i < sections.length; i++) {
+      const end = i + 1 < sections.length ? sections[i + 1].start : content.length;
+      sections[i].text = content.slice(sections[i].start, end);
+    }
+    indicators = [];
+    for (const sec of sections) {
+      const catalogEntry = catalog.find(c => c.seq === sec.seq);
+      if (!catalogEntry) continue;
+      indicators.push(parseIndicatorSection(sec.text, catalogEntry));
+    }
   }
 
+  console.log(`📋 解析到 ${catalog.length} 项指标`);
+  console.log(`📑 切分到 ${sections.length} 个指标 section`);
   console.log(`✅ 成功解析 ${indicators.length} 项指标`);
-  validateParsedContent(content, catalog, sections, indicators);
+  validateParsedContent(content, catalog, sections, indicators, sourceSqlCount);
   if (checkOnly) {
-    console.log('✅ 输入文件通过35项指标、45个方案和169个SQL块校验');
+    const profileCount = indicators.reduce((sum, item) => sum + item.profiles.length, 0);
+    const sqlCount = indicators.reduce((sum, item) => sum + item.profiles.reduce(
+      (value, profile) => value + [
+        profile.sqlSource, profile.sqlOverview, profile.sqlDepartment, profile.sqlPatientDetail,
+      ].filter(Boolean).length, 0), 0);
+    console.log(`✅ 输入文件通过契约校验：${indicators.length}项指标、${profileCount}个Profile、${sqlCount}个SQL块`);
     return;
   }
 
   // 4. 先写入临时目录；只有完整校验通过后才替换正式知识库。
-  const outputRoot = join(WIKI_ROOT, `.wiki-build-staging-${process.pid}`);
+  const outputRoot = options.outputRoot || join(WIKI_ROOT, `.wiki-build-staging-${process.pid}`);
   if (existsSync(outputRoot)) rmSync(outputRoot, { recursive: true, force: true });
   ensureDir(outputRoot);
 
@@ -900,6 +1240,10 @@ function main() {
   const profileIndex = {};
   const ruleIndex = [];
   const relationIndex = {};
+  const retrievalCards = [];
+  const ngramIndex = {};
+  const sourceRelative = options.sourcePath
+    || inputPath.replace(`${WIKI_ROOT}\\`, '').replaceAll('\\', '/');
 
   for (const indicator of indicators) {
     const indDir = join(outputRoot, 'wiki', 'indicators', indicator.ruleId);
@@ -946,9 +1290,9 @@ function main() {
       runtime_manifest: `sql-specs/${indicator.ruleId}/runtime.json`,
     };
     const page = `wiki/indicators/${indicator.ruleId}/index.md`;
-    const aliases = indicator.profiles
+    const aliases = uniqueSearchTerms(indicator.profiles
       .map(profile => profile.meta['指标名称别名'])
-      .filter(Boolean);
+      .filter(Boolean));
     ruleIndex.push({
       rule_id: indicator.ruleId,
       rule_name: indicator.title,
@@ -959,7 +1303,7 @@ function main() {
       runtime_path: `sql-specs/${indicator.ruleId}/runtime.json`,
       default_profile: defaultProfileId,
       status: 'active',
-      source_path: 'raw/company/35项核心制度指标完整提取.md',
+      source_path: sourceRelative,
     });
     profileIndex[indicator.ruleId] = manifest.profiles.map(profile => ({
       profile_id: profile.profile_id,
@@ -968,12 +1312,16 @@ function main() {
       execution_status: profile.execution_status,
     }));
     relationIndex[indicator.ruleId] = { relations: [] };
+    const keywords = extractKeywords(indicator);
+    const card = retrievalCard(indicator, manifest, aliases, keywords);
+    retrievalCards.push(card);
+    addNgramIndex(ngramIndex, card);
 
     // 别名索引
     aliasIndex[indicator.title] = [indicator.ruleId];
     for (const p of indicator.profiles) {
-      if (p.meta['指标名称别名']) {
-        const alias = p.meta['指标名称别名'];
+      const alias = validSearchTerm(p.meta['指标名称别名']);
+      if (alias) {
         if (!aliasIndex[alias]) aliasIndex[alias] = [];
         if (!aliasIndex[alias].includes(indicator.ruleId)) {
           aliasIndex[alias].push(indicator.ruleId);
@@ -982,7 +1330,6 @@ function main() {
     }
 
     // 关键词索引
-    const keywords = extractKeywords(indicator);
     for (const kw of keywords) {
       if (!keywordIndex[kw]) keywordIndex[kw] = [];
       const existing = keywordIndex[kw].find(e => e.rule_id === indicator.ruleId);
@@ -999,18 +1346,22 @@ function main() {
   }
 
   // 7. 生成索引 JSON
+  const releaseId = options.releaseId
+    || `KB-${today().replaceAll('-', '')}-${sha256(content).slice(0, 12)}`;
   ensureDir(join(outputRoot, 'indexes'));
   writeFileSync(join(outputRoot, 'indexes', 'indicator_index.json'), JSON.stringify(indicatorIndex, null, 2), 'utf-8');
   writeFileSync(join(outputRoot, 'indexes', 'alias_index.json'), JSON.stringify(aliasIndex, null, 2), 'utf-8');
   writeFileSync(join(outputRoot, 'indexes', 'keyword_index.json'), JSON.stringify(keywordIndex, null, 2), 'utf-8');
   writeFileSync(join(outputRoot, 'indexes', 'profile_index.json'), JSON.stringify(profileIndex, null, 2), 'utf-8');
   writeFileSync(join(outputRoot, 'indexes', 'rule_index.json'), JSON.stringify({
-    schema_version: 'hxzd-runtime-v1',
+    schema_version: 'hxzd-runtime-v2',
+    release_id: releaseId,
     generated_at: today(),
     rules: ruleIndex,
   }, null, 2), 'utf-8');
   writeFileSync(join(outputRoot, 'indexes', 'hospital_override_index.json'), JSON.stringify({
-    schema_version: 'hxzd-runtime-v1',
+    schema_version: 'hxzd-runtime-v2',
+    release_id: releaseId,
     generated_at: today(),
     hospital_overrides: [],
   }, null, 2), 'utf-8');
@@ -1024,14 +1375,49 @@ function main() {
     };
   }
   writeFileSync(join(outputRoot, 'indexes', 'system_index.json'), JSON.stringify(systemIndex, null, 2), 'utf-8');
+  writeFileSync(join(outputRoot, 'indexes', 'retrieval_cards.json'), JSON.stringify({
+    schema_version: 'hxzd-retrieval-v2',
+    release_id: releaseId,
+    cards: retrievalCards,
+  }, null, 2), 'utf-8');
+  writeFileSync(join(outputRoot, 'indexes', 'ngram_index.json'), JSON.stringify({
+    schema_version: 'hxzd-retrieval-v2',
+    release_id: releaseId,
+    gram_size: 2,
+    entries: ngramIndex,
+  }, null, 2), 'utf-8');
 
   // 8. 生成总索引页
   writeFileSync(join(outputRoot, 'index.md'), generateIndexPage(systems), 'utf-8');
   validateStaging(outputRoot, indicators);
-  replaceGeneratedContent(outputRoot);
+  const totalProfiles = indicators.reduce((sum, i) => sum + i.profiles.length, 0);
+  const totalSql = indicators.reduce((sum, indicator) => sum + indicator.profiles.reduce(
+    (value, profile) => value + [
+      profile.sqlSource, profile.sqlOverview, profile.sqlDepartment, profile.sqlPatientDetail,
+    ].filter(Boolean).length, 0), 0);
+  writeFileSync(join(outputRoot, 'release-manifest.json'), JSON.stringify({
+    schema_version: 'knowledge-release-v2',
+    release_id: releaseId,
+    scope: 'company',
+    generated_at: new Date().toISOString(),
+    source_path: sourceRelative,
+    source_sha256: sha256(content),
+    generator_version: 'build-wiki-v2',
+    model_id: options.modelId || 'deterministic-adapter',
+    prompt_version: 'knowledge-release-normalizer-v1',
+    prompt_sha256: existsSync(join(WIKI_ROOT, 'prompts', 'knowledge-release-normalizer.md'))
+      ? sha256(readFileSync(join(WIKI_ROOT, 'prompts', 'knowledge-release-normalizer.md')))
+      : null,
+    counts: {
+      indicators: indicators.length,
+      profiles: totalProfiles,
+      sql_blocks: totalSql,
+    },
+    files: collectFileHashes(outputRoot),
+  }, null, 2), 'utf-8');
+  if (!options.outputRoot) replaceGeneratedContent(outputRoot);
 
   // 9. 统计输出
-  const totalProfiles = indicators.reduce((sum, i) => sum + i.profiles.length, 0);
   console.log('');
   console.log('═══════════════════════════════════════════');
   console.log('  Wiki 知识库生成完成');
@@ -1040,7 +1426,10 @@ function main() {
   console.log(`  口径 Profile：${totalProfiles}`);
   console.log(`  制度页面：${Object.keys(systems).length}`);
   console.log(`  SQL 规格：${indicators.filter(i => i.profiles.length > 0).length}`);
-  console.log(`  索引文件：8`);
+  console.log(`  SQL块：${totalSql}`);
+  console.log(`  索引文件：10`);
+  console.log(`  发布编号：${releaseId}`);
+  if (options.outputRoot) console.log(`  候选目录：${outputRoot}`);
   console.log('═══════════════════════════════════════════');
 }
 

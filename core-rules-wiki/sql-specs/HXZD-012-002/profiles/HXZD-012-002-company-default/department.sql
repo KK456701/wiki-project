@@ -8,7 +8,7 @@ where
 AND IS_DEL = 0
 AND VERSION = 'V2.0'
 AND SURG_LEVEL_CODE IN (136619, 136618)
-AND EVENT_AT BETWEEN :marptBeginAt and :marptEndAt
+AND EVENT_AT BETWEEN :start_time and :end_time
 ) t WHERE t.rn = 1
 )
 SELECT

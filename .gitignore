@@ -41,6 +41,11 @@ tmp/
 /output/
 /.vscode/
 
+# 知识库离线发版的临时候选与原子构建目录；审核通过后的不可变 release 才入库。
+/core-rules-wiki/review/pending/*
+!/core-rules-wiki/review/pending/.gitkeep
+/core-rules-wiki/.wiki-build-*
+
 # 本地一次性数据库探测与人工核对产物。
 # 可重复的 Wiki 契约校验保留在 scripts/build-wiki-from-markdown.mjs
 # 和 scripts/validate-wiki-contract.mjs 中并纳入 CI。

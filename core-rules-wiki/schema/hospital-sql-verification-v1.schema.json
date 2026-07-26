@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hospital-sql-verification-v1",
+  "type": "object",
+  "required": ["schema_version", "hospital_id", "base_release_id", "profiles"],
+  "properties": {
+    "schema_version": {"const": "hospital-sql-verification-v1"},
+    "hospital_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "base_release_id": {"type": "string"},
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "rule_id", "field_contract", "field_mapping", "result_mapping",
+          "capabilities"
+        ],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^HXZD-[0-9]{3}-[0-9]{3}$"},
+          "field_contract": {"type": "object"},
+          "field_mapping": {"type": "object"},
+          "result_mapping": {"type": "object"},
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "normalized_sha256", "metadata_validated", "compile_validated",
+                "trial_validated", "human_confirmed"
+              ],
+              "properties": {
+                "normalized_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "metadata_validated": {"type": "boolean"},
+                "compile_validated": {"type": "boolean"},
+                "trial_validated": {"type": "boolean"},
+                "human_confirmed": {"type": "boolean"},
+                "verified_at": {"type": "string"},
+                "object_hash": {"type": "string"}
+              },
+              "additionalProperties": true
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

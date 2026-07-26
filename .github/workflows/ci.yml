@@ -32,10 +32,14 @@ jobs:
 
       - name: Validate HXZD source and generated Wiki contract
         run: |
+          node --test scripts/tests/knowledge-release.test.mjs
           node scripts/build-wiki-from-markdown.mjs \
             --input "core-rules-wiki/raw/company/35项核心制度指标完整提取.md" \
             --check
-          node scripts/validate-wiki-contract.mjs
+          node scripts/validate-wiki-contract.mjs \
+            --expected-indicators 35 \
+            --expected-profiles 45 \
+            --expected-sql 169
 
       - name: Run Java tests
         working-directory: backend-java

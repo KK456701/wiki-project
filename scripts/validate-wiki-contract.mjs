@@ -9,7 +9,21 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const WIKI_ROOT = join(PROJECT_ROOT, 'core-rules-wiki');
+function parseArgs() {
+  const result = {};
+  const values = process.argv.slice(2);
+  for (let index = 0; index < values.length; index++) {
+    if (values[index].startsWith('--') && values[index + 1]) {
+      result[values[index].slice(2)] = values[++index];
+    }
+  }
+  return result;
+}
+
+const options = parseArgs();
+const WIKI_ROOT = options.root
+  ? resolve(PROJECT_ROOT, options.root)
+  : join(PROJECT_ROOT, 'core-rules-wiki');
 
 function json(path) {
   return JSON.parse(readFileSync(path, 'utf-8'));
@@ -26,10 +40,29 @@ if (!existsSync(ruleIndexPath)) fail(['缺少 indexes/rule_index.json']);
 
 const ruleIndex = json(ruleIndexPath);
 const rules = Array.isArray(ruleIndex.rules) ? ruleIndex.rules : [];
-if (ruleIndex.schema_version !== 'hxzd-runtime-v1') {
+if (!['hxzd-runtime-v1', 'hxzd-runtime-v2'].includes(ruleIndex.schema_version)) {
   errors.push(`schema_version无效：${ruleIndex.schema_version || '空'}`);
 }
-if (rules.length !== 35) errors.push(`规则索引应为35项，实际${rules.length}项`);
+const expectedIndicators = options['expected-indicators'] ? Number(options['expected-indicators']) : null;
+const expectedProfiles = options['expected-profiles'] ? Number(options['expected-profiles']) : null;
+const expectedSql = options['expected-sql'] ? Number(options['expected-sql']) : null;
+const releaseManifestPath = join(WIKI_ROOT, 'release-manifest.json');
+const releaseManifest = existsSync(releaseManifestPath) ? json(releaseManifestPath) : null;
+if (releaseManifest) {
+  if (releaseManifest.schema_version !== 'knowledge-release-v2') {
+    errors.push('release-manifest.json版本无效');
+  }
+  if (!releaseManifest.release_id || releaseManifest.release_id !== ruleIndex.release_id) {
+    errors.push('发布清单与规则索引的release_id不一致');
+  }
+  if (!releaseManifest.model_id || !releaseManifest.prompt_version
+      || !/^[a-f0-9]{64}$/.test(String(releaseManifest.prompt_sha256 || ''))) {
+    errors.push('发布清单缺少模型或提示词版本信息');
+  }
+}
+if (expectedIndicators != null && rules.length !== expectedIndicators) {
+  errors.push(`规则索引应为${expectedIndicators}项，实际${rules.length}项`);
+}
 
 const ruleIds = new Set();
 const profileIds = new Set();
@@ -84,19 +117,69 @@ for (const rule of rules) {
       if (!overview || !existsSync(join(WIKI_ROOT, overview))) {
         errors.push(`${profile.profile_id}标记可执行但缺少概览SQL`);
       }
+      if (profile.sql_capabilities?.overview?.status !== 'executable') {
+        errors.push(`${profile.profile_id}标记可执行但概览SQL未完成全部门禁`);
+      }
     }
     for (const path of Object.values(profile.sql_refs || {}).filter(Boolean)) {
       if (!existsSync(join(WIKI_ROOT, path))) errors.push(`${profile.profile_id}缺少SQL文件：${path}`);
     }
+    for (const [capability, gate] of Object.entries(profile.sql_capabilities || {})) {
+      const allowed = [
+        'missing', 'raw', 'normalized', 'static_validated', 'verification_required',
+        'metadata_validated', 'compile_validated', 'trial_validated', 'executable',
+      ];
+      if (!allowed.includes(gate.status)) {
+        errors.push(`${profile.profile_id}的${capability}校验状态无效：${gate.status}`);
+      }
+      if (gate.status === 'executable' && (gate.blockers || []).length > 0) {
+        errors.push(`${profile.profile_id}的${capability}仍有阻断项却标记可执行`);
+      }
+    }
   }
 }
 
-if (profileCount !== 45) errors.push(`Profile应为45个，实际${profileCount}个`);
+if (expectedProfiles != null && profileCount !== expectedProfiles) {
+  errors.push(`Profile应为${expectedProfiles}个，实际${profileCount}个`);
+}
 const manifestDirectories = readdirSync(join(WIKI_ROOT, 'sql-specs'), { withFileTypes: true })
   .filter(entry => entry.isDirectory()).length;
-if (manifestDirectories !== 35) {
-  errors.push(`SQL规格目录应为35个，实际${manifestDirectories}个`);
+if (manifestDirectories !== rules.length) {
+  errors.push(`SQL规格目录应与规则数一致，规则${rules.length}项、目录${manifestDirectories}个`);
+}
+
+const sqlCount = rules.reduce((total, rule) => {
+  const runtime = json(join(WIKI_ROOT, rule.runtime_path));
+  return total + (runtime.profiles || []).reduce(
+    (sum, profile) => sum + Object.values(profile.sql_refs || {}).filter(Boolean).length, 0);
+}, 0);
+if (expectedSql != null && sqlCount !== expectedSql) {
+  errors.push(`SQL引用应为${expectedSql}个，实际${sqlCount}个`);
+}
+if (releaseManifest) {
+  if (releaseManifest.counts?.indicators !== rules.length
+      || releaseManifest.counts?.profiles !== profileCount
+      || releaseManifest.counts?.sql_blocks !== sqlCount) {
+    errors.push('发布清单数量与机器契约实际数量不一致');
+  }
+}
+const cardsPath = join(WIKI_ROOT, 'indexes', 'retrieval_cards.json');
+if (ruleIndex.schema_version === 'hxzd-runtime-v2') {
+  if (!existsSync(cardsPath)) {
+    errors.push('v2知识库缺少retrieval_cards.json');
+  } else {
+    const cards = json(cardsPath);
+    if (releaseManifest && cards.release_id !== releaseManifest.release_id) {
+      errors.push('检索卡与发布清单的release_id不一致');
+    }
+    if ((cards.cards || []).length !== rules.length) errors.push('检索卡数量与规则索引不一致');
+    for (const card of cards.cards || []) {
+      if ((card.aliases || []).some(value => /^(?:—|-|无|暂无|n\/?a)$/i.test(String(value).trim()))) {
+        errors.push(`${card.rule_id}检索卡包含无效别名`);
+      }
+    }
+  }
 }
 
 if (errors.length > 0) fail(errors);
-console.log('✅ Wiki机器契约有效：35项指标、45个Profile，未验证Profile均未开放执行');
+console.log(`✅ Wiki机器契约有效：${rules.length}项指标、${profileCount}个Profile、${sqlCount}个SQL引用`);

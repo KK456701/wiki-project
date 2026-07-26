@@ -107,6 +107,8 @@ scripts/
   start-java-runtime.ps1      不依赖 Python 的启动器
   build-wiki-from-markdown.mjs  从原始 Markdown 生成 HXZD 契约
   validate-wiki-contract.mjs  只读校验 35/45/169 及执行门禁
+  knowledge-release.ps1       Excel/Markdown 准备、发布、回滚和医院知识回收
+  knowledge-release.mjs       不可变 release、原子指针和三方 Diff 实现
   init_runtime_sqlite.sql     SQLite 运行库参考建表脚本
 tools/dbhub/                  DBHub sidecar 配置和启动脚本
 docs/                         当前架构、运维记录和历史设计资料
@@ -114,7 +116,7 @@ docs/                         当前架构、运维记录和历史设计资料
 
 ## HXZD Wiki 机器契约
 
-原始来源为 `core-rules-wiki/raw/company/35项核心制度指标完整提取.md`。生成器在临时目录完成解析与校验，全部门禁通过后才原子替换知识库：
+原始来源为 `core-rules-wiki/raw/company/35项核心制度指标完整提取.md`。生成器在临时目录完成解析与校验，全部门禁通过后才生成不可变 release，并通过 `core-rules-wiki/pointers/company-current.json` 原子切换当前版本：
 
 ```text
 35 项指标
@@ -122,14 +124,33 @@ docs/                         当前架构、运维记录和历史设计资料
 169 个 SQL 块
 ```
 
-每个 Profile 独立声明适用范围、状态、四类 SQL 引用、参数、字段契约、结果映射和阻断原因。缺少医院字段契约或统一结果列映射的方案不会被标为 `executable`；这类方案仍可解释，但试运行、明细与导出入口会被服务端拒绝。
+每个 Profile 独立声明适用范围、状态、四类 SQL 引用、参数、字段契约、结果映射和阻断原因。缺少医院字段契约或统一结果列映射的方案不会被标为 `executable`；这类方案仍可解释，但试运行、明细与导出入口会被服务端拒绝。Java 会按指针热加载完整快照；新版本缺文件或哈希不一致时继续使用上一版。
 
 当前生成结果为 `documentation_only=42`、`draft=3`、`executable=0`。这表示 35 项指标均可检索和解释，但在医院字段契约与统一结果列映射完成验证前，当前版本不会访问 DBHub 试运行这些 Profile。
 
 ```powershell
 node .\scripts\build-wiki-from-markdown.mjs --input ".\core-rules-wiki\raw\company\35项核心制度指标完整提取.md" --check
-node .\scripts\validate-wiki-contract.mjs
+node .\scripts\validate-wiki-contract.mjs --expected-indicators 35 --expected-profiles 45 --expected-sql 169
+node --test .\scripts\tests\knowledge-release.test.mjs
 ```
+
+新增资料使用离线发版入口。标准 Markdown 确定性解析；Excel 或非标准 Markdown 由
+配置中的大模型整理成 `KnowledgeDraftV2`，SQL 始终由程序提取，模型不得改写：
+
+```powershell
+.\scripts\knowledge-release.ps1 `
+  -Action Prepare `
+  -Input ".\新指标资料.xlsx" `
+  -Scope company `
+  -ModelId deepseek-v4-flash
+
+.\scripts\knowledge-release.ps1 -Action Validate -Candidate "<候选编号>"
+.\scripts\knowledge-release.ps1 -Action Publish -Candidate "<候选编号>" -Confirmed
+.\scripts\knowledge-release.ps1 -Action Rollback -Scope company -ReleaseId "<历史版本>"
+```
+
+本地 Qwen 4B/8B 不允许用于知识发版。模型密钥只从 `DEEPSEEK_API_KEY` 或
+`DASHSCOPE_API_KEY` 环境变量读取，不写入 Wiki、日志或 Git。
 
 ## 环境要求
 
