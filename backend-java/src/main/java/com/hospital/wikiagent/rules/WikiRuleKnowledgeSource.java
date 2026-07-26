@@ -113,7 +113,8 @@ public class WikiRuleKnowledgeSource {
             throw new RuleNotFoundException("RULE_NOT_FOUND: " + query);
         }
         String ruleId = text(rule.get("rule_id"));
-        Map<String, Object> manifest = manifest(rule);
+        ResolvedManifest resolved = resolvedManifest(rule, hospitalId);
+        Map<String, Object> manifest = resolved.document();
         Map<String, Object> profile = profile(manifest, profileId);
         String selectedProfileId = text(profile.get("profile_id"));
         String executionStatus = first(text(profile.get("execution_status")), "documentation_only");
@@ -121,17 +122,19 @@ public class WikiRuleKnowledgeSource {
         Map<String, Object> sqlRefs = map(profile.get("sql_refs"));
         Map<String, Object> sqlCapabilities = map(profile.get("sql_capabilities"));
         String overviewSql = executableSql(
-                executionStatus, sqlRefs, sqlCapabilities, "overview", "overview");
+                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "overview", "overview");
         String sourceExtractSql = executableSql(
-                executionStatus, sqlRefs, sqlCapabilities, "source_extract", "etl_source");
+                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "source_extract", "etl_source");
         String departmentDetailSql = executableSql(
-                executionStatus, sqlRefs, sqlCapabilities, "department_detail", "department");
+                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "department_detail", "department");
         String patientDetailSql = executableSql(
-                executionStatus, sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
+                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
         Map<String, Object> mapping = mergedFieldMapping(profile, ruleId, hospitalId);
         Map<String, Object> params = map(mapping.get("parameters"));
-        String definition = first(text(manifest.get("definition")), section(read(text(rule.get("national_path"))), "指标定义"));
-        String formula = first(text(manifest.get("formula")), section(read(text(rule.get("national_path"))), "计算公式"));
+        String definition = first(text(manifest.get("definition")),
+                section(readFrom(resolved.root(), text(rule.get("national_path"))), "指标定义"));
+        String formula = first(text(manifest.get("formula")),
+                section(readFrom(resolved.root(), text(rule.get("national_path"))), "计算公式"));
 
         Map<String, Object> nationalRule = new LinkedHashMap<>();
         nationalRule.put("definition", definition);
@@ -184,13 +187,14 @@ public class WikiRuleKnowledgeSource {
         result.put("overridden_fields", List.of());
         result.put("fallback_chain", List.of("company", "national"));
         result.put("rule_source", "wiki");
-        result.put("knowledge_release_id", currentSnapshot().releaseId());
+        result.put("knowledge_release_id", resolved.releaseId());
         result.put("warnings", blockers);
         result.put("relations", relation(ruleId));
         return result;
     }
 
     private String executableSql(
+            Path root,
             String profileStatus,
             Map<String, Object> refs,
             Map<String, Object> capabilities,
@@ -203,7 +207,7 @@ public class WikiRuleKnowledgeSource {
         if (!"executable".equals(text(contract.get("status")))) {
             return "";
         }
-        return read(text(refs.get(referenceKey)));
+        return readFrom(root, text(refs.get(referenceKey)));
     }
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {
@@ -212,7 +216,8 @@ public class WikiRuleKnowledgeSource {
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId, String profileId) {
         Map<String, Object> rule = findRule(ruleId);
-        Map<String, Object> selected = profile(manifest(rule), profileId);
+        ResolvedManifest resolved = resolvedManifest(rule, hospitalId);
+        Map<String, Object> selected = profile(resolved.document(), profileId);
         Map<String, Object> mapping = mergedFieldMapping(selected, ruleId, hospitalId);
         Map<String, Object> businessFields = map(map(selected.get("field_contract")).get("business_fields"));
         List<Map<String, Object>> items = new ArrayList<>();
@@ -246,7 +251,7 @@ public class WikiRuleKnowledgeSource {
         result.put("metadata_items", metadataItems);
         result.put("relations", listOfMaps(mapping.get("relations")));
         result.put("rule_source", "wiki");
-        result.put("knowledge_release_id", currentSnapshot().releaseId());
+        result.put("knowledge_release_id", resolved.releaseId());
         return result;
     }
 
@@ -255,7 +260,7 @@ public class WikiRuleKnowledgeSource {
      */
     public List<Map<String, Object>> caliberProfiles(String ruleId, String hospitalId) {
         Map<String, Object> rule = findRule(ruleId);
-        return listOfMaps(manifest(rule).get("profiles")).stream()
+        return listOfMaps(resolvedManifest(rule, hospitalId).document().get("profiles")).stream()
                 .filter(profile -> "approved".equalsIgnoreCase(text(profile.get("governance_status"))))
                 .filter(profile -> "executable".equalsIgnoreCase(text(profile.get("execution_status"))))
                 .filter(profile -> visibleToHospital(profile, hospitalId))
@@ -311,10 +316,33 @@ public class WikiRuleKnowledgeSource {
     }
 
     private Map<String, Object> manifest(Map<String, Object> rule) {
+        return resolvedManifest(rule, null).document();
+    }
+
+    /**
+     * 医院发布版本只覆盖与当前公司基础版本一致的完整快照。这样医院已经验证的
+     * Profile 可以成为该医院的运行契约，同时公司发版后不会静默套用旧医院配置。
+     */
+    private ResolvedManifest resolvedManifest(Map<String, Object> rule, String hospitalId) {
         String path = first(
                 text(rule.get("runtime_path")),
                 "sql-specs/" + text(rule.get("rule_id")) + "/runtime.json");
-        return map(json(path));
+        Path hospitalRoot = hospitalReleaseRoot(hospitalId);
+        if (hospitalRoot != null) {
+            Path hospitalManifest = hospitalRoot.resolve(path).normalize();
+            if (hospitalManifest.startsWith(hospitalRoot)
+                    && Files.isRegularFile(hospitalManifest)) {
+                Map<String, Object> release = directJson(
+                        hospitalRoot.resolve("release-manifest.json"));
+                return new ResolvedManifest(
+                        hospitalRoot,
+                        text(release.get("release_id")),
+                        directJson(hospitalManifest));
+            }
+        }
+        KnowledgeSnapshot company = currentSnapshot();
+        return new ResolvedManifest(
+                company.root(), company.releaseId(), map(json(path)));
     }
 
     private Map<String, Object> profile(Map<String, Object> manifest, String requestedProfileId) {
@@ -539,9 +567,12 @@ public class WikiRuleKnowledgeSource {
     }
 
     private String read(String relative) {
-        if (relative == null || relative.isBlank()) return "";
+        return readFrom(activeRoot(), relative);
+    }
+
+    private String readFrom(Path root, String relative) {
+        if (root == null || relative == null || relative.isBlank()) return "";
         try {
-            Path root = activeRoot();
             Path path = root.resolve(relative).normalize();
             return path.startsWith(root) && Files.isRegularFile(path)
                     ? Files.readString(path, StandardCharsets.UTF_8) : "";
@@ -622,6 +653,11 @@ public class WikiRuleKnowledgeSource {
             if (!hospitalId.equals(text(value.get("hospital_id")))) return null;
             Path root = configuredRoot.resolve(text(value.get("release_path"))).normalize();
             validateReleaseRoot(root);
+            Map<String, Object> manifest = directJson(root.resolve("release-manifest.json"));
+            if (!hospitalId.equals(text(manifest.get("hospital_id")))
+                    || !currentSnapshot().releaseId().equals(text(manifest.get("base_release_id")))) {
+                return null;
+            }
             return root;
         } catch (RuntimeException exception) {
             return null;
@@ -703,6 +739,12 @@ public class WikiRuleKnowledgeSource {
             Path root,
             String releaseId,
             ConcurrentHashMap<String, Object> documents) {
+    }
+
+    private record ResolvedManifest(
+            Path root,
+            String releaseId,
+            Map<String, Object> document) {
     }
 
     private static boolean visibleToHospital(Map<String, Object> profile, String hospitalId) {

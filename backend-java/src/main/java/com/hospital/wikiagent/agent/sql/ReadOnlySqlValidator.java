@@ -55,8 +55,8 @@ public class ReadOnlySqlValidator {
                 .matcher(masked).find()) {
             return failure("禁止使用临时表");
         }
-        if (!stripped.contains(":start_time") || !stripped.contains(":end_time")) {
-            return failure("必须包含 :start_time 和 :end_time 参数");
+        if (!containsControlledPeriodParameters(stripped)) {
+            return failure("必须包含一组已登记的开始时间和结束时间参数");
         }
         String expected = mainTable == null ? "" : mainTable.replace("`", "").replace("\"", "").strip();
         if (requireMainTable && (expected.isEmpty() || !Pattern.compile(
@@ -71,6 +71,20 @@ public class ReadOnlySqlValidator {
             return failure("SQL 模板仍包含未解析表达式");
         }
         return new ValidationResult(true, "安全校验通过");
+    }
+
+    /**
+     * 原始指标 SQL 使用过三套时间参数命名。运行时不会改写知识库 SQL，而是在执行前
+     * 将同一统计周期绑定到这些受控别名，因此安全校验也只接受这三组完整参数对。
+     * 单独出现开始或结束参数、以及任意未知参数名仍然不能通过。
+     */
+    private static boolean containsControlledPeriodParameters(String sql) {
+        return List.of(
+                        new String[] {":start_time", ":end_time"},
+                        new String[] {":startTime", ":endTime"},
+                        new String[] {":marptBeginAt", ":marptEndAt"})
+                .stream()
+                .anyMatch(pair -> sql.contains(pair[0]) && sql.contains(pair[1]));
     }
 
     /**

@@ -1,0 +1,8 @@
+{
+  "schema_version": "knowledge-pointer-v1",
+  "scope": "hospital",
+  "hospital_id": "hospital_001",
+  "release_id": "KB-20260726-HOSPITAL001-DUALDB",
+  "release_path": "releases/hospitals/hospital_001/KB-20260726-HOSPITAL001-DUALDB",
+  "activated_at": "2026-07-26T08:52:25.011Z"
+}

@@ -57,7 +57,8 @@ class PlanGoalAlignmentValidatorTest {
                 new WikiRuleKnowledgeSource(
                         Path.of("..", "core-rules-wiki").toString(),
                         objectMapper));
-        assertThat(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))
+        assertThat(rules.diagnosticProfiles(
+                "HXZD-001-001", "hospital_without_release"))
                 .isEmpty();
     }
 

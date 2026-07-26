@@ -170,6 +170,51 @@ class FinalAnswerComposerTest {
     }
 
     @Test
+    void rejectsZeroPercentClaimWhenVerifiedPeriodHasNoSample() {
+        String invalid = """
+                # 该指标 · 统计结果
+
+                > **结论速览**
+                > 指标率为 **0.0%**。
+
+                ## 结果速览
+
+                分子0，分母0，0 ÷ 0 × 100% = 0.0%。
+
+                ## 计算口径
+
+                指标率 = 分子 ÷ 分母 × 100%。
+
+                ## 数据依据
+
+                来源于本轮双库试运行。
+                """;
+        CapturingInvoker invoker = new CapturingInvoker(invalid, invalid);
+        AgentModelProperties properties = AgentModelRegistryTest.properties();
+        FinalAnswerComposer composer = new FinalAnswerComposer(
+                invoker,
+                new AgentModelRegistry(properties),
+                properties,
+                new PromptCatalog(),
+                new ObjectMapper());
+
+        var result = composer.compose(new FinalAnswerComposer.FinalAnswerInput(
+                "统计这个指标",
+                "计算指标",
+                PlanIntent.INDICATOR_TRIAL_RUN,
+                List.of(RequestedOutput.TRIAL_RESULT),
+                "ollama-test",
+                LocalDate.of(2026, 7, 26),
+                "",
+                List.of(noSampleEvidence())));
+
+        assertThat(result.deterministicFallback()).isTrue();
+        assertThat(result.content())
+                .contains("指标率不适用", "| 指标率 | **不适用** |")
+                .doesNotContain("0 ÷ 0");
+    }
+
+    @Test
     void rejectsUnsupportedNationalCaliberClaimAndUsesReadableFallback() {
         String unsupported = """
                 # 患者入院 48 小时内转科的比例
@@ -235,6 +280,36 @@ class FinalAnswerComposerTest {
         EvidenceVerification verification = new EvidenceVerification(
                 EvidenceVerification.VERSION, "EVV_001", "EVD_001", "trace_001",
                 "subtask_001", "hospital_001", "plan-verifier-v1", "verified",
+                "PLAN_VERIFIED", "", now);
+        return new VerifiedEvidence(evidence, verification);
+    }
+
+    private static VerifiedEvidence noSampleEvidence() {
+        Instant now = Instant.parse("2026-07-26T00:00:00Z");
+        EvidenceEnvelope evidence = new EvidenceEnvelope(
+                EvidenceEnvelope.VERSION, "EVD_EMPTY", "trace_empty", "subtask_empty",
+                "trial_run", "hospital_001", "HXZD-001-001", "4",
+                "2026-01-01 00:00:00", "2026-02-01 00:00:00",
+                "execute_indicator_dual_store", "RUN_EMPTY", "input", "result",
+                "sensitive_reference", now, now.plusSeconds(3600), "RUN_EMPTY",
+                Map.of(
+                        "run_id", "RUN_EMPTY",
+                        "numerator_count", 0,
+                        "denominator_count", 0,
+                        "result_value", 0.0,
+                        "no_sample", true,
+                        "comparison_status", "matched",
+                        "business_result", Map.of(
+                                "numerator_count", 0,
+                                "denominator_count", 0,
+                                "result_value", 0.0),
+                        "real_result", Map.of(
+                                "numerator_count", 0,
+                                "denominator_count", 0,
+                                "result_value", 0.0)));
+        EvidenceVerification verification = new EvidenceVerification(
+                EvidenceVerification.VERSION, "EVV_EMPTY", "EVD_EMPTY", "trace_empty",
+                "subtask_empty", "hospital_001", "plan-verifier-v1", "verified",
                 "PLAN_VERIFIED", "", now);
         return new VerifiedEvidence(evidence, verification);
     }

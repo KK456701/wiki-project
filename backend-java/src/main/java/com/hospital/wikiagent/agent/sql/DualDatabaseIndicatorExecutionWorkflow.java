@@ -421,11 +421,19 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 objectMap(contract.get("overview_result_mapping"));
         String numeratorColumn = text(resultMapping.get("numerator_count"));
         String denominatorColumn = text(resultMapping.get("denominator_count"));
+        boolean numeratorColumnPresent = containsKey(first, numeratorColumn);
+        boolean denominatorColumnPresent = containsKey(first, denominatorColumn);
         Long numerator = longValue(value(first, numeratorColumn));
         Long denominator = longValue(value(first, denominatorColumn));
-        if (numerator == null || denominator == null) {
+        if (!numeratorColumnPresent || !denominatorColumnPresent) {
             throw new IllegalStateException("概览结果缺少分子或分母");
         }
+        /*
+         * SUM 在空数据集上会返回 NULL，但结果列仍然存在。此时业务含义是统计
+         * 区间没有样本，应规范化为 0/0；只有结果列本身不存在时才属于契约错误。
+         */
+        numerator = numerator == null ? 0L : numerator;
+        denominator = denominator == null ? 0L : denominator;
         String runId = id(role == DatabaseRole.BUSINESS ? "RUN_BUSINESS_" : "RUN_REAL_");
         Number rate = rate(numerator, denominator);
         long durationMs = elapsedMs(started);
@@ -632,6 +640,10 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             }
         }
         return null;
+    }
+
+    private static boolean containsKey(Map<String, Object> row, String key) {
+        return row.keySet().stream().anyMatch(column -> column.equalsIgnoreCase(key));
     }
 
     private static Long longValue(Object value) {

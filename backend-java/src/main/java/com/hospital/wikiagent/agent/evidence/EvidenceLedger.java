@@ -32,6 +32,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class EvidenceLedger implements EvidenceRecorder {
     private static final Set<String> SAFE_DATA_KEYS = Set.of(
             "rule_id", "rule_name", "definition", "formula", "effective_level",
+            "numerator_rule", "denominator_rule", "filter_rule", "exclude_rule",
+            "calculation_definition",
             "national_version", "hospital_version", "version", "mapping_status",
             "sql_status", "sql_id", "run_id", "result_id", "source_role", "db_source_id",
             "canonical_run_id", "extraction_id", "workflow_version",

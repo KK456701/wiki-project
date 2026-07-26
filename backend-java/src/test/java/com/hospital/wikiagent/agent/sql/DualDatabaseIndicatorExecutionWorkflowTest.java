@@ -97,6 +97,23 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     }
 
     @Test
+    void aggregateNullsAreTreatedAsEmptyStatisticsWhenColumnsExist() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        database.businessOverview = emptyOverview();
+        database.realOverview = emptyOverview();
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("comparison_status", "matched")
+                .containsEntry("numerator_count", 0L)
+                .containsEntry("denominator_count", 0L);
+        assertThat(database.calls).containsExactly("business:overview", "real:overview");
+    }
+
+    @Test
     void equalRateWithDifferentCountsStillRunsBothDetailLevels() {
         database.businessOverview = overview(1, 2);
         database.realOverview = overview(2, 4);
@@ -238,6 +255,13 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         return List.of(Map.of(
                 "numerator_count", numerator,
                 "denominator_count", denominator));
+    }
+
+    private static List<Map<String, Object>> emptyOverview() {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("numerator_count", null);
+        row.put("denominator_count", null);
+        return List.of(row);
     }
 
     @SuppressWarnings("unchecked")

@@ -152,21 +152,32 @@ public class FinalAnswerComposer {
         if (!caliberTrial.isEmpty()) trial = caliberTrial;
         if (!trial.isEmpty()) {
             String name = firstText(trial.get("rule_name"), rule.get("rule_name"), "该指标");
+            boolean noSample = isNoSample(trial);
+            String resultDisplay = noSample ? "不适用" : percent(trial.get("result_value"));
             StringBuilder value = new StringBuilder("# ").append(name).append(" · 统计结果\n\n")
-                    .append("> **结论速览**  \n> 指标率为 **")
-                    .append(percent(trial.get("result_value"))).append("**，统计区间为 ")
+                    .append("> **结论速览**  \n> ")
+                    .append(noSample ? "统计区间内无样本，指标率不适用" : "指标率为 **" + resultDisplay + "**")
+                    .append("，统计区间为 ")
                     .append(period(trial)).append("。\n\n")
                     .append("## 结果速览\n\n")
                     .append("| 统计项 | 结果 |\n|---|---:|\n")
                     .append("| 统计区间 | ").append(period(trial)).append(" |\n")
                     .append("| 分子 | ").append(firstText(trial.get("numerator_count"), "—")).append(" |\n")
                     .append("| 分母 | ").append(firstText(trial.get("denominator_count"), "—")).append(" |\n")
-                    .append("| 指标率 | **").append(percent(trial.get("result_value"))).append("** |\n\n")
+                    .append("| 指标率 | **").append(resultDisplay).append("** |\n\n")
                     .append(dualComparisonSection(trial))
                     .append("## 计算口径\n\n");
+            Map<String, Object> calculation = objectMap(rule.get("calculation_definition"));
             append(value, "计算公式", rule.get("formula"));
-            append(value, "分子口径", rule.get("numerator_rule"));
-            append(value, "分母口径", rule.get("denominator_rule"));
+            append(value, "分子口径", firstText(
+                    calculation.get("numerator_caliber"),
+                    rule.get("numerator_rule")));
+            append(value, "分母口径", firstText(
+                    calculation.get("denominator_caliber"),
+                    rule.get("denominator_rule")));
+            append(value, "统计时间字段", timeDimensionLabel(
+                    calculation.get("time_dimension")));
+            append(value, "去重键", calculation.get("dedup_key"));
             value.append("\n## 数据依据\n\n");
             append(value, "规则版本", firstText(trial.get("hospital_version"), rule.get("hospital_version")));
             append(value, "试运行对象", trial.get("run_id"));
@@ -270,10 +281,12 @@ public class FinalAnswerComposer {
                 .append("|---|---:|---:|---:|\n")
                 .append("| 业务库 | ").append(firstText(business.get("numerator_count"), "—"))
                 .append(" | ").append(firstText(business.get("denominator_count"), "—"))
-                .append(" | ").append(percent(business.get("result_value"))).append(" |\n")
+                .append(" | ").append(isNoSample(business)
+                        ? "不适用" : percent(business.get("result_value"))).append(" |\n")
                 .append("| 真实库 | ").append(firstText(real.get("numerator_count"), "—"))
                 .append(" | ").append(firstText(real.get("denominator_count"), "—"))
-                .append(" | ").append(percent(real.get("result_value"))).append(" |\n\n");
+                .append(" | ").append(isNoSample(real)
+                        ? "不适用" : percent(real.get("result_value"))).append(" |\n\n");
         if ("matched".equals(status)) {
             value.append("> 双库分子、分母完全一致。\n\n");
         } else {
@@ -286,6 +299,21 @@ public class FinalAnswerComposer {
             }
         }
         return value.toString();
+    }
+
+    private static boolean isNoSample(Map<String, Object> value) {
+        if (Boolean.TRUE.equals(value.get("no_sample"))) return true;
+        Object denominator = value.get("denominator_count");
+        if (denominator instanceof Number number) {
+            return number.doubleValue() == 0.0;
+        }
+        try {
+            return denominator != null
+                    && new java.math.BigDecimal(String.valueOf(denominator))
+                            .compareTo(java.math.BigDecimal.ZERO) == 0;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
     }
 
     private static Map<String, Object> latest(List<VerifiedEvidence> values, String factType) {
@@ -312,6 +340,15 @@ public class FinalAnswerComposer {
     private static String percent(Object value) {
         String text = firstText(value);
         return text.isBlank() || text.endsWith("%") ? text : text + "%";
+    }
+
+    private static String timeDimensionLabel(Object value) {
+        String raw = firstText(value);
+        if ("admitted_to_ward_at".equalsIgnoreCase(raw)
+                || "ward_entry_time".equalsIgnoreCase(raw)) {
+            return "首次入区时间";
+        }
+        return raw;
     }
 
     private static void append(StringBuilder target, String label, Object raw) {

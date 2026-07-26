@@ -22,7 +22,8 @@ class WikiRuleKnowledgeSourceTest {
 
     @Test
     void readsHxzdRuleAsDocumentationOnlyWhenExecutionContractIsMissing() {
-        Map<String, Object> rule = source.effectiveRule("患者入院 48 小时内转科的比例", "hospital_001");
+        Map<String, Object> rule = source.effectiveRule(
+                "患者入院 48 小时内转科的比例", "hospital_without_release");
 
         assertThat(rule.get("rule_id")).isEqualTo("HXZD-001-001");
         assertThat(rule.get("rule_source")).isEqualTo("wiki");
@@ -36,8 +37,10 @@ class WikiRuleKnowledgeSourceTest {
 
     @Test
     void fuzzySearchAndFieldMappingDoNotNeedRuntimeDatabase() {
-        Map<String, Object> search = source.searchForHospital("入院48小时转科比例", "hospital_001", 5);
-        Map<String, Object> mapping = source.fieldMapping("HXZD-001-001", "hospital_001");
+        Map<String, Object> search = source.searchForHospital(
+                "入院48小时转科比例", "hospital_without_release", 5);
+        Map<String, Object> mapping = source.fieldMapping(
+                "HXZD-001-001", "hospital_without_release");
 
         assertThat(search.get("resolved_rule_id")).isEqualTo("HXZD-001-001");
         assertThat(mapping.get("rule_source")).isEqualTo("wiki");
@@ -48,8 +51,9 @@ class WikiRuleKnowledgeSourceTest {
 
     @Test
     void exposesAllIndicatorsButNoUnverifiedProfilesForExecution() {
-        var indicators = source.activeIndicatorNames("hospital_001", 100);
-        var profiles = source.diagnosticProfiles("HXZD-001-001", "hospital_001");
+        var indicators = source.activeIndicatorNames("hospital_without_release", 100);
+        var profiles = source.diagnosticProfiles(
+                "HXZD-001-001", "hospital_without_release");
         var qualityRules = source.dataQualityRules("HXZD-001-001");
 
         assertThat(indicators).hasSize(35);
@@ -57,6 +61,21 @@ class WikiRuleKnowledgeSourceTest {
                 .contains("HXZD-001-001", "HXZD-016-002");
         assertThat(profiles).isEmpty();
         assertThat(qualityRules).isEmpty();
+    }
+
+    @Test
+    void hospitalReleaseOverridesCompanyDocumentationProfile() {
+        Map<String, Object> rule = source.effectiveRule(
+                "患者入院 48 小时内转科的比例", "hospital_001");
+
+        assertThat(rule)
+                .containsEntry("execution_status", "executable")
+                .containsEntry("sql_status", "available")
+                .containsEntry("knowledge_release_id",
+                        "KB-20260726-HOSPITAL001-DUALDB");
+        assertThat(rule.get("standard_sql")).asString().contains("MRAS_BUSINESS_FIRSTVISIT");
+        assertThat(source.fieldMapping("HXZD-001-001", "hospital_001"))
+                .containsEntry("status", "confirmed");
     }
 
     @Test

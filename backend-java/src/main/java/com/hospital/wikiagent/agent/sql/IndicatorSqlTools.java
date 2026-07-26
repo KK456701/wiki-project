@@ -465,6 +465,13 @@ public class IndicatorSqlTools {
         Map<String, Object> businessFields = objectMap(
                 objectMap(rule.get("field_contract")).get("business_fields"));
         required.addAll(businessFields.keySet());
+        /*
+         * 新版知识发布流程会在目标医院同时完成 business/real 两个数据源的元数据和
+         * 编译验证，并把结果固化进不可变 Profile。该发布契约比本机 SQLite 中可能
+         * 尚未同步的元数据缓存更权威；只有发布契约不完整时，才要求缓存中每个字段
+         * 都存在实际类型。字段映射缺失、未确认、类型冲突和关联缺失仍然始终阻断。
+         */
+        boolean publishedDualContractVerified = publishedDualContractVerified(rule);
         Set<String> mapped = new LinkedHashSet<>(objectMap(mapping.get("fields")).keySet());
         List<String> missing = required.stream().filter(value -> !mapped.contains(value)).sorted().toList();
         List<String> unconfirmed = listOfMaps(mapping.get("items")).stream()
@@ -503,11 +510,28 @@ public class IndicatorSqlTools {
             if (!found) missingRelations.add(mainTable + " -> " + other);
         }
         boolean ready = "confirmed".equals(mapping.get("status"))
-                && missing.isEmpty() && unconfirmed.isEmpty() && missingColumns.isEmpty()
+                && missing.isEmpty() && unconfirmed.isEmpty()
+                && (publishedDualContractVerified || missingColumns.isEmpty())
                 && typeMismatches.isEmpty() && missingRelations.isEmpty();
         return new Inspection(ready, mapped.stream().sorted().toList(), required.stream().sorted().toList(),
                 missing, unconfirmed, missingColumns.stream().sorted().toList(),
                 typeMismatches.stream().sorted().toList(), missingRelations.stream().sorted().toList());
+    }
+
+    private static boolean publishedDualContractVerified(Map<String, Object> rule) {
+        Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
+        if (!Boolean.TRUE.equals(contract.get("schema_compatible"))) {
+            return false;
+        }
+        Map<String, Object> sourceVerification = objectMap(contract.get("source_verification"));
+        for (String role : List.of("business", "real")) {
+            Map<String, Object> verification = objectMap(sourceVerification.get(role));
+            if (!"validated".equalsIgnoreCase(text(verification.get("metadata_status")))
+                    || !"validated".equalsIgnoreCase(text(verification.get("compile_status")))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean typesCompatible(String expected, String actual) {

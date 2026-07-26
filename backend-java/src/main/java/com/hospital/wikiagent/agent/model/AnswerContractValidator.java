@@ -40,6 +40,11 @@ public class AnswerContractValidator {
         if (template.preserveTrialNumbers()) {
             Map<String, Object> trial = latest(
                     evidence, List.of("caliber_trial_result", "trial_run"));
+            if (isNoSample(trial)
+                    && (!containsAny(content, List.of("指标率不适用", "指标率无法计算"))
+                            || content.contains("0 ÷ 0"))) {
+                return "无样本回答不得把0除以0表述成指标率";
+            }
             for (String field : List.of(
                     "numerator_count", "denominator_count", "result_value")) {
                 Object value = trial.get(field);
@@ -67,6 +72,20 @@ public class AnswerContractValidator {
         String claimError = validateCaliberClaims(content, evidence);
         if (claimError != null) return claimError;
         return null;
+    }
+
+    private static boolean isNoSample(Map<String, Object> trial) {
+        if (Boolean.TRUE.equals(trial.get("no_sample"))) return true;
+        Object denominator = trial.get("denominator_count");
+        if (denominator instanceof Number number) {
+            return number.doubleValue() == 0.0;
+        }
+        try {
+            return denominator != null
+                    && new BigDecimal(String.valueOf(denominator)).compareTo(BigDecimal.ZERO) == 0;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
     }
 
     /**

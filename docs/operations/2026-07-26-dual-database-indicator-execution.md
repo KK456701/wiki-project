@@ -76,3 +76,18 @@ SQL 或刷新患者明细。数字 `991827` 只作为 `hospital_scope_value` 绑
 - 双库不一致时报告只保存两个运行 ID 和安全计数。用户确认导出后，服务端才按两个
   运行 ID 分别生成短期明细快照，并输出“双方都有、仅业务库有、仅真实库有、字段与
   分子判定不同”的 Excel；患者行不写入报告、Evidence 或 Trace。
+
+## 2026-07-26 hospital_001 实库验收
+
+- 发布医院知识版本：`KB-20260726-HOSPITAL001-DUALDB`。
+- 已验证 Profile：`HXZD-001-001-company-default`。
+- `overview`、`department_detail`、`patient_detail` 已分别在
+  `winex_all_dev` 和 `winex_aima` 完成元数据及编译验证。
+- Java 运行时优先读取与当前公司基础版本一致的医院发布快照；医院快照缺失或基础
+  版本不一致时才回退公司文档版本。
+- 发布契约已同时验证两个数据源时，本机 SQLite 元数据缓存未同步不再重复阻断；
+  未携带完整双库验证契约的 Profile 仍必须通过本地元数据门禁。
+- 原始 SQL 的 `marptBeginAt/marptEndAt`、`startTime/endTime` 和
+  `start_time/end_time` 仅由 Java 绑定同一统计周期，SQL 正文不改写。
+- 实库数据范围核对显示两个新库在 `2026-01-01` 至 `2026-02-01` 均无该指标样本；
+  运行时应返回“分子 0、分母 0、指标率不适用，双库一致”，不得表述为 `0 ÷ 0 = 0%`。

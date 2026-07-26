@@ -156,6 +156,43 @@ class IndicatorSqlToolsTest {
     }
 
     @Test
+    void acceptsPublishedDualDatabaseVerificationWhenLocalMetadataCacheIsEmpty() {
+        Map<String, Object> verifiedRule = new LinkedHashMap<>(executableRule());
+        verifiedRule.put("dual_database_contract", Map.of(
+                "schema_compatible", true,
+                "source_verification", Map.of(
+                        "business", Map.of(
+                                "metadata_status", "validated",
+                                "compile_status", "validated"),
+                        "real", Map.of(
+                                "metadata_status", "validated",
+                                "compile_status", "validated"))));
+        when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(verifiedRule);
+
+        Map<String, Object> mappingWithoutCachedMetadata =
+                new LinkedHashMap<>(confirmedMapping());
+        List<Map<String, Object>> metadataWithoutTypes =
+                ((List<Map<String, Object>>) mappingWithoutCachedMetadata.get("metadata_items"))
+                        .stream()
+                        .map(item -> {
+                            Map<String, Object> copy = new LinkedHashMap<>(item);
+                            copy.put("metadata_data_type", "");
+                            return Map.copyOf(copy);
+                        })
+                        .toList();
+        mappingWithoutCachedMetadata.put("metadata_items", metadataWithoutTypes);
+        when(rules.fieldMapping(anyString(), anyString(), isNull()))
+                .thenReturn(mappingWithoutCachedMetadata);
+
+        ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
+                executionContext(runtimeContext, state));
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
+    }
+
+    @Test
     void rejectsDocumentationOnlyProfileBeforeDatabaseAccess() {
         Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
         documentationOnly.put("execution_status", "documentation_only");

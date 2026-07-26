@@ -140,6 +140,11 @@ docs/                         当前架构、运维记录和历史设计资料
 
 当前生成结果为 `documentation_only=42`、`draft=3`、`executable=0`。这表示 35 项指标均可检索和解释，但在医院字段契约与统一结果列映射完成验证前，当前版本不会访问 DBHub 试运行这些 Profile。
 
+医院验证通过后使用独立医院 release 和 `pointers/hospitals/{hospital_id}-current.json`
+覆盖执行状态，不修改公司基础版本。当前 `hospital_001` 已发布
+`KB-20260726-HOSPITAL001-DUALDB`，其中 `HXZD-001-001-company-default`
+已通过 `winex_all_dev` 与 `winex_aima` 的元数据、编译和结果列契约验证。
+
 生成器不会改写表、字段、JOIN、业务条件、阈值、去重、分子分母或时间边界。它只会
 机械修复非法 `NOLOCK`、`WHERE + 注释 + AND` 和无业务意义控制字符，并把原始哈希、
 执行哈希、行号及前后差异写入 `sql-correction-manifest.json`。参数别名只写入机器

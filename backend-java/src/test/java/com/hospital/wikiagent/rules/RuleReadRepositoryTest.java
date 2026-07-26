@@ -50,7 +50,8 @@ class RuleReadRepositoryTest {
 
     @Test
     void returnsDocumentationProfileWithoutExecutableSql() {
-        var rule = repository.effectiveRule("HXZD-001-001", "hospital_001");
+        var rule = repository.effectiveRule(
+                "HXZD-001-001", "hospital_without_release");
 
         assertThat(rule)
                 .containsEntry("rule_id", "HXZD-001-001")
@@ -63,8 +64,10 @@ class RuleReadRepositoryTest {
 
     @Test
     void doesNotExposeUnverifiedProfilesForExecution() {
-        assertThat(repository.caliberProfiles("HXZD-001-001", "hospital_001")).isEmpty();
-        assertThat(repository.diagnosticProfiles("HXZD-001-001", "hospital_001")).isEmpty();
+        assertThat(repository.caliberProfiles(
+                "HXZD-001-001", "hospital_without_release")).isEmpty();
+        assertThat(repository.diagnosticProfiles(
+                "HXZD-001-001", "hospital_without_release")).isEmpty();
     }
 
     @Test
