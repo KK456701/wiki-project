@@ -85,9 +85,14 @@ public class IndicatorSqlTools {
         data.put("relations", safeRelations(listOfMaps(mapping.get("relations"))));
         data.put("query_profile", mapping.get("query_profile"));
         data.put("sql_status", rule.getOrDefault("sql_status", "unavailable"));
-        String summary = inspection.ready()
-                ? "指标实施映射已确认。"
-                : "指标实施仍有缺失或未确认映射。";
+        data.put("profile_id", rule.get("profile_id"));
+        data.put("execution_status", rule.get("execution_status"));
+        data.put("execution_blockers", rule.get("execution_blockers"));
+        String summary = !"executable".equals(text(rule.get("execution_status")))
+                ? "当前口径仅支持规则解释，尚未开放数据库执行。"
+                : inspection.ready()
+                        ? "指标实施映射已确认。"
+                        : "指标实施仍有缺失或未确认映射。";
         return ToolResult.success("IMPLEMENTATION_INSPECTED", summary, data);
     }
 
@@ -158,8 +163,20 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "STAT_PERIOD_INVALID", "统计开始时间必须早于结束时间。", false);
         }
 
-        Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
-        Map<String, Object> rawMapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
+        Map<String, Object> rule = rules.effectiveRule(
+                input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
+        if (!"executable".equals(text(rule.get("execution_status")))) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("rule_id", input.ruleId());
+            data.put("profile_id", rule.get("profile_id"));
+            data.put("execution_status", rule.get("execution_status"));
+            data.put("execution_blockers", rule.get("execution_blockers"));
+            return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
+                    "当前口径仅支持定义和公式解释，尚未通过字段与结果契约校验，不能执行数据库试运行。",
+                    false, data);
+        }
+        Map<String, Object> rawMapping = rules.fieldMapping(
+                input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
         Map<String, Object> mapping = withExecutionDefaults(rawMapping);
         try {
             mapping = applyDiagnosticFieldRoleOverrides(mapping, fieldRoleOverrides);
@@ -211,11 +228,12 @@ public class IndicatorSqlTools {
         String statStart = start.format(SQL_TIME);
         String statEnd = end.format(SQL_TIME);
         String sourceId = sourceId(context);
-        Map<String, Object> diagnosticExecution = diagnosticProfileId == null
-                ? Map.of()
-                : Map.of(
-                        "diagnostic_profile_id", diagnosticProfileId,
-                        "field_role_overrides", fieldRoleOverrides);
+        Map<String, Object> diagnosticExecution = new LinkedHashMap<>();
+        diagnosticExecution.put("profile_id", rule.get("profile_id"));
+        if (diagnosticProfileId != null) {
+            diagnosticExecution.put("diagnostic_profile_id", diagnosticProfileId);
+            diagnosticExecution.put("field_role_overrides", fieldRoleOverrides);
+        }
         Map<String, Object> snapshot = contextSnapshot(
                 rule, mapping, params, statStart, statEnd, sourceId, diagnosticExecution);
         String digest = digest(snapshot);
@@ -239,6 +257,7 @@ public class IndicatorSqlTools {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("sql_id", sqlId);
         data.put("rule_id", input.ruleId());
+        data.put("profile_id", rule.get("profile_id"));
         data.put("hospital_id", context.agentContext().hospitalId());
         data.put("db_source_id", sourceId);
         data.put("context_digest", digest);
@@ -277,11 +296,13 @@ public class IndicatorSqlTools {
             return failure(forbidden ? "forbidden" : "unavailable", exception.code(), exception.getMessage(), false);
         }
 
-        Map<String, Object> currentRule = rules.effectiveRule(sql.ruleId(), context.agentContext().hospitalId());
-        Map<String, Object> currentMapping = withExecutionDefaults(
-                rules.fieldMapping(sql.ruleId(), context.agentContext().hospitalId()));
         Map<String, Object> storedExecution =
                 objectMap(sql.contextSnapshot().get("execution_context"));
+        String profileId = text(storedExecution.get("profile_id"));
+        Map<String, Object> currentRule = rules.effectiveRule(
+                sql.ruleId(), context.agentContext().hospitalId(), profileId);
+        Map<String, Object> currentMapping = withExecutionDefaults(
+                rules.fieldMapping(sql.ruleId(), context.agentContext().hospitalId(), profileId));
         try {
             currentMapping = applyDiagnosticFieldRoleOverrides(
                     currentMapping,
@@ -360,6 +381,7 @@ public class IndicatorSqlTools {
             data.put("hospital_id", context.agentContext().hospitalId());
             data.put("db_source_id", sql.dbSourceId());
             data.put("rule_id", sql.ruleId());
+            data.put("profile_id", profileId);
             data.put("context_digest", sql.contextDigest());
             data.put("stat_start", sql.statStart());
             data.put("stat_end", sql.statEnd());

@@ -3,7 +3,7 @@ page_type: sql_spec
 rule_id: HXZD-001-001
 database_type: sqlserver
 status: published
-updated_at: 2026-07-25
+updated_at: 2026-07-26
 ---
 
 # SQL 规格：患者入院48小时内转科的比例

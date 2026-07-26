@@ -1,9 +1,12 @@
 package com.hospital.wikiagent.agent.diagnosis;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +40,7 @@ class IndicatorDiagnosisToolsTest {
     private JdbcTemplate jdbc;
     private StubBusinessQuery business;
     private IndicatorDiagnosisTools diagnosis;
+    private RuleReadRepository rules;
     private AgentRunState state;
     private ToolExecutionContext context;
 
@@ -51,8 +55,9 @@ class IndicatorDiagnosisToolsTest {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .build();
-        seed();
-        RuleReadRepository rules = new RuleReadRepository(jdbc, objectMapper);
+        rules = mock(RuleReadRepository.class);
+        when(rules.effectiveRule(anyString(), anyString())).thenReturn(executableRule());
+        when(rules.fieldMapping(anyString(), anyString())).thenReturn(confirmedMapping());
         business = new StubBusinessQuery();
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 rules, new SqlObjectRepository(jdbc, objectMapper), new SqlTemplateRenderer(),
@@ -60,7 +65,7 @@ class IndicatorDiagnosisToolsTest {
         diagnosis = new IndicatorDiagnosisTools(
                 rules, sqlTools, business, new DiagnosisReportRepository(jdbc, objectMapper));
         state = new AgentRunState();
-        state.currentRuleId("MQSI2025_005");
+        state.currentRuleId("HXZD-003-001");
         AgentRuntimeContext runtime = new AgentRuntimeContext(
                 new HospitalPrincipal("u1", "doctor", "h1", Set.of(), false, "login-session"),
                 "request-1", "trace-1", "business_test");
@@ -73,7 +78,7 @@ class IndicatorDiagnosisToolsTest {
     void persistsThreeLayerHealthyDiagnosisWithAggregateOnlyDbHubChecks() {
         ToolResult result = diagnosis.diagnose(
                 new IndicatorDiagnosisTools.Input(
-                        "MQSI2025_005", "排查这个指标为什么异常", "2026-01-01T00:00~2026-04-01T00:00"),
+                        "HXZD-003-001", "排查这个指标为什么异常", "2026-01-01T00:00~2026-04-01T00:00"),
                 context);
 
         assertThat(result.ok()).isTrue();
@@ -87,10 +92,24 @@ class IndicatorDiagnosisToolsTest {
 
     @Test
     void stopsAtStructureLayerWhenLatestMetadataColumnIsMissing() {
-        jdbc.update("DELETE FROM med_metadata_column WHERE column_name='arrive_time'");
+        Map<String, Object> mapping = new LinkedHashMap<>(confirmedMapping());
+        List<Map<String, Object>> metadata = new ArrayList<>(
+                (List<Map<String, Object>>) mapping.get("metadata_items"));
+        metadata.replaceAll(item -> "arrive_time".equals(item.get("business_field"))
+                ? Map.of(
+                        "business_field", "arrive_time",
+                        "table_name", "consult_record",
+                        "column_name", "arrive_time",
+                        "data_type", "datetime",
+                        "mapping_data_type", "datetime",
+                        "metadata_data_type", "",
+                        "status", "confirmed")
+                : item);
+        mapping.put("metadata_items", metadata);
+        when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
 
         ToolResult result = diagnosis.diagnose(
-                new IndicatorDiagnosisTools.Input("MQSI2025_005", "排查字段问题", null), context);
+                new IndicatorDiagnosisTools.Input("HXZD-003-001", "排查字段问题", null), context);
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry("diagnose_status", "failed");
@@ -104,7 +123,7 @@ class IndicatorDiagnosisToolsTest {
         business.fail = true;
 
         ToolResult result = diagnosis.diagnose(
-                new IndicatorDiagnosisTools.Input("MQSI2025_005", "排查业务库访问失败", null), context);
+                new IndicatorDiagnosisTools.Input("HXZD-003-001", "排查业务库访问失败", null), context);
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry("diagnose_status", "failed");
@@ -113,41 +132,59 @@ class IndicatorDiagnosisToolsTest {
                 .doesNotContain("password", "internal");
     }
 
-    private void seed() {
-        LocalDateTime now = LocalDateTime.now();
-        String fieldContract = """
-                {"business_fields":{"hospital_id":{"required":true,"type":"code"},
-                "request_time":{"required":true,"type":"datetime"},
-                "arrive_time":{"required":true,"type":"datetime"},
-                "consult_type":{"required":true,"type":"code"}}}
-                """;
+    private static Map<String, Object> executableRule() {
         String sql = """
                 SELECT CASE WHEN COUNT(*)=0 THEN 0 ELSE 25.0 END AS index_value
                 FROM consult_record
                 WHERE hospital_id=:hospital_id AND request_time>=:start_time AND request_time<:end_time
                 """;
-        jdbc.update(
-                "INSERT INTO med_index_standard "
-                        + "(index_code,index_name,index_type,index_desc,stat_cycle,numerator_rule,denominator_rule,"
-                        + "filter_rule,exclude_rule,rely_table_field,calculation_definition,standard_sql,rule_params,"
-                        + "source_path,version,status,create_time,update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                "MQSI2025_005", "急会诊及时到位率", "会诊制度", "及时到位次数占总次数比例。", "month",
-                "及时到位次数", "急会诊总次数", "", "", fieldContract, "{}", sql,
-                "{\"consult_type_value\":\"急会诊\"}", "rules/source.yml", "2025", 1, now, now);
-        for (String field : List.of("hospital_id", "request_time", "arrive_time", "consult_type")) {
-            jdbc.update(
-                    "INSERT INTO med_field_mapping "
-                            + "(hospital_id,rule_id,business_field,db_name,table_name,column_name,data_type,status) "
-                            + "VALUES (?,?,?,?,?,?,?,?)",
-                    "h1", "MQSI2025_005", field, "business_test", "consult_record", field,
-                    field.endsWith("time") ? "datetime" : "varchar", "confirmed");
-            jdbc.update(
-                    "INSERT INTO med_metadata_column "
-                            + "(hospital_id,db_name,table_name,column_name,data_type,sync_batch_id,sync_time) "
-                            + "VALUES (?,?,?,?,?,?,?)",
-                    "h1", "business_test", "consult_record", field,
-                    field.endsWith("time") ? "datetime" : "varchar", "batch-1", now);
-        }
+        return Map.ofEntries(
+                Map.entry("rule_id", "HXZD-003-001"),
+                Map.entry("rule_name", "急会诊及时到位率"),
+                Map.entry("profile_id", "company-default"),
+                Map.entry("definition", "急会诊及时到位次数占总次数比例。"),
+                Map.entry("formula", "分子 ÷ 分母 × 100%"),
+                Map.entry("execution_status", "executable"),
+                Map.entry("standard_sql", sql),
+                Map.entry("field_contract", Map.of("business_fields", Map.of(
+                        "hospital_id", Map.of("required", true, "type", "code"),
+                        "request_time", Map.of("required", true, "type", "datetime"),
+                        "arrive_time", Map.of("required", true, "type", "datetime"),
+                        "consult_type", Map.of("required", true, "type", "code")))),
+                Map.entry("effective_params", Map.of("consult_type_value", "急会诊")),
+                Map.entry("overridden_fields", List.of()));
+    }
+
+    private static Map<String, Object> confirmedMapping() {
+        List<Map<String, Object>> items = List.of(
+                mappingItem("hospital_id", "varchar"),
+                mappingItem("request_time", "datetime"),
+                mappingItem("arrive_time", "datetime"),
+                mappingItem("consult_type", "varchar"));
+        return Map.of(
+                "status", "confirmed",
+                "dialect", "sqlserver",
+                "schema", "dbo",
+                "main_table", "consult_record",
+                "fields", Map.of(
+                        "hospital_id", "consult_record.hospital_id",
+                        "request_time", "consult_record.request_time",
+                        "arrive_time", "consult_record.arrive_time",
+                        "consult_type", "consult_record.consult_type"),
+                "items", items,
+                "metadata_items", items,
+                "relations", List.of());
+    }
+
+    private static Map<String, Object> mappingItem(String field, String type) {
+        return Map.of(
+                "business_field", field,
+                "table_name", "consult_record",
+                "column_name", field,
+                "data_type", type,
+                "mapping_data_type", type,
+                "metadata_data_type", type,
+                "status", "confirmed");
     }
 
     private static class StubBusinessQuery implements IndicatorBusinessQueryClient {

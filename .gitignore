@@ -38,3 +38,22 @@ frontend-vue/.vite/
 
 # 临时文件（测试截图、导出文档等）。
 tmp/
+/output/
+/.vscode/
+
+# 本地一次性数据库探测与人工核对产物。
+# 可重复的 Wiki 契约校验保留在 scripts/build-wiki-from-markdown.mjs
+# 和 scripts/validate-wiki-contract.mjs 中并纳入 CI。
+/scripts/db_*.py
+/scripts/test_batch_*.py
+/scripts/test_sql_exec.py
+/scripts/*_log.txt
+/scripts/*.txt
+/scripts/align.py
+/scripts/compare_sql.py
+/scripts/diagnose_dept.py
+/scripts/diff_sql.py
+/scripts/explore_excel.py
+/scripts/extract_excel_sql.py
+/scripts/update_md_sql.py
+/scripts/verify_update.py

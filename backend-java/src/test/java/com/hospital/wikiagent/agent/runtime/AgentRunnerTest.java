@@ -1,9 +1,11 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ import com.hospital.wikiagent.agent.evidence.EvidenceLedger;
 import com.hospital.wikiagent.agent.evidence.EvidenceStore;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerification;
 import com.hospital.wikiagent.agent.evidence.EvidenceVerifier;
+import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.model.AgentModelInvoker;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
@@ -51,8 +54,6 @@ import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.agent.sql.SqlTemplateRenderer;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
-import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
-import com.hospital.wikiagent.agent.validation.ImplementationValidationWorkflow;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
@@ -160,13 +161,13 @@ class AgentRunnerTest {
                         "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
                 events::add,
                 new HybridIndicatorResolver.ResolvedIndicator(
-                        "急会诊及时到位率", "急会诊及时到位率", "MQSI2025_005",
-                        "RULE:MQSI2025_005", "rule", 1.0, 0, 9));
+                        "急会诊及时到位率", "急会诊及时到位率", "HXZD-003-001",
+                        "RULE:HXZD-003-001", "rule", 1.0, 0, 9));
 
         assertThat(result.stopReason()).as(result.answer() + " " + events).isEqualTo("final_answer");
         assertThat(result.answer()).contains("分子", "分母");
         assertThat(result.requestPlan().targetIndicator().rawName()).isEqualTo("急会诊及时到位率");
-        assertThat(result.requestPlan().targetIndicator().ruleId()).isEqualTo("MQSI2025_005");
+        assertThat(result.requestPlan().targetIndicator().ruleId()).isEqualTo("HXZD-003-001");
         assertThat(result.stepCount()).isEqualTo(1);
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
@@ -232,8 +233,8 @@ class AgentRunnerTest {
                         "hospital_001:user_001:session_caliber_current",
                         "session_caliber_current",
                         "用户：急会诊及时到位率从一月到现在是多少？",
-                        "{\"active_rule_id\":\"MQSI2025_005\"}",
-                        "MQSI2025_005",
+                        "{\"active_rule_id\":\"HXZD-003-001\"}",
+                        "HXZD-003-001",
                         "急会诊及时到位率",
                         null,
                         null,
@@ -348,8 +349,8 @@ class AgentRunnerTest {
                         "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
                 events::add,
                 new HybridIndicatorResolver.ResolvedIndicator(
-                        "急会诊及时到位率", "急会诊及时到位率", "MQSI2025_005",
-                        "RULE:MQSI2025_005", "rule", 1.0, 0, 9));
+                        "急会诊及时到位率", "急会诊及时到位率", "HXZD-003-001",
+                        "RULE:HXZD-003-001", "rule", 1.0, 0, 9));
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.requestPlan().goal()).isEqualTo("纠正后解释指标定义和公式");
@@ -635,7 +636,7 @@ class AgentRunnerTest {
                 "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
         var conversation = memory.open(principal, "session_followup");
         AgentRunState previousState = new AgentRunState();
-        previousState.currentRuleId("MQSI2025_005");
+        previousState.currentRuleId("HXZD-003-001");
         previousState.statPeriod("2026-01-01 00:00:00", "2026-07-22 19:48:59");
         memory.appendAssistant(conversation, principal,
                 "急会诊及时到位率统计区间为2026-01-01 00:00:00至2026-07-22 19:48:59。",
@@ -666,53 +667,18 @@ class AgentRunnerTest {
     }
 
     @Test
-    void normalizesExplicitValidationRequestAndUsesFixedWorkflowWithoutFinalAnswerLlm() {
+    void rejectsRemovedImplementationValidationBeforePlannerOrTools() {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .build();
-        SqlFixture fixture = sqlFixture(objectMapper);
-        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
-                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
-                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
-                new IndicatorBusinessQueryClient() {
-                    @Override
-                    public List<Map<String, Object>> execute(String sql) {
-                        return List.of(Map.of(
-                                "index_value", 25.0,
-                                "numerator_count", 1,
-                                "denominator_count", 4));
-                    }
-
-                    @Override
-                    public String sourceId() {
-                        return "business_test";
-                    }
-                }, objectMapper);
-        UploadedIndicatorTools uploads = mock(UploadedIndicatorTools.class);
-        ImplementationValidationTools validationTools = new ImplementationValidationTools(
-                new ImplementationValidationWorkflow(sqlTools, uploads));
-        ToolRegistry tools = new ToolRegistry(
-                fixture.rules(), sqlTools, null, uploads, validationTools);
+        ToolRegistry tools = new ToolRegistry(ruleRepository(objectMapper));
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
         AgentModelProperties properties = modelProperties();
         EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
         EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
         gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
-        QueueInvoker models = new QueueInvoker(
-                """
-                {
-                  "schema_version": "request-plan-v2",
-                  "intent": "rule_explanation",
-                  "goal": "解释急会诊及时到位率",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {},
-                  "requested_outputs": ["definition", "formula"],
-                  "constraints": [],
-                  "semantic_ambiguities": [],
-                  "confidence": 0.9
-                }
-                """);
+        QueueInvoker models = new QueueInvoker();
         AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
@@ -734,20 +700,16 @@ class AgentRunnerTest {
                 events::add);
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
-        assertThat(result.answer()).contains("指标全面实施验收报告", "L1", "L4", "L5", "L6", "总体结论");
-        assertThat(result.requestPlan().intent().name()).isEqualTo("IMPLEMENTATION_VALIDATION");
+        assertThat(result.answer()).contains("当前系统不提供", "全面实施验收");
+        assertThat(result.requestPlan().intent()).isEqualTo(PlanIntent.UNKNOWN);
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
-                .containsExactly(
-                        "search_indicator_rules", "get_effective_rule",
-                        "inspect_indicator_implementation", "validate_indicator_implementation");
+                .isEmpty();
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
-                .contains("implementation_validation_l1", "implementation_validation_l4",
-                        "implementation_validation_l5", "implementation_validation_l6",
-                        "implementation_validation_answer")
-                .doesNotContain("final_answer_llm");
-        assertThat(models.calls).isEqualTo(1);
+                .contains("unsupported_feature_guard")
+                .doesNotContain("planner_llm", "final_answer_llm");
+        assertThat(models.calls).isZero();
     }
 
     private static RuleReadRepository ruleRepository(ObjectMapper objectMapper) {
@@ -756,17 +718,7 @@ class AgentRunnerTest {
                 .setType(EmbeddedDatabaseType.H2)
                 .addScript("classpath:test-runtime-schema.sql")
                 .build();
-        JdbcTemplate jdbc = new JdbcTemplate(database);
-        LocalDateTime now = LocalDateTime.now();
-        jdbc.update(
-                "INSERT INTO med_index_standard "
-                        + "(index_code,index_name,index_type,index_desc,stat_cycle,numerator_rule,denominator_rule,"
-                        + "filter_rule,exclude_rule,rely_table_field,calculation_definition,standard_sql,rule_params,"
-                        + "source_path,version,status,create_time,update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                "MQSI2025_005", "急会诊及时到位率", "会诊制度", "急会诊及时到位次数占总次数的比例。", "month",
-                "20分钟内到位次数", "急会诊总次数", "", "", "{}", "{}", "SELECT 1", "{}",
-                "rules/source.yml", "2025", 1, now, now);
-        return new RuleReadRepository(jdbc, objectMapper);
+        return new RuleReadRepository(new JdbcTemplate(database), objectMapper);
     }
 
     private static SqlFixture sqlFixture(ObjectMapper objectMapper) {
@@ -776,11 +728,39 @@ class AgentRunnerTest {
                 .addScript("classpath:test-runtime-schema.sql")
                 .build();
         JdbcTemplate jdbc = new JdbcTemplate(database);
-        LocalDateTime now = LocalDateTime.now();
-        String fieldContract = """
-                {"business_fields":{"hospital_id":{"required":true},"request_time":{"required":true},
-                "arrive_time":{"required":true},"consult_type":{"required":true}}}
-                """;
+        RuleReadRepository rules = mock(RuleReadRepository.class);
+        Map<String, Object> rule = executableRule();
+        Map<String, Object> mapping = confirmedMapping();
+        Map<String, Object> search = Map.of(
+                "query", "急会诊及时到位率",
+                "hospital_id", "hospital_001",
+                "resolved_rule_id", "HXZD-003-001",
+                "matches", List.of(Map.of(
+                        "rule_id", "HXZD-003-001",
+                        "rule_name", "急会诊及时到位率",
+                        "category", "会诊制度")),
+                "rule_source", "wiki");
+        when(rules.searchForHospital(anyString(), anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                .thenReturn(search);
+        when(rules.effectiveRule(anyString(), anyString())).thenReturn(rule);
+        when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(rule);
+        when(rules.effectiveRule(anyString(), anyString(), anyString())).thenReturn(rule);
+        when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
+        when(rules.fieldMapping(anyString(), anyString(), isNull())).thenReturn(mapping);
+        when(rules.fieldMapping(anyString(), anyString(), anyString())).thenReturn(mapping);
+        return new SqlFixture(rules, jdbc);
+    }
+
+    private record SqlFixture(RuleReadRepository rules, JdbcTemplate jdbc) {}
+
+    /**
+     * SQL 运行链测试使用显式的可执行 Profile 夹具。
+     *
+     * <p>真实 Wiki 中未完成字段和结果映射验证的 Profile 必须保持
+     * documentation_only；测试若要覆盖 SQL 运行链，应自行构造已验证契约，
+     * 不能把生产知识库中的未验证方案临时提升为 executable。</p>
+     */
+    private static Map<String, Object> executableRule() {
         String sql = """
                 SELECT CASE WHEN COUNT(*)=0 THEN 0 ELSE 25.0 END AS index_value,
                        1 AS numerator_count,4 AS denominator_count,4 AS sample_count
@@ -788,32 +768,61 @@ class AgentRunnerTest {
                 WHERE hospital_id=:hospital_id AND consult_type=:consult_type_value
                   AND request_time>=:start_time AND request_time<:end_time
                 """;
-        jdbc.update(
-                "INSERT INTO med_index_standard "
-                        + "(index_code,index_name,index_type,index_desc,stat_cycle,numerator_rule,denominator_rule,"
-                        + "filter_rule,exclude_rule,rely_table_field,calculation_definition,standard_sql,rule_params,"
-                        + "source_path,version,status,create_time,update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                "MQSI2025_005", "急会诊及时到位率", "会诊制度", "及时到位次数占总次数比例。", "month",
-                "及时到位次数", "急会诊总次数", "", "", fieldContract, "{}", sql,
-                "{\"consult_type_value\":\"急会诊\"}", "rules/source.yml", "2025", 1, now, now);
-        for (String field : List.of("hospital_id", "request_time", "arrive_time", "consult_type")) {
-            jdbc.update(
-                    "INSERT INTO med_field_mapping "
-                            + "(hospital_id,rule_id,business_field,db_name,table_name,column_name,data_type,status) "
-                            + "VALUES (?,?,?,?,?,?,?,?)",
-                    "hospital_001", "MQSI2025_005", field, "business_test", "consult_record", field,
-                    "varchar", "confirmed");
-            jdbc.update(
-                    "INSERT INTO med_metadata_column "
-                            + "(hospital_id,db_name,table_name,column_name,data_type,sync_batch_id,sync_time) "
-                            + "VALUES (?,?,?,?,?,?,?)",
-                    "hospital_001", "business_test", "consult_record", field,
-                    field.endsWith("time") ? "datetime" : "varchar", "batch-1", now);
-        }
-        return new SqlFixture(new RuleReadRepository(jdbc, objectMapper), jdbc);
+        return Map.ofEntries(
+                Map.entry("rule_id", "HXZD-003-001"),
+                Map.entry("rule_name", "急会诊及时到位率"),
+                Map.entry("category", "会诊制度"),
+                Map.entry("profile_id", "HXZD-003-001-company-default"),
+                Map.entry("execution_status", "executable"),
+                Map.entry("definition", "急会诊及时到位次数占总次数的比例。"),
+                Map.entry("formula", "及时到位次数 ÷ 急会诊总次数 × 100%"),
+                Map.entry("numerator_rule", "及时到位次数"),
+                Map.entry("denominator_rule", "急会诊总次数"),
+                Map.entry("standard_sql", sql),
+                Map.entry("field_contract", Map.of("business_fields", Map.of(
+                        "hospital_id", Map.of("type", "string"),
+                        "request_time", Map.of("type", "datetime"),
+                        "arrive_time", Map.of("type", "datetime"),
+                        "consult_type", Map.of("type", "string")))),
+                Map.entry("effective_params", Map.of("consult_type_value", "急会诊")),
+                Map.entry("hospital_version", 1),
+                Map.entry("national_version", "2025"));
     }
 
-    private record SqlFixture(RuleReadRepository rules, JdbcTemplate jdbc) {}
+    private static Map<String, Object> confirmedMapping() {
+        List<Map<String, Object>> items = List.of(
+                mappingItem("hospital_id", "varchar"),
+                mappingItem("request_time", "datetime"),
+                mappingItem("arrive_time", "datetime"),
+                mappingItem("consult_type", "varchar"));
+        return Map.ofEntries(
+                Map.entry("rule_id", "HXZD-003-001"),
+                Map.entry("profile_id", "HXZD-003-001-company-default"),
+                Map.entry("dialect", "sqlserver"),
+                Map.entry("db_name", "business_test"),
+                Map.entry("schema", "dbo"),
+                Map.entry("main_table", "consult_record"),
+                Map.entry("status", "confirmed"),
+                Map.entry("fields", Map.of(
+                        "hospital_id", "consult_record.hospital_id",
+                        "request_time", "consult_record.request_time",
+                        "arrive_time", "consult_record.arrive_time",
+                        "consult_type", "consult_record.consult_type")),
+                Map.entry("items", items),
+                Map.entry("metadata_items", items),
+                Map.entry("relations", List.of()));
+    }
+
+    private static Map<String, Object> mappingItem(String field, String dataType) {
+        return Map.of(
+                "business_field", field,
+                "table_name", "consult_record",
+                "column_name", field,
+                "data_type", dataType,
+                "mapping_data_type", dataType,
+                "metadata_data_type", dataType,
+                "status", "confirmed");
+    }
 
     private static AgentModelProperties modelProperties() {
         AgentModelProperties properties = new AgentModelProperties();

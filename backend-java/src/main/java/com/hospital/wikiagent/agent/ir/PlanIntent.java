@@ -18,7 +18,6 @@ public enum PlanIntent {
     INDICATOR_DIFFERENCE_DIAGNOSIS("indicator_difference_diagnosis"),
     RULE_CHANGE_PREVIEW("rule_change_preview"),
     UPLOAD_ANALYSIS("upload_analysis"),
-    IMPLEMENTATION_VALIDATION("implementation_validation"),
     UNKNOWN("unknown");
 
     private final String value;

@@ -7,8 +7,8 @@ Vue 3 + TypeScript
         │ HTTP / SSE
         ▼
 Java 17 + Spring Boot 3.5.16 + Spring AI 1.1.8
-        ├── core-rules-wiki：规则、医院口径、字段映射和 SQL 规格
-        ├── SQLite：账号、会话、Trace、Evidence、审批和运行对象
+        ├── core-rules-wiki：HXZD 规则、Profile、字段契约和 SQL 规格
+        ├── SQLite：账号、会话、Trace、Evidence 和短期运行对象
         ├── DBHub sidecar：只读访问医院 SQL Server
         └── Ollama / DeepSeek API：Planner、候选消歧和最终回答
 ```
@@ -20,8 +20,9 @@ Python FastAPI 运行时、Python 测试、旧原生前端和双栈切流脚本�
 - 指标识别：正式名称/审核同义词规则匹配、本地字符语义召回、候选范围内 LLM 消歧。
 - 对话式澄清：缺指标、指标歧义、缺时间、意图不清或候选口径不唯一时，不再直接显示运行失败；服务端返回结构化反问，前端提供可搜索的指标列表、常用时间范围和业务动作。用户选择后会携带原问题与结构化上下文重新进入完整 Agent 链路。
 - 多指标请求：服务端确定性拆分 2～3 个指标；API 模型最多并发 2，本地 Ollama 串行。
-- 指标解释：查询 Wiki 中的定义、公式、分子、分母、本院覆盖口径和版本。
-- 指标计算：从 Wiki 读取受控 SQL 规格，确定性生成 SQL，经安全校验后只通过 DBHub 试运行。
+- 指标解释：35 项 HXZD 指标均可查询 Wiki 中的定义、公式、分子、分母和 Profile 状态。
+- 分级执行：Profile 分为 `executable`、`documentation_only` 和 `draft`；只有审批完成且通过 SQL、参数、字段及结果契约校验的 `executable` Profile 才能访问 DBHub。
+- 指标计算：从同一 `rule_id + profile_id` 读取受控 SQL 规格，确定性生成 SQL，经字段、元数据和只读安全校验后只通过 DBHub 试运行。
 - SQL 解释：生成受控 SQL 时同步展示本院生效定义、公式、分子、分母、纳入和排除口径，避免脚本与业务口径脱节。
 - 候选口径模拟：对“那根据入区怎么算”等追问，从 Wiki 的已审批候选 profile 中按规则、本地字符语义和候选内 LLM 消歧，复用上一轮指标与统计周期，生成受控 SQL 并只读试运行；未设置失效日期的 profile 按长期有效处理，回答明确标注为模拟口径。
 - 目标一致性校验：Planner 之后、IR 编译之前确定性核对原问题与计划；明确区分“根据什么口径算的”这类当前规则追问与“根据入区怎么算”这类候选模拟，复杂语义才调用审核模型，确认不一致时最多 Replan 一次，仍错误且存在唯一安全方向时由服务端生成受控修正计划。
@@ -31,9 +32,7 @@ Python FastAPI 运行时、Python 测试、旧原生前端和双栈切流脚本�
 - 上传比较：分析 `.xlsx` 汇总或逐条明细，输出双方都有、仅系统有、仅文件有及字段差异。
 - 结果差异分层诊断：对“用户100、系统98”和上传文件核对自动进入固定 Workflow，依次执行范围预检、实时结构、候选口径、记录集合和数据质量检查；候选口径按分子、分母、指标率分级判断为“完全匹配、部分匹配、未匹配”，完整一致才确认原因，部分一致且有口径证据时标记高度相关并继续核对剩余差异，单个含义不明的数值命中只标记可能相关。
 - 通用异常诊断：只处理没有外部对比对象的指标异常、结果偏低或计算错误，不再与结果差异诊断混用。
-- 指标实施：草稿、字段映射、SQL 生成、试运行、提交审批、发布和历史恢复。
 - 医学术语：标准概念、同义词、医院值映射、审批发布和确定性识别测试。
-- 指标监控：计划、历史结果、波动检测、预警确认/关闭/重新诊断。
 - 可观测性：单轮 Trace 瀑布图、父子节点、子任务泳道，以及跨运行 p50/p95/p99 和工具/模型统计。
 - 按需回答模板：Final Answer 根据已校验意图和输出目标每轮只加载一份独立 Markdown 模板；指标解释、计算结果、文件分析和各类报告使用统一的“结论速览—数据表—口径依据—证据限制”结构，模板编号、版本和契约校验结果写入 Trace。
 - 安全 Markdown 展示：Vue 使用不执行 HTML 的内置 Markdown 子集渲染标题、引用摘要、数据表、列表和代码块，不增加前端依赖，也不会执行模型返回的脚本。
@@ -106,9 +105,30 @@ evaluations/                  不绑定运行语言的评测用例数据
 scripts/
   build-java-vue.ps1          构建包含 Vue 的单 JAR
   start-java-runtime.ps1      不依赖 Python 的启动器
+  build-wiki-from-markdown.mjs  从原始 Markdown 生成 HXZD 契约
+  validate-wiki-contract.mjs  只读校验 35/45/169 及执行门禁
   init_runtime_sqlite.sql     SQLite 运行库参考建表脚本
 tools/dbhub/                  DBHub sidecar 配置和启动脚本
 docs/                         当前架构、运维记录和历史设计资料
+```
+
+## HXZD Wiki 机器契约
+
+原始来源为 `core-rules-wiki/raw/company/35项核心制度指标完整提取.md`。生成器在临时目录完成解析与校验，全部门禁通过后才原子替换知识库：
+
+```text
+35 项指标
+45 个独立 Profile
+169 个 SQL 块
+```
+
+每个 Profile 独立声明适用范围、状态、四类 SQL 引用、参数、字段契约、结果映射和阻断原因。缺少医院字段契约或统一结果列映射的方案不会被标为 `executable`；这类方案仍可解释，但试运行、明细与导出入口会被服务端拒绝。
+
+当前生成结果为 `documentation_only=42`、`draft=3`、`executable=0`。这表示 35 项指标均可检索和解释，但在医院字段契约与统一结果列映射完成验证前，当前版本不会访问 DBHub 试运行这些 Profile。
+
+```powershell
+node .\scripts\build-wiki-from-markdown.mjs --input ".\core-rules-wiki\raw\company\35项核心制度指标完整提取.md" --check
+node .\scripts\validate-wiki-contract.mjs
 ```
 
 ## 环境要求
@@ -198,7 +218,7 @@ npm.cmd run build
 - `POST /api/auth/hospital/login`：医院人员登录。
 - `GET /api/agent/capabilities`：可用模型和 Agent 能力。
 - `POST /api/agent/chat`、`POST /api/agent/chat/stream`：同步和 SSE 对话。
-- `POST /api/agent/uploads`：上传指标 Excel。
+- `POST /api/agent/upload`：以 `multipart/form-data` 的 `file` 字段上传指标 Excel；文件名和大小由浏览器与服务端自动获得，不是额外业务入参。
 - `GET /api/agent/runs/{trace_id}`：查看单轮完整安全链路。
 - `GET /api/agent/runs`、`GET /api/agent/runs/metrics`：运行观察。
 - `POST /api/sql-runs/{run_id}/details`：生成或复用指标明细快照。
@@ -208,12 +228,11 @@ npm.cmd run build
 - `POST /api/diagnosis-reports/{report_id}/exports`：按诊断报告导出摘要、逐条集合差异和质量异常汇总。
 - `GET /api/metadata/overview`、`POST /api/metadata/sync`：元数据工作台。
 - `/api/terminology/**`：术语查询、映射和发布。
-- `/api/monitoring/**`：指标监控计划、结果和预警。
-- `/api/indicator-drafts/**`：指标实施与审批。
+`/api/monitoring/**`、`/api/indicator-drafts/**`、`/monitoring` 和 `/implementation` 已永久删除，返回 404。“全面实施验收”也已从 Agent 工具链移除，用户提出该请求时只返回确定性不支持说明。
 
 ## 安全边界
 
-- 规则知识来自 Wiki；SQLite 只保存可变运行数据，不作为规则正文权威源。
+- 规则知识来自 Wiki；SQLite 只保存可变运行数据，不作为规则正文权威源。历史废弃表不会被破坏性删除，但新应用不再初始化或访问。
 - 医院 SQL Server 只能经 DBHub 的固定只读工具访问。
 - SQL 由服务端模板生成并二次校验，浏览器和模型不能提交任意 SQL 执行。
 - Evidence 和 Trace 不保存密码、令牌、SQL 正文或患者原始行。
@@ -223,7 +242,7 @@ npm.cmd run build
 ## 文档
 
 - 当前架构：[`docs/architecture/agent-runtime-current.md`](docs/architecture/agent-runtime-current.md)
-- 前后端接口对接：[`docs/wiki-project_后端接口对接文档_2026-07-23.md`](docs/wiki-project_后端接口对接文档_2026-07-23.md)（按单接口规范覆盖 65 个业务 API，包含请求/响应参数、示例、鉴权与错误说明）
+- 前后端接口对接：[`docs/wiki-project_后端接口对接文档_2026-07-26.md`](docs/wiki-project_后端接口对接文档_2026-07-26.md)
 - Java/Vue 迁移历史：[`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)
 - MySQL 到 Wiki + SQLite 的迁移历史：[`docs/migration/mysql-to-wiki-sqlite.md`](docs/migration/mysql-to-wiki-sqlite.md)
 - 项目协作约束：[`agent.md`](agent.md)

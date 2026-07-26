@@ -423,10 +423,6 @@ public class AgentTraceService {
 
     private static String title(String name) {
         String safeName = name == null ? "" : name;
-        if (safeName.startsWith("implementation_validation_")
-                && !"implementation_validation_answer".equals(safeName)) {
-            return "执行实施验收阶段 " + safeName.substring("implementation_validation_".length()).toUpperCase();
-        }
         return switch (safeName) {
             case "indicator_rule_match" -> "规则精确识别指标";
             case "indicator_semantic_retrieval" -> "本地语义召回指标";
@@ -447,7 +443,6 @@ public class AgentTraceService {
             case "plan_verify" -> "校验证据完整性";
             case "final_answer_llm" -> "生成最终回答";
             case "prepared_sql_answer" -> "生成受控 SQL 回答";
-            case "implementation_validation_answer" -> "生成实施验收回答";
             case "caliber_simulation_answer" -> "生成候选口径回答";
             case "difference_diagnosis_layer_1" -> "诊断范围预检";
             case "difference_diagnosis_layer_2" -> "实时结构核验";
@@ -484,7 +479,6 @@ public class AgentTraceService {
             case "plan_verify" -> "只接受医院、规则、周期和对象链一致的 Evidence。";
             case "final_answer_llm" -> "LLM 只根据 VerifiedEvidence 组织回答。";
             case "prepared_sql_answer" -> "服务端从本轮私有 SQL 对象确定性生成回答，不调用 Final Answer LLM。";
-            case "implementation_validation_answer" -> "服务端根据固定阶段报告确定性生成回答。";
             case "caliber_simulation_answer" -> "服务端使用已验证候选 profile 和试运行结果生成回答。";
             case "difference_diagnosis_layer_1" -> "固定指标、医院、统计周期、文件类型和外部声明值。";
             case "difference_diagnosis_layer_2" -> "对比 Wiki 字段契约、医院映射与 DBHub 实时元数据。";

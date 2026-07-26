@@ -1,0 +1,71 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-008-004",
+  "rule_name": "实际手术术者与计划手术术者一致率",
+  "category": "术前讨论制度",
+  "definition": "实际开展手术术者与计划手术术者一致的手术例数占同期手术总例数的比例。",
+  "formula": "分子：实际开展手术术者与计划手术术者一致的手术例数\n分母：同期手术总例数\n公式：实际开展手术术者与计划手术术者一致的手术例数 / 同期手术总例数 * 100%",
+  "note": "——",
+  "significance": "反映手术管理的规范性。",
+  "default_profile": "HXZD-008-004-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-008-004-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "实际开展手术术者与计划手术术者一致的手术例数",
+      "numerator_caliber": "1、单位时间内完成手术的患者中，手术记录（病历）中手术主刀医师与手术申请单（医嘱）中一致的数量\n2、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据\n3、手术记录和手术医嘱有关联关系",
+      "denominator_rule": "同期手术总例数",
+      "denominator_caliber": "单位时间内完成手术总例数（手术完成时间取医生站）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/overview.sql",
+        "department": "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_OP_DISC",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

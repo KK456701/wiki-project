@@ -1,0 +1,70 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-002-002",
+  "rule_name": "上级医师查房记录规范率",
+  "category": "三级查房制度",
+  "definition": "住院患者病历中上级医师查房记录规范、完整的病例数量占同期住院患者病例总数量的比例。",
+  "formula": "分子：住院患者病历中上级医师查房记录规范、完整的病例数量\n分母：同期住院患者病例总数量\n公式：住院患者病历中上级医师查房记录规范、完整的病例数量 / 同期住院患者病例总数量 * 100%",
+  "note": "——",
+  "significance": "反映三级查房制度落实情况、查房记录的规范性和查房质量。",
+  "default_profile": "HXZD-002-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-002-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "住院患者病历中上级医师查房记录规范、完整的病例数量",
+      "numerator_caliber": "1、单位时间内出区患者中，按时完成了所有查房记录的患者数（一个患者一次住院最多统计为1）\n1.1）病历监控类型（支持配置）：上级医师首次查房记录、主治医师首次查房记录、主任医师首次查房记录、副主任医师首次查房记录、上级医师查房记录、主治医师查房记录、主任医师查房记录、副主任医师查房记录。\n1.2）监测病历状态：已提交\n2、病历时限数据取EMR的病历时限完成状态=按时完成",
+      "denominator_rule": "同期住院患者病例总数量",
+      "denominator_caliber": "单位时间内出区的患者总数",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 7 | 下拉多选 | 病历文书监控类型 |",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_WARDROUND",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

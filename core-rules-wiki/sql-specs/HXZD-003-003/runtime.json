@@ -1,0 +1,128 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-003-003",
+  "rule_name": "普通会诊及时完成率",
+  "category": "会诊制度",
+  "definition": "普通会诊24小时内完成次数占同期普通会诊总次数的比例。",
+  "formula": "分子：普通会诊24小时内完成次数\n分母：同期普通会诊总次数\n公式：普通会诊24小时内完成次数 / 同期普通会诊总次数 * 100%",
+  "note": "病历中会诊医师电子签章时间即为会诊完成时间。",
+  "significance": "反映普通会诊制度执行的规范性。",
+  "default_profile": "HXZD-003-003-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-003-003-company-default",
+      "profile_name": "推荐方案：按会诊申请科室数统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "普通会诊24小时内完成次数",
+      "numerator_caliber": "1、单位时间完成的普通会诊中，申请科室会诊完成时间-会诊申请时间≤24h\n2、会诊完成定义：会诊医师完成会诊答复\n3、说明：该指标包含门急诊住院的数据，不包含院外会诊",
+      "denominator_rule": "同期普通会诊总次数",
+      "denominator_caliber": "申请科室单位时间内完成普通会诊的数量",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/overview.sql",
+        "department": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CONSULTATION",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-003-003-company-candidate-01",
+      "profile_name": "可选方案：按会诊受邀科室数统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "普通会诊24小时内完成次数",
+      "numerator_caliber": "1、单位时间完成的普通会诊中，受邀科室会诊完成时间-会诊申请时间≤24h\n2、会诊完成定义：会诊医师完成会诊答复\n3、说明：该指标包含门急诊住院的数据，不包含院外会诊",
+      "denominator_rule": "同期普通会诊总次数",
+      "denominator_caliber": "受邀科室单位时间内完成普通会诊的数量",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CONSULTATION",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

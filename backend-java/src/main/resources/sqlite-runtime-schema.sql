@@ -51,69 +51,6 @@ CREATE TABLE IF NOT EXISTS med_data_access_audit (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS med_index_standard (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  index_code VARCHAR(64) NOT NULL,
-  index_name VARCHAR(128) NOT NULL,
-  index_type VARCHAR(32) NOT NULL,
-  index_desc TEXT NOT NULL,
-  stat_cycle VARCHAR(32) NOT NULL DEFAULT 'month',
-  numerator_rule TEXT NOT NULL,
-  denominator_rule TEXT NOT NULL,
-  filter_rule TEXT,
-  exclude_rule TEXT,
-  rely_table_field TEXT NOT NULL,
-  calculation_definition TEXT,
-  standard_sql TEXT NOT NULL,
-  rule_params TEXT NOT NULL,
-  source_path VARCHAR(512),
-  version VARCHAR(64) NOT NULL,
-  status INTEGER NOT NULL DEFAULT 1,
-  create_time TEXT NOT NULL,
-  update_time TEXT NOT NULL,
-  UNIQUE (index_code)
-);
-
-CREATE TABLE IF NOT EXISTS med_index_hospital_custom (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  hospital_id VARCHAR(64) NOT NULL,
-  index_code VARCHAR(64) NOT NULL,
-  custom_numerator TEXT,
-  custom_denominator TEXT,
-  custom_filter TEXT,
-  exclude_rule TEXT,
-  custom_params TEXT NOT NULL,
-  custom_calculation_patch TEXT,
-  custom_sql TEXT,
-  version INT NOT NULL,
-  status INTEGER NOT NULL DEFAULT 1,
-  approval_status VARCHAR(32) NOT NULL,
-  effective_from TEXT,
-  effective_to TEXT,
-  oper_user VARCHAR(64),
-  create_time TEXT NOT NULL,
-  update_time TEXT NOT NULL,
-  UNIQUE (hospital_id, index_code)
-);
-
-CREATE TABLE IF NOT EXISTS med_index_hospital_custom_version (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  change_id VARCHAR(64) NOT NULL,
-  hospital_id VARCHAR(64) NOT NULL,
-  index_code VARCHAR(64) NOT NULL,
-  version INT NOT NULL,
-  approval_status VARCHAR(32) NOT NULL,
-  snapshot_json TEXT NOT NULL,
-  source_version INT,
-  change_type VARCHAR(64) NOT NULL,
-  oper_user VARCHAR(64),
-  approver_id VARCHAR(64),
-  created_at TEXT NOT NULL,
-  approved_at TEXT,
-  UNIQUE (change_id),
-  UNIQUE (hospital_id, index_code, version)
-);
-
 CREATE TABLE IF NOT EXISTS med_metadata_table (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   hospital_id VARCHAR(64) NOT NULL,
@@ -205,135 +142,6 @@ CREATE TABLE IF NOT EXISTS med_metadata_export_scope (
   selected_by VARCHAR(64) NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE ( hospital_id, db_name, table_name, column_name )
-);
-
-CREATE TABLE IF NOT EXISTS med_company_package_import (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  import_id VARCHAR(64) NOT NULL UNIQUE,
-  package_id VARCHAR(64) NOT NULL UNIQUE,
-  release_id VARCHAR(64),
-  format_version VARCHAR(32) NOT NULL,
-  package_checksum CHAR(64) NOT NULL,
-  signer_key_id VARCHAR(96),
-  signature_status VARCHAR(32) NOT NULL,
-  compatibility_status VARCHAR(32) NOT NULL,
-  status VARCHAR(32) NOT NULL,
-  manifest_json TEXT NOT NULL,
-  compatibility_json TEXT NOT NULL,
-  imported_by VARCHAR(64) NOT NULL,
-  imported_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS med_company_package_item (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  import_id VARCHAR(64) NOT NULL,
-  item_path VARCHAR(512) NOT NULL,
-  item_type VARCHAR(32) NOT NULL,
-  rule_id VARCHAR(64),
-  payload_json TEXT NOT NULL,
-  UNIQUE (import_id, item_path)
-);
-
-CREATE TABLE IF NOT EXISTS med_package_audit (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  direction VARCHAR(32) NOT NULL,
-  package_id VARCHAR(64) NOT NULL,
-  hospital_id VARCHAR(64),
-  event_type VARCHAR(32) NOT NULL,
-  status VARCHAR(32) NOT NULL,
-  actor_id VARCHAR(64) NOT NULL,
-  detail_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  message TEXT
-);
-
-CREATE TABLE IF NOT EXISTS med_indicator_draft (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  draft_id VARCHAR(64) NOT NULL UNIQUE,
-  hospital_id VARCHAR(64) NOT NULL,
-  base_index_code VARCHAR(64),
-  proposed_index_code VARCHAR(64) NOT NULL,
-  index_name VARCHAR(128) NOT NULL,
-  index_type VARCHAR(64) NOT NULL,
-  index_desc TEXT NOT NULL,
-  stat_cycle VARCHAR(32) NOT NULL,
-  numerator_rule TEXT NOT NULL,
-  denominator_rule TEXT NOT NULL,
-  filter_rule TEXT,
-  exclude_rule TEXT,
-  metric_type VARCHAR(32) NOT NULL,
-  metadata_requirements TEXT NOT NULL,
-  field_mapping TEXT NOT NULL,
-  sql_plan TEXT NOT NULL,
-  current_sql TEXT,
-  sql_params TEXT NOT NULL,
-  sql_id VARCHAR(64),
-  trial_result TEXT NOT NULL,
-  trial_draft_version INT,
-  status VARCHAR(32) NOT NULL,
-  current_version INT NOT NULL,
-  formal_index_code VARCHAR(64),
-  generated_by VARCHAR(64),
-  created_by VARCHAR(64) NOT NULL,
-  updated_by VARCHAR(64) NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (hospital_id, proposed_index_code)
-);
-
-CREATE TABLE IF NOT EXISTS med_indicator_draft_version (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  draft_id VARCHAR(64) NOT NULL,
-  version INT NOT NULL,
-  status VARCHAR(32) NOT NULL,
-  snapshot_json TEXT NOT NULL,
-  change_type VARCHAR(64) NOT NULL,
-  oper_user VARCHAR(64) NOT NULL,
-  created_at TEXT NOT NULL,
-  UNIQUE (draft_id, version)
-);
-
-CREATE TABLE IF NOT EXISTS med_index_hospital_defined (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  hospital_id VARCHAR(64) NOT NULL,
-  index_code VARCHAR(64) NOT NULL,
-  index_name VARCHAR(128) NOT NULL,
-  index_type VARCHAR(64) NOT NULL,
-  index_desc TEXT NOT NULL,
-  stat_cycle VARCHAR(32) NOT NULL,
-  numerator_rule TEXT NOT NULL,
-  denominator_rule TEXT NOT NULL,
-  filter_rule TEXT,
-  exclude_rule TEXT,
-  field_contract TEXT NOT NULL,
-  sql_template TEXT NOT NULL,
-  rule_params TEXT NOT NULL,
-  version INT NOT NULL,
-  status INTEGER NOT NULL DEFAULT 1,
-  approval_status VARCHAR(32) NOT NULL,
-  effective_from TEXT,
-  effective_to TEXT,
-  source_draft_id VARCHAR(64) NOT NULL,
-  oper_user VARCHAR(64) NOT NULL,
-  create_time TEXT NOT NULL,
-  update_time TEXT NOT NULL,
-  UNIQUE (hospital_id, index_code)
-);
-
-CREATE TABLE IF NOT EXISTS med_index_hospital_defined_version (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  hospital_id VARCHAR(64) NOT NULL,
-  index_code VARCHAR(64) NOT NULL,
-  version INT NOT NULL,
-  snapshot_json TEXT NOT NULL,
-  source_version INT,
-  source_draft_id VARCHAR(64),
-  change_type VARCHAR(64) NOT NULL,
-  oper_user VARCHAR(64) NOT NULL,
-  approver_id VARCHAR(64),
-  created_at TEXT NOT NULL,
-  approved_at TEXT,
-  UNIQUE (hospital_id, index_code, version)
 );
 
 CREATE TABLE IF NOT EXISTS med_generated_sql (
@@ -443,91 +251,6 @@ CREATE TABLE IF NOT EXISTS med_index_diagnose_report (
   layer_results TEXT,
   diagnose_status VARCHAR(32) NOT NULL DEFAULT 'healthy',
   stat_period VARCHAR(128)
-);
-
-CREATE TABLE IF NOT EXISTS med_index_run_result (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  hospital_id VARCHAR(64) NOT NULL,
-  rule_id VARCHAR(64) NOT NULL,
-  stat_period VARCHAR(128) NOT NULL,
-  result_value REAL,
-  previous_value REAL,
-  change_rate REAL,
-  is_abnormal INTEGER NOT NULL DEFAULT 0,
-  run_id VARCHAR(64),
-  created_at TEXT NOT NULL,
-  plan_id VARCHAR(64),
-  run_key VARCHAR(255),
-  retry_of_result_id BIGINT,
-  trigger_type VARCHAR(32),
-  stat_start_time TEXT,
-  stat_end_time TEXT,
-  run_status VARCHAR(32),
-  no_sample INTEGER NOT NULL DEFAULT 0,
-  effective_level VARCHAR(32),
-  national_version VARCHAR(64),
-  hospital_version INT,
-  data_source VARCHAR(128),
-  duration_ms INT,
-  error_code VARCHAR(128),
-  error_message TEXT,
-  mom_baseline_result_id BIGINT,
-  mom_change_rate REAL,
-  yoy_baseline_result_id BIGINT,
-  yoy_change_rate REAL,
-  wave_status VARCHAR(64),
-  UNIQUE (run_key)
-);
-
-CREATE TABLE IF NOT EXISTS med_indicator_run_plan (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  plan_id VARCHAR(64) NOT NULL UNIQUE,
-  hospital_id VARCHAR(64) NOT NULL,
-  rule_id VARCHAR(64) NOT NULL,
-  plan_name VARCHAR(128) NOT NULL,
-  frequency VARCHAR(32) NOT NULL,
-  run_time VARCHAR(8) NOT NULL DEFAULT '02:00',
-  day_of_month INT NOT NULL DEFAULT 1,
-  timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai',
-  mom_enabled INTEGER NOT NULL DEFAULT 1,
-  mom_threshold_pct REAL NOT NULL DEFAULT 20.00,
-  yoy_enabled INTEGER NOT NULL DEFAULT 1,
-  yoy_threshold_pct REAL NOT NULL DEFAULT 30.00,
-  status VARCHAR(32) NOT NULL DEFAULT 'enabled',
-  next_run_at TEXT,
-  last_run_at TEXT,
-  locked_until TEXT,
-  locked_by VARCHAR(128) NOT NULL DEFAULT '',
-  created_by VARCHAR(64) NOT NULL DEFAULT 'admin',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (hospital_id, rule_id, plan_name)
-);
-
-CREATE TABLE IF NOT EXISTS med_indicator_alert (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  alert_id VARCHAR(64) NOT NULL UNIQUE,
-  hospital_id VARCHAR(64) NOT NULL,
-  rule_id VARCHAR(64) NOT NULL,
-  plan_id VARCHAR(64),
-  result_id BIGINT NOT NULL,
-  alert_type VARCHAR(32) NOT NULL,
-  alert_level VARCHAR(16) NOT NULL,
-  conclusion_code VARCHAR(64) NOT NULL,
-  current_value REAL,
-  mom_value REAL,
-  mom_change_rate REAL,
-  yoy_value REAL,
-  yoy_change_rate REAL,
-  diagnose_status VARCHAR(32) NOT NULL DEFAULT 'pending',
-  diagnose_report_id VARCHAR(64),
-  status VARCHAR(32) NOT NULL DEFAULT 'open',
-  acknowledged_by VARCHAR(64),
-  acknowledged_at TEXT,
-  closed_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (result_id, alert_type, conclusion_code)
 );
 
 CREATE TABLE IF NOT EXISTS med_agent_trace (
@@ -746,28 +469,11 @@ CREATE TABLE IF NOT EXISTS med_term_audit_log (
 CREATE INDEX IF NOT EXISTS idx_hospital_user_scope ON med_hospital_user (hospital_id, status);
 CREATE INDEX IF NOT EXISTS idx_hospital_session_user ON med_hospital_session (user_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_data_access_audit_scope ON med_data_access_audit (hospital_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_standard_name ON med_index_standard (index_name);
-CREATE INDEX IF NOT EXISTS idx_standard_status ON med_index_standard (status);
-CREATE INDEX IF NOT EXISTS idx_hospital_custom_status ON med_index_hospital_custom (hospital_id, status, approval_status);
-CREATE INDEX IF NOT EXISTS idx_custom_version_status ON med_index_hospital_custom_version (hospital_id, index_code, approval_status);
 CREATE INDEX IF NOT EXISTS idx_snapshot_batch ON med_metadata_snapshot (hospital_id, db_name, sync_batch_id);
-CREATE INDEX IF NOT EXISTS idx_company_package_import_status ON med_company_package_import (status, imported_at);
-CREATE INDEX IF NOT EXISTS idx_company_package_item_rule ON med_company_package_item (rule_id);
-CREATE INDEX IF NOT EXISTS idx_package_audit_package ON med_package_audit (package_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_draft_hospital_status ON med_indicator_draft (hospital_id, status);
-CREATE INDEX IF NOT EXISTS idx_draft_updated ON med_indicator_draft (updated_at);
-CREATE INDEX IF NOT EXISTS idx_draft_version_status ON med_indicator_draft_version (draft_id, status);
-CREATE INDEX IF NOT EXISTS idx_hospital_defined_status ON med_index_hospital_defined (hospital_id, status, approval_status);
-CREATE INDEX IF NOT EXISTS idx_hospital_defined_version_status ON med_index_hospital_defined_version (hospital_id, index_code);
 CREATE INDEX IF NOT EXISTS ix_agent_sql_hospital_expiry ON med_agent_sql_object (hospital_id, expires_at);
 CREATE INDEX IF NOT EXISTS ix_agent_sql_session_status ON med_agent_sql_object (session_id, validation_status);
 CREATE INDEX IF NOT EXISTS idx_detail_snapshot_scope ON med_indicator_detail_snapshot (hospital_id, expires_at);
 CREATE INDEX IF NOT EXISTS idx_indicator_export_scope ON med_indicator_export (hospital_id, expires_at);
-CREATE INDEX IF NOT EXISTS idx_run_result_scope ON med_index_run_result (hospital_id, rule_id, stat_start_time, stat_end_time);
-CREATE INDEX IF NOT EXISTS idx_monitor_plan_status ON med_indicator_run_plan (status);
-CREATE INDEX IF NOT EXISTS idx_monitor_plan_next ON med_indicator_run_plan (next_run_at);
-CREATE INDEX IF NOT EXISTS idx_monitor_alert_hospital ON med_indicator_alert (hospital_id);
-CREATE INDEX IF NOT EXISTS idx_monitor_alert_status ON med_indicator_alert (status);
 CREATE INDEX IF NOT EXISTS idx_agent_trace_hospital_started ON med_agent_trace (hospital_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_trace_node_trace_id ON med_agent_trace_node (trace_id);
 CREATE INDEX IF NOT EXISTS idx_trace_node_status ON med_agent_trace_node (status);

@@ -15,7 +15,7 @@ keywords:
 direction: lower_is_better
 unit: percentage
 default_profile: HXZD-001-001-company-default
-updated_at: 2026-07-25
+updated_at: 2026-07-26
 ---
 
 # 患者入院48小时内转科的比例

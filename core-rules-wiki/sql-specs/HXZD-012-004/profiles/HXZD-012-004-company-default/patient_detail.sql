@@ -1,0 +1,28 @@
+select
+event.SURG_NAME AS 手术名称,
+event.SURG_LEVEL_NAME AS 手术等级,
+event.SURGERY_START_AT as 最近开展时间,
+event.PERSON_NAME AS 最近开展患者姓名,
+event.IMRN AS 住院号,
+event.CURRENT_ADMITTER_NAME AS 责任医师,
+team.ORG_ID as CURRENT_MEDICAL_GROUP_ID,
+team.ORG_NO as "TEAM_NO",
+team.ORG_NAME as "当前医疗组",
+event.ADMITTED_TO_WARD_AT AS 入区时间,
+event.DISCHARGED_FROM_WARD_AT AS 出区时间
+from (
+SELECT
+*,
+ROW_NUMBER() OVER (PARTITION BY SURGERY_ID ORDER BY SURG_AT desc) AS rn
+    FROM MRAS_BUSINESS_SUR_GRADE
+    where
+    --布局组件设置提升效率
+AND IS_DEL = 0
+    AND VERSION = 'V2.0'
+    AND EVENT_AT BETWEEN :marptBeginAt and :marptEndAt
+    AND SURG_LEVEL_CODE in (136619, 136618)
+) event
+LEFT JOIN INPATIENT_ENCOUNTER inp #{NOLOCK}  ON event.ENCOUNTER_ID = inp.ENCOUNTER_ID
+LEFT JOIN MRAS_ORGANIZATION team #{NOLOCK}  ON team.ORG_ID = inp.CURRENT_MEDICAL_GROUP_ID
+WHERE
+event.rn = 1

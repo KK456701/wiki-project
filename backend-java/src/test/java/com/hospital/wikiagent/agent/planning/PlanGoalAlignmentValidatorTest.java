@@ -25,7 +25,7 @@ class PlanGoalAlignmentValidatorTest {
     @Test
     void convertsWardEntryFollowupIntoCandidateTrialPlanWhenPeriodExists() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
-        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+        when(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
 
@@ -49,7 +49,7 @@ class PlanGoalAlignmentValidatorTest {
     }
 
     @Test
-    void acceptsRealWikiCandidateWithOpenEndedEffectiveDate() {
+    void realWikiDoesNotExposeDocumentationOnlyProfileForSimulation() {
         ObjectMapper objectMapper = new ObjectMapper();
         RuleReadRepository rules = new RuleReadRepository(
                 mock(JdbcTemplate.class),
@@ -57,16 +57,8 @@ class PlanGoalAlignmentValidatorTest {
                 new WikiRuleKnowledgeSource(
                         Path.of("..", "core-rules-wiki").toString(),
                         objectMapper));
-        PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
-
-        var decision = validator.assess(
-                "如果根据入区时间怎么算",
-                currentRulePlan(true),
-                "hospital_001");
-
-        assertThat(decision.status()).isEqualTo(AlignmentStatus.MISMATCH);
-        assertThat(decision.suggestedPlan().targetCaliber().profileId())
-                .isEqualTo("hospital_001_ward_entry_anchor");
+        assertThat(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))
+                .isEmpty();
     }
 
     @Test
@@ -108,7 +100,7 @@ class PlanGoalAlignmentValidatorTest {
     @Test
     void candidateFormulaWithoutPeriodDoesNotInventTrialRange() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
-        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+        when(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
 
@@ -124,7 +116,7 @@ class PlanGoalAlignmentValidatorTest {
     @Test
     void candidateSqlRequestPreparesSqlWithoutTrialRun() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
-        when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
+        when(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
 
@@ -145,7 +137,7 @@ class PlanGoalAlignmentValidatorTest {
                 PlanIntent.RULE_EXPLANATION,
                 "解释当前生效规则",
                 new RequestPlan.TargetIndicator(
-                        "患者入院48小时内转科的比例", "MQSI2025_001"),
+                        "患者入院48小时内转科的比例", "HXZD-001-001"),
                 new RequestPlan.TargetCaliber("", null),
                 withPeriod
                         ? new RequestPlan.TimeExpression(
@@ -164,7 +156,7 @@ class PlanGoalAlignmentValidatorTest {
                 PlanIntent.INDICATOR_CALIBER_SIMULATION,
                 "按候选口径解释结果",
                 new RequestPlan.TargetIndicator(
-                        "患者入院48小时内转科的比例", "MQSI2025_001"),
+                        "患者入院48小时内转科的比例", "HXZD-001-001"),
                 new RequestPlan.TargetCaliber("什么口径", null),
                 new RequestPlan.TimeExpression(
                         "沿用上一轮统计区间",

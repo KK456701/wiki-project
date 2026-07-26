@@ -1,5 +1,7 @@
 # 2026-07-20 轻量化 Agent Runtime 升级
 
+> 历史实施记录：本文保留当时的 Python/MySQL 设计背景，不代表当前 Java/HXZD 运行时。当前说明见 `README.md` 和 `docs/architecture/agent-runtime-current.md`。
+
 本次升级保持原有单体部署：FastAPI、现有 MySQL、SQLite/JSONL、DBHub、Ollama 或 OpenAI 兼容 API，以及原生 HTML/CSS/JavaScript。没有增加 Docker、PostgreSQL、消息队列、向量数据库、独立可观测服务、前端 CDN 或新的生产依赖。
 
 ## 已实施批次

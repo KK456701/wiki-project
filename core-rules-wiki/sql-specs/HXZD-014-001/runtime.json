@@ -1,0 +1,71 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-014-001",
+  "rule_name": "危急值报告时间",
+  "category": "危急值报告制度",
+  "definition": "将出现危急值到临床科室获取危急值的时间，由长到短排序后取其中位数。",
+  "formula": "危急值报告时间(中位数) = X(n+1)/2, n为奇数；\n危急值报告时间(中位数) = (Xn/2 + Xn/2+1)/2, n为偶数",
+  "note": "1. n为实际报告的危急值项目数; X为出现危急值到临床科室获取危急值的时间。\n2.分别计算住院、门诊、急诊危急值报告时间。",
+  "significance": "反映危急值上报的效率。",
+  "default_profile": "HXZD-014-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-014-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "report_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "不适用（中位数指标；X为每条业务记录的报告耗时）",
+      "numerator_caliber": "",
+      "denominator_rule": "不适用（中位数指标；n为纳入统计的有效业务记录数）",
+      "denominator_caliber": "",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

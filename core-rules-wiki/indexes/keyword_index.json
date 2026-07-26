@@ -3,6 +3,10 @@
     {
       "rule_id": "HXZD-001-001",
       "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-001",
+      "weight": 8
     }
   ],
   "首诊负责制度": [
@@ -15,11 +19,553 @@
     {
       "rule_id": "HXZD-001-001",
       "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-003",
+      "weight": 8
     }
   ],
   "首诊负责": [
     {
       "rule_id": "HXZD-001-001",
+      "weight": 8
+    }
+  ],
+  "小时内查房率": [
+    {
+      "rule_id": "HXZD-002-001",
+      "weight": 8
+    }
+  ],
+  "三级查房制度": [
+    {
+      "rule_id": "HXZD-002-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-003",
+      "weight": 8
+    }
+  ],
+  "三级查房": [
+    {
+      "rule_id": "HXZD-002-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-003",
+      "weight": 8
+    }
+  ],
+  "出区时间": [
+    {
+      "rule_id": "HXZD-002-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-002-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-004-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-007-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "weight": 8
+    }
+  ],
+  "会诊制度": [
+    {
+      "rule_id": "HXZD-003-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-004",
+      "weight": 8
+    }
+  ],
+  "会诊完成时间": [
+    {
+      "rule_id": "HXZD-003-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-004",
+      "weight": 8
+    }
+  ],
+  "门急诊会诊": [
+    {
+      "rule_id": "HXZD-003-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-002",
+      "weight": 8
+    }
+  ],
+  "急会诊有效率": [
+    {
+      "rule_id": "HXZD-003-002",
+      "weight": 8
+    }
+  ],
+  "会诊": [
+    {
+      "rule_id": "HXZD-003-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-003-004",
+      "weight": 8
+    }
+  ],
+  "分级护理制度": [
+    {
+      "rule_id": "HXZD-004-001",
+      "weight": 8
+    }
+  ],
+  "分级护理": [
+    {
+      "rule_id": "HXZD-004-001",
+      "weight": 8
+    }
+  ],
+  "值班和交接班制度": [
+    {
+      "rule_id": "HXZD-005-001",
+      "weight": 8
+    }
+  ],
+  "手术完成时间": [
+    {
+      "rule_id": "HXZD-005-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-011-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-011-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-016-002",
+      "weight": 8
+    }
+  ],
+  "值班交接班": [
+    {
+      "rule_id": "HXZD-005-001",
+      "weight": 8
+    }
+  ],
+  "疑难病例讨论制度": [
+    {
+      "rule_id": "HXZD-006-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-003",
+      "weight": 8
+    }
+  ],
+  "疑难病例": [
+    {
+      "rule_id": "HXZD-006-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-006-002",
+      "weight": 8
+    }
+  ],
+  "疑难病例2": [
+    {
+      "rule_id": "HXZD-006-003",
+      "weight": 8
+    }
+  ],
+  "—": [
+    {
+      "rule_id": "HXZD-006-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-004",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-013-001",
+      "weight": 8
+    }
+  ],
+  "急危重患者抢救制度": [
+    {
+      "rule_id": "HXZD-007-001",
+      "weight": 8
+    }
+  ],
+  "急危重患者抢救记录": [
+    {
+      "rule_id": "HXZD-007-001",
+      "weight": 8
+    }
+  ],
+  "术前讨论制度": [
+    {
+      "rule_id": "HXZD-008-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-008-004",
+      "weight": 8
+    }
+  ],
+  "病历完成时间": [
+    {
+      "rule_id": "HXZD-008-002",
+      "weight": 8
+    }
+  ],
+  "术前讨论制度V2": [
+    {
+      "rule_id": "HXZD-008-002",
+      "weight": 8
+    }
+  ],
+  "手术结束时间": [
+    {
+      "rule_id": "HXZD-008-004",
+      "weight": 8
+    }
+  ],
+  "死亡病例讨论": [
+    {
+      "rule_id": "HXZD-009-001",
+      "weight": 8
+    }
+  ],
+  "日完成率": [
+    {
+      "rule_id": "HXZD-009-001",
+      "weight": 8
+    }
+  ],
+  "死亡病例讨论制度": [
+    {
+      "rule_id": "HXZD-009-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-004",
+      "weight": 8
+    }
+  ],
+  "死亡时间": [
+    {
+      "rule_id": "HXZD-009-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "weight": 8
+    }
+  ],
+  "死亡病例": [
+    {
+      "rule_id": "HXZD-009-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-004",
+      "weight": 8
+    }
+  ],
+  "死亡病例可选方案": [
+    {
+      "rule_id": "HXZD-009-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "weight": 8
+    }
+  ],
+  "查对制度": [
+    {
+      "rule_id": "HXZD-010-001",
+      "weight": 8
+    }
+  ],
+  "医嘱开立时间": [
+    {
+      "rule_id": "HXZD-010-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-015-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-016-001",
+      "weight": 8
+    }
+  ],
+  "无": [
+    {
+      "rule_id": "HXZD-010-001",
+      "weight": 8
+    }
+  ],
+  "手术安全核查制度": [
+    {
+      "rule_id": "HXZD-011-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-011-002",
+      "weight": 8
+    }
+  ],
+  "手术安全": [
+    {
+      "rule_id": "HXZD-011-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-011-002",
+      "weight": 8
+    }
+  ],
+  "手术分级管理制度": [
+    {
+      "rule_id": "HXZD-012-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "weight": 8
+    }
+  ],
+  "手术分级管理制度2": [
+    {
+      "rule_id": "HXZD-012-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "weight": 8
+    }
+  ],
+  "新技术和新项目准入制度": [
+    {
+      "rule_id": "HXZD-013-001",
+      "weight": 8
+    }
+  ],
+  "新技术审批通过时间": [
+    {
+      "rule_id": "HXZD-013-001",
+      "weight": 8
+    }
+  ],
+  "危急值报告制度": [
+    {
+      "rule_id": "HXZD-014-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-014-002",
+      "weight": 8
+    }
+  ],
+  "危急值接收时间": [
+    {
+      "rule_id": "HXZD-014-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-014-002",
+      "weight": 8
+    }
+  ],
+  "危急值报告": [
+    {
+      "rule_id": "HXZD-014-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-014-002",
+      "weight": 8
+    }
+  ],
+  "抗菌药物分级管理制度": [
+    {
+      "rule_id": "HXZD-015-001",
+      "weight": 8
+    }
+  ],
+  "特殊级抗菌药物(会诊管理)": [
+    {
+      "rule_id": "HXZD-015-001",
+      "weight": 8
+    }
+  ],
+  "临床用血审核制度": [
+    {
+      "rule_id": "HXZD-016-001",
+      "weight": 8
+    },
+    {
+      "rule_id": "HXZD-016-002",
+      "weight": 8
+    }
+  ],
+  "临床用血后评估记录": [
+    {
+      "rule_id": "HXZD-016-001",
+      "weight": 8
+    }
+  ],
+  "术中自体血回输": [
+    {
+      "rule_id": "HXZD-016-002",
       "weight": 8
     }
   ]

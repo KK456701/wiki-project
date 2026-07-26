@@ -1,0 +1,25 @@
+SELECT
+ event.ENCOUNTER_ID ,
+ event.CURRENT_DEPT_ID AS '当前科室编码',
+ event.CURRENT_DEPT_NAME AS '当前科室',
+ event.IMRN AS '住院号',
+   event.PERSON_NAME AS '患者姓名',
+ event.CURRENT_ADMITTER_NAME AS '责任医师',
+ team.ORG_NAME as "TEAM_NAME",
+ team.ORG_ID as "TEAM_ID",
+ team.ORG_NO as "TEAM_NO",
+ team.ORG_NAME as "当前医疗组",
+ event.ADMITTED_TO_WARD_AT AS '入区时间',
+ event.WARD_DISCHARGED_AT AS '出区时间',
+ event.TOTAL_COST as '住院总费用',
+ event.EMR_CREATED_AT as '疑难病历讨论时间',
+ event.EMR_SET_SUBMIT_AT as '病历提交时间',
+ CASE WHEN HIGH_COST_DIFFICULT_DISCUSSION = '98175' THEN '是' ELSE '否' END AS '是否达标',
+ CASE WHEN HIGH_COST_DIFFICULT_DISCUSSION = '98175' THEN 98175 ELSE 98176 END AS "standFlag"
+FROM
+ MRAS_BUSINESS_DIFFI_EMR_SECOND event  #{NOLOCK}
+   LEFT JOIN INPATIENT_ENCOUNTER inp #{NOLOCK}  ON event.ENCOUNTER_ID = inp.ENCOUNTER_ID
+ LEFT JOIN MRAS_ORGANIZATION team #{NOLOCK}  ON team.ORG_ID = inp.CURRENT_MEDICAL_GROUP_ID
+WHERE
+ --布局组件设置提升效率
+    AND event.ADMITTED_TO_WARD_AT BETWEEN :marptBeginAt and :marptEndAt

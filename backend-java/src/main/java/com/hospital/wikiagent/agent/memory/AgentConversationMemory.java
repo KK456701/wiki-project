@@ -630,7 +630,6 @@ public class AgentConversationMemory {
             case "indicator_caliber_simulation" -> "已模拟" + name + "的候选口径计算";
             case "indicator_difference_diagnosis" -> "已完成" + name + "的差异对比诊断";
             case "upload_analysis" -> "已分析上传文件";
-            case "implementation_validation" -> "已完成" + name + "的实施验收";
             case "compound" -> "已处理" + name;
             default -> firstSentence(content, 80);
         };

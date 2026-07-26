@@ -89,9 +89,7 @@ public class CapabilitySpecRegistry {
                 Map.entry(RequestedOutput.DIAGNOSIS, "diagnosis"),
                 Map.entry(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT, "difference_diagnosis_report"),
                 Map.entry(RequestedOutput.CHANGE_PREVIEW, "rule_change_preview"),
-                Map.entry(RequestedOutput.FILE_ANALYSIS, "file_analysis"),
-                Map.entry(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
-                        "implementation_validation_report"));
+                Map.entry(RequestedOutput.FILE_ANALYSIS, "file_analysis"));
         Set<String> facts = new LinkedHashSet<>();
         for (RequestedOutput output : plan.requestedOutputs()) {
             if (mapping.containsKey(output)) {
@@ -113,7 +111,6 @@ public class CapabilitySpecRegistry {
             case INDICATOR_DIFFERENCE_DIAGNOSIS -> Set.of("difference_diagnosis_report");
             case RULE_CHANGE_PREVIEW -> Set.of("rule_change_preview");
             case UPLOAD_ANALYSIS -> Set.of("file_analysis");
-            case IMPLEMENTATION_VALIDATION -> Set.of("implementation_validation_report");
             default -> Set.of();
         };
     }
@@ -237,11 +234,6 @@ public class CapabilitySpecRegistry {
                         CapabilitySpecRegistry::changeArguments, "rule_change_preview"),
                 spec(PlanCapability.ANALYZE_UPLOADED_FILE, Set.of(), Set.of("file_analysis"),
                         "analyze_uploaded_indicators", CapabilitySpecRegistry::uploadArguments, "file_analysis"),
-                spec(PlanCapability.VALIDATE_IMPLEMENTATION,
-                        Set.of("effective_rule", "implementation_status", "stat_period"),
-                        Set.of("implementation_validation_report"), "validate_indicator_implementation",
-                        CapabilitySpecRegistry::validationArguments, "implementation_validation_report",
-                        "agent.implementation.validate", "validation_report"),
                 spec(PlanCapability.COMPOSE_ANSWER, Set.of(), Set.of(), null, null, null,
                         "agent.answer.compose", "verified_evidence_only"));
     }
@@ -426,15 +418,6 @@ public class CapabilitySpecRegistry {
         return Map.of("file_key", state.currentUploadFileKey());
     }
 
-    private static Map<String, Object> validationArguments(
-            PlanningExecution execution, AgentRunState state, String userMessage) {
-        Map<String, Object> values = new LinkedHashMap<>(sqlArguments(execution, state, userMessage));
-        if (state.currentUploadFileKey() != null) {
-            values.put("file_key", state.currentUploadFileKey());
-        }
-        return values;
-    }
-
     private static String resolveRuleId(PlanningExecution execution, AgentRunState state) {
         if (state.currentRuleId() != null) {
             return state.currentRuleId();
@@ -477,8 +460,7 @@ public class CapabilitySpecRegistry {
                 PlanCapability.DIAGNOSE_INDICATOR,
                 PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
                 PlanCapability.PREVIEW_RULE_CHANGE,
-                PlanCapability.ANALYZE_UPLOADED_FILE,
-                PlanCapability.VALIDATE_IMPLEMENTATION
+                PlanCapability.ANALYZE_UPLOADED_FILE
         };
         for (int index = 0; index < values.length; index++) {
             result.put(values[index], index);

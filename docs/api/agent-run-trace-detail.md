@@ -290,7 +290,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
       "db_source": null,
       "sql_id": null,
       "run_id": null,
-      "rule_id": "MQSI2025_005",
+      "rule_id": "HXZD-003-001",
       "llm_model": "qwen-plus",
       "started_at": "2026-07-24T19:35:06",
       "ended_at": "2026-07-24T19:35:10",
@@ -318,7 +318,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
     {
       "evidence_id": "EV_20260724_0001",
       "fact_type": "trial_run_result",
-      "rule_id": "MQSI2025_005",
+      "rule_id": "HXZD-003-001",
       "rule_version": "2025.1",
       "stat_start": "2026-01-01",
       "stat_end": "2026-03-31",

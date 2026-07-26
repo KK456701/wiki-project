@@ -1,0 +1,127 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-012-003",
+  "rule_name": "四级手术术前多学科讨论完成率",
+  "category": "手术分级管理制度",
+  "definition": "术前完成多学科讨论的四级手术例数占同期四级手术总例数的比例。",
+  "formula": "分子：术前完成多学科讨论的四级手术例数\n分母：同期四级手术总例数\n公式：术前完成多学科讨论的四级手术例数 / 同期四级手术总例数 * 100%",
+  "note": "限制类技术按照四级手术进行管理。",
+  "significance": "反映四级手术术前多学科讨论制度执行情况。",
+  "default_profile": "HXZD-012-003-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-012-003-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "术前完成多学科讨论的四级手术例数",
+      "numerator_caliber": "1、单位时间内完成的四级手术，前48h内完成多学科讨论的例数（多学科讨论数据取病历的术前讨论记录中，名称包含“多学科”的数量）\n2、手术相关数据来源为【医生站】\n3、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据\n4、一个人多次手术算多次",
+      "denominator_rule": "同期四级手术总例数",
+      "denominator_caliber": "单位时间内，患者完成四级手术总例数（一个患者多次四级手术算多次）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/overview.sql",
+        "department": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-012-003-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "术前完成多学科讨论的四级手术例数",
+      "numerator_caliber": "1、单位时间内出区的患者，四级手术前48h内完成多学科讨论的例数（多学科讨论数据取病历的术前讨论记录中，名称包含“多学科”的数量）\n2、手术相关数据来源为【病案首页】\n3、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据\n4、一个人多次手术算多次",
+      "denominator_rule": "同期四级手术总例数",
+      "denominator_caliber": "单位时间内出区的患者，四级手术总例数（一个患者多次四级手术算多次）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

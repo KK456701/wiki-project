@@ -103,7 +103,6 @@ const nodeLabels: Record<string, string> = {
   plan_verify: '校验证据完整性',
   final_answer_llm: '生成最终回答',
   prepared_sql_answer: '生成受控 SQL 回答',
-  implementation_validation_answer: '生成实施验收回答',
   caliber_simulation_answer: '生成候选口径回答',
   difference_diagnosis_layer_1: '诊断范围预检',
   difference_diagnosis_layer_2: '实时结构核验',

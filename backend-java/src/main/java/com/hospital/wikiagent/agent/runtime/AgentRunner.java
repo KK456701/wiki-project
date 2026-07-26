@@ -226,6 +226,38 @@ public class AgentRunner {
                 subtaskId, Map.of("session_id", safe(request.sessionId())), Map.of(
                         "history_length", request.recentHistory().length(),
                         "structured_state_length", request.structuredState().length()));
+        if (requestsRemovedImplementationValidation(request.query())) {
+            // “全面实施验收”已从产品范围永久删除。这里在 Planner 之前短路，
+            // 防止模型把旧意图改写成普通诊断或自行拼接已删除的工具链。
+            String answer = "当前系统不提供“全面实施验收、上线验收、迁移核对或全链路验收”功能。"
+                    + "您仍可查询指标口径、计算结果、生成受控 SQL，或排查两个结果不一致的原因。";
+            long guardStarted = TraceEvents.started();
+            TraceEvents.completed(observer, traceId, "unsupported_feature_guard", "code",
+                    guardStarted, subtaskId,
+                    Map.of("query", request.query()),
+                    Map.of("code", "FEATURE_REMOVED", "answer", answer));
+            RequestPlan unsupportedPlan = new RequestPlan(
+                    RequestPlan.VERSION,
+                    PlanIntent.UNKNOWN,
+                    "说明当前系统不支持已废弃的全面实施验收功能",
+                    new RequestPlan.TargetIndicator("", null),
+                    new RequestPlan.TimeExpression("", null, null),
+                    List.of(RequestedOutput.EXPLANATION),
+                    List.of("removed_feature"),
+                    List.of());
+            AgentRunState unsupportedState = new AgentRunState();
+            unsupportedState.subtaskId(subtaskId);
+            saveConversation(observer, traceId, subtaskId, conversation,
+                    request.principal(), answer, unsupportedState);
+            emit(observer, "agent_message", traceId, 0,
+                    Map.of("message", answer, "status", "completed"));
+            emit(observer, "agent_done", traceId, 0, Map.of(
+                    "stop_reason", "final_answer", "status", "completed",
+                    "step_count", 0));
+            return new AgentRunResult(
+                    answer, "final_answer", traceId, sessionId,
+                    0, unsupportedPlan, null);
+        }
         PlannerResult modelPlan;
         RequestPlan followupPlan = deterministicSqlFollowup(
                 request.query(), conversation, request.recentHistory(), resolvedIndicator);
@@ -270,13 +302,12 @@ public class AgentRunner {
         RequestPlan enrichedPlan = downgradeUnsupportedDifferenceDiagnosis(
                 request.query(), request.fileKey(),
                 normalizeExplicitDifferenceDiagnosis(
-                request.query(), normalizeExplicitImplementationValidation(
-                        request.query(), upgradeToTrialRun(
-                                request.query(), enrichFromResolvedIndicator(
-                                        enrichFromConversation(
-                                                enrichFromUploadedFile(modelPlan.plan(), fileContext),
-                                                conversation),
-                                        resolvedIndicator)))));
+                request.query(), upgradeToTrialRun(
+                        request.query(), enrichFromResolvedIndicator(
+                                enrichFromConversation(
+                                        enrichFromUploadedFile(modelPlan.plan(), fileContext),
+                                        conversation),
+                                resolvedIndicator))));
         // 低置信度意图澄清：在编译前检查 Planner 的置信度
         double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
         if (enrichedPlan.confidence() < threshold) {
@@ -501,7 +532,6 @@ public class AgentRunner {
                         "cache_reused", result.cacheReused(),
                         "rule_id", state.currentRuleId());
             }
-            emitImplementationValidationStages(observer, traceId, subtaskId, result);
             updateState(state, result);
             if (!result.ok()) {
                 ReplanOutcome replanned = tryReplan(
@@ -712,15 +742,14 @@ public class AgentRunner {
             RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
                     request.query(), request.fileKey(),
                     normalizeExplicitDifferenceDiagnosis(
-                    request.query(), normalizeExplicitImplementationValidation(
-                            request.query(), upgradeToTrialRun(
-                                    request.query(), enrichFromResolvedIndicator(
-                                            enrichFromConversation(
-                                                    enrichFromUploadedFile(
-                                                            raw.plan(),
-                                                            resolveUploadPlanningContext(request)),
-                                                    conversation),
-                                            resolvedIndicator)))));
+                    request.query(), upgradeToTrialRun(
+                            request.query(), enrichFromResolvedIndicator(
+                                    enrichFromConversation(
+                                            enrichFromUploadedFile(
+                                                    raw.plan(),
+                                                    resolveUploadPlanningContext(request)),
+                                            conversation),
+                                    resolvedIndicator))));
             String alternativeId = precompilePlanId(plan);
             if (!failureRouter.acceptsAlternative(state, alternativeId)) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
@@ -792,15 +821,14 @@ public class AgentRunner {
             RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
                     request.query(), request.fileKey(),
                     normalizeExplicitDifferenceDiagnosis(
-                    request.query(), normalizeExplicitImplementationValidation(
-                            request.query(), upgradeToTrialRun(
-                                    request.query(), enrichFromResolvedIndicator(
-                                            enrichFromConversation(
-                                                    enrichFromUploadedFile(
-                                                            raw.plan(),
-                                                            resolveUploadPlanningContext(request)),
-                                                    conversation),
-                                            resolvedIndicator)))));
+                    request.query(), upgradeToTrialRun(
+                            request.query(), enrichFromResolvedIndicator(
+                                    enrichFromConversation(
+                                            enrichFromUploadedFile(
+                                                    raw.plan(),
+                                                    resolveUploadPlanningContext(request)),
+                                            conversation),
+                                    resolvedIndicator))));
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
@@ -885,14 +913,10 @@ public class AgentRunner {
         // 模板选择只依赖已校验的计划，不允许模型自行挑选版式。即使下方某些高风险报告
         // 使用确定性代码渲染，Trace 也记录与该意图对应的模板编号和版本。
         var selectedTemplate = finalAnswer.selectTemplate(plan.intent(), plan.requestedOutputs());
-        // SQL、候选口径模拟、实施验收和差异归因由确定性代码回答，避免模型改写
+        // SQL、候选口径模拟和差异归因由确定性代码回答，避免模型改写
         // 高风险事实；其他意图由 Final Answer LLM 按本轮选中的模板组织。
         String deterministicAnswer = composeDifferenceDiagnosisAnswer(plan, state);
         String deterministicNode = "difference_diagnosis_answer";
-        if (deterministicAnswer == null) {
-            deterministicAnswer = composeImplementationValidationAnswer(plan, state);
-            deterministicNode = "implementation_validation_answer";
-        }
         if (deterministicAnswer == null) {
             deterministicAnswer = composeCaliberSimulationAnswer(plan, state);
             deterministicNode = "caliber_simulation_answer";
@@ -911,7 +935,7 @@ public class AgentRunner {
                         case "prepared_sql_answer" -> "prepared-sql-answer-v2";
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
                         case "caliber_simulation_answer" -> "caliber-simulation-answer-v1";
-                        default -> "implementation-validation-mvp-v1";
+                        default -> "deterministic-answer-v1";
                     },
                     "answer_template_id", selectedTemplate.id(),
                     "answer_template_version", selectedTemplate.version(),
@@ -1343,28 +1367,6 @@ public class AgentRunner {
                 .withRequestedOutputs(List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT));
     }
 
-    private static RequestPlan normalizeExplicitImplementationValidation(
-            String query,
-            RequestPlan plan) {
-        String compact = query == null ? "" : query.replaceAll("\\s+", "");
-        boolean explicit = List.of("全面实施验收", "全面实施验证", "上线验收", "迁移核对", "全链路验收")
-                .stream().anyMatch(compact::contains);
-        if (!explicit) return plan;
-        RequestPlan.TargetIndicator target = plan.targetIndicator();
-        if (target.rawName().isBlank() && target.ruleId() == null && query != null) {
-            target = new RequestPlan.TargetIndicator(query, null);
-        }
-        RequestPlan.TimeExpression time = plan.timeExpression();
-        if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null
-                && query != null) {
-            time = new RequestPlan.TimeExpression(query, null, null);
-        }
-        return plan.withIntent(PlanIntent.IMPLEMENTATION_VALIDATION)
-                .withTargetIndicator(target)
-                .withTimeExpression(time)
-                .withRequestedOutputs(List.of(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT));
-    }
-
     /**
      * 当 Planner 返回的意图暗示用户实际想执行计算时，确定性升级为 INDICATOR_TRIAL_RUN。
      *
@@ -1465,44 +1467,6 @@ public class AgentRunner {
                 true,
                 "或者输入更具体的描述...",
                 "");
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void emitImplementationValidationStages(
-            AgentRunObserver observer,
-            String traceId,
-            String subtaskId,
-            ToolResult result) {
-        if (!result.ok() || !"IMPLEMENTATION_VALIDATION_COMPLETED".equals(result.code())
-                || !(result.data().get("stages") instanceof List<?> stages)) {
-            return;
-        }
-        for (Object raw : stages) {
-            if (!(raw instanceof Map<?, ?> rawStage)) continue;
-            Map<String, Object> stage = (Map<String, Object>) rawStage;
-            String stageId = String.valueOf(stage.getOrDefault("stage_id", "stage")).toLowerCase();
-            String stageStatus = String.valueOf(stage.getOrDefault("status", "failed"));
-            String traceStatus = switch (stageStatus) {
-                case "passed", "skipped" -> "success";
-                case "warning" -> "warning";
-                default -> "failed";
-            };
-            long duration = stage.get("duration_ms") instanceof Number number ? number.longValue() : 0;
-            List<?> findings = stage.get("finding_codes") instanceof List<?> values ? values : List.of();
-            String failureCode = findings.isEmpty()
-                    ? "IMPLEMENTATION_VALIDATION_FAILED"
-                    : String.valueOf(findings.get(0));
-            TraceEvents.recorded(observer, traceId,
-                    "implementation_validation_" + stageId, "code", traceStatus,
-                    duration, subtaskId,
-                    Map.of("workflow_version", "implementation-validation-mvp-v1"),
-                    stage,
-                    "capability", "validate_implementation",
-                    "error_code", "failed".equals(traceStatus) ? failureCode : null,
-                    "failure_class", "failed".equals(traceStatus)
-                            ? FailureClass.classify(failureCode).value()
-                            : null);
-        }
     }
 
     /**
@@ -1654,55 +1618,6 @@ public class AgentRunner {
             case "rate" -> "指标率";
             default -> markdown(value);
         };
-    }
-
-    @SuppressWarnings("unchecked")
-    private static String composeImplementationValidationAnswer(
-            RequestPlan plan,
-            AgentRunState state) {
-        if (!plan.requestedOutputs().contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)) {
-            return null;
-        }
-        ToolResult report = null;
-        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
-            ToolResult candidate = state.lastToolResults().get(index);
-            if (candidate.ok() && "IMPLEMENTATION_VALIDATION_COMPLETED".equals(candidate.code())) {
-                report = candidate;
-                break;
-            }
-        }
-        if (report == null) return null;
-        Map<String, Object> data = report.data();
-        String overall = switch (String.valueOf(data.get("overall_status"))) {
-            case "passed" -> "通过";
-            case "warning" -> "有警告";
-            case "failed" -> "未通过";
-            default -> "已完成";
-        };
-        StringBuilder answer = new StringBuilder("# 指标全面实施验收报告\n\n");
-        answer.append("- 报告编号：").append(data.get("report_id")).append('\n');
-        answer.append("- 指标：").append(data.getOrDefault("rule_name", ""))
-                .append("（").append(data.get("rule_id")).append("）\n");
-        answer.append("- 统计区间：").append(data.get("stat_start"))
-                .append(" 至 ").append(data.get("stat_end")).append('\n');
-        answer.append("- 总体结论：").append(overall).append("\n\n");
-        answer.append("| 阶段 | 状态 | 结论 |\n|---|---|---|\n");
-        if (data.get("stages") instanceof List<?> stages) {
-            for (Object raw : stages) {
-                if (!(raw instanceof Map<?, ?> stage)) continue;
-                answer.append("| ").append(markdown(stage.get("stage_id"))).append(' ')
-                        .append(markdown(stage.get("stage_name"))).append(" | ")
-                        .append(stageStatus(stage.get("status"))).append(" | ")
-                        .append(markdown(stage.get("summary"))).append(" |\n");
-            }
-        }
-        if (data.get("run_id") != null) {
-            answer.append("\n试运行结果：分子 ").append(data.getOrDefault("numerator_count", "—"))
-                    .append("，分母 ").append(data.getOrDefault("denominator_count", "—"))
-                    .append("，指标值 ").append(data.getOrDefault("result_value", "—"))
-                    .append("%。\n");
-        }
-        return answer.toString().stripTrailing();
     }
 
     private static String composePreparedSqlAnswer(RequestPlan plan, AgentRunState state) {
@@ -1894,14 +1809,11 @@ public class AgentRunner {
                 ? null : String.valueOf(value).strip();
     }
 
-    private static String stageStatus(Object value) {
-        return switch (String.valueOf(value)) {
-            case "passed" -> "通过";
-            case "warning" -> "警告";
-            case "failed" -> "未通过";
-            case "skipped" -> "已跳过";
-            default -> "未知";
-        };
+    private static boolean requestsRemovedImplementationValidation(String query) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        return List.of("全面实施验收", "全面实施验证", "上线验收", "迁移核对", "全链路验收")
+                .stream()
+                .anyMatch(compact::contains);
     }
 
     private static String markdown(Object value) {

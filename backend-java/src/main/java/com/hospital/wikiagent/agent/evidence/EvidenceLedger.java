@@ -80,8 +80,7 @@ public class EvidenceLedger implements EvidenceRecorder {
             Map.entry("diagnose_indicator_issue", List.of("diagnosis")),
             Map.entry("diagnose_indicator_difference", List.of("difference_diagnosis_report")),
             Map.entry("preview_rule_change", List.of("rule_change_preview")),
-            Map.entry("analyze_uploaded_indicators", List.of("file_analysis")),
-            Map.entry("validate_indicator_implementation", List.of("implementation_validation_report")));
+            Map.entry("analyze_uploaded_indicators", List.of("file_analysis")));
 
     private final EvidenceStore store;
     private final ObjectMapper objectMapper;

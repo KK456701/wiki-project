@@ -148,7 +148,6 @@ public class FinalAnswerComposer {
         Map<String, Object> diagnosis = latest(evidence, "diagnosis");
         Map<String, Object> difference = latest(evidence, "difference_diagnosis_report");
         Map<String, Object> preview = latest(evidence, "rule_change_preview");
-        Map<String, Object> validation = latest(evidence, "implementation_validation_report");
         Map<String, Object> sql = latest(evidence, "sql_validation");
         if (!caliberTrial.isEmpty()) trial = caliberTrial;
         if (!trial.isEmpty()) {
@@ -214,14 +213,6 @@ public class FinalAnswerComposer {
             append(value, "拟变更内容", preview.get("requested"));
             append(value, "字段变化", preview.get("field_changes"));
             append(value, "影响", preview.get("impact"));
-            return value.toString().strip();
-        }
-        if (!validation.isEmpty()) {
-            StringBuilder value = new StringBuilder("实施验收结果如下：\n\n");
-            append(value, "总体状态", validation.get("overall_status"));
-            append(value, "通过阶段", validation.get("passed_stages"));
-            append(value, "警告阶段", validation.get("warning_stages"));
-            append(value, "失败阶段", validation.get("failed_stages"));
             return value.toString().strip();
         }
         if (!sql.isEmpty()) {

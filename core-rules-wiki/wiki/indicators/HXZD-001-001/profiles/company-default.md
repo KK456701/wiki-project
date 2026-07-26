@@ -4,7 +4,8 @@ profile_id: HXZD-001-001-company-default
 rule_id: HXZD-001-001
 profile_name: 推荐方案：公版
 owner_scope: company
-status: published
+status: approved
+execution_status: documentation_only
 effective_from: 2025-01-01
 effective_to:
 time_dimension: admitted_to_ward_at
@@ -13,8 +14,8 @@ patient_scope:
   - inpatient_discharged
 dedup_key: encounter_id
 direction: lower_is_better
-sql_spec: ../../../sql-specs/HXZD-001-001/sql-spec.md
-updated_at: 2026-07-25
+runtime_manifest: ../../../sql-specs/HXZD-001-001/runtime.json
+updated_at: 2026-07-26
 ---
 
 # 推荐方案：公版
@@ -69,7 +70,9 @@ updated_at: 2026-07-25
 
 ## 执行引用
 
-- 源表 SQL：`etl_source`
-- 概览 SQL：`overview`
-- 科室 SQL：`department`
-- 患者明细 SQL：`patient_detail`
+- 当前执行状态：`documentation_only`
+- 阻断原因：缺少经确认的医院字段契约和统一结果列映射
+- 源表 SQL：`sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/etl_source.sql`
+- 概览 SQL：`sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/overview.sql`
+- 科室 SQL：`sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/department.sql`
+- 患者明细 SQL：`sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/patient_detail.sql`

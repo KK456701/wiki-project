@@ -1,0 +1,125 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-009-002",
+  "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+  "category": "死亡病例讨论制度",
+  "definition": "医务部门组织进行死亡病例讨论的病例数量与同期发生医疗纠纷的死亡病例数量的比值。",
+  "formula": "分子：医务部门组织进行死亡病例讨论的病例数量\n分母：同期发生医疗纠纷的死亡病例数量\n公式：医务部门组织进行死亡病例讨论的病例数量 ： 同期发生医疗纠纷的死亡病例数量",
+  "note": "——",
+  "significance": "反映死亡病例讨论制度落实和管理情况。",
+  "default_profile": "HXZD-009-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-009-002-company-default",
+      "profile_name": "推荐方案：纠纷数据来源：医务管理系统（需上线医务系统投诉纠纷管理功能）",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "医务部门组织进行死亡病例讨论的病例数量",
+      "numerator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者，死亡病例讨论记录的主持人为医务科人员\n2、医务科人员定义：员工隶属科室名称为“医务科”或“医务部”",
+      "denominator_rule": "同期发生医疗纠纷的死亡病例数量",
+      "denominator_caliber": "1、单位时间内死亡的患者，且本次在院期间发生投诉纠纷的数量\n2、患者投诉纠纷数据来源为医务管理系统投诉纠纷管理\n3、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-009-002-company-candidate-01",
+      "profile_name": "可选方案（未实现）：纠纷数据来源：HIS患者标签",
+      "governance_status": "draft",
+      "execution_status": "draft",
+      "execution_blockers": [
+        "方案标记为未实现"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "医务部门组织进行死亡病例讨论的病例数量",
+      "numerator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者，死亡病例讨论记录的主持人为医务科人员\n2、医务科人员定义：员工隶属科室名称为“医务科”或“医务部”",
+      "denominator_rule": "同期发生医疗纠纷的死亡病例数量",
+      "denominator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者数量\n3、患者投诉纠纷数据来源为HIS的患者标签\n4、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-candidate-01/etl_source.sql",
+        "overview": null,
+        "department": null,
+        "patient_detail": null
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

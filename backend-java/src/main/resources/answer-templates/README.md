@@ -15,7 +15,6 @@
 | `difference-diagnosis-report.md` | 双方结果差异诊断 | 双方结果、候选试算、结论、证据限制 |
 | `rule-change-preview.md` | 规则变更预览 | 变更摘要、影响、后续操作 |
 | `upload-analysis-report.md` | Excel 分析或核对 | 文件概览、分析结果、数据限制 |
-| `implementation-validation-report.md` | 实施验收 | 验收结论、阶段表、整改建议 |
 | `clarification.md` | 信息不足或未知意图 | 已确认信息、缺失信息、下一步 |
 
 模板使用规则：

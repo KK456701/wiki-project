@@ -15,7 +15,6 @@ import com.hospital.wikiagent.agent.diagnosis.IndicatorDifferenceDiagnosisWorkfl
 import com.hospital.wikiagent.agent.sql.IndicatorCaliberTools;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
-import com.hospital.wikiagent.agent.validation.ImplementationValidationTools;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 import com.hospital.wikiagent.rules.RuleNotFoundException;
 
@@ -35,14 +34,13 @@ public class ToolRegistry {
             IndicatorCaliberTools caliberTools,
             IndicatorDiagnosisTools diagnosisTools,
             IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
-            UploadedIndicatorTools uploadTools,
-            ImplementationValidationTools validationTools) {
+            UploadedIndicatorTools uploadTools) {
         this(rules, sqlTools, caliberTools, diagnosisTools,
-                differenceDiagnosisWorkflow, uploadTools, validationTools, true);
+                differenceDiagnosisWorkflow, uploadTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules, IndicatorSqlTools sqlTools) {
-        this(rules, sqlTools, null, null, null, null, null, true);
+        this(rules, sqlTools, null, null, null, null, true);
     }
 
     /**
@@ -53,13 +51,12 @@ public class ToolRegistry {
             RuleReadRepository rules,
             IndicatorSqlTools sqlTools,
             IndicatorDiagnosisTools diagnosisTools,
-            UploadedIndicatorTools uploadTools,
-            ImplementationValidationTools validationTools) {
-        this(rules, sqlTools, null, diagnosisTools, null, uploadTools, validationTools, true);
+            UploadedIndicatorTools uploadTools) {
+        this(rules, sqlTools, null, diagnosisTools, null, uploadTools, true);
     }
 
     public ToolRegistry(RuleReadRepository rules) {
-        this(rules, null, null, null, null, null, null, false);
+        this(rules, null, null, null, null, null, false);
     }
 
     private ToolRegistry(
@@ -69,7 +66,6 @@ public class ToolRegistry {
             IndicatorDiagnosisTools diagnosisTools,
             IndicatorDifferenceDiagnosisWorkflow differenceDiagnosisWorkflow,
             UploadedIndicatorTools uploadTools,
-            ImplementationValidationTools validationTools,
             boolean migrateSqlTools) {
         Map<String, AgentTool> values = new LinkedHashMap<>();
         register(values, new AgentTool(
@@ -234,19 +230,6 @@ public class ToolRegistry {
                     (input, context) -> uploadTools.analyze(
                             (UploadedIndicatorTools.Input) input, context)));
         }
-        if (validationTools != null) {
-            register(values, new AgentTool(
-                    "validate_indicator_implementation",
-                    ImplementationValidationTools.Input.class,
-                    Set.of(),
-                    Duration.ofSeconds(150),
-                    AgentTool.RiskLevel.CONTROLLED_EXECUTION,
-                    true,
-                    (context, state) -> state.currentRuleId() != null,
-                    (input, context) -> validationTools.validate(
-                            (ImplementationValidationTools.Input) input, context)));
-        }
-
         for (String name : List.of(
                 "inspect_indicator_implementation",
                 "prepare_indicator_sql",
@@ -256,8 +239,7 @@ public class ToolRegistry {
                 "trial_run_indicator_caliber_sql",
                 "diagnose_indicator_issue",
                 "diagnose_indicator_difference",
-                "analyze_uploaded_indicators",
-                "validate_indicator_implementation")) {
+                "analyze_uploaded_indicators")) {
             if (!values.containsKey(name)) {
                 register(values, placeholder(name));
             }

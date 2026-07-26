@@ -21,7 +21,6 @@ public enum RequestedOutput {
     DIFFERENCE_DIAGNOSIS_REPORT("difference_diagnosis_report"),
     CHANGE_PREVIEW("change_preview"),
     FILE_ANALYSIS("file_analysis"),
-    IMPLEMENTATION_VALIDATION_REPORT("implementation_validation_report"),
     EXPLANATION("explanation");
 
     private final String value;

@@ -4,5 +4,114 @@
     "indicators": [
       "HXZD-001-001"
     ]
+  },
+  "HXZD-002": {
+    "name": "三级查房制度",
+    "indicators": [
+      "HXZD-002-001",
+      "HXZD-002-002",
+      "HXZD-002-003"
+    ]
+  },
+  "HXZD-003": {
+    "name": "会诊制度",
+    "indicators": [
+      "HXZD-003-001",
+      "HXZD-003-002",
+      "HXZD-003-003",
+      "HXZD-003-004"
+    ]
+  },
+  "HXZD-004": {
+    "name": "分级护理制度",
+    "indicators": [
+      "HXZD-004-001"
+    ]
+  },
+  "HXZD-005": {
+    "name": "值班和交接班制度",
+    "indicators": [
+      "HXZD-005-001"
+    ]
+  },
+  "HXZD-006": {
+    "name": "疑难病例讨论制度",
+    "indicators": [
+      "HXZD-006-001",
+      "HXZD-006-002",
+      "HXZD-006-003"
+    ]
+  },
+  "HXZD-007": {
+    "name": "急危重患者抢救制度",
+    "indicators": [
+      "HXZD-007-001"
+    ]
+  },
+  "HXZD-008": {
+    "name": "术前讨论制度",
+    "indicators": [
+      "HXZD-008-001",
+      "HXZD-008-002",
+      "HXZD-008-003",
+      "HXZD-008-004"
+    ]
+  },
+  "HXZD-009": {
+    "name": "死亡病例讨论制度",
+    "indicators": [
+      "HXZD-009-001",
+      "HXZD-009-002",
+      "HXZD-009-003",
+      "HXZD-009-004"
+    ]
+  },
+  "HXZD-010": {
+    "name": "查对制度",
+    "indicators": [
+      "HXZD-010-001"
+    ]
+  },
+  "HXZD-011": {
+    "name": "手术安全核查制度",
+    "indicators": [
+      "HXZD-011-001",
+      "HXZD-011-002"
+    ]
+  },
+  "HXZD-012": {
+    "name": "手术分级管理制度",
+    "indicators": [
+      "HXZD-012-001",
+      "HXZD-012-002",
+      "HXZD-012-003",
+      "HXZD-012-004"
+    ]
+  },
+  "HXZD-013": {
+    "name": "新技术和新项目准入制度",
+    "indicators": [
+      "HXZD-013-001"
+    ]
+  },
+  "HXZD-014": {
+    "name": "危急值报告制度",
+    "indicators": [
+      "HXZD-014-001",
+      "HXZD-014-002"
+    ]
+  },
+  "HXZD-015": {
+    "name": "抗菌药物分级管理制度",
+    "indicators": [
+      "HXZD-015-001"
+    ]
+  },
+  "HXZD-016": {
+    "name": "临床用血审核制度",
+    "indicators": [
+      "HXZD-016-001",
+      "HXZD-016-002"
+    ]
   }
 }

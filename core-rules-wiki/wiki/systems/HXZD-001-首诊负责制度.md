@@ -3,7 +3,7 @@ page_type: system
 system_id: HXZD-001
 title: 首诊负责制度
 indicator_count: 1
-updated_at: 2026-07-25
+updated_at: 2026-07-26
 ---
 
 # 首诊负责制度

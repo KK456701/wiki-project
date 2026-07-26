@@ -1,0 +1,71 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-014-002",
+  "rule_name": "住院患者危急值当日及时处置率",
+  "category": "危急值报告制度",
+  "definition": "当日处置的住院患者危急值项目数占同期临床科室接获住院患者危急值项目数的比例。",
+  "formula": "分子：当日处置的住院患者危急值项目数\n分母：同期临床科室接获住院患者危急值项目数\n公式：当日处置的住院患者危急值项目数 / 同期临床科室接获住院患者危急值项目数 * 100%",
+  "note": "1.本指标只统计住院患者危急值处置情况，不包括门急诊患者危急值。\n2.当日处置的危急值项目数以危急值出现当日的病程记录为准，若无记录则视为未处置。",
+  "significance": "反映危急值规范化管理程度。",
+  "default_profile": "HXZD-014-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-014-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "report_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "当日处置的住院患者危急值项目数",
+      "numerator_caliber": "1、单位时间内接收的危急值，其危急值记录为当日完成的数量，排除已召回的危急值。\n2、“当日完成”定义：危急值接收后24小时内完成危急值记录",
+      "denominator_rule": "同期临床科室接获住院患者危急值项目数",
+      "denominator_caliber": "1、单位时间内，危急值接收数量\n2、医生或护士任意一人接收即可（取第一个接收的时间）\n3、当前指标只统计住院危急值，排除已召回的危急值。",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

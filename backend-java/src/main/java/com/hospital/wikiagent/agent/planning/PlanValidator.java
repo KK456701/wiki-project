@@ -106,20 +106,17 @@ public class PlanValidator {
         }
         boolean needsDatabase = outputs.contains(RequestedOutput.TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)
-                || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
                 || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT);
         boolean needsTime = outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)
-                || outputs.contains(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT)
                 || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)
                 || plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
                 || plan.intent() == PlanIntent.INDICATOR_TRIAL_RUN
                 || (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
                         && outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT))
-                || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS
-                || plan.intent() == PlanIntent.IMPLEMENTATION_VALIDATION;
+                || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS;
 
         if (needsDatabase && constraints.contains("no_database_access")) {
             return PlanValidation.invalid(

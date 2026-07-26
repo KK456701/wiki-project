@@ -1,0 +1,71 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-011-001",
+  "rule_name": "手术医师手术时间重合率",
+  "category": "手术安全核查制度",
+  "definition": "同一时间内手术医师为同一人的手术例数占同期住院患者手术总例数的比例。",
+  "formula": "分子：同一时间内手术医师为同一人的手术例数\n分母：同期住院患者手术总例数\n公式：同一时间内手术医师为同一人的手术例数 / 同期住院患者手术总例数 * 100%",
+  "note": "本指标中\"同一时间\"是指手术未结束时间与其他手术开始时间重合。",
+  "significance": "反映手术医师参与手术安全核查情况。",
+  "default_profile": "HXZD-011-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-011-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "同一时间内手术医师为同一人的手术例数",
+      "numerator_caliber": "1、单位时间内，同一个主刀医师，手术时间重合的手术数量。\n2、手术重合举例：A手术开始时间和结束时间区间跟任意B手术开始时间和结束时间的区间有重合。即A手术和B手术都属于重合，统计为2。\n3、说明：手术患者判断时，只需要统计手术类型为手术、介入治疗，排除诊断性操作、治疗性操作的数据",
+      "denominator_rule": "同期住院患者手术总例数",
+      "denominator_caliber": "单位时间内完成手术总例数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SURGERY",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

@@ -59,9 +59,6 @@ public class AnswerTemplateRegistry {
         intents.put(PlanIntent.UPLOAD_ANALYSIS, descriptor(
                 "upload-analysis-report", "report", "upload-analysis-report.md",
                 List.of("## 文件概览", "## 分析结果", "## 数据限制"), false));
-        intents.put(PlanIntent.IMPLEMENTATION_VALIDATION, descriptor(
-                "implementation-validation-report", "report", "implementation-validation-report.md",
-                List.of("## 验收结论", "## 阶段结果", "## 整改建议"), false));
         intents.put(PlanIntent.UNKNOWN, descriptor(
                 "clarification", "answer", "clarification.md",
                 List.of("# 需要补充的信息"), false));
@@ -69,8 +66,6 @@ public class AnswerTemplateRegistry {
         Map<RequestedOutput, TemplateDescriptor> outputs = new EnumMap<>(RequestedOutput.class);
         outputs.put(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT,
                 intents.get(PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS));
-        outputs.put(RequestedOutput.IMPLEMENTATION_VALIDATION_REPORT,
-                intents.get(PlanIntent.IMPLEMENTATION_VALIDATION));
         outputs.put(RequestedOutput.PREPARED_SQL_HANDLE,
                 intents.get(PlanIntent.INDICATOR_SQL_PREPARE));
         outputs.put(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE,

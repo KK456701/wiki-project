@@ -22,7 +22,6 @@ public enum PlanCapability {
     DIAGNOSE_INDICATOR_DIFFERENCE("diagnose_indicator_difference"),
     PREVIEW_RULE_CHANGE("preview_rule_change"),
     ANALYZE_UPLOADED_FILE("analyze_uploaded_file"),
-    VALIDATE_IMPLEMENTATION("validate_implementation"),
     COMPOSE_ANSWER("compose_answer");
 
     private final String value;

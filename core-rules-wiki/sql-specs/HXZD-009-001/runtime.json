@@ -1,0 +1,70 @@
+{
+  "schema_version": "hxzd-runtime-v1",
+  "rule_id": "HXZD-009-001",
+  "rule_name": "死亡病例讨论5日完成率",
+  "category": "死亡病例讨论制度",
+  "definition": "患者死亡5个工作日内完成死亡病例讨论的病例数量占同期死亡病例总数量的比例。",
+  "formula": "分子：患者死亡5个工作日内完成死亡病例讨论的病例数量\n分母：同期死亡病例总数量\n公式：患者死亡5个工作日内完成死亡病例讨论的病例数量 / 同期死亡病例总数量 * 100%",
+  "note": "——",
+  "significance": "反映死亡病例讨论制度落实和管理情况。",
+  "default_profile": "HXZD-009-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-009-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "患者死亡5个工作日内完成死亡病例讨论的病例数量",
+      "numerator_caliber": "1、单位时间内死亡的患者，在5个工作日内完成死亡病例讨论记录的数量\n2、工作日定义：通过统一配置“时间”模块取节假日数据",
+      "denominator_rule": "同期死亡病例总数量",
+      "denominator_caliber": "单位时间内死亡患者数（取病案首页中转归情况=死亡，死亡时间取病案中的出院时间）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}
