@@ -82,7 +82,7 @@ flowchart TD
 | `get_effective_rule` | 读取定义、公式、分子、分母和默认 Profile | 不可执行 Profile 也可解释 |
 | `preview_rule_change` | 只读展示口径差异 | 不创建草稿、不审批、不发布 |
 | `inspect_indicator_implementation` | 检查 Profile 状态、字段契约和元数据 | 核心 SQL 安全前置检查，不是实施工作台 |
-| `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象 | 仅 `executable` Profile |
+| `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象，或展示静态检查后的知识库参考稿 | 仅 `executable` Profile 生成可执行对象；`documentation_only` 参考稿无 `sql_id` 且不能试运行 |
 | `trial_run_indicator_sql` | 固定进入双库 Workflow | 禁用抽取时直接核对两库；强制抽取时先抽取一次，再用相同 SQL/参数严格串行核对两库 |
 | `resolve_indicator_caliber` | 解析候选/假设口径 | 只从已审批可执行 Profile 中选择 |
 | `prepare_indicator_caliber_sql` | 准备候选口径 SQL | 禁止用户覆盖字段和 SQL |
@@ -107,7 +107,7 @@ Profile 状态：
 | 状态 | 可解释 | 可准备/试运行 SQL | 可明细/导出 |
 |---|---:|---:|---:|
 | `executable` | 是 | 是 | 仅声明相应 SQL 契约时 |
-| `documentation_only` | 是 | 否 | 否 |
+| `documentation_only` | 是 | 仅可查看只读静态检查通过的知识库 SQL 参考稿，不生成可执行对象 | 否 |
 | `draft` | 否，不进入生效口径 | 否 | 否 |
 
 Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不完整或结果映射不完整的方案提升为可执行。

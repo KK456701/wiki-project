@@ -19,6 +19,7 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.agent.tools.PolicyDecision;
 import com.hospital.wikiagent.agent.tools.PolicyDecision.Decision;
@@ -193,12 +194,46 @@ class IndicatorSqlToolsTest {
     }
 
     @Test
-    void rejectsDocumentationOnlyProfileBeforeDatabaseAccess() {
+    void exposesStaticValidatedReferenceSqlForExplicitSqlPrepareWithoutDatabaseAccess() {
         Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
         documentationOnly.put("execution_status", "documentation_only");
-        documentationOnly.put("standard_sql", "");
+        documentationOnly.put("standard_sql", """
+                SELECT 0 AS index_value, 0 AS numerator_count, 0 AS denominator_count
+                FROM consult_record
+                WHERE
+                  --布局组件设置提升效率
+                  AND request_time>=:start_time AND request_time<:end_time
+                """);
         documentationOnly.put("execution_blockers", List.of("缺少经确认的医院字段契约"));
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
+        state.lastIntent(PlanIntent.INDICATOR_SQL_PREPARE.value());
+
+        ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
+                executionContext(runtimeContext, state));
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.code()).isEqualTo("SQL_REFERENCE_PREPARED");
+        assertThat(result.data())
+                .containsEntry("execution_status", "documentation_only")
+                .containsEntry("reference_only", true)
+                .containsEntry("validation_status", "static_validated")
+                .doesNotContainKey("sql_id");
+        assertThat(result.data().get("sql_preview").toString())
+                .contains("WHERE", "1=1", "AND request_time")
+                .doesNotContain("布局组件设置提升效率");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
+        assertThat(state.validatedSqlIds()).isEmpty();
+    }
+
+    @Test
+    void keepsDocumentationOnlyProfileBlockedForTrialRunPlan() {
+        Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
+        documentationOnly.put("execution_status", "documentation_only");
+        documentationOnly.put("execution_blockers", List.of("缺少经确认的医院字段契约"));
+        when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
+        state.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
 
         ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
                 "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
@@ -206,8 +241,8 @@ class IndicatorSqlToolsTest {
 
         assertThat(result.ok()).isFalse();
         assertThat(result.code()).isEqualTo("PROFILE_NOT_EXECUTABLE");
-        assertThat(result.data()).containsEntry("execution_status", "documentation_only");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
     }
 
     @Test

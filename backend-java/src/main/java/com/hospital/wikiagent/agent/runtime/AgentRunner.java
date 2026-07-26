@@ -267,7 +267,7 @@ public class AgentRunner {
             modelPlan = new PlannerResult(
                     followupPlan, "deterministic-sql-followup", request.modelId(), false);
             TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
-                    followupStarted, subtaskId, Map.of(
+                    followupStarted, subtaskId, eventValues(
                             "query", request.query(),
                             "context_rule_id", followupPlan.targetIndicator().ruleId(),
                             "context_stat_start", followupPlan.timeExpression().startTime(),
@@ -404,6 +404,9 @@ public class AgentRunner {
         // Replanner；正常计划不会增加模型调用。
         planned = alignPlanBeforeCompile(
                 request, observer, traceId, state, planned, conversation, resolvedIndicator);
+        // Replanner 或服务端受控修正可能改变计划意图；运行态必须以最终计划为准，
+        // 否则工具层会把“只展示 SQL”和“执行试运行”混为同一种操作。
+        state.lastIntent(planned.plan().intent().value());
 
         // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
         long compileStarted = TraceEvents.started();
@@ -1225,8 +1228,9 @@ public class AgentRunner {
     /**
      * 将具备完整上一轮事实的 SQL 追问确定性转换为业务计划。
      *
-     * <p>该分支只接受明确出现 SQL/脚本的追问，并要求指标身份和完整统计区间都已存在；
-     * 任何事实缺失仍交给 Planner 或用户澄清，不能从历史回答猜造规则或日期。</p>
+     * <p>该分支只接受明确出现 SQL/脚本的追问。指标身份必须来自已识别结果或结构化会话；
+     * 统计区间缺失时交给 PlanValidator 使用“本月至今”的 SQL 展示默认值。SQL 展示不会
+     * 执行数据库，因此不能因为缺少上一轮统计周期而再次交给小模型猜测任务类型。</p>
      */
     private static RequestPlan deterministicSqlFollowup(
             String query,
@@ -1251,13 +1255,17 @@ public class AgentRunner {
                 statEnd = historyTimes.get(historyTimes.size() - 1);
             }
         }
-        if (ruleId == null || statStart == null || statEnd == null) return null;
+        if (ruleId == null) return null;
+        boolean hasPeriod = statStart != null && statEnd != null;
         boolean candidateReference = conversation.caliberProfileId() != null
                 && (compact.contains("这个口径")
                         || compact.contains("该口径")
                         || compact.contains("候选口径")
                         || compact.contains("刚才口径"));
         if (candidateReference) {
+            // 候选口径 SQL 需要绑定已经确认的候选周期；缺少周期时继续走正常消歧，
+            // 不能把当前口径的默认周期静默套到候选口径上。
+            if (!hasPeriod) return null;
             return new RequestPlan(
                     RequestPlan.VERSION,
                     PlanIntent.INDICATOR_CALIBER_SIMULATION,
@@ -1280,7 +1288,9 @@ public class AgentRunner {
                 PlanIntent.INDICATOR_SQL_PREPARE,
                 query == null ? "生成上一轮指标的受控 SQL" : query,
                 new RequestPlan.TargetIndicator(ruleName, ruleId),
-                new RequestPlan.TimeExpression("沿用上一轮统计区间", statStart, statEnd),
+                hasPeriod
+                        ? new RequestPlan.TimeExpression("沿用上一轮统计区间", statStart, statEnd)
+                        : new RequestPlan.TimeExpression("", null, null),
                 List.of(RequestedOutput.PREPARED_SQL_HANDLE),
                 List.of(),
                 List.of());
@@ -1639,7 +1649,8 @@ public class AgentRunner {
         ToolResult prepared = null;
         for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
             ToolResult candidate = state.lastToolResults().get(index);
-            if (candidate.ok() && "SQL_OBJECT_PREPARED".equals(candidate.code())) {
+            if (candidate.ok() && ("SQL_OBJECT_PREPARED".equals(candidate.code())
+                    || "SQL_REFERENCE_PREPARED".equals(candidate.code()))) {
                 prepared = candidate;
                 break;
             }
@@ -1662,9 +1673,22 @@ public class AgentRunner {
             appendCaliber(answer, "排除条件", rule.get("exclude_rule"));
             answer.append('\n');
         }
-        answer.append("## 已校验 SQL\n\n```sql\n")
+        boolean referenceOnly = Boolean.TRUE.equals(prepared.data().get("reference_only"));
+        answer.append(referenceOnly
+                        ? "## 知识库 SQL 参考稿（不可执行）\n\n```sql\n"
+                        : "## 已校验 SQL\n\n```sql\n")
                 .append(sql).append("\n```\n\n");
-        answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+        if (!referenceOnly) {
+            answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+        } else {
+            answer.append("- Profile 状态：")
+                    .append(prepared.data().getOrDefault("execution_status", "documentation_only"))
+                    .append('\n');
+            answer.append("- 当前校验：只读静态检查通过\n");
+            answer.append("- 执行阻断：")
+                    .append(prepared.data().getOrDefault("execution_blockers", List.of()))
+                    .append('\n');
+        }
         answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
                 .append(" 至 ").append(prepared.data().get("stat_end")).append("（左闭右开）\n");
         answer.append("- 参数：").append(prepared.data().getOrDefault("parameters", Map.of())).append('\n');
@@ -1672,7 +1696,14 @@ public class AgentRunner {
             answer.append("\n> 未指定统计时间，已默认用本月至今生成 SQL；"
                     + "如需其他区间，直接告诉我具体起止时间即可调整。\n");
         }
-        answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
+        if (referenceOnly) {
+            answer.append("\n> 该 SQL 来自当前发布的知识库，仅供口径和实现核对。"
+                    + "它尚未通过医院字段、结果契约和双库验证，因此没有生成可执行 SQL 对象，"
+                    + "不能用于试运行。\n");
+            answer.append("\n本次只展示并静态检查 SQL，没有访问数据库。");
+        } else {
+            answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
+        }
         return answer.toString();
     }
 

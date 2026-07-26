@@ -36,6 +36,8 @@ public class EvidenceLedger implements EvidenceRecorder {
             "calculation_definition",
             "national_version", "hospital_version", "version", "mapping_status",
             "sql_status", "sql_id", "run_id", "result_id", "source_role", "db_source_id",
+            "profile_id", "execution_status", "execution_blockers", "reference_only",
+            "validation_status",
             "canonical_run_id", "extraction_id", "workflow_version",
             "diagnosis_report_id",
             "sql_bundle",

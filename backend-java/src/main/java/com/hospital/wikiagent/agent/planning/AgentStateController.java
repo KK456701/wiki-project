@@ -141,7 +141,8 @@ public class AgentStateController {
                     facts.add("implementation_status");
                     facts.add("field_mapping");
                 }
-                case "SQL_OBJECT_PREPARED" -> facts.add("sql_validation");
+                case "SQL_OBJECT_PREPARED", "SQL_REFERENCE_PREPARED" ->
+                        facts.add("sql_validation");
                 case "TRIAL_RUN_COMPLETED" -> facts.add("trial_run");
                 case "CALIBER_PROFILE_RESOLVED" -> facts.add("caliber_profile");
                 case "CALIBER_SQL_PREPARED" -> facts.add("caliber_sql_validation");

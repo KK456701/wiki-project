@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.dbhub.DatabaseSourceException;
@@ -181,6 +182,15 @@ public class IndicatorSqlTools {
         Map<String, Object> rule = rules.effectiveRule(
                 input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
         if (!"executable".equals(text(rule.get("execution_status")))) {
+            /*
+             * “给我 SQL”与“执行 SQL”是两种不同能力。对于 documentation_only
+             * Profile，只有明确的 SQL_PREPARE 计划可以查看知识库原稿；试运行、候选
+             * 口径和诊断仍必须通过完整执行契约，不能借参考稿绕过门禁。
+             */
+            if (diagnosticProfileId == null
+                    && PlanIntent.INDICATOR_SQL_PREPARE.value().equals(state.lastIntent())) {
+                return prepareReferenceOnly(input, start, end, rule, context);
+            }
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("rule_id", input.ruleId());
             data.put("profile_id", rule.get("profile_id"));
@@ -217,7 +227,8 @@ public class IndicatorSqlTools {
 
         String sql;
         try {
-            sql = renderer.render(template, objectMap(mapping.get("fields")), text(mapping.get("main_table")));
+            sql = normalizeKnownSqlArtifacts(renderer.render(
+                    template, objectMap(mapping.get("fields")), text(mapping.get("main_table"))));
         } catch (RuntimeException exception) {
             return failure("validation_failed", "SQL_TEMPLATE_RENDER_FAILED", "SQL 模板无法根据已确认映射完成渲染。", false);
         }
@@ -304,6 +315,84 @@ public class IndicatorSqlTools {
         }
         return ToolResult.success(
                 "SQL_OBJECT_PREPARED", "SQL 已完成确定性生成和只读安全校验，可进行受控试运行。", data);
+    }
+
+    /**
+     * 为尚未完成医院执行契约的 Profile 展示知识库 SQL 参考稿。
+     *
+     * <p>该方法只做确定性模板渲染、已知无语义模板错误修复和只读静态校验，
+     * 不创建 SQL 对象、不登记 validatedSqlId，也不访问 DBHub。因此返回值只能用于
+     * 人工核对，后续试运行工具无法消费它。</p>
+     */
+    private ToolResult prepareReferenceOnly(
+            PrepareInput input,
+            LocalDateTime start,
+            LocalDateTime end,
+            Map<String, Object> rule,
+            ToolExecutionContext context) {
+        String template = text(rule.get("standard_sql"));
+        if (template.isBlank()) {
+            return failure("unavailable", "SQL_TEMPLATE_UNAVAILABLE",
+                    "当前口径没有可展示的知识库 SQL 模板。", false);
+        }
+        Map<String, Object> mapping = withExecutionDefaults(rules.fieldMapping(
+                input.ruleId(), context.agentContext().hospitalId(), null));
+        String sql;
+        try {
+            sql = normalizeKnownSqlArtifacts(renderer.render(
+                    template, objectMap(mapping.get("fields")), text(mapping.get("main_table"))));
+        } catch (RuntimeException exception) {
+            return failure("validation_failed", "SQL_REFERENCE_RENDER_FAILED",
+                    "知识库 SQL 仍包含无法解析的模板字段，暂不能安全展示。", false);
+        }
+        ReadOnlySqlValidator.ValidationResult validation = validator.validateReadOnly(sql);
+        if (!validation.ok()) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("rule_id", input.ruleId());
+            data.put("profile_id", rule.get("profile_id"));
+            data.put("execution_status", rule.get("execution_status"));
+            data.put("execution_blockers", rule.get("execution_blockers"));
+            data.put("static_validation_message", validation.message());
+            return failure("validation_failed", "SQL_REFERENCE_VALIDATION_FAILED",
+                    "知识库 SQL 未通过只读静态检查，已阻止展示。", false, data);
+        }
+
+        String statStart = start.format(SQL_TIME);
+        String statEnd = end.format(SQL_TIME);
+        Map<String, Object> displayParameters = new LinkedHashMap<>(
+                objectMap(rule.get("effective_params")));
+        displayParameters.put("hospital_id", context.agentContext().hospitalId());
+        displayParameters.put("start_time", statStart);
+        displayParameters.put("end_time", statEnd);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("rule_id", input.ruleId());
+        data.put("profile_id", rule.get("profile_id"));
+        data.put("execution_status", rule.get("execution_status"));
+        data.put("execution_blockers", rule.get("execution_blockers"));
+        data.put("reference_only", true);
+        data.put("validation_status", "static_validated");
+        data.put("sql_preview", sql);
+        data.put("parameters", displayParameters);
+        data.put("stat_start", statStart);
+        data.put("stat_end", statEnd);
+        return ToolResult.success(
+                "SQL_REFERENCE_PREPARED",
+                "已读取并完成知识库 SQL 参考稿的只读静态检查；该参考稿不可执行。",
+                data);
+    }
+
+    /**
+     * 只修复知识来源中已经登记、且不改变业务语义的模板残留。
+     *
+     * <p>不得在这里改表、字段、JOIN、过滤条件、阈值、聚合或时间边界。遇到其他
+     * 未知问题必须由发布门禁阻断，不能由运行时代码或模型猜测修复。</p>
+     */
+    private static String normalizeKnownSqlArtifacts(String sql) {
+        return sql
+                .replace("#{NOLOCK}", "WITH (NOLOCK)")
+                .replace("--布局组件设置提升效率", "1=1")
+                .replace("\u0000", "");
     }
 
     public ToolResult trial(TrialInput input, ToolExecutionContext context) {

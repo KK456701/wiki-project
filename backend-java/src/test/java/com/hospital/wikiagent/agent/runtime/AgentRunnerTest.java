@@ -667,6 +667,78 @@ class AgentRunnerTest {
     }
 
     @Test
+    void resolvesSqlFollowupWithoutPreviousPeriodAndUsesNonExecutingDefaultRange() {
+        ObjectMapper objectMapper = JsonMapper.builder()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        SqlFixture fixture = sqlFixture(objectMapper);
+        IndicatorSqlTools sqlTools = new IndicatorSqlTools(
+                fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
+                new SqlTemplateRenderer(), new ReadOnlySqlValidator(), new SqlParameterBinder(),
+                new IndicatorBusinessQueryClient() {
+                    @Override
+                    public List<Map<String, Object>> execute(String sql) {
+                        throw new AssertionError("SQL follow-up must not execute the database");
+                    }
+
+                    @Override
+                    public String sourceId() {
+                        return "business_test";
+                    }
+                }, objectMapper);
+        ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
+        CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
+        MemoryEvidenceStore store = new MemoryEvidenceStore();
+        AgentModelProperties properties = modelProperties();
+        EvidenceLedger ledger = new EvidenceLedger(store, objectMapper, properties);
+        EvidenceVerifier verifier = new EvidenceVerifier(store, ledger);
+        gateway = new ToolGateway(tools, new PolicyDecisionService(), objectMapper, ledger);
+        QueueInvoker models = new QueueInvoker();
+        AgentModelRegistry modelRegistry = new AgentModelRegistry(properties);
+        AgentConversationMemory memory = AgentConversationMemory.noop();
+        HospitalPrincipal principal = new HospitalPrincipal(
+                "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001");
+        var conversation = memory.open(principal, "session_sql_without_period");
+        AgentRunState previousState = new AgentRunState();
+        previousState.currentRuleId("HXZD-003-001");
+        previousState.lastRuleName("急会诊及时到位率");
+        previousState.lastIntent(PlanIntent.RULE_EXPLANATION.value());
+        memory.appendAssistant(
+                conversation,
+                principal,
+                "急会诊及时到位率的定义和公式如下。",
+                previousState);
+        AgentRunner runner = new AgentRunner(
+                new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                new PlanValidator(new TimeRangeResolver()),
+                new PlanCompiler(capabilities, objectMapper), capabilities,
+                new AgentStateController(capabilities), new DeterministicDispatch(), gateway, verifier,
+                new FinalAnswerComposer(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
+                memory);
+        List<Map<String, Object>> events = new ArrayList<>();
+
+        AgentRunResult result = runner.run(new AgentRunRequest(
+                "sql怎么写",
+                "session_sql_without_period", "ollama-test", null,
+                "request_sql_without_period", "trace_sql_without_period",
+                "business_test", "{}", "", principal), events::add);
+
+        assertThat(result.stopReason()).as(result.answer()).isEqualTo("final_answer");
+        assertThat(result.requestPlan().intent()).isEqualTo(PlanIntent.INDICATOR_SQL_PREPARE);
+        assertThat(result.answer())
+                .contains("已校验 SQL", "未指定统计时间", "不执行数据库");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("followup_plan_resolve")
+                .doesNotContain("planner_llm");
+        assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
+                .extracting(event -> event.get("tool_name"))
+                .contains("prepare_indicator_sql")
+                .doesNotContain("trial_run_indicator_sql");
+        assertThat(models.calls).isZero();
+    }
+
+    @Test
     void rejectsRemovedImplementationValidationBeforePlannerOrTools() {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
