@@ -21,7 +21,7 @@ Python FastAPI 运行时、Python 测试、旧原生前端和双栈切流脚本�
 - 对话式澄清：缺指标、指标歧义、缺时间、意图不清或候选口径不唯一时，不再直接显示运行失败；服务端返回结构化反问，前端提供可搜索的指标列表、常用时间范围和业务动作。用户选择后会携带原问题与结构化上下文重新进入完整 Agent 链路。
 - 多指标请求：服务端确定性拆分 2～3 个指标；API 模型最多并发 2，本地 Ollama 串行。
 - 指标解释：35 项 HXZD 指标均可查询 Wiki 中的定义、公式、分子、分母和 Profile 状态。
-- 分级执行：Profile 分为 `executable`、`documentation_only` 和 `draft`。完整明细与诊断仍只对已验证契约开放；医院发布中已有安全概览 SQL 和确定性结果列的 35 项指标，可在运行时只读复核后进行双库概览试算。
+- 分级执行：Profile 分为 `executable`、`documentation_only` 和 `draft`。完整明细与诊断仍只对已验证契约开放；`hospital_001` 双库执行契约覆盖层为 35 项指标补充了安全概览 SQL 和确定性结果列，可在运行时只读复核后进行双库概览试算。该覆盖层不代表医院存在独立业务口径。
 - 指标计算：统计区间统一使用左闭右开且最多一个自然月；从同一 `release_id + rule_id + profile_id` 读取 ETL、概览和明细 SQL Bundle。普通计算固定严格串行业务库和真实库；抽取模式关闭时只跳过抽取，强制模式会先经外部抽取网关写入真实库。
 - 双库核对：比例类指标只有分子、分母同时相等才判定一致；中位数等无分子分母的标量指标比较统一指标值。不一致时仅在明细比较契约完整时执行两库科室和患者 SQL，否则保留概览差异并返回 `DETAIL_COMPARISON_CONTRACT_MISSING`。
 - SQL 展示：用户仅询问“SQL 怎么写”时使用 SQL 优先模板，只展示指标、Profile、知识库概览 SQL、统计参数及“未访问数据库”说明，不再重复整段定义与公式。用户明确计算且区间不超过一个月时，静态概览契约才生成受控 SQL 对象并进入双库核对。
@@ -118,7 +118,7 @@ scripts/
   start-java-runtime.ps1      不依赖 Python 的启动器
   build-wiki-from-markdown.mjs  从原始 Markdown 生成 HXZD 契约
   validate-wiki-contract.mjs  只读校验 35/45/169 及执行门禁
-  knowledge-release.ps1       Excel/Markdown 准备、发布、回滚和医院知识回收
+  knowledge-release.ps1       Excel/Markdown 准备、发布、回滚和真实医院差异知识回收
   knowledge-release.mjs       不可变 release、原子指针和三方 Diff 实现
   init_runtime_sqlite.sql     SQLite 运行库参考建表脚本
 tools/dbhub/                  DBHub sidecar 配置和启动脚本
@@ -141,12 +141,18 @@ docs/                         当前架构、运维记录和历史设计资料
 只有业务库、真实库分别完成对象/函数/结果列验证，并确认科室比较键、患者业务主键后，
 才能显式开启双库执行。旧发布快照缺少该契约时仍可解释，但强制模式会安全拒绝。
 
-公司基础版本仍保留分级治理状态；`hospital_001` 发布版本为 35 项指标补充了概览 SQL 结果列候选。运行时会对所有 35 项概览 SQL 做确定性修复和只读复核，再分别访问业务库与真实库。执行失败不会提升发布状态，也不会生成虚假结果；完整明细能力继续取决于 Profile 的比较键和字段契约。
+公司基础版本仍保留分级治理状态；`hospital_001` 的
+`KB-20260726-HOSPITAL001-DUALDB` 是**双库执行契约覆盖层**，不是医院独立口径
+知识库。它的原始资料和内容哈希与公司版本一致，`hospital_overrides` 为空，只为
+Profile 增加目标数据库、结果列和验证状态等运行契约。运行时会对 35 项概览 SQL 做
+确定性修复和只读复核，再分别访问业务库与真实库。执行失败不会提升发布状态，也不会
+生成虚假结果；完整明细能力继续取决于 Profile 的比较键和字段契约。
 
-医院验证通过后使用独立医院 release 和 `pointers/hospitals/{hospital_id}-current.json`
-覆盖执行状态，不修改公司基础版本。当前 `hospital_001` 已发布
-`KB-20260726-HOSPITAL001-DUALDB`，其中 `HXZD-001-001-company-default`
-已通过 `winex_all_dev` 与 `winex_aima` 的元数据、编译和结果列契约验证。
+为保持现有运行兼容，该执行契约快照仍沿用
+`releases/hospitals/{hospital_id}` 和
+`pointers/hospitals/{hospital_id}-current.json`。只有未来从医院原始差异资料或
+医院回收包生成、经过人工审核且 `hospital_overrides` 非空的发布，才能称为“医院
+差异知识”。执行契约覆盖层不得被当作本院口径来源。
 
 生成器不会改写表、字段、JOIN、业务条件、阈值、去重、分子分母或时间边界。它只会
 机械修复非法 `NOLOCK`、`WHERE + 注释 + AND` 和无业务意义控制字符，并把原始哈希、

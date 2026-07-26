@@ -80,12 +80,13 @@ SQL 或刷新患者明细。数字 `991827` 只作为 `hospital_scope_value` 绑
 
 ## 2026-07-26 hospital_001 实库验收
 
-- 发布医院知识版本：`KB-20260726-HOSPITAL001-DUALDB`。
+- 发布双库执行契约覆盖层：`KB-20260726-HOSPITAL001-DUALDB`。该快照复用公司
+  原始资料，`hospital_overrides` 为空，不代表医院存在独立业务口径。
 - 已验证 Profile：`HXZD-001-001-company-default`。
 - `overview`、`department_detail`、`patient_detail` 已分别在
   `winex_all_dev` 和 `winex_aima` 完成元数据及编译验证。
-- Java 运行时优先读取与当前公司基础版本一致的医院发布快照；医院快照缺失或基础
-  版本不一致时才回退公司文档版本。
+- Java 运行时优先读取与当前公司基础版本一致的医院范围执行契约快照；快照缺失或
+  基础版本不一致时才回退公司文档版本。
 - 发布契约已同时验证两个数据源时，本机 SQLite 元数据缓存未同步不再重复阻断；
   未携带完整双库验证契约的 Profile 仍必须通过本地元数据门禁。
 - 原始 SQL 的 `marptBeginAt/marptEndAt`、`startTime/endTime` 和
