@@ -49,15 +49,17 @@ class RuleReadRepositoryTest {
     }
 
     @Test
-    void returnsDocumentationProfileWithoutExecutableSql() {
+    void returnsDocumentationProfileWithStaticOverviewReference() {
         var rule = repository.effectiveRule(
                 "HXZD-001-001", "hospital_without_release");
 
         assertThat(rule)
                 .containsEntry("rule_id", "HXZD-001-001")
                 .containsEntry("execution_status", "documentation_only")
-                .containsEntry("sql_status", "unavailable");
-        assertThat(rule.get("standard_sql")).isEqualTo("");
+                .containsEntry("sql_status", "unavailable")
+                .containsEntry("overview_runtime_eligible", false);
+        assertThat(rule.get("standard_sql")).asString()
+                .contains("MRAS_BUSINESS_FIRSTVISIT");
         assertThat(rule.get("numerator_rule")).asString().isNotBlank();
         assertThat(rule.get("denominator_rule")).asString().isNotBlank();
     }

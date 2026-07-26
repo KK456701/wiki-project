@@ -119,7 +119,10 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         }
 
         Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
-        if (!schemaCompatible(contract)) {
+        boolean fullSchemaContract = schemaCompatible(contract);
+        boolean overviewStaticRuntime =
+                Boolean.TRUE.equals(rule.get("overview_runtime_eligible"));
+        if (!fullSchemaContract && !overviewStaticRuntime) {
             return ToolResult.failure(
                     "validation_failed", "DUAL_DATABASE_SCHEMA_INCOMPATIBLE",
                     "当前 Profile 尚未确认业务库与真实库具备同构查询对象，未执行抽取或数据库查询。",
@@ -184,21 +187,27 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                         "真实库概览计算失败，未形成双库比较结论。", false);
             }
 
-            boolean matched = business.numerator() == real.numerator()
-                    && business.denominator() == real.denominator();
+            boolean matched = business.matches(real);
             String comparisonRunId = id("RUN_COMPOSITE_");
+            /*
+             * 静态概览试算用两个数据库的实际执行来验证表、字段和结果列是否可用。
+             * 只有完整的明细比较契约才能在不一致时继续执行科室/患者 SQL；否则保留
+             * 已确认的概览差异，并明确返回契约缺失，不能猜测具体差异记录。
+             */
             Map<String, Object> diagnosis = matched
                     ? Map.of("status", "skipped", "reason", "overview_matched")
-                    : new LinkedHashMap<>(
-                            diagnoseDetails(rule, boundParameters, contract, context));
+                    : fullSchemaContract
+                            ? new LinkedHashMap<>(
+                                    diagnoseDetails(rule, boundParameters, contract, context))
+                            : new LinkedHashMap<>(Map.of(
+                                    "status", "incomplete",
+                                    "code", "DETAIL_COMPARISON_CONTRACT_MISSING",
+                                    "reason", "双库概览不一致，但科室或患者明细比较契约尚未验证。"));
             String comparisonStatus = matched ? "matched" : "mismatched";
             String diagnosisReportId = "";
             Map<String, Object> mismatch = matched
                     ? Map.of()
-                    : Map.of(
-                            "numerator_delta", business.numerator() - real.numerator(),
-                            "denominator_delta", business.denominator() - real.denominator(),
-                            "diagnosis_status", diagnosis.getOrDefault("status", "incomplete"));
+                    : mismatchSummary(business, real, diagnosis);
             try {
                 objects.saveDualRun(
                         comparisonRunId,
@@ -240,10 +249,16 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             data.put("comparison_status", comparisonStatus);
             data.put("business_result", business.safeMap());
             data.put("real_result", real.safeMap());
-            data.put("numerator_count", real.numerator());
-            data.put("denominator_count", real.denominator());
-            data.put("result_value", real.rate());
-            data.put("no_sample", real.denominator() == 0);
+            if (real.numerator() != null) {
+                data.put("numerator_count", real.numerator());
+            }
+            if (real.denominator() != null) {
+                data.put("denominator_count", real.denominator());
+            }
+            data.put("result_value", real.resultValue());
+            data.put("no_sample", real.denominator() != null
+                    ? real.denominator() == 0
+                    : real.resultValue() == null);
             data.put("dual_difference_diagnosis", diagnosis);
             if (!diagnosisReportId.isBlank()) {
                 data.put("diagnosis_report_id", diagnosisReportId);
@@ -261,8 +276,8 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     // 结果当成“尚未试运行”；双库语义由 comparison_status 区分。
                     "TRIAL_RUN_COMPLETED",
                     matched
-                            ? "业务库与真实库的分子、分母一致。"
-                            : "业务库与真实库结果不一致，已执行受控明细诊断。",
+                            ? "业务库与真实库的指标结果一致。"
+                            : "业务库与真实库结果不一致，已按可用契约执行受控诊断。",
                     data);
         }
     }
@@ -302,8 +317,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             ToolExecutionContext context) {
         String reportId = id("DDR_");
         long affected = longValue(diagnosis.get("affected_record_count")) == null
-                ? Math.abs(business.numerator() - real.numerator())
-                        + Math.abs(business.denominator() - real.denominator())
+                ? estimatedAffectedCount(business, real)
                 : longValue(diagnosis.get("affected_record_count"));
         Map<String, Object> safeReport = new LinkedHashMap<>();
         safeReport.put("report_id", reportId);
@@ -319,7 +333,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         safeReport.put("business_result", business.safeMap());
         safeReport.put("real_result", real.safeMap());
         safeReport.put("conclusion_code", "DUAL_DATABASE_RESULT_MISMATCH");
-        safeReport.put("user_summary", "业务库与真实库的分子或分母不一致。");
+        safeReport.put("user_summary", "业务库与真实库的指标结果不一致。");
         safeReport.put("affected_record_count", affected);
         safeReport.put("evidence_limit",
                 "逐条原因只以受保护明细快照为准；患者行不写入诊断报告或 Trace。");
@@ -421,21 +435,36 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 objectMap(contract.get("overview_result_mapping"));
         String numeratorColumn = text(resultMapping.get("numerator_count"));
         String denominatorColumn = text(resultMapping.get("denominator_count"));
-        boolean numeratorColumnPresent = containsKey(first, numeratorColumn);
-        boolean denominatorColumnPresent = containsKey(first, denominatorColumn);
-        Long numerator = longValue(value(first, numeratorColumn));
-        Long denominator = longValue(value(first, denominatorColumn));
-        if (!numeratorColumnPresent || !denominatorColumnPresent) {
-            throw new IllegalStateException("概览结果缺少分子或分母");
+        String indexValueColumn = text(resultMapping.get("index_value"));
+        boolean ratioContract = !numeratorColumn.isBlank()
+                && !denominatorColumn.isBlank();
+        boolean scalarContract = !indexValueColumn.isBlank();
+        Long numerator = null;
+        Long denominator = null;
+        Number resultValue;
+        if (ratioContract) {
+            if (!containsKey(first, numeratorColumn)
+                    || !containsKey(first, denominatorColumn)) {
+                throw new IllegalStateException("概览结果缺少分子或分母");
+            }
+            numerator = longValue(value(first, numeratorColumn));
+            denominator = longValue(value(first, denominatorColumn));
+            /*
+             * SUM 在空数据集上会返回 NULL，但结果列仍然存在。此时业务含义是统计
+             * 区间没有样本，应规范化为 0/0；只有结果列本身不存在时才属于契约错误。
+             */
+            numerator = numerator == null ? 0L : numerator;
+            denominator = denominator == null ? 0L : denominator;
+            resultValue = rate(numerator, denominator);
+        } else if (scalarContract) {
+            if (!containsKey(first, indexValueColumn)) {
+                throw new IllegalStateException("概览结果缺少指标值列");
+            }
+            resultValue = numberValue(value(first, indexValueColumn));
+        } else {
+            throw new IllegalStateException("概览结果契约缺少可比较输出列");
         }
-        /*
-         * SUM 在空数据集上会返回 NULL，但结果列仍然存在。此时业务含义是统计
-         * 区间没有样本，应规范化为 0/0；只有结果列本身不存在时才属于契约错误。
-         */
-        numerator = numerator == null ? 0L : numerator;
-        denominator = denominator == null ? 0L : denominator;
         String runId = id(role == DatabaseRole.BUSINESS ? "RUN_BUSINESS_" : "RUN_REAL_");
-        Number rate = rate(numerator, denominator);
         long durationMs = elapsedMs(started);
         Map<String, Object> runContext = new LinkedHashMap<>(sql.contextSnapshot());
         Map<String, Object> executionContext =
@@ -447,22 +476,30 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         // 明细预览根据该数据源重新查询，不能沿用准备 SQL 时的旧单库来源。
         runContext.put("db_source_id", databaseQuery.sourceId(role));
         objects.saveRun(
-                runId, sql, "success", rate, numerator, denominator, "",
+                runId, sql, "success", resultValue, numerator, denominator, "",
                 durationMs, context.agentContext().userId(),
                 runContext);
+        Map<String, Object> traceOutput = new LinkedHashMap<>();
+        traceOutput.put("source_id", databaseQuery.sourceId(role));
+        traceOutput.put("run_id", runId);
+        traceOutput.put("overview_sql_sha256", sha256(sql.sqlText()));
+        traceOutput.put("result_contract", ratioContract ? "ratio" : "scalar");
+        traceOutput.put("result_value", resultValue);
+        if (numerator != null) {
+            traceOutput.put("numerator_count", numerator);
+        }
+        if (denominator != null) {
+            traceOutput.put("denominator_count", denominator);
+        }
         report(context,
                 role == DatabaseRole.BUSINESS ? "business_overview" : "real_overview",
                 role == DatabaseRole.BUSINESS ? "计算业务库概览" : "计算真实库概览",
                 "success",
                 durationMs,
-                Map.of(
-                        "source_id", databaseQuery.sourceId(role),
-                        "run_id", runId,
-                        "overview_sql_sha256", sha256(sql.sqlText()),
-                        "numerator_count", numerator,
-                        "denominator_count", denominator));
+                traceOutput);
         return new DatabaseResult(
-                runId, role.value(), databaseQuery.sourceId(role), numerator, denominator, rate);
+                runId, role.value(), databaseQuery.sourceId(role),
+                numerator, denominator, resultValue);
     }
 
     private Map<String, Object> diagnoseDetails(
@@ -624,6 +661,34 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 && "validated".equals(text(source.get("compile_status")));
     }
 
+    private static Map<String, Object> mismatchSummary(
+            DatabaseResult business,
+            DatabaseResult real,
+            Map<String, Object> diagnosis) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("result_contract",
+                business.ratioContract() && real.ratioContract() ? "ratio" : "scalar");
+        result.put("business_result_value", business.resultValue());
+        result.put("real_result_value", real.resultValue());
+        if (business.ratioContract() && real.ratioContract()) {
+            result.put("numerator_delta", business.numerator() - real.numerator());
+            result.put("denominator_delta", business.denominator() - real.denominator());
+        }
+        result.put("diagnosis_status",
+                diagnosis.getOrDefault("status", "incomplete"));
+        return result;
+    }
+
+    private static long estimatedAffectedCount(
+            DatabaseResult business,
+            DatabaseResult real) {
+        if (business.ratioContract() && real.ratioContract()) {
+            return Math.abs(business.numerator() - real.numerator())
+                    + Math.abs(business.denominator() - real.denominator());
+        }
+        return business.matches(real) ? 0 : 1;
+    }
+
     private static Number rate(long numerator, long denominator) {
         if (denominator == 0) {
             return BigDecimal.ZERO.setScale(2);
@@ -631,6 +696,20 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         return BigDecimal.valueOf(numerator)
                 .multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(denominator), 2, RoundingMode.HALF_UP);
+    }
+
+    private static Number numberValue(Object value) {
+        if (value instanceof Number number) {
+            return number;
+        }
+        if (value == null || String.valueOf(value).isBlank()) {
+            return null;
+        }
+        return new BigDecimal(String.valueOf(value));
+    }
+
+    private static BigDecimal decimal(Number value) {
+        return new BigDecimal(value.toString()).stripTrailingZeros();
     }
 
     private static Object value(Map<String, Object> row, String key) {
@@ -729,17 +808,41 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             String runId,
             String sourceRole,
             String sourceId,
-            long numerator,
-            long denominator,
-            Number rate) {
+            Long numerator,
+            Long denominator,
+            Number resultValue) {
+        boolean ratioContract() {
+            return numerator != null && denominator != null;
+        }
+
+        boolean matches(DatabaseResult other) {
+            if (ratioContract() && other.ratioContract()) {
+                return numerator.equals(other.numerator)
+                        && denominator.equals(other.denominator);
+            }
+            if (ratioContract() != other.ratioContract()) {
+                return false;
+            }
+            if (resultValue == null || other.resultValue == null) {
+                return resultValue == null && other.resultValue == null;
+            }
+            return decimal(resultValue).compareTo(decimal(other.resultValue)) == 0;
+        }
+
         Map<String, Object> safeMap() {
-            return Map.of(
-                    "run_id", runId,
-                    "source_role", sourceRole,
-                    "source_id", sourceId,
-                    "numerator_count", numerator,
-                    "denominator_count", denominator,
-                    "result_value", rate);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("run_id", runId);
+            result.put("source_role", sourceRole);
+            result.put("source_id", sourceId);
+            result.put("result_contract", ratioContract() ? "ratio" : "scalar");
+            result.put("result_value", resultValue);
+            if (numerator != null) {
+                result.put("numerator_count", numerator);
+            }
+            if (denominator != null) {
+                result.put("denominator_count", denominator);
+            }
+            return result;
         }
     }
 

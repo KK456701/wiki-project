@@ -21,7 +21,7 @@ class WikiRuleKnowledgeSourceTest {
             Path.of("..", "core-rules-wiki").toString(), new ObjectMapper());
 
     @Test
-    void readsHxzdRuleAsDocumentationOnlyWhenExecutionContractIsMissing() {
+    void readsStaticOverviewReferenceWithoutPretendingProductionContractIsComplete() {
         Map<String, Object> rule = source.effectiveRule(
                 "患者入院 48 小时内转科的比例", "hospital_without_release");
 
@@ -30,7 +30,9 @@ class WikiRuleKnowledgeSourceTest {
         assertThat(rule.get("effective_level")).isEqualTo("company");
         assertThat(rule.get("execution_status")).isEqualTo("documentation_only");
         assertThat(rule.get("sql_status")).isEqualTo("unavailable");
-        assertThat(rule.get("standard_sql")).isEqualTo("");
+        assertThat(rule.get("standard_sql")).asString()
+                .contains("MRAS_BUSINESS_FIRSTVISIT");
+        assertThat(rule.get("overview_runtime_eligible")).isEqualTo(false);
         assertThat(rule.get("numerator_rule")).isEqualTo("入院48小时内转科患者人次数");
         assertThat(rule.get("denominator_rule")).isEqualTo("同期入院患者总人次数");
     }
@@ -104,18 +106,28 @@ class WikiRuleKnowledgeSourceTest {
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
+            assertThat(rule.get("standard_sql"))
+                    .as("%s overview SQL", indicator.get("rule_id"))
+                    .isInstanceOf(String.class)
+                    .asString()
+                    .isNotBlank();
+            assertThat(rule.get("overview_runtime_eligible"))
+                    .as("%s overview runtime eligibility", indicator.get("rule_id"))
+                    .isEqualTo(true);
         }
     }
 
     @Test
-    void draftOnlyIndicatorRemainsSearchableButDraftDoesNotBecomeEffectiveProfile() {
+    void draftOnlyIndicatorRemainsDocumentationOnlyButKeepsStaticOverviewReference() {
         Map<String, Object> rule = source.effectiveRule("HXZD-009-004", "hospital_001");
 
         assertThat(rule.get("rule_id")).isEqualTo("HXZD-009-004");
-        assertThat(rule.get("profile_id")).isEqualTo("");
-        assertThat(rule.get("profile_name")).isEqualTo("指标文档（暂无已审批生效口径）");
+        assertThat(rule.get("profile_id"))
+                .isEqualTo("HXZD-009-004-company-default");
         assertThat(rule.get("execution_status")).isEqualTo("documentation_only");
-        assertThat(rule.get("sql_status")).isEqualTo("unavailable");
+        assertThat(rule.get("sql_status")).isEqualTo("overview_static_validated");
+        assertThat(rule.get("standard_sql")).asString().isNotBlank();
+        assertThat(rule.get("overview_runtime_eligible")).isEqualTo(true);
         assertThat(rule.get("execution_blockers")).asList()
                 .containsExactly("当前指标没有可进入生效口径的已审批Profile");
     }

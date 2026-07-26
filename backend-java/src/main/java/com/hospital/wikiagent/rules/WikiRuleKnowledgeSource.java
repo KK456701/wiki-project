@@ -30,7 +30,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * <p>原始Markdown只供人员阅读和生成器解析。运行时只消费生成器产出的
  * {@code rule_index.json} 与每项指标的 {@code runtime.json}，避免Java在请求期间
- * 猜测Markdown结构。Profile未标记为 {@code executable} 时只允许解释，不返回SQL正文。</p>
+ * 猜测Markdown结构。Profile未完成生产验收时可以返回通过静态门禁的 SQL 参考稿，
+ * 但数据库访问仍由运行时执行门禁控制。</p>
  */
 @Component
 public class WikiRuleKnowledgeSource {
@@ -121,14 +122,25 @@ public class WikiRuleKnowledgeSource {
         List<String> blockers = stringList(profile.get("execution_blockers"));
         Map<String, Object> sqlRefs = map(profile.get("sql_refs"));
         Map<String, Object> sqlCapabilities = map(profile.get("sql_capabilities"));
-        String overviewSql = executableSql(
-                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "overview", "overview");
-        String sourceExtractSql = executableSql(
-                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "source_extract", "etl_source");
-        String departmentDetailSql = executableSql(
-                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "department_detail", "department");
-        String patientDetailSql = executableSql(
-                resolved.root(), executionStatus, sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
+        /*
+         * SQL 是否存在、是否可供人工查看，与 Profile 是否已经完成生产执行验收是两件事。
+         * 旧实现只给 executable Profile 读取 SQL，导致 documentation_only 指标明明有
+         * overview.sql，用户询问“SQL 怎么写”时却得到“没有模板”。这里始终读取已经
+         * 通过静态门禁的 SQL；真正是否允许访问数据库仍由 IndicatorSqlTools 和双库
+         * Workflow 在运行时独立判断。
+         */
+        String overviewSql = validatedReferenceSql(
+                resolved.root(), sqlRefs, sqlCapabilities, "overview", "overview");
+        String sourceExtractSql = validatedReferenceSql(
+                resolved.root(), sqlRefs, sqlCapabilities, "source_extract", "etl_source");
+        String departmentDetailSql = validatedReferenceSql(
+                resolved.root(), sqlRefs, sqlCapabilities, "department_detail", "department");
+        String patientDetailSql = validatedReferenceSql(
+                resolved.root(), sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
+        Map<String, Object> resultMapping = resultMapping(profile);
+        Map<String, Object> dualDatabaseContract = dualDatabaseContract(profile, resultMapping);
+        boolean overviewRuntimeEligible = overviewRuntimeEligible(
+                overviewSql, sqlCapabilities, resultMapping);
         Map<String, Object> mapping = mergedFieldMapping(profile, ruleId, hospitalId);
         Map<String, Object> params = map(mapping.get("parameters"));
         String definition = first(text(manifest.get("definition")),
@@ -165,14 +177,16 @@ public class WikiRuleKnowledgeSource {
         result.put("department_detail_sql", departmentDetailSql);
         result.put("patient_detail_sql", patientDetailSql);
         result.put("sql_capabilities", sqlCapabilities);
-        result.put("dual_database_contract", map(profile.get("dual_database_contract")));
-        result.put("result_mapping", map(profile.get("result_mapping")));
+        result.put("dual_database_contract", dualDatabaseContract);
+        result.put("result_mapping", resultMapping);
+        result.put("overview_runtime_eligible", overviewRuntimeEligible);
         result.put("calculation_definition", calculation(profile));
         result.put("national_calculation_definition", calculation(profile));
         result.put("field_contract", map(profile.get("field_contract")));
         result.put("field_status", text(mapping.get("status")));
         result.put("sql_status", "executable".equals(executionStatus) && !overviewSql.isBlank()
-                ? "available" : "unavailable");
+                ? "available"
+                : overviewRuntimeEligible ? "overview_static_validated" : "unavailable");
         result.put("hospital_override", null);
         result.put("company_rule", Map.of(
                 "path", text(rule.get("company_path")),
@@ -193,21 +207,74 @@ public class WikiRuleKnowledgeSource {
         return result;
     }
 
-    private String executableSql(
+    private String validatedReferenceSql(
             Path root,
-            String profileStatus,
             Map<String, Object> refs,
             Map<String, Object> capabilities,
             String capability,
             String referenceKey) {
-        if (!"executable".equals(profileStatus)) {
-            return "";
-        }
         Map<String, Object> contract = map(capabilities.get(capability));
-        if (!"executable".equals(text(contract.get("status")))) {
+        if (!Set.of(
+                "static_validated",
+                "metadata_validated",
+                "compile_validated",
+                "trial_validated",
+                "executable").contains(text(contract.get("status")))) {
             return "";
         }
         return readFrom(root, text(refs.get(referenceKey)));
+    }
+
+    /**
+     * 发布生成器会先给出结果列候选，完成真实库验收后再写入正式映射。概览只读试算
+     * 可以安全使用这些确定性候选：运行结果若没有对应列，双库 Workflow 会立即以
+     * 结果契约错误停止，不能生成业务结论。
+     */
+    private static Map<String, Object> resultMapping(Map<String, Object> profile) {
+        Map<String, Object> result = new LinkedHashMap<>(map(profile.get("result_mapping")));
+        Map<String, Object> candidates = map(profile.get("result_mapping_candidates"));
+        for (String key : List.of("index_value", "numerator_count", "denominator_count")) {
+            if (text(result.get(key)).isBlank() && !text(candidates.get(key)).isBlank()) {
+                result.put(key, candidates.get(key));
+            }
+        }
+        return result;
+    }
+
+    /** 将概览结果列映射补入双库契约，避免同一 Profile 在两个位置使用不同列名。 */
+    private static Map<String, Object> dualDatabaseContract(
+            Map<String, Object> profile,
+            Map<String, Object> resultMapping) {
+        Map<String, Object> result =
+                new LinkedHashMap<>(map(profile.get("dual_database_contract")));
+        Map<String, Object> overview =
+                new LinkedHashMap<>(map(result.get("overview_result_mapping")));
+        for (String key : List.of("index_value", "numerator_count", "denominator_count")) {
+            if (text(overview.get(key)).isBlank() && !text(resultMapping.get(key)).isBlank()) {
+                overview.put(key, resultMapping.get(key));
+            }
+        }
+        result.put("overview_result_mapping", overview);
+        return result;
+    }
+
+    private static boolean overviewRuntimeEligible(
+            String overviewSql,
+            Map<String, Object> capabilities,
+            Map<String, Object> resultMapping) {
+        Map<String, Object> overview = map(capabilities.get("overview"));
+        return !overviewSql.isBlank()
+                && Set.of(
+                        "static_validated",
+                        "metadata_validated",
+                        "compile_validated",
+                        "trial_validated",
+                        "executable").contains(text(overview.get("status")))
+                && stringList(overview.get("blockers")).isEmpty()
+                && stringList(overview.get("unknown_functions")).isEmpty()
+                && ((!text(resultMapping.get("numerator_count")).isBlank()
+                        && !text(resultMapping.get("denominator_count")).isBlank())
+                    || !text(resultMapping.get("index_value")).isBlank());
     }
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {
@@ -353,10 +420,14 @@ public class WikiRuleKnowledgeSource {
                     .filter(item -> explicitProfileId.equals(text(item.get("profile_id"))))
                     .findFirst()
                     .orElseThrow(() -> new RuleNotFoundException("PROFILE_NOT_FOUND: " + explicitProfileId));
-            if ("draft".equalsIgnoreCase(text(selected.get("execution_status")))) {
-                throw new RuleNotFoundException("PROFILE_DRAFT_NOT_EFFECTIVE: " + explicitProfileId);
-            }
-            return selected;
+            /*
+             * 显式 Profile 编号也可能来自当前轮已经准备好的静态概览试算对象。此时
+             * 仍以 documentation_only 视图回读，保证准备与执行阶段的上下文指纹一致；
+             * 候选口径列表继续过滤 draft，不能把草稿伪装成已审批口径。
+             */
+            return "draft".equalsIgnoreCase(text(selected.get("execution_status")))
+                    ? documentationFallback(List.of(selected))
+                    : selected;
         }
 
         String defaultProfileId = text(manifest.get("default_profile"));
@@ -375,14 +446,16 @@ public class WikiRuleKnowledgeSource {
     }
 
     /**
-     * 只有草稿方案时仍允许用户查阅指标文档，但不暴露草稿Profile身份，也不携带任何
-     * SQL或字段映射。分子、分母文字来自原始制度文档，仅用于解释，不代表方案已生效。
+     * 只有草稿方案时仍允许用户查阅指标文档。草稿的治理状态不能伪装成已发布，但其
+     * 已通过静态门禁的 SQL 引用和结果列候选仍可用于“参考 SQL”以及受控双库试算；
+     * 真实执行若失败必须返回明确错误，不能把试算结果描述为已审批生效口径。
      */
     private Map<String, Object> documentationFallback(List<Map<String, Object>> profiles) {
         Map<String, Object> source = profiles.isEmpty() ? Map.of() : profiles.get(0);
         Map<String, Object> fallback = new LinkedHashMap<>();
-        fallback.put("profile_id", "");
-        fallback.put("profile_name", "指标文档（暂无已审批生效口径）");
+        fallback.put("profile_id", text(source.get("profile_id")));
+        fallback.put("profile_name", first(
+                text(source.get("profile_name")), "指标文档（暂无已审批生效口径）"));
         fallback.put("governance_status", "documentation_only");
         fallback.put("execution_status", "documentation_only");
         fallback.put("execution_blockers", List.of("当前指标没有可进入生效口径的已审批Profile"));
@@ -392,15 +465,13 @@ public class WikiRuleKnowledgeSource {
         fallback.put("denominator_caliber", text(source.get("denominator_caliber")));
         fallback.put("time_dimension", text(source.get("time_dimension")));
         fallback.put("dedup_key", text(source.get("dedup_key")));
-        fallback.put("sql_refs", Map.of());
-        fallback.put("result_mapping", Map.of());
-        fallback.put("field_contract", Map.of("business_fields", Map.of()));
-        fallback.put("field_mapping", Map.of(
-                "status", "missing",
-                "dialect", "sqlserver",
-                "fields", Map.of(),
-                "parameters", Map.of(),
-                "relations", List.of()));
+        fallback.put("sql_refs", map(source.get("sql_refs")));
+        fallback.put("sql_capabilities", map(source.get("sql_capabilities")));
+        fallback.put("result_mapping", map(source.get("result_mapping")));
+        fallback.put("result_mapping_candidates", map(source.get("result_mapping_candidates")));
+        fallback.put("dual_database_contract", map(source.get("dual_database_contract")));
+        fallback.put("field_contract", map(source.get("field_contract")));
+        fallback.put("field_mapping", map(source.get("field_mapping")));
         return fallback;
     }
 

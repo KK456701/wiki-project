@@ -165,6 +165,49 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     }
 
     @Test
+    void staticValidatedOverviewUsesActualDualExecutionAsCompatibilityCheck() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        Map<String, Object> staticRule = rule(false);
+        staticRule.put("overview_runtime_eligible", true);
+        database.businessOverview = overview(3, 68);
+        database.realOverview = overview(3, 68);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), staticRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("comparison_status", "matched")
+                .containsEntry("numerator_count", 3L)
+                .containsEntry("denominator_count", 68L);
+        assertThat(database.calls).containsExactly(
+                "business:overview", "real:overview");
+    }
+
+    @Test
+    void scalarMetricCanBeComparedWithoutInventingNumeratorAndDenominator() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        Map<String, Object> scalarRule = rule(false);
+        scalarRule.put("overview_runtime_eligible", true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+        contract.put("overview_result_mapping", Map.of(
+                "index_value", "median_minutes"));
+        scalarRule.put("dual_database_contract", contract);
+        database.businessOverview = List.of(Map.of("median_minutes", 18.5));
+        database.realOverview = List.of(Map.of("median_minutes", 18.50));
+
+        ToolResult result = workflow.execute(
+                preparedSql(), scalarRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("comparison_status", "matched")
+                .containsEntry("result_value", 18.50)
+                .doesNotContainKeys("numerator_count", "denominator_count");
+    }
+
+    @Test
     void reusesSuccessfulExtractionWithinSameIndicatorSubtask() {
         ToolExecutionContext context = context();
 

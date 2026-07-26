@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.nio.file.Path;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ import com.hospital.wikiagent.agent.tools.PolicyDecision.Decision;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
+import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -228,9 +230,10 @@ class IndicatorSqlToolsTest {
     }
 
     @Test
-    void keepsDocumentationOnlyProfileBlockedForTrialRunPlan() {
+    void preparesStaticOverviewForDualDatabaseTrialRunPlan() {
         Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
         documentationOnly.put("execution_status", "documentation_only");
+        documentationOnly.put("overview_runtime_eligible", true);
         documentationOnly.put("execution_blockers", List.of("缺少经确认的医院字段契约"));
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
         state.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
@@ -239,10 +242,51 @@ class IndicatorSqlToolsTest {
                 "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
 
-        assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("PROFILE_NOT_EXECUTABLE");
+        assertThat(result.ok()).isTrue();
+        assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
+        assertThat(result.data())
+                .containsEntry("validation_status", "overview_static_validated")
+                .containsKey("sql_id");
         assertThat(jdbc.queryForObject(
-                "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
+                "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void allThirtyFivePublishedOverviewSqlTemplatesPassRuntimePreparation() {
+        WikiRuleKnowledgeSource knowledge = new WikiRuleKnowledgeSource(
+                Path.of("..", "core-rules-wiki").toString(), objectMapper);
+        RuleReadRepository repository = new RuleReadRepository(jdbc, knowledge);
+        IndicatorSqlTools runtimeTools = new IndicatorSqlTools(
+                repository,
+                new SqlObjectRepository(jdbc, objectMapper),
+                new SqlTemplateRenderer(),
+                new ReadOnlySqlValidator(),
+                new SqlParameterBinder(),
+                new StubBusinessQuery(),
+                objectMapper);
+        AgentRuntimeContext hospitalContext = new AgentRuntimeContext(
+                new HospitalPrincipal(
+                        "u1", "doctor", "hospital_001", Set.of(),
+                        false, "login-session"),
+                "request-all", "trace-all", "business_test");
+
+        for (Map<String, String> indicator :
+                repository.activeIndicatorNames("hospital_001", 100)) {
+            AgentRunState indicatorState = new AgentRunState();
+            indicatorState.currentRuleId(indicator.get("rule_id"));
+            indicatorState.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
+            ToolResult prepared = runtimeTools.prepare(
+                    new IndicatorSqlTools.PrepareInput(
+                            indicator.get("rule_id"),
+                            "2026-01-01T00:00:00",
+                            "2026-02-01T00:00:00"),
+                    executionContext(hospitalContext, indicatorState));
+
+            assertThat(prepared.ok())
+                    .as("%s: %s", indicator.get("rule_id"), prepared)
+                    .isTrue();
+            assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
+        }
     }
 
     @Test

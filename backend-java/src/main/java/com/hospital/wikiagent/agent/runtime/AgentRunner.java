@@ -1675,7 +1675,7 @@ public class AgentRunner {
         }
         boolean referenceOnly = Boolean.TRUE.equals(prepared.data().get("reference_only"));
         answer.append(referenceOnly
-                        ? "## 知识库 SQL 参考稿（不可执行）\n\n```sql\n"
+                        ? "## 知识库概览 SQL（本次仅展示）\n\n```sql\n"
                         : "## 已校验 SQL\n\n```sql\n")
                 .append(sql).append("\n```\n\n");
         if (!referenceOnly) {
@@ -1697,10 +1697,9 @@ public class AgentRunner {
                     + "如需其他区间，直接告诉我具体起止时间即可调整。\n");
         }
         if (referenceOnly) {
-            answer.append("\n> 该 SQL 来自当前发布的知识库，仅供口径和实现核对。"
-                    + "它尚未通过医院字段、结果契约和双库验证，因此没有生成可执行 SQL 对象，"
-                    + "不能用于试运行。\n");
-            answer.append("\n本次只展示并静态检查 SQL，没有访问数据库。");
+            answer.append("\n> 该 SQL 来自当前发布的知识库。本次请求只展示并完成只读静态检查，"
+                    + "没有访问数据库；若要计算结果，请提供不超过一个月的统计区间，"
+                    + "系统会对业务库和真实库分别执行该概览 SQL 并核对结果。\n");
         } else {
             answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
         }

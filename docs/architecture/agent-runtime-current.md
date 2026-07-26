@@ -82,7 +82,7 @@ flowchart TD
 | `get_effective_rule` | 读取定义、公式、分子、分母和默认 Profile | 不可执行 Profile 也可解释 |
 | `preview_rule_change` | 只读展示口径差异 | 不创建草稿、不审批、不发布 |
 | `inspect_indicator_implementation` | 检查 Profile 状态、字段契约和元数据 | 核心 SQL 安全前置检查，不是实施工作台 |
-| `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象，或展示静态检查后的知识库参考稿 | 仅 `executable` Profile 生成可执行对象；`documentation_only` 参考稿无 `sql_id` 且不能试运行 |
+| `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象，或展示静态检查后的知识库参考稿 | 仅问 SQL 时不访问数据库；明确计算时，具备安全概览 SQL 和结果列映射的 Profile 可生成双库概览试算对象 |
 | `trial_run_indicator_sql` | 固定进入双库 Workflow | 禁用抽取时直接核对两库；强制抽取时先抽取一次，再用相同 SQL/参数严格串行核对两库 |
 | `resolve_indicator_caliber` | 解析候选/假设口径 | 只从已审批可执行 Profile 中选择 |
 | `prepare_indicator_caliber_sql` | 准备候选口径 SQL | 禁止用户覆盖字段和 SQL |
@@ -107,12 +107,12 @@ Profile 状态：
 | 状态 | 可解释 | 可准备/试运行 SQL | 可明细/导出 |
 |---|---:|---:|---:|
 | `executable` | 是 | 是 | 仅声明相应 SQL 契约时 |
-| `documentation_only` | 是 | 仅可查看只读静态检查通过的知识库 SQL 参考稿，不生成可执行对象 | 否 |
+| `documentation_only` | 是 | 可查看只读静态检查通过的概览 SQL；医院发布已补齐结果列时可做双库概览试算 | 仅在明细契约完整时开放 |
 | `draft` | 否，不进入生效口径 | 否 | 否 |
 
 Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不完整或结果映射不完整的方案提升为可执行。
 
-当前生成契约包含 42 个 `documentation_only` Profile、3 个 `draft` Profile 和 0 个 `executable` Profile。因此当前 35 项均可解释；在字段契约和统一结果列映射完成验证前，SQL 准备、试运行、明细和导出会被安全门禁拒绝。
+公司基础契约继续保存 Profile 的原始治理状态。`hospital_001` 当前发布为 35 项概览 SQL 提供确定性结果列候选，运行时测试确保全部能生成只读受控 SQL 对象。数据库是否真正兼容由业务库、真实库的实际只读执行确认；明细和导出不会因为概览试算而自动放开。
 
 ## 6. Evidence 与安全
 

@@ -181,24 +181,32 @@ public class IndicatorSqlTools {
 
         Map<String, Object> rule = rules.effectiveRule(
                 input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
-        if (!"executable".equals(text(rule.get("execution_status")))) {
+        boolean fullyExecutable =
+                "executable".equals(text(rule.get("execution_status")));
+        boolean overviewStaticRuntime =
+                Boolean.TRUE.equals(rule.get("overview_runtime_eligible"));
+        if (!fullyExecutable) {
             /*
              * “给我 SQL”与“执行 SQL”是两种不同能力。对于 documentation_only
-             * Profile，只有明确的 SQL_PREPARE 计划可以查看知识库原稿；试运行、候选
-             * 口径和诊断仍必须通过完整执行契约，不能借参考稿绕过门禁。
+             * Profile，明确的 SQL_PREPARE 计划只查看知识库原稿。普通指标计算允许
+             * 使用已通过静态门禁、且具备确定性结果列映射的 overview SQL；它会
+             * 在业务库和真实库各执行一次，以实际结果验证数据库兼容性。候选口径和
+             * 诊断仍必须使用完整执行契约，不能借概览试算绕过治理边界。
              */
             if (diagnosticProfileId == null
                     && PlanIntent.INDICATOR_SQL_PREPARE.value().equals(state.lastIntent())) {
                 return prepareReferenceOnly(input, start, end, rule, context);
             }
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("rule_id", input.ruleId());
-            data.put("profile_id", rule.get("profile_id"));
-            data.put("execution_status", rule.get("execution_status"));
-            data.put("execution_blockers", rule.get("execution_blockers"));
-            return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
-                    "当前口径仅支持定义和公式解释，尚未通过字段与结果契约校验，不能执行数据库试运行。",
-                    false, data);
+            if (diagnosticProfileId != null || !overviewStaticRuntime) {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("rule_id", input.ruleId());
+                data.put("profile_id", rule.get("profile_id"));
+                data.put("execution_status", rule.get("execution_status"));
+                data.put("execution_blockers", rule.get("execution_blockers"));
+                return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
+                        "当前口径仅支持定义和公式解释，尚未具备可安全试算的概览 SQL 与结果列契约。",
+                        false, data);
+            }
         }
         Map<String, Object> rawMapping = rules.fieldMapping(
                 input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
@@ -210,7 +218,7 @@ public class IndicatorSqlTools {
                     exception.getMessage(), false);
         }
         Inspection inspection = inspection(rule, mapping);
-        if (!inspection.ready()) {
+        if (!overviewStaticRuntime && !inspection.ready()) {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("missing_mappings", inspection.missingMappings());
             data.put("unconfirmed_mappings", inspection.unconfirmedMappings());
@@ -232,7 +240,9 @@ public class IndicatorSqlTools {
         } catch (RuntimeException exception) {
             return failure("validation_failed", "SQL_TEMPLATE_RENDER_FAILED", "SQL 模板无法根据已确认映射完成渲染。", false);
         }
-        ReadOnlySqlValidator.ValidationResult validation = validator.validate(sql, text(mapping.get("main_table")));
+        ReadOnlySqlValidator.ValidationResult validation = overviewStaticRuntime
+                ? validator.validateReadOnly(sql)
+                : validator.validate(sql, text(mapping.get("main_table")));
         if (!validation.ok()) {
             return failure("validation_failed", "SQL_VALIDATION_FAILED",
                     "生成的 SQL 未通过只读安全校验，不能进入试运行。", false);
@@ -261,6 +271,7 @@ public class IndicatorSqlTools {
         }
         Map<String, Object> diagnosticExecution = new LinkedHashMap<>();
         diagnosticExecution.put("profile_id", rule.get("profile_id"));
+        diagnosticExecution.put("overview_static_runtime", overviewStaticRuntime);
         if (diagnosticProfileId != null) {
             diagnosticExecution.put("diagnostic_profile_id", diagnosticProfileId);
             diagnosticExecution.put("field_role_overrides", fieldRoleOverrides);
@@ -273,7 +284,8 @@ public class IndicatorSqlTools {
         PreparedSqlObject sqlObject = new PreparedSqlObject(
                 sqlId, context.agentContext().hospitalId(), context.agentContext().userId(),
                 context.agentContext().sessionId(), input.ruleId(), text(mapping.get("dialect")), sql,
-                params, statStart, statEnd, snapshot, digest, "validated", validation.message(),
+                params, statStart, statEnd, snapshot, digest, "validated",
+                validation.message(),
                 now, now.plus(SQL_TTL), sourceId);
         try {
             objects.save(sqlObject);
@@ -294,7 +306,8 @@ public class IndicatorSqlTools {
         data.put("db_source_id", sourceId);
         data.put("context_digest", digest);
         data.put("dialect", sqlObject.dialect());
-        data.put("validation_status", "validated");
+        data.put("validation_status",
+                overviewStaticRuntime ? "overview_static_validated" : "validated");
         data.put("sql_preview", sql);
         Map<String, Object> displayParameters = new LinkedHashMap<>(params);
         displayParameters.put("hospital_id", context.agentContext().hospitalId());
@@ -378,7 +391,7 @@ public class IndicatorSqlTools {
         data.put("stat_end", statEnd);
         return ToolResult.success(
                 "SQL_REFERENCE_PREPARED",
-                "已读取并完成知识库 SQL 参考稿的只读静态检查；该参考稿不可执行。",
+                "已读取并完成知识库概览 SQL 的只读静态检查；本次仅展示，不执行数据库。",
                 data);
     }
 
@@ -389,10 +402,18 @@ public class IndicatorSqlTools {
      * 未知问题必须由发布门禁阻断，不能由运行时代码或模型猜测修复。</p>
      */
     private static String normalizeKnownSqlArtifacts(String sql) {
-        return sql
+        String normalized = sql
                 .replace("#{NOLOCK}", "WITH (NOLOCK)")
-                .replace("--布局组件设置提升效率", "1=1")
                 .replace("\u0000", "");
+        /*
+         * 原始 Excel 中的布局说明占据了 WHERE 后的占位条件。两种已登记形式分别为
+         * “注释下一行自带 AND”和“注释下一行直接写谓词”。先规范化前者，再给后者
+         * 补 AND，避免生成 `WHERE 1=1 event.xxx`，且不改变任何业务筛选条件。
+         */
+        normalized = normalized.replaceAll(
+                "(?m)--布局组件设置提升效率\\s*\\R\\s*(?i:AND)\\b",
+                "1=1 AND");
+        return normalized.replace("--布局组件设置提升效率", "1=1 AND");
     }
 
     public ToolResult trial(TrialInput input, ToolExecutionContext context) {
@@ -427,8 +448,10 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "候选口径字段角色已失效，请重新准备 SQL 后再试运行。", false);
         }
+        boolean overviewStaticRuntime =
+                Boolean.TRUE.equals(storedExecution.get("overview_static_runtime"));
         Inspection inspection = inspection(currentRule, currentMapping);
-        if (!inspection.ready()) {
+        if (!overviewStaticRuntime && !inspection.ready()) {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "医院字段或元数据已变化，请重新准备 SQL 后再试运行。", false);
         }
@@ -439,7 +462,10 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "指标规则或字段映射已变化，请重新准备 SQL 后再试运行。", false);
         }
-        if (!validator.validate(sql.sqlText(), text(currentMapping.get("main_table"))).ok()) {
+        ReadOnlySqlValidator.ValidationResult revalidation = overviewStaticRuntime
+                ? validator.validateReadOnly(sql.sqlText())
+                : validator.validate(sql.sqlText(), text(currentMapping.get("main_table")));
+        if (!revalidation.ok()) {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
         /*
