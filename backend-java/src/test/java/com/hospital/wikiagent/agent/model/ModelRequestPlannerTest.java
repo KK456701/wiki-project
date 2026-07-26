@@ -47,6 +47,13 @@ class ModelRequestPlannerTest {
         assertThat(result.repaired()).isTrue();
         assertThat(result.plan().intent()).isEqualTo(PlanIntent.INDICATOR_TRIAL_RUN);
         assertThat(result.plan().timeExpression().rawText()).isEqualTo("从一月到现在");
+        assertThat(result.requestAudit().currentDate()).isEqualTo(LocalDate.of(2026, 7, 22));
+        assertThat(result.requestAudit().messages()).hasSize(2);
+        assertThat(result.requestAudit().systemPrompt()).contains("Planner");
+        assertThat(result.requestAudit().userPrompt())
+                .contains("结构化会话状态", "最近对话", "急会诊及时到位率")
+                .contains("只修复格式");
+        assertThat(result.requestAudit().repairAttempt()).isTrue();
         assertThat(invoker.calls).isEqualTo(2);
     }
 

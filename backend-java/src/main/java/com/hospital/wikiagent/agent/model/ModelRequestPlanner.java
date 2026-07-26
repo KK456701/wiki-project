@@ -1,6 +1,8 @@
 package com.hospital.wikiagent.agent.model;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -56,7 +58,7 @@ public class ModelRequestPlanner {
                 + "结构化会话状态：\n" + safe(input.structuredState()) + "\n"
                 + "最近对话（最多 8 轮）：\n" + safe(input.recentHistory()) + "\n"
                 + "本轮用户输入：\n" + input.userMessage();
-        return generate(modelId, userPrompt);
+        return generate(modelId, userPrompt, input.currentDate());
     }
 
     /**
@@ -79,7 +81,7 @@ public class ModelRequestPlanner {
                 + "已确认事实：\n" + safe(input.knownFacts()) + "\n"
                 + "失败计划编号：" + safe(input.failedPlanId()) + "\n\n"
                 + prompts.replanner();
-        return generate(modelId, userPrompt);
+        return generate(modelId, userPrompt, input.currentDate());
     }
 
     /**
@@ -123,26 +125,59 @@ public class ModelRequestPlanner {
         }
     }
 
-    private PlannerResult generate(String modelId, String userPrompt) {
+    private PlannerResult generate(
+            String modelId,
+            String userPrompt,
+            LocalDate currentDate) {
+        String systemPrompt = prompts.planner();
+        PlannerRequestAudit initialAudit = audit(
+                modelId, currentDate, systemPrompt, userPrompt, false);
         String raw = models.complete(
-                modelId, prompts.planner(), userPrompt, properties.getPlannerTimeout()).content();
+                modelId, systemPrompt, userPrompt, properties.getPlannerTimeout()).content();
         try {
-            return new PlannerResult(parseAndValidate(raw), raw, modelId, false);
+            return new PlannerResult(
+                    parseAndValidate(raw), raw, modelId, false, initialAudit);
         } catch (RuntimeException firstFailure) {
             // 修复提示只纠正 JSON/Schema，不改变用户目标，也不暴露工具实现。
             String repair = prompts.plannerRepair()
                     .replace("{{validation_error}}", safe(firstFailure.getMessage()))
                     .replace("{{raw_output}}", raw == null ? "" : raw);
             String repaired = models.complete(
-                    modelId, prompts.planner(), userPrompt + "\n\n" + repair,
+                    modelId, systemPrompt, userPrompt + "\n\n" + repair,
                     properties.getPlannerTimeout()).content();
             try {
-                return new PlannerResult(parseAndValidate(repaired), repaired, modelId, true);
+                return new PlannerResult(
+                        parseAndValidate(repaired),
+                        repaired,
+                        modelId,
+                        true,
+                        audit(modelId, currentDate, systemPrompt,
+                                userPrompt + "\n\n" + repair, true));
             } catch (RuntimeException secondFailure) {
                 throw new PlannerOutputException(
                         "PLANNER_OUTPUT_INVALID", "模型未生成有效业务计划。", secondFailure);
             }
         }
+    }
+
+    private PlannerRequestAudit audit(
+            String modelId,
+            LocalDate currentDate,
+            String systemPrompt,
+            String userPrompt,
+            boolean repairAttempt) {
+        return new PlannerRequestAudit(
+                currentDate,
+                systemPrompt,
+                userPrompt,
+                List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)),
+                modelId,
+                properties.getPlannerTimeout().toMillis(),
+                PromptCatalog.VERSION,
+                VERSION,
+                repairAttempt);
     }
 
     private RequestPlan parseAndValidate(String raw) {
@@ -188,7 +223,33 @@ public class ModelRequestPlanner {
             RequestPlan plan,
             String rawContent,
             String modelId,
-            boolean repaired) {
+            boolean repaired,
+            PlannerRequestAudit requestAudit) {
+
+        /** 兼容服务端确定性计划和既有测试；这类计划没有实际 LLM 请求。 */
+        public PlannerResult(
+                RequestPlan plan,
+                String rawContent,
+                String modelId,
+                boolean repaired) {
+            this(plan, rawContent, modelId, repaired, null);
+        }
+    }
+
+    /** Planner 实际模型请求的完整审计信息，仅进入授权 Trace。 */
+    public record PlannerRequestAudit(
+            LocalDate currentDate,
+            String systemPrompt,
+            String userPrompt,
+            List<Map<String, String>> messages,
+            String modelId,
+            long timeoutMs,
+            String promptVersion,
+            String plannerVersion,
+            boolean repairAttempt) {
+        public PlannerRequestAudit {
+            messages = messages == null ? List.of() : List.copyOf(messages);
+        }
     }
 
     public record ReplannerInput(

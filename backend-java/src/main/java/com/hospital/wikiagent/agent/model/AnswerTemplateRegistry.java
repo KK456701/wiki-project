@@ -37,13 +37,16 @@ public class AnswerTemplateRegistry {
                 "general-chat", "answer", "general-chat.md", List.of(), false));
         intents.put(PlanIntent.RULE_EXPLANATION, descriptor(
                 "rule-explanation", "answer", "rule-explanation.md",
-                List.of("## 口径摘要", "## 计算口径", "## 实施信息"), false));
+                List.of("## 口径摘要", "## 计算口径"), false));
         intents.put(PlanIntent.INDICATOR_SQL_PREPARE, descriptor(
                 "indicator-sql-report", "report", "indicator-sql-report.md",
                 List.of("## SQL 口径", "## 已校验 SQL", "## 统计参数", "## 安全状态"), false));
         intents.put(PlanIntent.INDICATOR_TRIAL_RUN, descriptor(
                 "indicator-trial-result", "report", "indicator-trial-result.md",
                 List.of("## 结果速览", "## 计算口径", "## 数据依据"), true));
+        intents.put(PlanIntent.INDICATOR_CALIBER_QUERY, descriptor(
+                "caliber-options", "answer", "caliber-options.md",
+                List.of("## 当前口径", "## 其他口径"), false));
         intents.put(PlanIntent.INDICATOR_CALIBER_SIMULATION, descriptor(
                 "caliber-simulation-report", "report", "caliber-simulation-report.md",
                 List.of("## 模拟结果", "## 候选口径", "## 与当前口径的区别", "## 使用限制"), true));
@@ -70,6 +73,8 @@ public class AnswerTemplateRegistry {
                 intents.get(PlanIntent.INDICATOR_SQL_PREPARE));
         outputs.put(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE,
                 intents.get(PlanIntent.INDICATOR_SQL_PREPARE));
+        outputs.put(RequestedOutput.CALIBER_OPTIONS,
+                intents.get(PlanIntent.INDICATOR_CALIBER_QUERY));
         outputs.put(RequestedOutput.CALIBER_TRIAL_RESULT,
                 intents.get(PlanIntent.INDICATOR_CALIBER_SIMULATION));
         outputs.put(RequestedOutput.TRIAL_RESULT,

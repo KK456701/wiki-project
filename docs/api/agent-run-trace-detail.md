@@ -84,7 +84,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
   "created_at": "2026-07-24T19:35:06",
 
   // —— 服务端追加的派生字段 ——
-  "trace_version": "java-agent-trace-v1",
+  "trace_version": "java-agent-trace-v2",
   "timing_summary": {
     "llm_ms": 8200,
     "tool_ms": 6100,
@@ -94,6 +94,14 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 
   // —— 逐节点执行明细 ——
   "nodes": [ /* TraceNode[]，见 4.2 */ ],
+  "flow_edges": [
+    {
+      "from_node_id": "NODE_001",
+      "to_node_id": "NODE_002",
+      "edge_type": "sequence",
+      "label": ""
+    }
+  ],
 
   // —— 已核验证据 ——
   "evidence": [ /* Evidence[]，见 4.3 */ ]
@@ -119,9 +127,10 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 | `ended_at` | string | 是 | 运行结束时间，格式同上。运行中为 `null`。 |
 | `duration_ms` | integer | 是 | 运行总耗时（毫秒）。运行中为 `null` 或 0。 |
 | `created_at` | string | 否 | 记录创建时间，格式同 `started_at`。 |
-| `trace_version` | string | 否 | 链路数据结构版本，当前固定为 `java-agent-trace-v1`。 |
+| `trace_version` | string | 否 | 链路数据结构版本，当前固定为 `java-agent-trace-v2`。 |
 | `timing_summary` | object | 否 | 按节点类型聚合的耗时汇总，见 4.5。 |
 | `nodes` | array | 否 | 逐节点执行明细，按执行顺序排列，见 4.2。 |
+| `flow_edges` | array | 否 | 流程图边。`edge_type` 为 `sequence`、`parent`、`replan` 或 `failure`。历史数据缺父节点时按同泳道顺序派生。 |
 | `evidence` | array | 否 | 本次运行沉淀的已核验证据列表，见 4.3。 |
 
 ### 4.2 `nodes[]` — 节点执行明细
@@ -166,6 +175,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/agent/runs/TRACE_5f3c9a1b2d7e4
 | `processing_summary` | string | 否 | **【派生】** 该节点处理逻辑的中文一句话说明。 |
 | `input_data` | object \| array \| string | 否 | **【派生】** 由 `input_summary` 解析得到的结构化对象；解析失败时回退为原始字符串，无内容时为 `{}`。 |
 | `output_data` | object \| array \| string | 否 | **【派生】** 由 `output_summary` 解析得到的结构化对象；规则同上。 |
+| `capability_readiness` | object | 是 | **【派生】** 将内部状态拆成知识治理、SQL展示、双库概览、科室明细和患者明细五项能力；仅相关节点返回。 |
 
 > 说明：`input_data` / `output_data` 是把 `input_summary` / `output_summary` 的 JSON 文本解析成对象后的结果，**前端优先使用这两个派生字段**渲染入参/出参；原始 `*_summary` 字段保留以兼容旧逻辑。
 

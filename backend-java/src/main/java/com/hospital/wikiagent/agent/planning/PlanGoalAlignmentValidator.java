@@ -40,6 +40,23 @@ public class PlanGoalAlignmentValidator {
             return AlignmentDecision.pass();
         }
 
+        // “还有哪些口径”只是在查询允许列表，不等于已经选择其中一个口径计算。
+        // 该判断必须早于“当前什么口径”和候选模拟，否则 Planner 一旦误填
+        // indicator_caliber_simulation，后续工具层就会因缺少 profile_id 才失败。
+        boolean caliberOptionsQuestion = query.contains("口径")
+                && containsAny(query, "还有", "其他", "哪些", "可选", "几种", "列表");
+        if (caliberOptionsQuestion) {
+            if (plan.intent() == PlanIntent.INDICATOR_CALIBER_QUERY
+                    && plan.requestedOutputs().contains(RequestedOutput.CALIBER_OPTIONS)) {
+                return AlignmentDecision.pass();
+            }
+            return AlignmentDecision.mismatch(
+                    "TASK_TYPE_MISMATCH",
+                    "用户在查询该指标有哪些口径，并未指定某个候选口径进行试算。",
+                    correctedCaliberQueryPlan(plan),
+                    List.of());
+        }
+
         // “根据什么口径算的”“当前是按入院还是入区”都在追问现行规则。
         // 这类问题与“根据入区怎么算”只有几个字的差异，小模型很容易误判为候选模拟，
         // 因此必须先用确定性规则区分，再允许 Planner 计划进入 IR。
@@ -216,6 +233,21 @@ public class PlanGoalAlignmentValidator {
                 original.semanticAmbiguities());
     }
 
+    /** 将“还有哪些口径”修正为只读 Profile 目录查询，不要求 profile_id 或统计周期。 */
+    private RequestPlan correctedCaliberQueryPlan(RequestPlan original) {
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_CALIBER_QUERY,
+                "查询该指标当前口径及其他可用、仅解释或草稿口径",
+                original.targetIndicator(),
+                new RequestPlan.TargetCaliber("", null),
+                original.timeExpression(),
+                List.of(RequestedOutput.CALIBER_OPTIONS),
+                original.constraints(),
+                original.semanticAmbiguities(),
+                Math.max(0.95, original.confidence()));
+    }
+
     private List<Map<String, Object>> candidateProfiles(
             String ruleId,
             String hospitalId,
@@ -250,6 +282,7 @@ public class PlanGoalAlignmentValidator {
         int score = 0;
         List<String> names = new ArrayList<>();
         add(names, profile.get("label"));
+        add(names, profile.get("profile_name"));
         addAll(names, profile.get("aliases"));
         addAll(names, profile.get("evidence_keywords"));
         addAll(names, profile.get("difference_dimensions"));

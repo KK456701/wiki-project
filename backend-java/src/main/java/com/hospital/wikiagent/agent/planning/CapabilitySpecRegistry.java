@@ -82,6 +82,7 @@ public class CapabilitySpecRegistry {
                 Map.entry(RequestedOutput.IMPLEMENTATION_STATUS, "implementation_status"),
                 Map.entry(RequestedOutput.PREPARED_SQL_HANDLE, "sql_validation"),
                 Map.entry(RequestedOutput.TRIAL_RESULT, "trial_run"),
+                Map.entry(RequestedOutput.CALIBER_OPTIONS, "caliber_options"),
                 Map.entry(RequestedOutput.CALIBER_EXPLANATION, "caliber_profile"),
                 Map.entry(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE,
                         "caliber_sql_validation"),
@@ -103,6 +104,7 @@ public class CapabilitySpecRegistry {
             case RULE_EXPLANATION -> Set.of("effective_rule");
             case INDICATOR_SQL_PREPARE -> Set.of("sql_validation");
             case INDICATOR_TRIAL_RUN -> Set.of("trial_run");
+            case INDICATOR_CALIBER_QUERY -> Set.of("caliber_options");
             case INDICATOR_CALIBER_SIMULATION -> plan.requestedOutputs().contains(
                     RequestedOutput.CALIBER_TRIAL_RESULT)
                     ? Set.of("caliber_trial_result")
@@ -210,6 +212,9 @@ public class CapabilitySpecRegistry {
                         CapabilitySpecRegistry::sqlArguments, "sql_validation"),
                 spec(PlanCapability.EXECUTE_TRIAL_RUN, Set.of("sql_validation"), Set.of("trial_run"),
                         "trial_run_indicator_sql", CapabilitySpecRegistry::trialArguments, "trial_run"),
+                spec(PlanCapability.LIST_CALIBER_PROFILES, Set.of("effective_rule"),
+                        Set.of("caliber_options"), "list_indicator_calibers",
+                        CapabilitySpecRegistry::ruleReference, "caliber_options"),
                 spec(PlanCapability.RESOLVE_CALIBER_PROFILE, Set.of("effective_rule"),
                         Set.of("caliber_profile"), "resolve_indicator_caliber",
                         CapabilitySpecRegistry::caliberResolveArguments, "caliber_profile"),
@@ -454,6 +459,7 @@ public class CapabilitySpecRegistry {
                 PlanCapability.INSPECT_IMPLEMENTATION,
                 PlanCapability.PREPARE_VERIFIED_SQL,
                 PlanCapability.EXECUTE_TRIAL_RUN,
+                PlanCapability.LIST_CALIBER_PROFILES,
                 PlanCapability.RESOLVE_CALIBER_PROFILE,
                 PlanCapability.PREPARE_CALIBER_SQL,
                 PlanCapability.EXECUTE_CALIBER_TRIAL_RUN,

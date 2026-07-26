@@ -30,6 +30,7 @@ flowchart TD
     M -->|"单指标"| P
     SPLIT --> P["Planner LLM<br/>生成 RequestPlan，不输出工具名"]
     P --> ALIGN{"目标—计划一致性校验"}
+    ALIGN -->|"查询其他口径"| OPTIONS["Profile目录<br/>当前 / 可试算 / 仅解释 / 草稿"]
     ALIGN -->|"一致"| C["PlanCompiler<br/>编译 CompiledPlan IR"]
     ALIGN -->|"方向错误"| RP["Replanner LLM<br/>最多一次"]
     RP --> ALIGN2{"二次校验"}
@@ -80,6 +81,7 @@ flowchart TD
 |---|---|---|
 | `search_indicator_rules` | 在 HXZD Wiki 中检索指标 | 35 项均可检索 |
 | `get_effective_rule` | 读取定义、公式、分子、分母和默认 Profile | 不可执行 Profile 也可解释 |
+| `list_indicator_calibers` | 查询指标的全部可见 Profile 并分级 | 不执行候选口径、不要求 `profile_id` |
 | `preview_rule_change` | 只读展示口径差异 | 不创建草稿、不审批、不发布 |
 | `inspect_indicator_implementation` | 检查 Profile 状态、字段契约和元数据 | 核心 SQL 安全前置检查，不是实施工作台 |
 | `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象，或展示静态检查后的知识库参考稿 | 仅问 SQL 时不访问数据库；明确计算时，具备安全概览 SQL 和结果列映射的 Profile 可生成双库概览试算对象 |
@@ -112,6 +114,16 @@ Profile 状态：
 
 Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不完整或结果映射不完整的方案提升为可执行。
 
+业务问法被明确拆分：
+
+- “根据什么口径算”读取当前默认 Profile；
+- “还有哪些口径可以算”只读取 Profile 目录；
+- “按首次入区口径算”必须唯一解析到已审批候选后才能进入受控试算。
+
+SQL 展示使用精简模板，只返回指标、Profile、概览 SQL 和参数，不再拼接整段口径解释。`company`
+在业务回答中固定显示为“公司公版口径”，`hospital` 显示为“本院覆盖口径”；治理状态和各类
+执行能力只在 Trace 中展示。
+
 公司基础契约继续保存 Profile 的原始治理状态。`hospital_001` 当前发布为 35 项概览 SQL 提供确定性结果列候选，运行时测试确保全部能生成只读受控 SQL 对象。数据库是否真正兼容由业务库、真实库的实际只读执行确认；明细和导出不会因为概览试算而自动放开。
 
 ## 6. Evidence 与安全
@@ -139,7 +151,18 @@ Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不�
 
 历史 SQLite 表不会被主动删除，但当前应用不再初始化或访问。用户再请求“全面实施验收”时，服务端在 Planner 前返回确定性不支持说明。
 
-## 8. 验证
+## 8. Trace 流程图与 Planner 审计
+
+“查看链路”默认渲染原生 SVG 流程图，按 `flow_edges` 连接顺序、父子、Replan 和失败分支。
+LLM、Java、工具/数据库、存储和失败节点分别使用紫、蓝、橙、绿和红色；复合请求按
+`subtask_id` 分泳道。历史节点缺少父子关系时，服务端按同泳道 `sequence` 生成顺序边。
+
+Planner 节点保存并展示完整的安全模型请求：system/user prompt、messages、当前日期、最近
+8轮上下文、结构化会话状态、模型与Prompt版本。输出同时保留模型原文和规范化
+`RequestPlan`，并把意图、指标、候选口径、时间、输出目标、歧义和置信度逐项翻译成中文。
+明确的跨轮 SQL 追问若由服务端唯一解析，链路会显示“未调用 LLM Planner”及原因。
+
+## 9. 验证
 
 ```powershell
 cd .\backend-java

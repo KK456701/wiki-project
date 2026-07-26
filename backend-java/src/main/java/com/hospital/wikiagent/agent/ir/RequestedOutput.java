@@ -14,6 +14,7 @@ public enum RequestedOutput {
     IMPLEMENTATION_STATUS("implementation_status"),
     PREPARED_SQL_HANDLE("prepared_sql_handle"),
     TRIAL_RESULT("trial_result"),
+    CALIBER_OPTIONS("caliber_options"),
     CALIBER_EXPLANATION("caliber_explanation"),
     CALIBER_PREPARED_SQL_HANDLE("caliber_prepared_sql_handle"),
     CALIBER_TRIAL_RESULT("caliber_trial_result"),

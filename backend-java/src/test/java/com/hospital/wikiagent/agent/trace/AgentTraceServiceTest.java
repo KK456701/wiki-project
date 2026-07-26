@@ -59,6 +59,15 @@ class AgentTraceServiceTest {
         assertThat(String.valueOf(forwarded.get()))
                 .doesNotContain("SELECT secret")
                 .doesNotContain("secret-token");
+        Map<String, Object> second = new LinkedHashMap<>();
+        second.put("event", "trace_node");
+        second.put("node_name", "final_answer_llm");
+        second.put("node_type", "llm");
+        second.put("status", "success");
+        second.put("duration_ms", 8);
+        second.put("input", Map.of("messages", java.util.List.of()));
+        second.put("output", Map.of("answer_length", 12));
+        observer.onEvent(second);
         service.finish("TRACE_001", new AgentRunResult(
                 "已完成", "final_answer", "TRACE_001", "SESSION_001", 1, null, null));
 
@@ -73,6 +82,8 @@ class AgentTraceServiceTest {
         assertThat(String.valueOf(node.get("output_data"))).doesNotContain("secret-token");
         assertThat(String.valueOf(node.get("output_data"))).doesNotContain("private_table");
         assertThat(String.valueOf(node.get("output_data"))).contains("SQL_001");
+        assertThat(String.valueOf(trace.get("flow_edges")))
+                .contains("from_node_id", "to_node_id", "sequence");
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);
 

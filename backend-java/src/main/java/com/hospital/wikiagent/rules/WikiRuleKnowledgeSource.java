@@ -323,17 +323,32 @@ public class WikiRuleKnowledgeSource {
     }
 
     /**
-     * 只返回真正可以执行的候选口径。仅文档Profile可以参与解释，但不能进入反事实试算。
+     * 返回已审批且概览 SQL 至少通过静态门禁的候选口径。
+     *
+     * <p>知识发布状态仍可为 {@code documentation_only}；只要概览 SQL 来自当前发布
+     * 快照、没有静态阻断并具备结果列映射，就允许进入后续双库受控试算。真实执行
+     * 仍会再次校验统计周期、数据源和结果契约，不能据此绕过 DBHub 门禁。</p>
      */
     public List<Map<String, Object>> caliberProfiles(String ruleId, String hospitalId) {
         Map<String, Object> rule = findRule(ruleId);
-        return listOfMaps(resolvedManifest(rule, hospitalId).document().get("profiles")).stream()
+        ResolvedManifest resolved = resolvedManifest(rule, hospitalId);
+        return listOfMaps(resolved.document().get("profiles")).stream()
                 .filter(profile -> "approved".equalsIgnoreCase(text(profile.get("governance_status"))))
-                .filter(profile -> "executable".equalsIgnoreCase(text(profile.get("execution_status"))))
                 .filter(profile -> visibleToHospital(profile, hospitalId))
+                .filter(profile -> {
+                    Map<String, Object> refs = map(profile.get("sql_refs"));
+                    Map<String, Object> capabilities = map(profile.get("sql_capabilities"));
+                    String overview = validatedReferenceSql(
+                            resolved.root(), refs, capabilities, "overview", "overview");
+                    return overviewRuntimeEligible(
+                            overview, capabilities, resultMapping(profile));
+                })
                 .map(profile -> {
                     Map<String, Object> value = new LinkedHashMap<>(profile);
                     value.put("status", "approved");
+                    value.put("label", first(
+                            text(profile.get("label")), text(profile.get("profile_name"))));
+                    value.put("overview_runtime_eligible", true);
                     value.put("parameter_overrides", map(profile.get("parameter_overrides")));
                     value.put("field_role_overrides", map(profile.get("field_role_overrides")));
                     // Profile中允许保留空的生效结束时间等可选字段，
@@ -342,6 +357,59 @@ public class WikiRuleKnowledgeSource {
                     return value;
                 })
                 .toList();
+    }
+
+    /**
+     * 返回全部可见 Profile 的安全展示目录，不读取 SQL 正文。
+     *
+     * <p>目录中的 {@code option_status} 是面向用户的四级分类：
+     * 当前默认口径、可试算候选、仅可解释候选和草稿/未实现。草稿可以帮助用户理解
+     * 资料中还有哪些方案，但永远不会被 {@link #caliberProfiles(String, String)}
+     * 返回给执行链。</p>
+     */
+    public List<Map<String, Object>> caliberCatalog(String ruleId, String hospitalId) {
+        Map<String, Object> rule = findRule(ruleId);
+        ResolvedManifest resolved = resolvedManifest(rule, hospitalId);
+        Map<String, Object> manifest = resolved.document();
+        String defaultProfileId = text(manifest.get("default_profile"));
+        List<Map<String, Object>> executable = caliberProfiles(ruleId, hospitalId);
+        java.util.Set<String> executableIds = executable.stream()
+                .map(item -> text(item.get("profile_id")))
+                .collect(java.util.stream.Collectors.toSet());
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> profile : listOfMaps(manifest.get("profiles"))) {
+            if (!visibleToHospital(profile, hospitalId)) continue;
+            String profileId = text(profile.get("profile_id"));
+            boolean current = profileId.equals(defaultProfileId);
+            String governance = text(profile.get("governance_status"));
+            String optionStatus;
+            if (current) {
+                optionStatus = "current_default";
+            } else if (executableIds.contains(profileId)) {
+                optionStatus = "trial_available";
+            } else if ("approved".equalsIgnoreCase(governance)) {
+                optionStatus = "explanation_only";
+            } else {
+                optionStatus = "draft";
+            }
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("profile_id", profileId);
+            value.put("profile_name", first(
+                    text(profile.get("profile_name")), text(profile.get("label")), profileId));
+            value.put("is_current", current);
+            value.put("option_status", optionStatus);
+            value.put("governance_status", governance);
+            value.put("execution_status", text(profile.get("execution_status")));
+            value.put("overview_runtime_eligible", executableIds.contains(profileId));
+            value.put("unavailable_reason", first(
+                    String.join("；", stringList(profile.get("execution_blockers"))),
+                    "draft".equals(optionStatus) ? "该方案仍是草稿或尚未实现" : ""));
+            value.put("time_dimension", text(profile.get("time_dimension")));
+            value.put("effective_from", profile.get("effective_from"));
+            value.put("effective_to", profile.get("effective_to"));
+            result.add(value);
+        }
+        return List.copyOf(result);
     }
 
     public List<Map<String, Object>> diagnosticProfiles(String ruleId, String hospitalId) {

@@ -31,7 +31,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Service
 public class AgentTraceService {
-    public static final String VERSION = "java-agent-trace-v1";
+    public static final String VERSION = "java-agent-trace-v2";
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
     private final AgentTraceRepository repository;
     private final ObjectMapper objectMapper;
@@ -119,14 +119,163 @@ public class AgentTraceService {
             value.put("node_title", title(name));
             value.put("processing_summary", processing(name));
             value.put("input_data", decode(text(value.get("input_summary"))));
-            value.put("output_data", decode(text(value.get("output_summary"))));
+            Object outputData = decode(text(value.get("output_summary")));
+            value.put("output_data", outputData);
+            Map<String, Object> readiness = capabilityReadiness(outputData);
+            if (!readiness.isEmpty()) {
+                value.put("capability_readiness", readiness);
+            }
             enhanced.add(value);
         }
         trace.put("nodes", enhanced);
+        trace.put("flow_edges", flowEdges(enhanced));
         trace.put("evidence", repository.evidence(traceId, principal.hospitalId()));
         trace.put("trace_version", VERSION);
         trace.put("timing_summary", timing(enhanced));
         return trace;
+    }
+
+    /**
+     * 把容易混淆的内部状态拆成四项 Trace 能力，不再让普通回答直接输出
+     * {@code documentation_only} 等治理术语。
+     */
+    private static Map<String, Object> capabilityReadiness(Object raw) {
+        Map<String, Object> data = evidenceMap(raw);
+        if (data.isEmpty()) return Map.of();
+        boolean relevant = data.containsKey("execution_status")
+                || data.containsKey("overview_runtime_eligible")
+                || data.containsKey("sql_status")
+                || data.containsKey("sql_capabilities");
+        if (!relevant) return Map.of();
+        Map<String, Object> sqlCapabilities = mapValue(data.get("sql_capabilities"));
+        Map<String, Object> department = mapValue(sqlCapabilities.get("department_detail"));
+        if (department.isEmpty()) department = mapValue(sqlCapabilities.get("department"));
+        Map<String, Object> patient = mapValue(sqlCapabilities.get("patient_detail"));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("知识治理状态", first(
+                first(
+                        text(data.get("governance_status")),
+                        text(data.get("execution_status"))),
+                "未提供"));
+        String sqlStatus = text(data.get("sql_status"));
+        result.put("SQL展示能力", (sqlStatus != null && !"unavailable".equals(sqlStatus))
+                || Boolean.TRUE.equals(data.get("reference_only")));
+        result.put("双库概览试算能力",
+                Boolean.TRUE.equals(data.get("overview_runtime_eligible"))
+                        || "available".equals(text(data.get("sql_status"))));
+        result.put("科室明细诊断能力", validatedCapability(department));
+        result.put("患者明细诊断能力", validatedCapability(patient));
+        return result;
+    }
+
+    private static boolean validatedCapability(Map<String, Object> capability) {
+        return List.of(
+                "static_validated", "metadata_validated", "compile_validated",
+                "trial_validated", "executable")
+                .contains(text(capability.get("status")))
+                && !(capability.get("blockers") instanceof List<?> blockers && !blockers.isEmpty());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> evidenceMap(Object raw) {
+        if (!(raw instanceof Map<?, ?> source)) return Map.of();
+        Map<String, Object> map = new LinkedHashMap<>();
+        source.forEach((key, value) -> map.put(String.valueOf(key), value));
+        if (map.containsKey("execution_status")
+                || map.containsKey("overview_runtime_eligible")
+                || map.containsKey("sql_capabilities")) {
+            return map;
+        }
+        for (String key : List.of("result", "data", "effective_rule")) {
+            Map<String, Object> nested = evidenceMap(map.get(key));
+            if (!nested.isEmpty()) return nested;
+        }
+        return Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapValue(Object value) {
+        if (!(value instanceof Map<?, ?> source)) return Map.of();
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
+    }
+
+    /**
+     * 根据持久化的父子关系和泳道顺序生成前端流程图边。
+     *
+     * <p>新 Trace 优先使用 {@code parent_node_id}；历史节点没有父节点时，按同一
+     * {@code subtask_id} 的 sequence 补顺序边。该兼容层不改写历史数据，也不会把
+     * 不同指标子任务错误串成一条链。</p>
+     */
+    private static List<Map<String, Object>> flowEdges(List<Map<String, Object>> nodes) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        java.util.Set<String> nodeIds = nodes.stream()
+                .map(node -> text(node.get("node_id")))
+                .filter(id -> id != null && !id.isBlank())
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> pairs = new java.util.LinkedHashSet<>();
+        for (Map<String, Object> node : nodes) {
+            String from = text(node.get("parent_node_id"));
+            String to = text(node.get("node_id"));
+            if (from == null || to == null || !nodeIds.contains(from)) continue;
+            addFlowEdge(result, pairs, from, to, "parent", "");
+        }
+        Map<String, List<Map<String, Object>>> lanes = new LinkedHashMap<>();
+        for (Map<String, Object> node : nodes) {
+            String lane = first(text(node.get("subtask_id")), "root");
+            lanes.computeIfAbsent(lane, ignored -> new ArrayList<>()).add(node);
+        }
+        for (List<Map<String, Object>> lane : lanes.values()) {
+            lane.sort(java.util.Comparator
+                    .comparingLong((Map<String, Object> node) ->
+                            longValue(node.get("sequence"), Long.MAX_VALUE))
+                    .thenComparingLong(node ->
+                            longValue(node.get("started_offset_ms"), Long.MAX_VALUE)));
+            Map<String, Integer> occurrences = new LinkedHashMap<>();
+            for (int index = 0; index < lane.size(); index++) {
+                Map<String, Object> target = lane.get(index);
+                String nodeName = first(text(target.get("node_name")), "node");
+                int occurrence = occurrences.merge(nodeName, 1, Integer::sum);
+                if (index == 0) continue;
+                Map<String, Object> source = lane.get(index - 1);
+                String from = text(source.get("node_id"));
+                String to = text(target.get("node_id"));
+                if (from == null || to == null) continue;
+                String edgeType = edgeType(source, target);
+                String label = occurrence > 1 ? "循环 " + occurrence : "";
+                addFlowEdge(result, pairs, from, to, edgeType, label);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static void addFlowEdge(
+            List<Map<String, Object>> target,
+            java.util.Set<String> pairs,
+            String from,
+            String to,
+            String edgeType,
+            String label) {
+        String key = from + "→" + to;
+        if (!pairs.add(key)) return;
+        target.add(eventValues(
+                "from_node_id", from,
+                "to_node_id", to,
+                "edge_type", edgeType,
+                "label", label));
+    }
+
+    private static String edgeType(
+            Map<String, Object> source,
+            Map<String, Object> target) {
+        String targetName = first(text(target.get("node_name")), "");
+        if (targetName.contains("replan")) return "replan";
+        if (List.of("failed", "error").contains(text(target.get("status")))
+                || List.of("failed", "error").contains(text(source.get("status")))) {
+            return "failure";
+        }
+        return "sequence";
     }
 
     public Map<String, Object> list(HospitalPrincipal principal, RunFilters filters) {
@@ -429,6 +578,7 @@ public class AgentTraceService {
             case "indicator_llm_disambiguation" -> "模型候选内消歧";
             case "memory_load" -> "读取会话上下文";
             case "planner_llm" -> "规划业务目标";
+            case "followup_plan_resolve" -> "跨轮确定性解析";
             case "plan_goal_alignment" -> "校验目标与计划";
             case "plan_alignment_review_llm" -> "审核复杂口径目标";
             case "plan_replan" -> "重新规划业务目标";
@@ -443,6 +593,7 @@ public class AgentTraceService {
             case "plan_verify" -> "校验证据完整性";
             case "final_answer_llm" -> "生成最终回答";
             case "prepared_sql_answer" -> "生成受控 SQL 回答";
+            case "caliber_options_answer" -> "整理口径选项";
             case "caliber_simulation_answer" -> "生成候选口径回答";
             case "difference_diagnosis_layer_1" -> "诊断范围预检";
             case "difference_diagnosis_layer_2" -> "实时结构核验";
@@ -477,6 +628,7 @@ public class AgentTraceService {
             case "indicator_semantic_retrieval" -> "对未命中片段执行本地字符语义召回，不调用模型。";
             case "indicator_llm_disambiguation" -> "LLM 只能从服务端候选 rule_id 中消歧。";
             case "planner_llm" -> "LLM 只生成业务 RequestPlan，不选择工具。";
+            case "followup_plan_resolve" -> "指标和目标可由结构化会话唯一确定，本轮未调用 LLM Planner。";
             case "plan_goal_alignment" -> "确定性核对用户目标、会话事实、指标和候选口径是否与计划一致。";
             case "plan_alignment_review_llm" -> "仅在规则无法确定的复杂语义下，从允许候选中审核目标口径。";
             case "plan_replan" -> "仅在允许的方向性错误下由 LLM 重规划一次。";
@@ -488,6 +640,7 @@ public class AgentTraceService {
             case "plan_verify" -> "只接受医院、规则、周期和对象链一致的 Evidence。";
             case "final_answer_llm" -> "LLM 只根据 VerifiedEvidence 组织回答。";
             case "prepared_sql_answer" -> "服务端从本轮私有 SQL 对象确定性生成回答，不调用 Final Answer LLM。";
+            case "caliber_options_answer" -> "服务端按 Profile 状态分类展示口径，不执行数据库。";
             case "caliber_simulation_answer" -> "服务端使用已验证候选 profile 和试运行结果生成回答。";
             case "difference_diagnosis_layer_1" -> "固定指标、医院、统计周期、文件类型和外部声明值。";
             case "difference_diagnosis_layer_2" -> "对比 Wiki 字段契约、医院映射与 DBHub 实时元数据。";

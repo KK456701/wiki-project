@@ -99,6 +99,24 @@ class PlanGoalAlignmentValidatorTest {
     }
 
     @Test
+    void correctsCaliberOptionsQuestionWithoutRequiringProfileId() {
+        RuleReadRepository rules = mock(RuleReadRepository.class);
+        PlanGoalAlignmentValidator validator = new PlanGoalAlignmentValidator(rules);
+
+        var decision = validator.assess(
+                "还有其他口径可以算吗",
+                candidateSimulationPlan(),
+                "hospital_001");
+
+        assertThat(decision.status()).isEqualTo(AlignmentStatus.MISMATCH);
+        assertThat(decision.suggestedPlan().intent())
+                .isEqualTo(PlanIntent.INDICATOR_CALIBER_QUERY);
+        assertThat(decision.suggestedPlan().targetCaliber().profileId()).isNull();
+        assertThat(decision.suggestedPlan().requestedOutputs())
+                .containsExactly(RequestedOutput.CALIBER_OPTIONS);
+    }
+
+    @Test
     void candidateFormulaWithoutPeriodDoesNotInventTrialRange() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
         when(rules.diagnosticProfiles("HXZD-001-001", "hospital_001"))

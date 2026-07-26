@@ -15,6 +15,7 @@ public enum PlanCapability {
     INSPECT_IMPLEMENTATION("inspect_implementation"),
     PREPARE_VERIFIED_SQL("prepare_verified_sql"),
     EXECUTE_TRIAL_RUN("execute_trial_run"),
+    LIST_CALIBER_PROFILES("list_caliber_profiles"),
     RESOLVE_CALIBER_PROFILE("resolve_caliber_profile"),
     PREPARE_CALIBER_SQL("prepare_caliber_sql"),
     EXECUTE_CALIBER_TRIAL_RUN("execute_caliber_trial_run"),

@@ -111,6 +111,33 @@ public class ToolRegistry {
                             data);
                 }));
         register(values, new AgentTool(
+                "list_indicator_calibers",
+                RuleReferenceInput.class,
+                Set.of(),
+                Duration.ofSeconds(10),
+                AgentTool.RiskLevel.READ_ONLY,
+                true,
+                null,
+                (input, context) -> {
+                    RuleReferenceInput arguments = (RuleReferenceInput) input;
+                    Map<String, Object> effective = rules.effectiveRule(
+                            arguments.ruleId(), context.agentContext().hospitalId());
+                    List<Map<String, Object>> options = rules.caliberCatalog(
+                            arguments.ruleId(), context.agentContext().hospitalId());
+                    Map<String, Object> data = new LinkedHashMap<>();
+                    data.put("rule_id", arguments.ruleId());
+                    data.put("rule_name", effective.get("rule_name"));
+                    data.put("current_profile_id", effective.get("profile_id"));
+                    data.put("current_profile_name", effective.get("profile_name"));
+                    data.put("caliber_options", options);
+                    return ToolResult.success(
+                            "CALIBER_OPTIONS_FOUND",
+                            options.size() <= 1
+                                    ? "当前指标只有一种已发布口径。"
+                                    : "已读取当前指标的口径选项。",
+                            data);
+                }));
+        register(values, new AgentTool(
                 "preview_rule_change",
                 PreviewRuleChangeInput.class,
                 Set.of(),
@@ -234,6 +261,7 @@ public class ToolRegistry {
                 "inspect_indicator_implementation",
                 "prepare_indicator_sql",
                 "trial_run_indicator_sql",
+                "list_indicator_calibers",
                 "resolve_indicator_caliber",
                 "prepare_indicator_caliber_sql",
                 "trial_run_indicator_caliber_sql",

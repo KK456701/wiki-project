@@ -80,6 +80,17 @@ public class RuleReadRepository {
         return wiki.caliberProfiles(ruleId, hospitalId);
     }
 
+    /**
+     * 返回指标下全部可见 Profile 的展示目录。
+     *
+     * <p>该目录同时包含当前口径、可试算候选、仅可解释候选和草稿。它只用于回答
+     * “还有哪些口径”及生成用户选择项；真正执行时仍必须重新经过
+     * {@link #caliberProfiles(String, String)} 的审批与 SQL 门禁。</p>
+     */
+    public List<Map<String, Object>> caliberCatalog(String ruleId, String hospitalId) {
+        return wiki.caliberCatalog(ruleId, hospitalId);
+    }
+
     /** 返回 Wiki 中允许列表式的数据质量规则，不接受用户提供任意 SQL。 */
     public List<Map<String, Object>> dataQualityRules(String ruleId) {
         return wiki.dataQualityRules(ruleId);

@@ -535,7 +535,7 @@ class AgentRunnerTest {
     }
 
     @Test
-    void preparedSqlAnswerIncludesEffectiveNumeratorAndDenominatorCaliber() {
+    void preparedSqlAnswerUsesCompactSqlFirstTemplate() {
         ObjectMapper objectMapper = JsonMapper.builder()
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
                 .build();
@@ -596,9 +596,10 @@ class AgentRunnerTest {
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.answer())
-                .contains("本院生效口径", "分子口径：及时到位次数", "分母口径：急会诊总次数")
-                .contains("已校验 SQL", "2026-01-01 00:00:00", "2026-02-01 00:00:00")
-                .contains("该请求只生成并校验 SQL，不执行数据库");
+                .contains("急会诊及时到位率 · 概览 SQL", "当前 Profile")
+                .contains("2026-01-01 00:00:00", "2026-02-01 00:00:00")
+                .contains("本轮只展示知识库中的概览 SQL", "未访问数据库")
+                .doesNotContain("分子口径：", "分母口径：", "实施信息");
         assertThat(models.calls).isEqualTo(1);
     }
 
@@ -657,8 +658,9 @@ class AgentRunnerTest {
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.answer())
-                .contains("分子口径：及时到位次数", "分母口径：急会诊总次数")
-                .contains("2026-01-01 00:00:00", "2026-02-01 00:00:00", "已校验 SQL");
+                .contains("急会诊及时到位率 · 概览 SQL", "当前 Profile")
+                .contains("2026-01-01 00:00:00", "2026-02-01 00:00:00")
+                .doesNotContain("分子口径：", "分母口径：");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
                 .contains("followup_plan_resolve")
@@ -726,7 +728,7 @@ class AgentRunnerTest {
         assertThat(result.stopReason()).as(result.answer()).isEqualTo("final_answer");
         assertThat(result.requestPlan().intent()).isEqualTo(PlanIntent.INDICATOR_SQL_PREPARE);
         assertThat(result.answer())
-                .contains("已校验 SQL", "未指定统计时间", "不执行数据库");
+                .contains("概览 SQL", "未指定统计时间", "未访问数据库");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
                 .contains("followup_plan_resolve")

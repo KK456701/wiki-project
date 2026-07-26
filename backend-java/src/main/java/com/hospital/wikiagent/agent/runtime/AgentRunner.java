@@ -269,11 +269,15 @@ public class AgentRunner {
             TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
                     followupStarted, subtaskId, eventValues(
                             "query", request.query(),
+                            "planner_invoked", false,
+                            "planner_skip_reason",
+                            "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定",
                             "context_rule_id", followupPlan.targetIndicator().ruleId(),
                             "context_stat_start", followupPlan.timeExpression().startTime(),
                             "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
                             "intent", followupPlan.intent().name(),
-                            "requested_outputs", followupPlan.requestedOutputs()));
+                            "requested_outputs", followupPlan.requestedOutputs(),
+                            "decision", "未调用 LLM Planner"));
         } else {
             emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
             long plannerStarted = TraceEvents.started();
@@ -283,12 +287,10 @@ public class AgentRunner {
                         request.query(), request.modelId(), LocalDate.now(ZoneId.of("Asia/Shanghai")),
                         request.structuredState(), request.recentHistory()));
                 TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
-                        subtaskId, Map.of(
-                                "query", request.query(),
-                                "structured_state", request.structuredState(),
-                                "recent_history", request.recentHistory()), eventValues(
+                        subtaskId, plannerTraceInput(request, modelPlan), eventValues(
                                 "raw_content", modelPlan.rawContent(),
                                 "request_plan", tracePlan(modelPlan.plan()),
+                                "normalized_plan", tracePlan(modelPlan.plan()),
                                 "repaired", modelPlan.repaired()),
                         "model_id", modelPlan.modelId());
             } catch (RuntimeException exception) {
@@ -299,7 +301,8 @@ public class AgentRunner {
             }
         }
         PlanningContext fileContext = resolveUploadPlanningContext(request);
-        RequestPlan enrichedPlan = downgradeUnsupportedDifferenceDiagnosis(
+        RequestPlan enrichedPlan = removeInternalImplementationOutput(
+                downgradeUnsupportedDifferenceDiagnosis(
                 request.query(), request.fileKey(),
                 normalizeExplicitDifferenceDiagnosis(
                 request.query(), upgradeToTrialRun(
@@ -307,10 +310,14 @@ public class AgentRunner {
                                 enrichFromConversation(
                                         enrichFromUploadedFile(modelPlan.plan(), fileContext),
                                         conversation),
-                                resolvedIndicator))));
+                                resolvedIndicator)))));
         // 低置信度意图澄清：在编译前检查 Planner 的置信度
         double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
-        if (enrichedPlan.confidence() < threshold) {
+        // “还有哪些口径”属于服务端可以高置信识别的业务动作。即使小模型给出较低
+        // confidence，也应先交给目标—计划一致性校验纠正为口径列表查询，不能在这里
+        // 提前反问并中断。这样 8B 与 API 大模型会得到一致的确定性行为。
+        boolean deterministicCaliberOptionsQuery = isCaliberOptionsQuery(request.query());
+        if (enrichedPlan.confidence() < threshold && !deterministicCaliberOptionsQuery) {
             long clarificationStarted = TraceEvents.started();
             // 如果 Planner 给出了具体指标名但解析不出 ruleId，真正模糊的是指标而非意图，
             // 应请用户从目录重选指标，避免静默回退到上一轮指标算错对象。
@@ -414,7 +421,10 @@ public class AgentRunner {
         TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
                 subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
                         "plan_id", compiled.planId(), "node_count", compiled.nodes().size(),
-                        "ir_version", CompiledPlanIR.VERSION));
+                        "ir_version", CompiledPlanIR.VERSION,
+                        "required_facts", compiled.requiredFacts(),
+                        "capabilities", compiled.nodes().stream()
+                                .map(node -> node.capability().value()).toList()));
         long validationStarted = TraceEvents.started();
         PlanValidation validation = validator.validate(planned.plan());
         TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
@@ -573,6 +583,17 @@ public class AgentRunner {
         saveConversation(observer, traceId, subtaskId, conversation,
                 request.principal(), failure.answer(), state);
         return failure;
+    }
+
+    private static boolean isCaliberOptionsQuery(String query) {
+        String normalized = query == null
+                ? ""
+                : query.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", "");
+        if (!normalized.contains("口径")) {
+            return false;
+        }
+        return List.of("还有", "其他", "哪些", "可选", "几种", "列表").stream()
+                .anyMatch(normalized::contains);
     }
 
     /**
@@ -932,6 +953,10 @@ public class AgentRunner {
         String deterministicAnswer = composeDifferenceDiagnosisAnswer(plan, state);
         String deterministicNode = "difference_diagnosis_answer";
         if (deterministicAnswer == null) {
+            deterministicAnswer = composeCaliberOptionsAnswer(plan, state);
+            deterministicNode = "caliber_options_answer";
+        }
+        if (deterministicAnswer == null) {
             deterministicAnswer = composeCaliberSimulationAnswer(plan, state);
             deterministicNode = "caliber_simulation_answer";
         }
@@ -948,6 +973,7 @@ public class AgentRunner {
                     "workflow_version", switch (deterministicNode) {
                         case "prepared_sql_answer" -> "prepared-sql-answer-v2";
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
+                        case "caliber_options_answer" -> "caliber-options-answer-v1";
                         case "caliber_simulation_answer" -> "caliber-simulation-answer-v1";
                         default -> "deterministic-answer-v1";
                     },
@@ -1660,34 +1686,29 @@ public class AgentRunner {
         if (sql == null || String.valueOf(sql).isBlank()) return null;
         ToolResult effectiveRule = latestSuccessful(state, "EFFECTIVE_RULE_FOUND",
                 text(prepared.data().get("rule_id")));
+        Map<String, Object> rule = effectiveRule == null ? Map.of() : effectiveRule.data();
+        String indicatorName = first(
+                text(prepared.data().get("rule_name")),
+                text(rule.get("rule_name")),
+                plan.targetIndicator().rawName(),
+                text(prepared.data().get("rule_id")));
+        String profileName = first(
+                text(prepared.data().get("profile_name")),
+                text(rule.get("profile_name")),
+                "当前默认口径");
+        String profileId = first(
+                text(prepared.data().get("profile_id")),
+                text(rule.get("profile_id")),
+                "—");
         StringBuilder answer = new StringBuilder();
-        if (effectiveRule != null) {
-            Map<String, Object> rule = effectiveRule.data();
-            answer.append("## 本院生效口径\n\n");
-            appendCaliber(answer, "指标", rule.get("rule_name"));
-            appendCaliber(answer, "定义", rule.get("definition"));
-            appendCaliber(answer, "公式", rule.get("formula"));
-            appendCaliber(answer, "分子口径", rule.get("numerator_rule"));
-            appendCaliber(answer, "分母口径", rule.get("denominator_rule"));
-            appendCaliber(answer, "纳入/过滤条件", rule.get("filter_rule"));
-            appendCaliber(answer, "排除条件", rule.get("exclude_rule"));
-            answer.append('\n');
-        }
+        answer.append("# ").append(indicatorName).append(" · 概览 SQL\n\n")
+                .append("- 当前 Profile：").append(profileName)
+                .append("（").append(profileId).append("）\n\n");
         boolean referenceOnly = Boolean.TRUE.equals(prepared.data().get("reference_only"));
-        answer.append(referenceOnly
-                        ? "## 知识库概览 SQL（本次仅展示）\n\n```sql\n"
-                        : "## 已校验 SQL\n\n```sql\n")
+        answer.append("## 概览 SQL\n\n```sql\n")
                 .append(sql).append("\n```\n\n");
         if (!referenceOnly) {
             answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
-        } else {
-            answer.append("- Profile 状态：")
-                    .append(prepared.data().getOrDefault("execution_status", "documentation_only"))
-                    .append('\n');
-            answer.append("- 当前校验：只读静态检查通过\n");
-            answer.append("- 执行阻断：")
-                    .append(prepared.data().getOrDefault("execution_blockers", List.of()))
-                    .append('\n');
         }
         answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
                 .append(" 至 ").append(prepared.data().get("stat_end")).append("（左闭右开）\n");
@@ -1696,14 +1717,104 @@ public class AgentRunner {
             answer.append("\n> 未指定统计时间，已默认用本月至今生成 SQL；"
                     + "如需其他区间，直接告诉我具体起止时间即可调整。\n");
         }
-        if (referenceOnly) {
-            answer.append("\n> 该 SQL 来自当前发布的知识库。本次请求只展示并完成只读静态检查，"
-                    + "没有访问数据库；若要计算结果，请提供不超过一个月的统计区间，"
-                    + "系统会对业务库和真实库分别执行该概览 SQL 并核对结果。\n");
-        } else {
-            answer.append("\n该请求只生成并校验 SQL，不执行数据库。");
-        }
+        answer.append("\n> 本轮只展示知识库中的概览 SQL，未访问数据库、未执行统计。");
         return answer.toString();
+    }
+
+    /**
+     * 将 Profile 目录渲染为确定性业务回答。
+     *
+     * <p>该回答不会触发候选试运行。即使 Planner 错把“有哪些口径”理解为模拟任务，
+     * 一致性校验也会在 IR 编译前把它修正到本目录能力。</p>
+     */
+    private static String composeCaliberOptionsAnswer(
+            RequestPlan plan,
+            AgentRunState state) {
+        if (plan.intent() != PlanIntent.INDICATOR_CALIBER_QUERY
+                && !plan.requestedOutputs().contains(RequestedOutput.CALIBER_OPTIONS)) {
+            return null;
+        }
+        ToolResult catalog = latestSuccessful(
+                state, "CALIBER_OPTIONS_FOUND", state.currentRuleId());
+        if (catalog == null) return null;
+        List<Map<String, Object>> options = mapList(catalog.data().get("caliber_options"));
+        Map<String, Object> current = options.stream()
+                .filter(item -> Boolean.TRUE.equals(item.get("is_current")))
+                .findFirst()
+                .orElse(options.isEmpty() ? Map.of() : options.get(0));
+        String ruleName = first(
+                text(catalog.data().get("rule_name")),
+                plan.targetIndicator().rawName(),
+                state.currentRuleId());
+        StringBuilder answer = new StringBuilder();
+        answer.append("# ").append(ruleName).append(" · 口径选项\n\n")
+                .append("## 当前口径\n\n");
+        appendProfileOption(answer, current, "当前默认口径");
+
+        List<Map<String, Object>> alternatives = options.stream()
+                .filter(item -> !Boolean.TRUE.equals(item.get("is_current")))
+                .toList();
+        answer.append("\n## 其他口径\n\n");
+        if (alternatives.isEmpty()) {
+            answer.append("当前只有一种口径，没有其他已发布候选。\n");
+        } else {
+            for (Map<String, Object> option : alternatives) {
+                String status = text(option.get("option_status"));
+                String statusLabel = switch (status == null ? "" : status) {
+                    case "trial_available" -> "可试算候选";
+                    case "explanation_only" -> "仅可解释候选";
+                    default -> "草稿 / 未实现";
+                };
+                answer.append("### ").append(first(
+                                text(option.get("profile_name")),
+                                text(option.get("profile_id"))))
+                        .append("\n\n")
+                        .append("- 编号：").append(option.get("profile_id")).append('\n')
+                        .append("- 状态：").append(statusLabel).append('\n')
+                        .append("- 统计时间字段：")
+                        .append(businessTimeLabel(option.get("time_dimension"))).append('\n');
+                if (!"trial_available".equals(status)) {
+                    answer.append("- 暂不可试算原因：")
+                            .append(first(
+                                    text(option.get("unavailable_reason")),
+                                    "尚未通过候选试算门禁"))
+                            .append('\n');
+                }
+                answer.append('\n');
+            }
+            if (alternatives.stream().anyMatch(item ->
+                    "trial_available".equals(text(item.get("option_status"))))) {
+                answer.append("> 你可以直接说“按「候选口径名称」计算”，"
+                        + "系统会在不超过一个月的区间内对业务库和真实库受控试算。");
+            }
+        }
+        return answer.toString().stripTrailing();
+    }
+
+    private static void appendProfileOption(
+            StringBuilder answer,
+            Map<String, Object> profile,
+            String fallbackName) {
+        answer.append("- 名称：").append(first(
+                        text(profile.get("profile_name")), fallbackName))
+                .append('\n')
+                .append("- 编号：").append(first(
+                        text(profile.get("profile_id")), "—"))
+                .append('\n')
+                .append("- 统计时间字段：")
+                .append(businessTimeLabel(profile.get("time_dimension")))
+                .append('\n');
+    }
+
+    private static String businessTimeLabel(Object raw) {
+        String value = text(raw);
+        if (value == null || value.isBlank()) return "当前证据未提供";
+        return switch (value) {
+            case "admitted_to_ward_at", "ward_entry_time" -> "首次入区时间";
+            case "admit_time", "admitted_at" -> "入院时间";
+            case "request_time", "requested_at" -> "申请时间";
+            default -> value;
+        };
     }
 
     /**
@@ -1845,6 +1956,36 @@ public class AgentRunner {
         }
     }
 
+    /**
+     * 面向用户的普通回答不暴露知识发布和 SQL 门禁状态。
+     *
+     * <p>这些状态仍完整保留在工具 Evidence 和 Trace 中。这里仅移除 Planner 误加的
+     * {@code implementation_status} 输出目标，避免它额外编译实施检查工具，并让
+     * Final Answer 把内部治理状态当成业务口径展示。</p>
+     */
+    private static RequestPlan removeInternalImplementationOutput(RequestPlan plan) {
+        if (!plan.requestedOutputs().contains(RequestedOutput.IMPLEMENTATION_STATUS)) {
+            return plan;
+        }
+        List<RequestedOutput> outputs = plan.requestedOutputs().stream()
+                .filter(output -> output != RequestedOutput.IMPLEMENTATION_STATUS)
+                .toList();
+        if (outputs.isEmpty() && plan.intent() == PlanIntent.RULE_EXPLANATION) {
+            outputs = List.of(RequestedOutput.DEFINITION, RequestedOutput.FORMULA);
+        }
+        return plan.withRequestedOutputs(outputs);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> mapList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(item -> (Map<String, Object>) new LinkedHashMap<>(
+                        (Map<String, Object>) item))
+                .toList();
+    }
+
     private static String text(Object value) {
         return value == null || String.valueOf(value).isBlank()
                 ? null : String.valueOf(value).strip();
@@ -1892,6 +2033,27 @@ public class AgentRunner {
      * 就无法判断指标名、时间表达、输出目标或歧义究竟在哪一步丢失。这里保留所有
      * RequestPlan 字段（包括值为 null 的字段），便于对比不同模型的结构化输出。</p>
      */
+    private static Map<String, Object> plannerTraceInput(
+            AgentRunRequest request,
+            PlannerResult result) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("query", request.query());
+        value.put("structured_state", request.structuredState());
+        value.put("recent_history", request.recentHistory());
+        if (result.requestAudit() != null) {
+            value.put("current_date", result.requestAudit().currentDate());
+            value.put("system_prompt", result.requestAudit().systemPrompt());
+            value.put("user_prompt", result.requestAudit().userPrompt());
+            value.put("messages", result.requestAudit().messages());
+            value.put("model_id", result.requestAudit().modelId());
+            value.put("timeout_ms", result.requestAudit().timeoutMs());
+            value.put("prompt_version", result.requestAudit().promptVersion());
+            value.put("planner_version", result.requestAudit().plannerVersion());
+            value.put("repair_attempt", result.requestAudit().repairAttempt());
+        }
+        return value;
+    }
+
     private static Map<String, Object> tracePlan(RequestPlan plan) {
         Map<String, Object> targetIndicator = new LinkedHashMap<>();
         targetIndicator.put("raw_name", plan.targetIndicator().rawName());

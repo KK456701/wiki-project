@@ -87,6 +87,13 @@ public class PlanValidator {
                     "差异诊断计划缺少分层诊断报告输出目标。",
                     FallbackCategory.USER_CLARIFICATION);
         }
+        if (plan.intent() == PlanIntent.INDICATOR_CALIBER_QUERY
+                && !outputs.contains(RequestedOutput.CALIBER_OPTIONS)) {
+            return PlanValidation.invalid(
+                    "PLAN_INTENT_MISMATCH",
+                    "口径列表查询计划缺少候选口径列表输出目标。",
+                    FallbackCategory.USER_CLARIFICATION);
+        }
         if (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
                 && plan.targetCaliber().rawText().isBlank()
                 && plan.targetCaliber().profileId() == null) {

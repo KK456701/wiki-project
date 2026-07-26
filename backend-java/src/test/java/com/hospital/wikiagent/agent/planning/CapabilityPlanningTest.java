@@ -75,6 +75,32 @@ class CapabilityPlanningTest {
     }
 
     @Test
+    void compilesCaliberOptionsQueryWithoutSimulationOrDatabaseCapabilities() {
+        RequestPlan plan = new RequestPlan(
+                null,
+                PlanIntent.INDICATOR_CALIBER_QUERY,
+                "查询急会诊及时到位率还有哪些口径",
+                new RequestPlan.TargetIndicator("急会诊及时到位率", "HXZD-003-001"),
+                new RequestPlan.TimeExpression("", null, null),
+                List.of(RequestedOutput.CALIBER_OPTIONS),
+                List.of(),
+                List.of());
+
+        CompiledPlanIR ir = compiler.compile(plan);
+
+        assertThat(ir.nodes()).extracting(CompiledPlanIR.PlanNode::capability).containsExactly(
+                PlanCapability.RESOLVE_INDICATOR,
+                PlanCapability.RESOLVE_EFFECTIVE_RULE,
+                PlanCapability.LIST_CALIBER_PROFILES,
+                PlanCapability.COMPOSE_ANSWER);
+        assertThat(ir.nodes()).extracting(CompiledPlanIR.PlanNode::capability)
+                .doesNotContain(
+                        PlanCapability.PREPARE_VERIFIED_SQL,
+                        PlanCapability.EXECUTE_TRIAL_RUN,
+                        PlanCapability.RESOLVE_CALIBER_PROFILE);
+    }
+
+    @Test
     void controllerAndDispatchExposeOnlyTheCompiledTool() {
         RequestPlan plan = trialPlan();
         PlanValidation validation = PlanValidation.valid(new PlanValidation.ResolvedTimeRange(

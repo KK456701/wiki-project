@@ -73,6 +73,22 @@ class RuleReadRepositoryTest {
     }
 
     @Test
+    void classifiesSingleApprovedAndDraftCaliberOptions() {
+        assertThat(repository.caliberCatalog(
+                "HXZD-003-001", "hospital_without_release"))
+                .singleElement()
+                .satisfies(option -> {
+                    assertThat(option).containsEntry("is_current", true);
+                    assertThat(option.get("profile_name")).asString().contains("公版");
+                });
+
+        assertThat(repository.caliberCatalog(
+                "HXZD-006-003", "hospital_without_release"))
+                .extracting(option -> option.get("option_status"))
+                .containsExactly("current_default", "draft");
+    }
+
+    @Test
     void previewIsReadOnlyAndNamesCurrentProfile() {
         var preview = repository.previewChange(
                 "HXZD-001-001", "hospital_001", "将首诊时间改为15分钟");

@@ -627,6 +627,7 @@ public class AgentConversationMemory {
                     + (state.statStart() != null
                             ? "（" + state.statStart() + " 至 " + state.statEnd() + "）" : "");
             case "indicator_diagnosis" -> "已诊断" + name + "的异常原因";
+            case "indicator_caliber_query" -> "已查询" + name + "的可用口径列表";
             case "indicator_caliber_simulation" -> "已模拟" + name + "的候选口径计算";
             case "indicator_difference_diagnosis" -> "已完成" + name + "的差异对比诊断";
             case "upload_analysis" -> "已分析上传文件";
