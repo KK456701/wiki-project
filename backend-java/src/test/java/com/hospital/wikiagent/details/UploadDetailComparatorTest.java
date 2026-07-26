@@ -75,6 +75,29 @@ class UploadDetailComparatorTest {
         assertThat(result.message()).contains("两个指标不能进行逐条比较");
     }
 
+    @Test
+    void comparesBusinessAndRealSnapshotsWithoutPuttingRowsInSafeData() {
+        SystemDetailDataset business = new SystemDetailDataset(summary("MQSI2025_005"), List.of(
+                raw("C-001", "2026-01-02 08:00:00", 10, 1),
+                raw("C-002", "2026-01-03 08:00:00", 30, 0)));
+        SystemDetailDataset real = new SystemDetailDataset(summary("MQSI2025_005"), List.of(
+                raw("C-001", "2026-01-02 08:00:00", 20, 0),
+                raw("C-003", "2026-01-04 08:00:00", 15, 1)));
+
+        var result = comparator.compareDual(business, real);
+
+        assertThat(result.available()).isTrue();
+        assertThat(result.status()).isEqualTo("dual_row_level_compared");
+        assertThat(result.bothCount()).isEqualTo(1);
+        assertThat(result.systemOnlyCount()).isEqualTo(1);
+        assertThat(result.uploadedOnlyCount()).isEqualTo(1);
+        assertThat(result.fieldDifferenceCount()).isEqualTo(1);
+        assertThat(result.classificationDifferenceCount()).isEqualTo(1);
+        assertThat(result.safeData())
+                .containsEntry("both_count", 1)
+                .doesNotContainKeys("matched_rows", "system_only_rows", "uploaded_only_rows");
+    }
+
     private static SnapshotSummary summary(String ruleId) {
         return new SnapshotSummary(
                 "SNAP_1", "RUN_1", "hospital_001", ruleId, "急会诊及时到位率",

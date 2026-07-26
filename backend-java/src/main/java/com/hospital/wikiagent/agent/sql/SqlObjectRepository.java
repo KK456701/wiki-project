@@ -133,6 +133,30 @@ public class SqlObjectRepository {
                 json(runContext), Timestamp.from(Instant.now()));
     }
 
+    /**
+     * 保存一次双库复合运行的安全摘要。患者级差异仅保存于受保护的短期明细对象，
+     * 不进入该审计表。
+     */
+    public void saveDualRun(
+            String comparisonRunId,
+            PreparedSqlObject sql,
+            String profileId,
+            String extractionId,
+            String businessRunId,
+            String realRunId,
+            String comparisonStatus,
+            Map<String, Object> mismatch,
+            String runBy) {
+        jdbc.update(
+                "INSERT INTO med_dual_indicator_run "
+                        + "(comparison_run_id,sql_id,hospital_id,rule_id,profile_id,stat_start_time,"
+                        + "stat_end_time,extraction_id,business_run_id,real_run_id,comparison_status,"
+                        + "mismatch_json,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                comparisonRunId, sql.sqlId(), sql.hospitalId(), sql.ruleId(), profileId,
+                sql.statStart(), sql.statEnd(), extractionId, businessRunId, realRunId,
+                comparisonStatus, json(mismatch), runBy, Timestamp.from(Instant.now()));
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);

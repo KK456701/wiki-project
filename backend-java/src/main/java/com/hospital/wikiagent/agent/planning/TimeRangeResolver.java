@@ -116,14 +116,16 @@ public class TimeRangeResolver {
                     year(chineseRange.group(4), now.getYear()),
                     Integer.parseInt(chineseRange.group(5)),
                     Integer.parseInt(chineseRange.group(6)));
-            return valid(start, end == null ? null : end.plusDays(1), expression.rawText());
+            // 统计接口统一采用左闭右开区间。用户写出的结束日期就是排他边界，
+            // 例如“1月1日至2月1日”精确表示完整一月，不能再额外加一天。
+            return valid(start, end, expression.rawText());
         }
 
         Matcher isoRange = ISO_DATE_RANGE.matcher(raw);
         if (isoRange.find()) {
             try {
                 LocalDateTime start = LocalDate.parse(isoRange.group(1)).atStartOfDay();
-                LocalDateTime end = LocalDate.parse(isoRange.group(2)).plusDays(1).atStartOfDay();
+                LocalDateTime end = LocalDate.parse(isoRange.group(2)).atStartOfDay();
                 return valid(start, end, expression.rawText());
             } catch (DateTimeParseException exception) {
                 return null;

@@ -148,6 +148,16 @@ public class PlanValidator {
                         FallbackCategory.USER_CLARIFICATION);
             }
         }
+        if (needsDatabase && resolved != null) {
+            StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(
+                    resolved.startTime(), resolved.endTime());
+            if (!period.ok()) {
+                return PlanValidation.invalid(
+                        period.code(),
+                        period.message(),
+                        FallbackCategory.USER_CLARIFICATION);
+            }
+        }
         return PlanValidation.valid(resolved);
     }
 }

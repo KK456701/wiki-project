@@ -76,8 +76,43 @@ public class XlsxWorkbookWriter {
             String actorId,
             Instant createdAt,
             Map<String, Object> diagnosisReport) {
+        return writeComparisonWorkbook(
+                path, comparison, uploadedFileName, hospitalId, actorId, createdAt,
+                diagnosisReport, "系统", "上传文件");
+    }
+
+    /**
+     * 生成业务库与真实库的逐条差异工作簿。底层复用上传对比的安全行契约，但所有表头、
+     * 工作表和来源字段都使用明确的双库名称，避免把真实库误显示成“上传文件”。
+     */
+    public Path writeDualComparisonWorkbook(
+            Path path,
+            RowComparison comparison,
+            String businessSourceId,
+            String realSourceId,
+            String hospitalId,
+            String actorId,
+            Instant createdAt,
+            Map<String, Object> diagnosisReport) {
+        return writeComparisonWorkbook(
+                path, comparison,
+                businessSourceId + " ↔ " + realSourceId,
+                hospitalId, actorId, createdAt, diagnosisReport,
+                "业务库", "真实库");
+    }
+
+    private Path writeComparisonWorkbook(
+            Path path,
+            RowComparison comparison,
+            String counterpartName,
+            String hospitalId,
+            String actorId,
+            Instant createdAt,
+            Map<String, Object> diagnosisReport,
+            String systemLabel,
+            String counterpartLabel) {
         if (!comparison.available()) {
-            throw new IllegalArgumentException("当前上传文件不支持逐条差异导出");
+            throw new IllegalArgumentException("当前数据不支持逐条差异导出");
         }
         LinkedHashSet<String> systemFields = new LinkedHashSet<>(comparison.commonFields());
         systemFields.addAll(comparison.systemOnlyFields());
@@ -92,9 +127,9 @@ public class XlsxWorkbookWriter {
         metadata.put("指标名称", comparison.systemRuleName());
         metadata.put("指标编号", comparison.systemRuleId());
         metadata.put("适用医院", hospitalId);
-        metadata.put("系统统计区间", comparison.systemStatPeriod());
-        metadata.put("上传文件统计区间", comparison.uploadedStatPeriod());
-        metadata.put("上传文件", uploadedFileName);
+        metadata.put(systemLabel + "统计区间", comparison.systemStatPeriod());
+        metadata.put(counterpartLabel + "统计区间", comparison.uploadedStatPeriod());
+        metadata.put("对比来源", counterpartName);
         metadata.put("对比层级", "逐条记录");
         metadata.put("逐条匹配字段", String.join("、", comparison.matchingFields()));
         metadata.put("已确认差异", String.join("\n", comparison.confirmedFindings()));
@@ -102,14 +137,14 @@ public class XlsxWorkbookWriter {
         metadata.put("导出时间", createdAt.toString());
         List<List<Object>> summaryRows = List.of(
                 List.of("双方都有", comparison.bothCount()),
-                List.of("仅系统有", comparison.systemOnlyCount()),
-                List.of("仅上传文件有", comparison.uploadedOnlyCount()),
+                List.of("仅" + systemLabel + "有", comparison.systemOnlyCount()),
+                List.of("仅" + counterpartLabel + "有", comparison.uploadedOnlyCount()),
                 List.of("同一记录但字段值不同", comparison.fieldDifferenceCount()),
                 List.of("同一记录但达标判定不同", comparison.classificationDifferenceCount()));
 
         List<String> matchedHeaders = new ArrayList<>(List.of("匹配键", "字段差异"));
-        systemFields.forEach(field -> matchedHeaders.add("系统-" + field));
-        uploadedFields.forEach(field -> matchedHeaders.add("上传文件-" + field));
+        systemFields.forEach(field -> matchedHeaders.add(systemLabel + "-" + field));
+        uploadedFields.forEach(field -> matchedHeaders.add(counterpartLabel + "-" + field));
         List<List<Object>> matchedRows = new ArrayList<>();
         for (MatchedRow item : comparison.matchedRows()) {
             List<Object> row = new ArrayList<>();
@@ -131,11 +166,11 @@ public class XlsxWorkbookWriter {
         sheets.add(comparisonSheet("双方都有_" + comparison.bothCount(),
                 "按匹配字段识别为同一业务记录；字段差异列列出值不一致的字段。",
                 matchedHeaders, matchedRows));
-        sheets.add(comparisonSheet("仅系统有_" + comparison.systemOnlyCount(),
-                "当前系统试运行明细中存在、上传文件中未匹配到的记录。",
+        sheets.add(comparisonSheet("仅" + systemLabel + "有_" + comparison.systemOnlyCount(),
+                systemLabel + "明细中存在、" + counterpartLabel + "中未匹配到的记录。",
                 List.copyOf(systemFields), systemOnlyRows));
-        sheets.add(comparisonSheet("仅上传文件有_" + comparison.uploadedOnlyCount(),
-                "上传文件中存在、当前系统试运行明细中未匹配到的记录。",
+        sheets.add(comparisonSheet("仅" + counterpartLabel + "有_" + comparison.uploadedOnlyCount(),
+                counterpartLabel + "中存在、" + systemLabel + "明细中未匹配到的记录。",
                 List.copyOf(uploadedFields), uploadedOnlyRows));
         if (diagnosisReport != null && !diagnosisReport.isEmpty()) {
             sheets.add(dataQualitySummarySheet(diagnosisReport));

@@ -127,7 +127,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 Map.entry("file_evidence_type", "summary"),
                 Map.entry("uploaded_rule_id", "MQSI2025_001"),
                 Map.entry("uploaded_stat_period",
-                        "2026-01-01 00:00:00 至 2026-04-01 00:00:00"),
+                        "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
                 Map.entry("uploaded_numerator", 12),
                 Map.entry("uploaded_denominator", 234),
                 Map.entry("uploaded_rate", 5.13),
@@ -145,7 +145,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
-                        "2026-01-01T00:00:00", "2026-04-01T00:00:00",
+                        "2026-01-01T00:00:00", "2026-02-01T00:00:00",
                         "hospital_001_ward_entry_summary.xlsx");
 
         ToolResult result = workflow().diagnose(input, context);
@@ -172,7 +172,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 Map.entry("file_evidence_type", "summary"),
                 Map.entry("uploaded_rule_id", "MQSI2025_001"),
                 Map.entry("uploaded_stat_period",
-                        "2026-01-01 00:00:00 至 2026-04-01 00:00:00"),
+                        "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
                 Map.entry("uploaded_numerator", 20),
                 Map.entry("uploaded_denominator", 400),
                 Map.entry("uploaded_rate", 5.0),
@@ -190,7 +190,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
-                        "2026-01-01T00:00:00", "2026-04-01T00:00:00",
+                        "2026-01-01T00:00:00", "2026-02-01T00:00:00",
                         "hospital_001_ward_entry_summary.xlsx");
 
         ToolResult result = workflow().diagnose(input, context);
@@ -226,12 +226,12 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                         "file_evidence_type", "detail",
                         "uploaded_rule_id", "MQSI2025_001",
                         "uploaded_stat_period",
-                        "2026-04-01 00:00:00 至 2026-07-01 00:00:00",
+                        "2026-03-01 00:00:00 至 2026-04-01 00:00:00",
                         "comparison_level", "row")));
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
-                        "2026-01-01T00:00:00", "2026-04-01T00:00:00",
+                        "2026-01-01T00:00:00", "2026-02-01T00:00:00",
                         "hospital_001_test.xlsx");
 
         ToolResult result = workflow().diagnose(input, context);
@@ -254,13 +254,13 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                         "file_evidence_type", "detail",
                         "uploaded_rule_id", "MQSI2025_001",
                         "uploaded_stat_period",
-                        "2026-01-01 00:00:00 至 2026-07-24 00:00:00"
-                                + "（左闭右开，覆盖至2026-07-23自然日结束）",
+                        "2026-01-01 00:00:00 至 2026-02-01 00:00:00"
+                                + "（左闭右开，覆盖至2026-01-31自然日结束）",
                         "comparison_level", "row")));
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
-                        "2026-01-01T00:00:00", "2026-07-23T14:28:34",
+                        "2026-01-01T00:00:00", "2026-01-31T14:28:34",
                         "hospital_001_ward_entry.xlsx");
 
         ToolResult result = workflow().diagnose(input, context);
@@ -285,7 +285,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 Map.entry("contains_detail_records", true),
                 Map.entry("uploaded_rule_id", "MQSI2025_001"),
                 Map.entry("uploaded_stat_period",
-                        "2026-01-01 00:00:00 至 2026-07-24 00:00:00"),
+                        "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
                 Map.entry("uploaded_count", 234),
                 Map.entry("uploaded_numerator_count", 12),
                 Map.entry("comparison_level", "row"),
@@ -303,7 +303,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
-                        "2026-01-01T00:00:00", "2026-07-24T00:00:00",
+                        "2026-01-01T00:00:00", "2026-02-01T00:00:00",
                         "hospital_001_ward_entry.xlsx");
 
         ToolResult result = workflow().diagnose(input, context);
@@ -332,7 +332,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
     private static IndicatorDifferenceDiagnosisWorkflow.Input input(String issue) {
         return new IndicatorDifferenceDiagnosisWorkflow.Input(
                 "MQSI2025_001", issue,
-                "2026-01-01T00:00:00", "2026-04-01T00:00:00", null);
+                "2026-01-01T00:00:00", "2026-02-01T00:00:00", null);
     }
 
     private static ToolResult trial(
@@ -345,7 +345,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
                 "sql_id", "SQL_" + runId,
                 "rule_id", "MQSI2025_001",
                 "stat_start", "2026-01-01 00:00:00",
-                "stat_end", "2026-04-01 00:00:00",
+                "stat_end", "2026-02-01 00:00:00",
                 "numerator_count", numerator,
                 "denominator_count", denominator,
                 "result_value", rate));

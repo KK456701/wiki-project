@@ -17,6 +17,7 @@ public class DbHubProperties {
     private String databaseName = "WIN60_QA_991827";
     private String schemaName = "WINDBA";
     private int timeoutSeconds = 10;
+    private Sources sources = new Sources();
 
     public String getApiUrl() {
         return apiUrl;
@@ -72,5 +73,73 @@ public class DbHubProperties {
 
     public void setTimeoutSeconds(int timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
+    }
+
+    public Sources getSources() {
+        return sources;
+    }
+
+    public void setSources(Sources sources) {
+        this.sources = sources == null ? new Sources() : sources;
+    }
+
+    public Source businessSource() {
+        return sources.getBusiness();
+    }
+
+    public Source realSource() {
+        return sources.getReal();
+    }
+
+    /**
+     * 双库数据源只保存 DBHub 的逻辑编号和工具名称，不包含数据库凭据。
+     */
+    public static class Source {
+        private String sourceId = "";
+        private String executeTool = "";
+
+        public String getSourceId() {
+            return sourceId;
+        }
+
+        public void setSourceId(String sourceId) {
+            this.sourceId = sourceId == null ? "" : sourceId;
+        }
+
+        public String getExecuteTool() {
+            return executeTool;
+        }
+
+        public void setExecuteTool(String executeTool) {
+            this.executeTool = executeTool == null ? "" : executeTool;
+        }
+    }
+
+    public static class Sources {
+        private Source business = source("winex_all_dev", "execute_sql_winex_all_dev");
+        private Source real = source("winex_aima", "execute_sql_winex_aima");
+
+        public Source getBusiness() {
+            return business;
+        }
+
+        public void setBusiness(Source business) {
+            this.business = business == null ? new Source() : business;
+        }
+
+        public Source getReal() {
+            return real;
+        }
+
+        public void setReal(Source real) {
+            this.real = real == null ? new Source() : real;
+        }
+
+        private static Source source(String sourceId, String tool) {
+            Source value = new Source();
+            value.setSourceId(sourceId);
+            value.setExecuteTool(tool);
+            return value;
+        }
     }
 }

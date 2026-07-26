@@ -58,6 +58,50 @@ class EvidenceLedgerTest {
                 .hasMessageContaining("不属于当前医院");
     }
 
+    @Test
+    void dualRunCreatesIndependentFactTypesWithoutPatientRows() {
+        MemoryStore store = new MemoryStore();
+        EvidenceLedger ledger = new EvidenceLedger(
+                store, new ObjectMapper(), new AgentModelProperties());
+        AgentRunState state = new AgentRunState();
+        state.subtaskId("subtask_dual");
+        state.currentRuleId("HXZD-001-001");
+        ToolResult raw = ToolResult.success(
+                "TRIAL_RUN_COMPLETED",
+                "双库完成",
+                Map.of(
+                        "rule_id", "HXZD-001-001",
+                        "run_id", "RUN_COMPOSITE_1",
+                        "comparison_status", "mismatched",
+                        "business_result", Map.of(
+                                "run_id", "RUN_BUSINESS_1",
+                                "numerator_count", 10,
+                                "denominator_count", 100),
+                        "real_result", Map.of(
+                                "run_id", "RUN_REAL_1",
+                                "numerator_count", 9,
+                                "denominator_count", 100),
+                        "patient_rows", List.of(Map.of("patient_id", "secret"))));
+
+        ToolResult recorded = ledger.recordToolResult(
+                "trial_run_indicator_sql", Map.of(), raw,
+                context("hospital_001"), state);
+
+        assertThat(recorded.evidenceIds()).hasSize(5);
+        assertThat(recorded.evidenceIds().stream()
+                .map(store::loadEvidence)
+                .map(Optional::orElseThrow)
+                .map(EvidenceEnvelope::factType))
+                .containsExactly(
+                        "trial_run",
+                        "source_extraction_completed",
+                        "business_overview_result",
+                        "real_overview_result",
+                        "dual_result_comparison");
+        assertThat(store.loadEvidence(recorded.evidenceIds().get(0)).orElseThrow()
+                .safePayload()).doesNotContainKey("patient_rows");
+    }
+
     private static AgentRuntimeContext context(String hospitalId) {
         return new AgentRuntimeContext(
                 new HospitalPrincipal(

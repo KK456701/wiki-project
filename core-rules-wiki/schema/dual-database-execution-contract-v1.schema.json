@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dual-database-execution-contract-v1",
+  "title": "指标双库执行与明细比较契约",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "schema_compatible",
+    "verified_source_roles",
+    "business_source_role",
+    "real_source_role",
+    "source_verification",
+    "overview_result_mapping",
+    "department_comparison_key",
+    "patient_comparison_key",
+    "numerator_classification_field",
+    "department_compare_fields",
+    "patient_compare_fields",
+    "allowed_compare_fields",
+    "verification_blockers"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dual-database-execution-contract-v1"
+    },
+    "schema_compatible": {
+      "type": "boolean"
+    },
+    "verified_source_roles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["business", "real"]
+      }
+    },
+    "business_source_role": {
+      "const": "business"
+    },
+    "real_source_role": {
+      "const": "real"
+    },
+    "source_verification": {
+      "type": "object",
+      "required": ["business", "real"],
+      "properties": {
+        "business": { "$ref": "#/$defs/sourceVerification" },
+        "real": { "$ref": "#/$defs/sourceVerification" }
+      },
+      "additionalProperties": false
+    },
+    "overview_result_mapping": {
+      "type": "object",
+      "required": ["numerator_count", "denominator_count"],
+      "properties": {
+        "numerator_count": { "type": "string", "minLength": 1 },
+        "denominator_count": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "department_comparison_key": {
+      "type": "string"
+    },
+    "patient_comparison_key": {
+      "type": "string"
+    },
+    "numerator_classification_field": {
+      "type": "string"
+    },
+    "department_compare_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "patient_compare_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "allowed_compare_fields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verification_blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_compatible": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verified_source_roles": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "business"
+                }
+              },
+              {
+                "contains": {
+                  "const": "real"
+                }
+              }
+            ]
+          },
+          "department_comparison_key": {
+            "minLength": 1
+          },
+          "patient_comparison_key": {
+            "minLength": 1
+          },
+          "numerator_classification_field": {
+            "minLength": 1
+          },
+          "allowed_compare_fields": {
+            "minItems": 1
+          },
+          "verification_blockers": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sourceVerification": {
+      "type": "object",
+      "required": ["metadata_status", "compile_status"],
+      "properties": {
+        "metadata_status": {
+          "enum": ["unverified", "validated", "failed"]
+        },
+        "compile_status": {
+          "enum": ["unverified", "validated", "failed"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

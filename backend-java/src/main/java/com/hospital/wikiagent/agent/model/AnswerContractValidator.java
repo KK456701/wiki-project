@@ -47,6 +47,22 @@ public class AnswerContractValidator {
                     return "回答未保留已验证数值：" + field + "=" + value;
                 }
             }
+            if (trial.containsKey("comparison_status")) {
+                if (!content.contains("双库核对")) {
+                    return "双库试运行回答缺少双库核对章节";
+                }
+                for (Map<String, Object> side : List.of(
+                        objectMap(trial.get("business_result")),
+                        objectMap(trial.get("real_result")))) {
+                    for (String field : List.of(
+                            "numerator_count", "denominator_count", "result_value")) {
+                        Object value = side.get(field);
+                        if (value != null && !containsNumber(content, value)) {
+                            return "回答未保留双库已验证数值：" + field + "=" + value;
+                        }
+                    }
+                }
+            }
         }
         String claimError = validateCaliberClaims(content, evidence);
         if (claimError != null) return claimError;
@@ -109,5 +125,12 @@ public class AnswerContractValidator {
         return Pattern.compile("(?<![\\d.])" + Pattern.quote(value) + "(?![\\d.])")
                 .matcher(content)
                 .find();
+    }
+
+    private static Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?> source)) return Map.of();
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        source.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
     }
 }

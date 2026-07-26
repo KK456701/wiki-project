@@ -44,7 +44,7 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 class PreparedIndicatorExecutorTest {
     private static final String RULE_ID = "MQSI2025_001";
     private static final String RULE_NAME = "患者入院48小时内转科的比例";
-    private static final String TIME_TEXT = "2026年1月至3月";
+    private static final String TIME_TEXT = "2026年1月1日至2026年2月1日";
 
     private ToolGateway gateway;
     private EvidenceVerifier verifier;
@@ -208,7 +208,7 @@ class PreparedIndicatorExecutorTest {
             data.put("denominator_count", denominator);
         }
         data.put("stat_start", "2026-01-01 00:00:00");
-        data.put("stat_end", "2026-04-01 00:00:00");
+        data.put("stat_end", "2026-02-01 00:00:00");
         return ToolResult.success("TRIAL_RUN_COMPLETED", "试运行完成。", data);
     }
 

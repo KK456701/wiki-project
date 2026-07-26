@@ -18,10 +18,12 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
+import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
@@ -45,6 +47,7 @@ public class IndicatorSqlTools {
     private final SqlParameterBinder binder;
     private final IndicatorBusinessQueryClient businessQuery;
     private final ObjectMapper objectMapper;
+    private DualDatabaseIndicatorExecutionWorkflow dualDatabaseWorkflow;
 
     public IndicatorSqlTools(
             RuleReadRepository rules,
@@ -61,6 +64,15 @@ public class IndicatorSqlTools {
         this.binder = binder;
         this.businessQuery = businessQuery;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 双库执行是可选的增强链路。使用 setter 注入可以让现有单库测试和禁用模式保持
+     * 原构造契约；生产 Spring 容器存在 Workflow 时会自动完成注入。
+     */
+    @Autowired(required = false)
+    void setDualDatabaseWorkflow(DualDatabaseIndicatorExecutionWorkflow dualDatabaseWorkflow) {
+        this.dualDatabaseWorkflow = dualDatabaseWorkflow;
     }
 
     public ToolResult inspect(InspectInput input, ToolExecutionContext context) {
@@ -159,8 +171,9 @@ public class IndicatorSqlTools {
         } catch (RuntimeException exception) {
             return failure("validation_failed", "STAT_PERIOD_INVALID", "统计时间格式无效。", false);
         }
-        if (!start.isBefore(end)) {
-            return failure("validation_failed", "STAT_PERIOD_INVALID", "统计开始时间必须早于结束时间。", false);
+        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(start, end);
+        if (!period.ok()) {
+            return failure("validation_failed", period.code(), period.message(), false);
         }
 
         Map<String, Object> rule = rules.effectiveRule(
@@ -271,6 +284,12 @@ public class IndicatorSqlTools {
         data.put("parameters", displayParameters);
         data.put("stat_start", statStart);
         data.put("stat_end", statEnd);
+        data.put("sql_bundle", Map.of(
+                "release_id", text(rule.get("knowledge_release_id")),
+                "rule_id", input.ruleId(),
+                "profile_id", text(rule.get("profile_id")),
+                "sql_hashes", objectMap(objectMap(snapshot.get("effective_rule"))
+                        .get("sql_bundle_hashes"))));
         data.put("expires_at", sqlObject.expiresAt().toString());
         if (diagnosticProfileId != null) {
             data.put("diagnostic_profile_id", diagnosticProfileId);
@@ -326,7 +345,8 @@ public class IndicatorSqlTools {
         if (!validator.validate(sql.sqlText(), text(currentMapping.get("main_table"))).ok()) {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
-        if (sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
+        boolean dualRequired = dualDatabaseWorkflow != null && dualDatabaseWorkflow.required();
+        if (!dualRequired && sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
                 && !sql.dbSourceId().equals(businessQuery.sourceId())) {
             return failure("error", "TRIAL_SOURCE_MISMATCH", "试运行数据源与 SQL 对象不一致，结果已拒绝。", false);
         }
@@ -340,6 +360,10 @@ public class IndicatorSqlTools {
             executable = binder.bind(sql.sqlText(), bound);
         } catch (RuntimeException exception) {
             return failure("validation_failed", "SQL_PARAMETER_MISSING", "SQL 运行参数不完整，请重新准备。", false);
+        }
+
+        if (dualRequired) {
+            return dualDatabaseWorkflow.execute(sql, currentRule, executable, bound, context);
         }
 
         String runId = id("RUN_");
@@ -481,12 +505,20 @@ public class IndicatorSqlTools {
             String start,
             String end,
             String sourceId,
-            Map<String, Object> executionContext) {
+        Map<String, Object> executionContext) {
         Map<String, Object> ruleSnapshot = new LinkedHashMap<>(rule);
-        String sql = text(ruleSnapshot.remove("standard_sql"));
-        if (!sql.isBlank()) {
-            ruleSnapshot.put("standard_sql_sha256", sha256(sql));
+        Map<String, String> sqlHashes = new LinkedHashMap<>();
+        for (String key : List.of(
+                "standard_sql",
+                "source_extract_sql",
+                "department_detail_sql",
+                "patient_detail_sql")) {
+            String value = text(ruleSnapshot.remove(key));
+            if (!value.isBlank()) {
+                sqlHashes.put(key, sha256(value));
+            }
         }
+        ruleSnapshot.put("sql_bundle_hashes", sqlHashes);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("effective_rule", ruleSnapshot);
         result.put("field_mapping", mapping);

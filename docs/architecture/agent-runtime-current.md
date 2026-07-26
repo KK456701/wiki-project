@@ -10,8 +10,10 @@ flowchart LR
     API --> AGENT["Compiled Plan Agent"]
     AGENT --> WIKI["HXZD Wiki<br/>规则、Profile、SQL 与字段契约"]
     AGENT --> SQLITE["SQLite<br/>会话、Trace、Evidence、临时对象"]
-    AGENT --> DBHUB["DBHub sidecar"]
-    DBHUB --> SQLSERVER["医院 SQL Server"]
+    AGENT --> EXTRACT["源数据抽取网关<br/>接口预留，负责真实库写入"]
+    AGENT --> DBHUB["DBHub sidecar<br/>仅只读"]
+    DBHUB --> BUSINESS["业务库 winex_all_dev"]
+    DBHUB --> REAL["真实库 winex_aima"]
     AGENT --> OLLAMA["本地 Ollama"]
     AGENT --> ONLINE["DeepSeek / 阿里云百炼"]
 ```
@@ -40,7 +42,19 @@ flowchart TD
     S --> D["Deterministic Dispatch<br/>Capability → 唯一工具和参数编译器"]
     D --> G["ToolGateway<br/>权限、校验、超时、缓存、并发与重复调用控制"]
     G --> T["Wiki / SQL / DBHub / 上传 / 诊断工具"]
-    T --> E["Evidence Ledger + Verifier"]
+    T --> DBTASK{"是否访问指标数据库"}
+    DBTASK -->|"否"| E
+    DBTASK -->|"是"| PERIOD{"统计区间 ≤ 1个自然月"}
+    PERIOD -->|"否"| ASK
+    PERIOD -->|"是且双库关闭"| E
+    PERIOD -->|"是且双库强制"| EX["抽取接口：每子任务一次"]
+    EX --> BO["业务库执行 overview"]
+    BO --> RO["真实库执行同一 overview"]
+    RO --> MATCH{"分子、分母均相同"}
+    MATCH -->|"是"| E
+    MATCH -->|"否"| DETAILS["两库执行 department + patient_detail"]
+    DETAILS --> E
+    E["Evidence Ledger + Verifier"]
     E --> S
     S -->|"事实完整"| F["Final Answer LLM<br/>只消费 VerifiedEvidence"]
     F --> OUT["回答、明细/导出入口和 Trace"]
@@ -68,7 +82,7 @@ flowchart TD
 | `preview_rule_change` | 只读展示口径差异 | 不创建草稿、不审批、不发布 |
 | `inspect_indicator_implementation` | 检查 Profile 状态、字段契约和元数据 | 核心 SQL 安全前置检查，不是实施工作台 |
 | `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象 | 仅 `executable` Profile |
-| `trial_run_indicator_sql` | 经 DBHub 执行已校验 SQL 对象 | 只读、上下文指纹必须一致 |
+| `trial_run_indicator_sql` | 禁用抽取时执行现有单库链；强制模式进入双库 Workflow | 先抽取一次，再用相同 SQL/参数严格串行核对两库 |
 | `resolve_indicator_caliber` | 解析候选/假设口径 | 只从已审批可执行 Profile 中选择 |
 | `prepare_indicator_caliber_sql` | 准备候选口径 SQL | 禁止用户覆盖字段和 SQL |
 | `trial_run_indicator_caliber_sql` | 试运行候选口径 | 结果明确标记为模拟口径 |
@@ -84,6 +98,7 @@ flowchart TD
 - `indexes/profile_index.json`：45 个独立 Profile；
 - 每项指标的 `runtime.json`；
 - 每个 Profile 独立的 ETL、概览、科室和患者明细 SQL 引用；
+- 双库同构状态、两库验证角色、科室比较键、患者业务主键和允许比较字段；
 - 字段契约、参数、结果映射、适用范围和阻断原因。
 
 Profile 状态：
@@ -105,6 +120,13 @@ Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不�
 - SQL 正文、凭证和患者原始行不写入通用 Trace/Evidence。
 - 患者明细只保存在短期受权限保护对象中。
 - 业务 SQL 只能经服务端模板、字段/元数据预检、只读校验和 DBHub 执行。
+- 所有数据库型指标请求使用左闭右开区间，结束时间不得超过开始时间顺延一个自然月。
+- 强制双库模式固定执行“抽取一次 → 业务库概览 → 真实库概览”；分子、分母一致时不查询明细。
+- 分子或分母不同才执行两库科室和患者明细；仅比例相同不视为一致。
+- 双库差异报告只保存安全摘要和两侧运行 ID；逐条差异 Excel 在授权用户确认后从
+  两个短期明细快照生成，不在 Trace 或 Evidence 中保存患者行。
+- 抽取和双库执行按医院使用进程内信号量串行；抽取失败不得继续查库。
+- `SourceExtractionGateway` 当前只定义强类型请求、结果和幂等契约，具体 HTTP 适配器合并前必须保持禁用。
 - 数据库验证脚本只从环境变量读取凭据。
 
 ## 7. 已永久删除

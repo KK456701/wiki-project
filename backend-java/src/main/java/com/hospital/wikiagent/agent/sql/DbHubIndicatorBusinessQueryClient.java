@@ -14,7 +14,8 @@ import com.hospital.wikiagent.dbhub.DbHubProperties;
  * <p>客户端统一处理连接、超时和协议错误，并向上层返回稳定领域异常。认证信息、SQL 明文和患者数据不得出现在普通日志中。</p>
  */
 @Component
-public class DbHubIndicatorBusinessQueryClient implements IndicatorBusinessQueryClient {
+public class DbHubIndicatorBusinessQueryClient
+        implements IndicatorBusinessQueryClient, IndicatorDatabaseQueryClient {
     private final DbHubMcpClient client;
     private final DbHubProperties properties;
 
@@ -31,5 +32,25 @@ public class DbHubIndicatorBusinessQueryClient implements IndicatorBusinessQuery
     @Override
     public String sourceId() {
         return properties.getSourceId();
+    }
+
+    @Override
+    public List<Map<String, Object>> execute(DatabaseRole role, String sql) {
+        DbHubProperties.Source source = source(role);
+        if (source.getExecuteTool().isBlank() || source.getSourceId().isBlank()) {
+            throw new IllegalStateException("DBHub " + role.value() + " 数据源配置不完整。");
+        }
+        return client.executeSql(source.getExecuteTool(), sql);
+    }
+
+    @Override
+    public String sourceId(DatabaseRole role) {
+        return source(role).getSourceId();
+    }
+
+    private DbHubProperties.Source source(DatabaseRole role) {
+        return role == DatabaseRole.BUSINESS
+                ? properties.businessSource()
+                : properties.realSource();
     }
 }

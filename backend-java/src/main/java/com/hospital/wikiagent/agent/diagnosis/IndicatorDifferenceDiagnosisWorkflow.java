@@ -24,6 +24,7 @@ import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
+import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.agent.upload.UploadedIndicatorTools;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
@@ -98,10 +99,10 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                     "validation_failed", "STAT_PERIOD_INVALID",
                     "差异诊断需要明确且格式正确的统计开始时间和结束时间。", false);
         }
-        if (!start.isBefore(end)) {
+        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(start, end);
+        if (!period.ok()) {
             return ToolResult.failure(
-                    "validation_failed", "STAT_PERIOD_INVALID",
-                    "统计开始时间必须早于结束时间。", false);
+                    "validation_failed", period.code(), period.message(), false);
         }
 
         Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());

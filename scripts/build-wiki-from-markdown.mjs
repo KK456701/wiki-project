@@ -572,6 +572,33 @@ function runtimeProfile(indicator, profile) {
       denominator_count: null,
     },
     sql_capabilities: sqlCapabilities,
+    // 双库查询必须由目标医院验证同构对象和比较键后显式开启。生成器绝不根据
+    // SQL 文本猜测两库兼容，从而避免尚未验证的 Profile 被误用于生产比较。
+    dual_database_contract: {
+      schema_version: 'dual-database-execution-contract-v1',
+      schema_compatible: false,
+      verified_source_roles: [],
+      business_source_role: 'business',
+      real_source_role: 'real',
+      source_verification: {
+        business: { metadata_status: 'unverified', compile_status: 'unverified' },
+        real: { metadata_status: 'unverified', compile_status: 'unverified' },
+      },
+      overview_result_mapping: {
+        numerator_count: 'numerator_count',
+        denominator_count: 'denominator_count',
+      },
+      department_comparison_key: '',
+      patient_comparison_key: '',
+      numerator_classification_field: '',
+      department_compare_fields: [],
+      patient_compare_fields: [],
+      allowed_compare_fields: [],
+      verification_blockers: [
+        'business_and_real_schema_not_verified',
+        'comparison_keys_not_verified',
+      ],
+    },
     field_contract: {
       business_fields: {},
     },

@@ -22,7 +22,8 @@ Python FastAPI 运行时、Python 测试、旧原生前端和双栈切流脚本�
 - 多指标请求：服务端确定性拆分 2～3 个指标；API 模型最多并发 2，本地 Ollama 串行。
 - 指标解释：35 项 HXZD 指标均可查询 Wiki 中的定义、公式、分子、分母和 Profile 状态。
 - 分级执行：Profile 分为 `executable`、`documentation_only` 和 `draft`；只有审批完成且通过 SQL、参数、字段及结果契约校验的 `executable` Profile 才能访问 DBHub。
-- 指标计算：从同一 `rule_id + profile_id` 读取受控 SQL 规格，确定性生成 SQL，经字段、元数据和只读安全校验后只通过 DBHub 试运行。
+- 指标计算：统计区间统一使用左闭右开且最多一个自然月；从同一 `release_id + rule_id + profile_id` 读取 ETL、概览和明细 SQL Bundle。抽取模式关闭时保持现有单库试运行；强制模式会先经外部抽取网关写入真实库，再严格串行计算业务库和真实库。
+- 双库核对：两库执行同一份概览 SQL 和参数，只有分子、分母同时相等才判定一致；不一致时才执行两库科室和患者明细 SQL。未验证同构对象或比较键的 Profile 会在抽取和查询前阻断，不允许模型猜测原因。
 - SQL 解释：生成受控 SQL 时同步展示本院生效定义、公式、分子、分母、纳入和排除口径，避免脚本与业务口径脱节。
 - 候选口径模拟：对“那根据入区怎么算”等追问，从 Wiki 的已审批候选 profile 中按规则、本地字符语义和候选内 LLM 消歧，复用上一轮指标与统计周期，生成受控 SQL 并只读试运行；未设置失效日期的 profile 按长期有效处理，回答明确标注为模拟口径。
 - 目标一致性校验：Planner 之后、IR 编译之前确定性核对原问题与计划；明确区分“根据什么口径算的”这类当前规则追问与“根据入区怎么算”这类候选模拟，复杂语义才调用审核模型，确认不一致时最多 Replan 一次，仍错误且存在唯一安全方向时由服务端生成受控修正计划。
@@ -63,7 +64,14 @@ flowchart TD
     IR -->|计划校验失败| FR["Failure Router：统一失败分类"]
     SC --> D["Deterministic Dispatch：唯一工具与参数"]
     D --> G["ToolGateway：权限、校验、超时、缓存、并发"]
-    G --> T["Wiki / 当前口径 SQL / 候选口径 SQL / DBHub / 上传 / 诊断工具"]
+    G --> T["Wiki / 当前口径 SQL / 候选口径 SQL / 上传 / 诊断工具"]
+    T --> X{"双库强制模式"}
+    X -->|关闭| DB1["DBHub 单库只读试运行"]
+    X -->|开启| DX["抽取网关一次 → 业务库概览 → 真实库概览"]
+    DX --> CMP{"分子和分母一致"}
+    CMP -->|是| E
+    CMP -->|否| DD["两库科室与患者明细核对"]
+    DD --> E
     T --> W{"是否为双方结果差异"}
     W -->|是| DW["IndicatorDifferenceDiagnosisWorkflow：固定分层核验"]
     W -->|否| E["Evidence Ledger + Verifier"]
@@ -126,6 +134,10 @@ docs/                         当前架构、运维记录和历史设计资料
 
 每个 Profile 独立声明适用范围、状态、四类 SQL 引用、参数、字段契约、结果映射和阻断原因。缺少医院字段契约或统一结果列映射的方案不会被标为 `executable`；这类方案仍可解释，但试运行、明细与导出入口会被服务端拒绝。Java 会按指针热加载完整快照；新版本缺文件或哈希不一致时继续使用上一版。
 
+每个新生成 Profile 还包含 `dual_database_contract`。默认 `schema_compatible=false`；
+只有业务库、真实库分别完成对象/函数/结果列验证，并确认科室比较键、患者业务主键后，
+才能显式开启双库执行。旧发布快照缺少该契约时仍可解释，但强制模式会安全拒绝。
+
 当前生成结果为 `documentation_only=42`、`draft=3`、`executable=0`。这表示 35 项指标均可检索和解释，但在医院字段契约与统一结果列映射完成验证前，当前版本不会访问 DBHub 试运行这些 Profile。
 
 ```powershell
@@ -180,6 +192,15 @@ Copy-Item .\config.example.yaml .\config.yaml
 - `runtime_db_url`：只支持 `jdbc:sqlite:` 或兼容旧值 `sqlite+pysqlite:///`。
 - `admin_password`：不得使用示例占位值。
 - `business_db_source_id` 和对应 `dbhub_execute_tool_*`。
+- 双库模式额外设置 `DBHUB_BUSINESS_SOURCE_ID=winex_all_dev`、
+  `DBHUB_BUSINESS_EXECUTE_TOOL=execute_sql_winex_all_dev`、
+  `DBHUB_REAL_SOURCE_ID=winex_aima` 和
+  `DBHUB_REAL_EXECUTE_TOOL=execute_sql_winex_aima`。工具名称必须唯一。
+- 同事的真实抽取接口适配器合并前保持 `AGENT_EXTRACTION_MODE=disabled`；
+  只有网关可用且 Wiki 双库契约完成验证后才切换为 `required`。
+- 强制双库模式下，Wiki Profile 还必须分别通过业务库和真实库的元数据/编译验证，
+  并声明概览结果列、科室键、患者键、分子判定字段和允许比较字段。双库不一致时，
+  有权限的用户可确认导出业务库与真实库逐条差异 Excel。
 - `ollama_base_url`；使用 DeepSeek 时设置 `DEEPSEEK_API_KEY`，使用阿里云百炼时设置 `DASHSCOPE_API_KEY`。
 - 百炼默认使用北京公共端点和 `qwen3-14b`；专属 Workspace、其他地域或自定义部署时，分别覆盖 `DASHSCOPE_BASE_URL` 和 `DASHSCOPE_QWEN3_14B_MODEL`。
 - 百炼官方 Base URL 已包含 `/v1`，Java 模型注册项固定使用 `/chat/completions` 相对路径，避免 Spring AI 重复拼接 `/v1`。
@@ -255,6 +276,8 @@ npm.cmd run build
 
 - 规则知识来自 Wiki；SQLite 只保存可变运行数据，不作为规则正文权威源。历史废弃表不会被破坏性删除，但新应用不再初始化或访问。
 - 医院 SQL Server 只能经 DBHub 的固定只读工具访问。
+- Java 和 DBHub 不写真实库；真实库写入只能由 `SourceExtractionGateway` 对接的外部抽取接口完成。
+- 指标计算、候选口径、差异诊断和明细范围最大为起点顺延一个自然月，超限不会自动截断或拆月。
 - SQL 由服务端模板生成并二次校验，浏览器和模型不能提交任意 SQL 执行。
 - Evidence 和 Trace 不保存密码、令牌、SQL 正文或患者原始行。
 - 患者级数据仅存在于短期明细快照和用户确认生成的导出文件中。

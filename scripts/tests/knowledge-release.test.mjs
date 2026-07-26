@@ -69,6 +69,17 @@ test('当前来源稳定生成35项、45个Profile和169个SQL块', () => {
     const aliases = JSON.parse(readFileSync(join(output, 'indexes', 'alias_index.json'), 'utf-8'));
     assert.equal(Object.hasOwn(aliases, '—'), false);
     assert.equal(Object.hasOwn(aliases, '无'), false);
+    const runtime = JSON.parse(readFileSync(
+      join(output, 'sql-specs', 'HXZD-001-001', 'runtime.json'),
+      'utf-8',
+    ));
+    const dual = runtime.profiles[0].dual_database_contract;
+    assert.equal(dual.schema_version, 'dual-database-execution-contract-v1');
+    assert.equal(dual.schema_compatible, false);
+    assert.deepEqual(dual.verified_source_roles, []);
+    assert.equal(dual.source_verification.business.metadata_status, 'unverified');
+    assert.equal(dual.overview_result_mapping.numerator_count, 'numerator_count');
+    assert.ok(dual.verification_blockers.includes('business_and_real_schema_not_verified'));
   } finally {
     rmSync(output, { recursive: true, force: true });
   }

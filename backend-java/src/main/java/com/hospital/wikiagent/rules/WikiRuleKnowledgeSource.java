@@ -118,8 +118,16 @@ public class WikiRuleKnowledgeSource {
         String selectedProfileId = text(profile.get("profile_id"));
         String executionStatus = first(text(profile.get("execution_status")), "documentation_only");
         List<String> blockers = stringList(profile.get("execution_blockers"));
-        String overviewSql = "executable".equals(executionStatus)
-                ? read(text(map(profile.get("sql_refs")).get("overview"))) : "";
+        Map<String, Object> sqlRefs = map(profile.get("sql_refs"));
+        Map<String, Object> sqlCapabilities = map(profile.get("sql_capabilities"));
+        String overviewSql = executableSql(
+                executionStatus, sqlRefs, sqlCapabilities, "overview", "overview");
+        String sourceExtractSql = executableSql(
+                executionStatus, sqlRefs, sqlCapabilities, "source_extract", "etl_source");
+        String departmentDetailSql = executableSql(
+                executionStatus, sqlRefs, sqlCapabilities, "department_detail", "department");
+        String patientDetailSql = executableSql(
+                executionStatus, sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
         Map<String, Object> mapping = mergedFieldMapping(profile, ruleId, hospitalId);
         Map<String, Object> params = map(mapping.get("parameters"));
         String definition = first(text(manifest.get("definition")), section(read(text(rule.get("national_path"))), "指标定义"));
@@ -150,6 +158,11 @@ public class WikiRuleKnowledgeSource {
         result.put("exclude_rule", text(profile.get("numerator_caliber")));
         result.put("implementation_status", overviewSql);
         result.put("standard_sql", overviewSql);
+        result.put("source_extract_sql", sourceExtractSql);
+        result.put("department_detail_sql", departmentDetailSql);
+        result.put("patient_detail_sql", patientDetailSql);
+        result.put("sql_capabilities", sqlCapabilities);
+        result.put("dual_database_contract", map(profile.get("dual_database_contract")));
         result.put("calculation_definition", calculation(profile));
         result.put("national_calculation_definition", calculation(profile));
         result.put("field_contract", map(profile.get("field_contract")));
@@ -174,6 +187,22 @@ public class WikiRuleKnowledgeSource {
         result.put("warnings", blockers);
         result.put("relations", relation(ruleId));
         return result;
+    }
+
+    private String executableSql(
+            String profileStatus,
+            Map<String, Object> refs,
+            Map<String, Object> capabilities,
+            String capability,
+            String referenceKey) {
+        if (!"executable".equals(profileStatus)) {
+            return "";
+        }
+        Map<String, Object> contract = map(capabilities.get(capability));
+        if (!"executable".equals(text(contract.get("status")))) {
+            return "";
+        }
+        return read(text(refs.get(referenceKey)));
     }
 
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId) {

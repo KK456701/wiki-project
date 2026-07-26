@@ -87,14 +87,44 @@ class PlanValidatorTest {
     }
 
     @Test
-    void acceptsExplicitHalfOpenPeriod() {
+    void acceptsExplicitOneMonthHalfOpenPeriod() {
         PlanValidation result = validator.validate(plan(
                 List.of(),
-                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01")));
+                new RequestPlan.TimeExpression("1月", "2026-01-01", "2026-02-01")));
 
         assertThat(result.ok()).isTrue();
         assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2026-01-01T00:00");
-        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-04-01T00:00");
+        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-02-01T00:00");
+    }
+
+    @Test
+    void explicitDateRangeKeepsTheEndDateAsExclusiveBoundary() {
+        PlanValidation result = validator.validate(plan(
+                List.of(),
+                new RequestPlan.TimeExpression(
+                        "2026年1月1日至2026年2月1日",
+                        "2026-01-01T00:00:00",
+                        "2026-02-01T00:00:00")));
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.resolvedTime().startTime().toString())
+                .isEqualTo("2026-01-01T00:00");
+        assertThat(result.resolvedTime().endTime().toString())
+                .isEqualTo("2026-02-01T00:00");
+    }
+
+    @Test
+    void rejectsPeriodLongerThanOneMonthBeforeExecution() {
+        PlanValidation result = validator.validate(plan(
+                List.of(),
+                new RequestPlan.TimeExpression(
+                        "超过一个月",
+                        "2026-01-01T00:00:00",
+                        "2026-02-01T00:00:01")));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
+        assertThat(result.message()).contains("2026-02-01T00:00");
     }
 
     @Test
@@ -104,7 +134,7 @@ class PlanValidatorTest {
                 PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
                 "比较双方结果",
                 new RequestPlan.TargetIndicator("急会诊及时到位率", null),
-                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01"),
+                new RequestPlan.TimeExpression("1月", "2026-01-01", "2026-02-01"),
                 List.of(RequestedOutput.DIAGNOSIS),
                 List.of(),
                 List.of());
@@ -115,7 +145,7 @@ class PlanValidatorTest {
                 PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS,
                 "比较双方结果",
                 new RequestPlan.TargetIndicator("急会诊及时到位率", null),
-                new RequestPlan.TimeExpression("1月至3月", "2026-01-01", "2026-04-01"),
+                new RequestPlan.TimeExpression("1月", "2026-01-01", "2026-02-01"),
                 List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT),
                 List.of(),
                 List.of());
@@ -133,9 +163,8 @@ class PlanValidatorTest {
                 List.of(),
                 new RequestPlan.TimeExpression("从26年一月份到现在", null, null)));
 
-        assertThat(result.ok()).isTrue();
-        assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2026-01-01T00:00");
-        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-21T16:00");
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
     }
 
     @Test
@@ -152,8 +181,8 @@ class PlanValidatorTest {
                         "2025-01-01 00:00:00",
                         "2026-07-22 00:00:00")));
 
-        assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2026-01-01T00:00");
-        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-22T12:30");
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
     }
 
     private static RequestPlan plan(List<String> constraints, RequestPlan.TimeExpression time) {

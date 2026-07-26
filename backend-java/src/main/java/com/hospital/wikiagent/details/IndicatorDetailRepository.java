@@ -107,6 +107,7 @@ public class IndicatorDetailRepository {
         Map<String, Object> rule = objectMap(snapshot.get("effective_rule"));
         Map<String, Object> mapping = objectMap(snapshot.get("field_mapping"));
         Map<String, Object> parameters = objectMap(snapshot.get("params"));
+        Map<String, Object> execution = objectMap(snapshot.get("execution_context"));
         String start = first(text(snapshot.get("stat_start")), sqlTime(row.get("stat_start_time")));
         String end = first(text(snapshot.get("stat_end")), sqlTime(row.get("stat_end_time")));
         parameters.put("start_time", start);
@@ -126,14 +127,17 @@ public class IndicatorDetailRepository {
                 integer(rule.get("hospital_version")),
                 start,
                 end,
-                first(text(mapping.get("db_name")), text(snapshot.get("db_source_id"))),
+                first(
+                        text(snapshot.get("db_source_id")),
+                        text(execution.get("source_id")),
+                        text(mapping.get("db_name"))),
                 text(mapping.get("main_table")),
                 first(text(mapping.get("dialect")), "sqlserver"),
                 text(mapping.get("query_profile")),
                 calculation,
                 mapping,
                 parameters,
-                objectMap(snapshot.get("execution_context")),
+                execution,
                 longValue(row.get("numerator_count")),
                 longValue(row.get("denominator_count"))));
     }

@@ -130,6 +130,95 @@ public class UploadDetailComparator {
                 List.copyOf(matched), immutableRows(systemOnly), immutableRows(uploadedOnly));
     }
 
+    /**
+     * 对业务库与真实库的受保护明细快照执行同一套多重集合比较。为了复用既有安全导出
+     * 契约，返回对象中的 system 代表业务库、uploaded 代表真实库；HTTP 和 Excel 层
+     * 会展示为明确的“业务库/真实库”，不会暴露这项内部兼容命名。
+     */
+    public RowComparison compareDual(
+            SystemDetailDataset business,
+            SystemDetailDataset real) {
+        SnapshotSummary businessSummary = business.summary();
+        SnapshotSummary realSummary = real.summary();
+        if (!businessSummary.ruleId().equalsIgnoreCase(realSummary.ruleId())
+                || !businessSummary.hospitalId().equals(realSummary.hospitalId())) {
+            return RowComparison.unavailable(
+                    "dual_scope_mismatch", businessSummary, realSummary.ruleId(),
+                    realSummary.ruleName(), systemPeriod(realSummary),
+                    "业务库与真实库的指标或医院范围不一致，不能导出逐条差异。");
+        }
+        List<Map<String, Object>> businessRows = systemRows(business);
+        List<Map<String, Object>> realRows = systemRows(real);
+        List<String> businessHeaders = headers(businessSummary);
+        List<String> realHeaders = headers(realSummary);
+        List<String> commonFields = businessHeaders.stream().filter(realHeaders::contains).toList();
+        List<String> matchingFields = matchingFields(commonFields);
+        if (matchingFields.isEmpty()) {
+            return RowComparison.unavailable(
+                    "matching_fields_missing", businessSummary, realSummary.ruleId(),
+                    realSummary.ruleName(), systemPeriod(realSummary),
+                    "双库明细没有可用于识别同一业务记录的公共字段。");
+        }
+
+        Map<List<String>, Deque<Map<String, Object>>> realByKey = new LinkedHashMap<>();
+        for (Map<String, Object> row : realRows) {
+            realByKey.computeIfAbsent(rowKey(row, matchingFields), ignored -> new ArrayDeque<>())
+                    .addLast(row);
+        }
+        List<MatchedRow> matched = new ArrayList<>();
+        List<Map<String, Object>> businessOnly = new ArrayList<>();
+        for (Map<String, Object> businessRow : businessRows) {
+            List<String> key = rowKey(businessRow, matchingFields);
+            Deque<Map<String, Object>> candidates = realByKey.get(key);
+            if (candidates == null || candidates.isEmpty()) {
+                businessOnly.add(businessRow);
+                continue;
+            }
+            Map<String, Object> realRow = candidates.removeFirst();
+            List<String> differences = commonFields.stream()
+                    .filter(field -> !canonical(businessRow.get(field))
+                            .equals(canonical(realRow.get(field))))
+                    .toList();
+            matched.add(new MatchedRow(
+                    String.join(" | ", key), businessRow, realRow, differences));
+        }
+        List<Map<String, Object>> realOnly = realByKey.values().stream()
+                .flatMap(Deque::stream).toList();
+        int changed = (int) matched.stream()
+                .filter(item -> !item.differentFields().isEmpty()).count();
+        int businessNumerator = (int) businessRows.stream()
+                .filter(UploadDetailComparator::meets).count();
+        int realNumerator = (int) realRows.stream()
+                .filter(UploadDetailComparator::meets).count();
+        int businessOnlyNumerator = (int) businessOnly.stream()
+                .filter(UploadDetailComparator::meets).count();
+        int realOnlyNumerator = (int) realOnly.stream()
+                .filter(UploadDetailComparator::meets).count();
+        int classificationDifferences = (int) matched.stream()
+                .filter(item -> meets(item.system()) != meets(item.uploaded())).count();
+        List<String> findings = List.of(
+                "双库都有 " + matched.size() + " 条；仅业务库有 " + businessOnly.size()
+                        + " 条；仅真实库有 " + realOnly.size() + " 条。",
+                "达到要求记录：业务库 " + businessNumerator + " 条、真实库 "
+                        + realNumerator + " 条；同一记录但判定不同 "
+                        + classificationDifferences + " 条。");
+        return new RowComparison(
+                "dual_row_level_compared", true,
+                businessSummary.ruleId(), businessSummary.ruleName(),
+                realSummary.ruleId(), realSummary.ruleName(),
+                systemPeriod(businessSummary), systemPeriod(realSummary),
+                matchingFields, commonFields,
+                businessHeaders.stream().filter(field -> !realHeaders.contains(field)).toList(),
+                realHeaders.stream().filter(field -> !businessHeaders.contains(field)).toList(),
+                businessRows.size(), realRows.size(), matched.size(),
+                businessOnly.size(), realOnly.size(), changed,
+                businessNumerator, realNumerator,
+                businessOnlyNumerator, realOnlyNumerator,
+                classificationDifferences, findings,
+                "已完成业务库与真实库逐条记录对比，未推测未被数据证明的业务根因。",
+                List.copyOf(matched), immutableRows(businessOnly), immutableRows(realOnly));
+    }
+
     private static SheetPreview primaryDetailSheet(WorkbookPreview workbook) {
         return workbook.sheets().stream()
                 .filter(SheetPreview::detailExport)
@@ -162,6 +251,13 @@ public class UploadDetailComparator {
             result.add(Collections.unmodifiableMap(row));
         }
         return List.copyOf(result);
+    }
+
+    private static List<String> headers(SnapshotSummary summary) {
+        List<String> values = new ArrayList<>();
+        summary.columns().forEach(column -> values.add(column.label()));
+        values.add("是否达到要求");
+        return List.copyOf(values);
     }
 
     private static List<String> matchingFields(List<String> commonFields) {

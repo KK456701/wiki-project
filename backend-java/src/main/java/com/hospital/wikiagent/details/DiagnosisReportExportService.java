@@ -49,6 +49,12 @@ public class DiagnosisReportExportService {
                         "DIAGNOSIS_REPORT_NOT_FOUND", "诊断报告不存在。",
                         HttpStatus.NOT_FOUND));
         Map<String, Object> payload = stored.payload();
+        String businessRunId = text(payload.get("business_run_id"));
+        String realRunId = text(payload.get("real_run_id"));
+        if (!businessRunId.isBlank() && !realRunId.isBlank()) {
+            return comparisonExports.createForDual(
+                    principal, businessRunId, realRunId, confirmed, payload);
+        }
         String runId = text(payload.get("baseline_run_id"));
         if (runId.isBlank()) {
             throw error(

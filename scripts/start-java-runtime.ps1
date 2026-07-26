@@ -103,6 +103,11 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'OLLAMA_BASE_URL' (Get-YamlScalar $config 'ollama_base_url')
     Set-EnvironmentDefault 'DBHUB_API_URL' (Get-YamlScalar $config 'dbhub_api_url')
     Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
+    Set-EnvironmentDefault 'DBHUB_BUSINESS_SOURCE_ID' (Get-YamlScalar $config 'dbhub_business_source_id')
+    Set-EnvironmentDefault 'DBHUB_BUSINESS_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_business_execute_tool')
+    Set-EnvironmentDefault 'DBHUB_REAL_SOURCE_ID' (Get-YamlScalar $config 'dbhub_real_source_id')
+    Set-EnvironmentDefault 'DBHUB_REAL_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_real_execute_tool')
+    Set-EnvironmentDefault 'AGENT_EXTRACTION_MODE' (Get-YamlScalar $config 'agent_extraction_mode')
     Set-EnvironmentDefault 'BUSINESS_DB_DATABASE' (Get-YamlScalar $config 'business_db_database')
     Set-EnvironmentDefault 'BUSINESS_DB_SCHEMA' (Get-YamlScalar $config 'business_db_schema')
     $sourceId = Get-YamlScalar $config 'business_db_source_id'

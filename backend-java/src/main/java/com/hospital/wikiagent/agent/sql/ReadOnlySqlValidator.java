@@ -18,6 +18,20 @@ public class ReadOnlySqlValidator {
             "GRANT", "REVOKE", "EXEC", "EXECUTE", "LOAD", "MERGE");
 
     public ValidationResult validate(String sql, String mainTable) {
+        return validate(sql, mainTable, true);
+    }
+
+    /**
+     * 校验知识库中已通过对象契约检查的辅助 SQL。
+     *
+     * <p>源抽取、科室和患者 SQL 可能跨多张表，因此这里不重复要求单一主表；
+     * 发布期的双库元数据与编译门禁负责确认实际对象。</p>
+     */
+    public ValidationResult validateReadOnly(String sql) {
+        return validate(sql, "", false);
+    }
+
+    private ValidationResult validate(String sql, String mainTable, boolean requireMainTable) {
         String stripped = sql == null ? "" : sql.strip();
         String masked = maskCommentsAndLiterals(stripped);
         String upper = masked.strip().toUpperCase(Locale.ROOT);
@@ -45,10 +59,10 @@ public class ReadOnlySqlValidator {
             return failure("必须包含 :start_time 和 :end_time 参数");
         }
         String expected = mainTable == null ? "" : mainTable.replace("`", "").replace("\"", "").strip();
-        if (expected.isEmpty() || !Pattern.compile(
+        if (requireMainTable && (expected.isEmpty() || !Pattern.compile(
                 "\\b(?:FROM|JOIN)\\s+(?:[A-Za-z0-9_]+\\.)?" + Pattern.quote(expected) + "\\b",
                 Pattern.CASE_INSENSITIVE)
-                .matcher(masked).find()) {
+                .matcher(masked).find())) {
             return failure("SQL 必须使用已确认主表 " + expected);
         }
         if (stripped.contains("{{") || stripped.contains("{%")

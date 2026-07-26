@@ -29,6 +29,15 @@ dbhub_execute_tool_hospital_demo_data: "execute_sql_hospital_demo_data"
 dbhub_source_id_win60_qa_991827: "win60_qa_991827"
 dbhub_execute_tool_win60_qa_991827: "execute_sql_win60_qa_991827"
 
+# 双库指标计算。业务库与真实库的连接串和密码仍只保存在 DBHub。
+dbhub_business_source_id: "winex_all_dev"
+dbhub_business_execute_tool: "execute_sql_winex_all_dev"
+dbhub_real_source_id: "winex_aima"
+dbhub_real_execute_tool: "execute_sql_winex_aima"
+
+# 同事的真实抽取接口适配器合并前保持 disabled；required 不会伪造抽取成功。
+agent_extraction_mode: "disabled"
+
 # 元数据缓存最大有效时间。
 metadata_max_age_hours: 24
 

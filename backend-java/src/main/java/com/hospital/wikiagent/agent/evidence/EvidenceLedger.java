@@ -34,8 +34,12 @@ public class EvidenceLedger implements EvidenceRecorder {
             "rule_id", "rule_name", "definition", "formula", "effective_level",
             "national_version", "hospital_version", "version", "mapping_status",
             "sql_status", "sql_id", "run_id", "result_id", "db_source_id",
+            "canonical_run_id", "extraction_id", "workflow_version",
+            "diagnosis_report_id",
+            "sql_bundle",
             "stat_start", "stat_end", "stat_start_time", "stat_end_time",
             "numerator_count", "denominator_count", "result_value", "sample_count",
+            "business_result", "real_result", "dual_difference_diagnosis",
             "caliber_profile_id", "caliber_label", "caliber_version",
             "caliber_source_level", "caliber_definition", "caliber_numerator_rule",
             "caliber_denominator_rule", "period_anchor_label", "elapsed_anchor_label",
@@ -116,7 +120,7 @@ public class EvidenceLedger implements EvidenceRecorder {
         String inputFingerprint = fingerprint(Map.of("tool", toolName, "arguments", arguments));
         String resultFingerprint = fingerprint(result.withEvidenceIds(List.of()));
         List<String> evidenceIds = new ArrayList<>();
-        for (String factType : FACT_TYPES.getOrDefault(toolName, List.of("tool_result"))) {
+        for (String factType : factTypes(toolName, result.data())) {
             String evidenceId = "EVD_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
             EvidenceEnvelope envelope = new EvidenceEnvelope(
                     EvidenceEnvelope.VERSION,
@@ -144,6 +148,23 @@ public class EvidenceLedger implements EvidenceRecorder {
         state.evidenceIds().addAll(evidenceIds.stream()
                 .filter(id -> !state.evidenceIds().contains(id)).toList());
         return result.withEvidenceIds(evidenceIds);
+    }
+
+    /**
+     * 双库试运行需要分别记录两侧结果和比较结论。仍保留 {@code trial_run}，以兼容
+     * 现有状态控制器、最终回答和明细入口；新增事实只承担来源隔离与一致性审计。
+     */
+    private static List<String> factTypes(String toolName, Map<String, Object> data) {
+        if ("trial_run_indicator_sql".equals(toolName)
+                && data.containsKey("comparison_status")) {
+            return List.of(
+                    "trial_run",
+                    "source_extraction_completed",
+                    "business_overview_result",
+                    "real_overview_result",
+                    "dual_result_comparison");
+        }
+        return FACT_TYPES.getOrDefault(toolName, List.of("tool_result"));
     }
 
     String fingerprint(Object value) {

@@ -136,6 +136,48 @@ for (const rule of rules) {
         errors.push(`${profile.profile_id}的${capability}仍有阻断项却标记可执行`);
       }
     }
+    const dual = profile.dual_database_contract;
+    if (!dual && options['require-dual-contract'] === 'true') {
+      errors.push(`${profile.profile_id}缺少双库执行契约`);
+    } else if (dual && dual.schema_version !== 'dual-database-execution-contract-v1') {
+      errors.push(`${profile.profile_id}双库执行契约版本无效`);
+    } else if (dual?.schema_compatible) {
+      const roles = new Set(dual.verified_source_roles || []);
+      if (!roles.has('business') || !roles.has('real')) {
+        errors.push(`${profile.profile_id}标记双库同构但未验证业务库和真实库`);
+      }
+      if (!String(dual.department_comparison_key || '').trim()
+          || !String(dual.patient_comparison_key || '').trim()) {
+        errors.push(`${profile.profile_id}标记双库同构但缺少科室或患者比较键`);
+      }
+      const verification = dual.source_verification || {};
+      for (const role of ['business', 'real']) {
+        if (verification[role]?.metadata_status !== 'validated'
+            || verification[role]?.compile_status !== 'validated') {
+          errors.push(`${profile.profile_id}标记双库同构但${role}元数据或编译尚未验证`);
+        }
+      }
+      if (!String(dual.overview_result_mapping?.numerator_count || '').trim()
+          || !String(dual.overview_result_mapping?.denominator_count || '').trim()) {
+        errors.push(`${profile.profile_id}标记双库同构但缺少概览结果字段映射`);
+      }
+      if (!String(dual.numerator_classification_field || '').trim()) {
+        errors.push(`${profile.profile_id}标记双库同构但缺少分子判定字段`);
+      }
+      const allowedCompareFields = new Set(dual.allowed_compare_fields || []);
+      const requestedCompareFields = [
+        ...(dual.department_compare_fields || []),
+        ...(dual.patient_compare_fields || []),
+        dual.numerator_classification_field,
+      ].filter(Boolean);
+      if (allowedCompareFields.size === 0
+          || requestedCompareFields.some(field => !allowedCompareFields.has(field))) {
+        errors.push(`${profile.profile_id}双库比较字段超出允许列表`);
+      }
+      if ((dual.verification_blockers || []).length > 0) {
+        errors.push(`${profile.profile_id}标记双库同构但仍存在验证阻断项`);
+      }
+    }
   }
 }
 

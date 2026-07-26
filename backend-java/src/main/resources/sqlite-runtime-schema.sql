@@ -196,6 +196,23 @@ CREATE TABLE IF NOT EXISTS med_sql_run_log (
   run_time TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS med_dual_indicator_run (
+  comparison_run_id VARCHAR(64) PRIMARY KEY,
+  sql_id VARCHAR(80) NOT NULL,
+  hospital_id VARCHAR(128) NOT NULL,
+  rule_id VARCHAR(128) NOT NULL,
+  profile_id VARCHAR(128) NOT NULL,
+  stat_start_time TEXT NOT NULL,
+  stat_end_time TEXT NOT NULL,
+  extraction_id VARCHAR(128),
+  business_run_id VARCHAR(64),
+  real_run_id VARCHAR(64),
+  comparison_status VARCHAR(32) NOT NULL,
+  mismatch_json TEXT NOT NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS med_indicator_detail_snapshot (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   snapshot_id VARCHAR(64) NOT NULL UNIQUE,

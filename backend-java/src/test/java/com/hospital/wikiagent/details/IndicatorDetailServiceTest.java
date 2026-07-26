@@ -24,6 +24,8 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
+import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.auth.HospitalAuthRepository;
@@ -122,6 +124,16 @@ class IndicatorDetailServiceTest {
     }
 
     @Test
+    void dualRunDetailUsesTheDatabaseRoleThatProducedTheAggregate() throws Exception {
+        seedSuccessfulRun("RUN_REAL", 1, 2, "winex_aima");
+
+        service.ensureSnapshot(principal, "RUN_REAL");
+
+        assertThat(businessQuery.realCalls()).isEqualTo(1);
+        assertThat(businessQuery.calls()).isZero();
+    }
+
+    @Test
     void exportsThreeSheetWorkbookOnlyAfterExplicitConfirmation() {
         assertThatThrownBy(() -> service.createExport(principal, "RUN_001", false))
                 .isInstanceOfSatisfying(IndicatorDetailException.class,
@@ -143,6 +155,31 @@ class IndicatorDetailServiceTest {
                 .containsExactly(2, 1, 1);
         assertThat(repository.export(exported.exportId()).orElseThrow().downloadCount())
                 .isEqualTo(1);
+    }
+
+    @Test
+    void exportsBusinessAndRealDatabaseDifferenceWorkbook() throws Exception {
+        seedSuccessfulRun("RUN_BUSINESS", 1, 2, "winex_all_dev");
+        seedSuccessfulRun("RUN_REAL_EXPORT", 1, 2, "winex_aima");
+        UploadProperties uploadProperties = new UploadProperties();
+        uploadProperties.setRoot(temp.resolve("uploads"));
+        uploadProperties.setMaxRowsPerSheet(5001);
+        XlsxWorkbookReader reader = new XlsxWorkbookReader(uploadProperties);
+        UploadComparisonExportService comparisons = new UploadComparisonExportService(
+                service, repository, new UploadStorage(uploadProperties), reader,
+                new UploadDetailComparator(), new XlsxWorkbookWriter(),
+                new HospitalAuthRepository(jdbc), detailProperties(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        var exported = comparisons.createForDual(
+                principal, "RUN_BUSINESS", "RUN_REAL_EXPORT", true,
+                Map.of("report_id", "DDR_test", "conclusion_code", "DUAL_DATABASE_RESULT_MISMATCH"));
+        var download = service.resolveDownload(principal, exported.exportId());
+        var workbook = reader.read(new StoredUpload(
+                "dual.xlsx", exported.fileName(), Files.size(download.path()), download.path()));
+
+        assertThat(workbook.sheets()).extracting("name")
+                .contains("对比摘要", "双方都有_2", "仅业务库有_0", "仅真实库有_0");
     }
 
     @Test
@@ -257,6 +294,14 @@ class IndicatorDetailServiceTest {
     }
 
     private void seedSuccessfulRun(String runId, int numerator, int denominator) throws Exception {
+        seedSuccessfulRun(runId, numerator, denominator, "win60_qa_991827");
+    }
+
+    private void seedSuccessfulRun(
+            String runId,
+            int numerator,
+            int denominator,
+            String sourceId) throws Exception {
         Map<String, Object> runContext = Map.of(
                 "effective_rule", Map.of(
                         "rule_id", "MQSI2025_005",
@@ -278,14 +323,16 @@ class IndicatorDetailServiceTest {
                         "main_table", "INPATIENT_CONSULT_APPLY",
                         "dialect", "sqlserver",
                         "query_profile", "urgent_consult_sqlserver"),
-                "execution_context", Map.of(),
+                "execution_context", Map.of(
+                        "source_role", "winex_aima".equals(sourceId) ? "real" : "legacy",
+                        "source_id", sourceId),
                 "params", Map.of(
                         "hospital_soid", 991827,
                         "urgent_level_code", 977578,
                         "arrive_minutes_threshold", 20),
                 "stat_start", "2026-01-01 00:00:00",
                 "stat_end", "2026-04-01 00:00:00",
-                "db_source_id", "win60_qa_991827");
+                "db_source_id", sourceId);
         jdbc.update("""
                 INSERT INTO med_sql_run_log (
                   run_id,sql_id,hospital_id,rule_id,stat_start_time,stat_end_time,
@@ -313,9 +360,11 @@ class IndicatorDetailServiceTest {
         return Map.of("field", field, "label", label, "sensitivity", sensitivity);
     }
 
-    private static final class StubBusinessQuery implements IndicatorBusinessQueryClient {
+    private static final class StubBusinessQuery
+            implements IndicatorBusinessQueryClient, IndicatorDatabaseQueryClient {
         private final List<Map<String, Object>> rows;
         private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger realCalls = new AtomicInteger();
 
         private StubBusinessQuery(List<Map<String, Object>> rows) {
             this.rows = rows;
@@ -335,8 +384,33 @@ class IndicatorDetailServiceTest {
             return "win60_qa_991827";
         }
 
+        @Override
+        public List<Map<String, Object>> execute(DatabaseRole role, String sql) {
+            if (role == DatabaseRole.REAL) {
+                assertExecutable(sql);
+                realCalls.incrementAndGet();
+                return rows;
+            }
+            return execute(sql);
+        }
+
+        @Override
+        public String sourceId(DatabaseRole role) {
+            return role == DatabaseRole.REAL ? "winex_aima" : "winex_all_dev";
+        }
+
         int calls() {
             return calls.get();
+        }
+
+        int realCalls() {
+            return realCalls.get();
+        }
+
+        private static void assertExecutable(String sql) {
+            assertThat(sql)
+                    .contains("SELECT TOP 101", "'2026-01-01 00:00:00'", "'2026-04-01 00:00:00'")
+                    .doesNotContain(":start_time", ":end_time");
         }
     }
 }

@@ -372,17 +372,28 @@ public class AgentRunner {
 
         AgentRunState state = new AgentRunState();
         state.subtaskId(subtaskId);
-        state.progressReporter(progress -> TraceEvents.recorded(
-                observer,
-                traceId,
-                progress.nodeName(),
-                "code",
-                progress.status(),
-                progress.durationMs(),
-                subtaskId,
-                Map.of("workflow_version", "indicator-difference-diagnosis-v1"),
-                progress.safeOutput(),
-                "capability", "diagnose_indicator_difference"));
+        state.progressReporter(progress -> {
+            boolean dualDatabaseStage = progress.nodeName().startsWith("source_data_")
+                    || progress.nodeName().startsWith("business_")
+                    || progress.nodeName().startsWith("real_")
+                    || progress.nodeName().startsWith("dual_");
+            TraceEvents.recorded(
+                    observer,
+                    traceId,
+                    progress.nodeName(),
+                    "code",
+                    progress.status(),
+                    progress.durationMs(),
+                    subtaskId,
+                    Map.of(
+                            "workflow_version", dualDatabaseStage
+                                    ? "dual-database-indicator-workflow-v1"
+                                    : "indicator-difference-diagnosis-v1"),
+                    progress.safeOutput(),
+                    "capability", dualDatabaseStage
+                            ? "execute_indicator_dual_store"
+                            : "diagnose_indicator_difference");
+        });
         state.currentRuleId(first(
                 planned.plan().targetIndicator().ruleId(), conversation.ruleId()));
         state.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
@@ -1924,6 +1935,21 @@ public class AgentRunner {
             String content,
             AgentRunState state,
             com.hospital.wikiagent.auth.HospitalPrincipal principal) {
+        for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
+            ToolResult candidate = state.lastToolResults().get(index);
+            String reportId = candidate.ok()
+                    ? String.valueOf(candidate.data().getOrDefault(
+                            "diagnosis_report_id", ""))
+                    : "";
+            if (!reportId.isBlank() && !principal.mustChangePassword()
+                    && principal.permissions().contains("indicator_detail_export")) {
+                String marker = "{{diagnosis_export:" + reportId + "}}";
+                return content.contains(marker) ? content
+                        : content.stripTrailing()
+                                + "\n\n本次双库核对支持导出业务库与真实库的逐条差异表：\n\n"
+                                + marker;
+            }
+        }
         for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
             ToolResult candidate = state.lastToolResults().get(index);
             if (!candidate.ok() || !"DIFFERENCE_DIAGNOSIS_COMPLETED".equals(candidate.code())) {

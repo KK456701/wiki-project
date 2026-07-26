@@ -112,6 +112,73 @@ public class UploadComparisonExportService {
                 diagnosisReport == null ? java.util.Map.of() : diagnosisReport);
     }
 
+    /**
+     * 按已保存的业务库、真实库运行对象重新生成受保护明细快照并导出逐条差异。
+     *
+     * <p>原始行只在本方法的内存和短期快照文件中存在；诊断报告、Trace 与 Evidence
+     * 只保存两个 run-id 和汇总计数。两个快照仍分别经过医院权限、数量一致性和文件
+     * 完整性校验。</p>
+     */
+    public ExportSummary createForDual(
+            HospitalPrincipal principal,
+            String businessRunId,
+            String realRunId,
+            boolean confirmed,
+            java.util.Map<String, Object> diagnosisReport) {
+        requireExportPermission(principal);
+        if (!confirmed) {
+            throw error("DUAL_COMPARISON_EXPORT_CONFIRM_REQUIRED",
+                    "导出前必须确认双库患者明细差异的使用范围。", HttpStatus.BAD_REQUEST);
+        }
+        String businessId = safeId(businessRunId, "业务库运行编号无效");
+        String realId = safeId(realRunId, "真实库运行编号无效");
+        var business = details.comparisonDataset(principal, businessId);
+        var real = details.comparisonDataset(principal, realId);
+        RowComparison comparison = comparator.compareDual(business, real);
+        if (!comparison.available()) {
+            throw error("DUAL_ROW_COMPARISON_UNAVAILABLE",
+                    comparison.message(), HttpStatus.CONFLICT);
+        }
+        SnapshotRecord snapshot = repository.snapshotByRun(realId)
+                .orElseThrow(() -> error(
+                        "DETAIL_NOT_FOUND", "真实库明细快照不存在。", HttpStatus.NOT_FOUND));
+        String exportId = "EXP_" + compactId();
+        String fileName = real.summary().ruleId() + "_双库逐条差异_" + exportId + ".xlsx";
+        String relativePath = safeId(principal.hospitalId(), "医院编号无效") + "/"
+                + realId + "/" + fileName;
+        Instant now = clock.instant();
+        int rowCount = comparison.bothCount() + comparison.systemOnlyCount()
+                + comparison.uploadedOnlyCount();
+        repository.createExport(exportId, snapshot, relativePath, fileName, rowCount,
+                principal.userId(), now,
+                now.plusSeconds(Math.max(1, properties.getExpireHours()) * 3600L));
+        Path target = resolveOwned(relativePath);
+        Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
+        try {
+            Files.createDirectories(target.getParent());
+            rejectSymlink(target.getParent());
+            writer.writeDualComparisonWorkbook(
+                    temporary, comparison,
+                    business.summary().sourceDatabase(), real.summary().sourceDatabase(),
+                    principal.hospitalId(), principal.accountId(), now,
+                    diagnosisReport == null ? java.util.Map.of() : diagnosisReport);
+            move(temporary, target);
+            repository.markExportReady(exportId, sha256(target));
+            ExportRecord record = repository.export(exportId)
+                    .orElseThrow(() -> new IllegalStateException("双库差异导出记录不存在"));
+            audit(principal, "DUAL_COMPARISON_EXPORT_CREATE", "success", null);
+            return summary(record);
+        } catch (RuntimeException | IOException exception) {
+            deleteQuietly(temporary);
+            repository.markExportFailed(exportId, safeFailure(exception));
+            audit(principal, "DUAL_COMPARISON_EXPORT_CREATE", "failed",
+                    "DUAL_COMPARISON_EXPORT_FAILED");
+            throw new IndicatorDetailException(
+                    "DUAL_COMPARISON_EXPORT_FAILED", "双库差异表生成失败，请稍后重试。",
+                    HttpStatus.INTERNAL_SERVER_ERROR, exception);
+        }
+    }
+
     private ExportSummary createInternal(
             HospitalPrincipal principal,
             String runId,

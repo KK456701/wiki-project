@@ -162,6 +162,7 @@ public class FinalAnswerComposer {
                     .append("| 分子 | ").append(firstText(trial.get("numerator_count"), "—")).append(" |\n")
                     .append("| 分母 | ").append(firstText(trial.get("denominator_count"), "—")).append(" |\n")
                     .append("| 指标率 | **").append(percent(trial.get("result_value"))).append("** |\n\n")
+                    .append(dualComparisonSection(trial))
                     .append("## 计算口径\n\n");
             append(value, "计算公式", rule.get("formula"));
             append(value, "分子口径", rule.get("numerator_rule"));
@@ -259,12 +260,47 @@ public class FinalAnswerComposer {
         return "";
     }
 
+    private static String dualComparisonSection(Map<String, Object> trial) {
+        String status = firstText(trial.get("comparison_status"), "");
+        if (status.isBlank()) return "";
+        Map<String, Object> business = objectMap(trial.get("business_result"));
+        Map<String, Object> real = objectMap(trial.get("real_result"));
+        StringBuilder value = new StringBuilder("## 双库核对\n\n")
+                .append("| 数据源 | 分子 | 分母 | 指标率 |\n")
+                .append("|---|---:|---:|---:|\n")
+                .append("| 业务库 | ").append(firstText(business.get("numerator_count"), "—"))
+                .append(" | ").append(firstText(business.get("denominator_count"), "—"))
+                .append(" | ").append(percent(business.get("result_value"))).append(" |\n")
+                .append("| 真实库 | ").append(firstText(real.get("numerator_count"), "—"))
+                .append(" | ").append(firstText(real.get("denominator_count"), "—"))
+                .append(" | ").append(percent(real.get("result_value"))).append(" |\n\n");
+        if ("matched".equals(status)) {
+            value.append("> 双库分子、分母完全一致。\n\n");
+        } else {
+            value.append("> 双库概览的分子或分母不一致。");
+            Map<String, Object> diagnosis = objectMap(trial.get("dual_difference_diagnosis"));
+            if ("completed".equals(firstText(diagnosis.get("status"), ""))) {
+                value.append("已完成受控的科室和患者明细核对。\n\n");
+            } else {
+                value.append("当前明细契约或查询未全部完成，暂不能判断具体原因。\n\n");
+            }
+        }
+        return value.toString();
+    }
+
     private static Map<String, Object> latest(List<VerifiedEvidence> values, String factType) {
         for (int index = values.size() - 1; index >= 0; index--) {
             var evidence = values.get(index).evidence();
             if (factType.equals(evidence.factType())) return evidence.safePayload();
         }
         return Map.of();
+    }
+
+    private static Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?> source)) return Map.of();
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        source.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
     }
 
     private static String period(Map<String, Object> value) {

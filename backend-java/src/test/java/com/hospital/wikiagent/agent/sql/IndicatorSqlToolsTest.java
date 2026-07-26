@@ -79,7 +79,7 @@ class IndicatorSqlToolsTest {
         assertThat(inspected.data()).containsEntry("mapping_status", "confirmed");
 
         ToolResult prepared = tools.prepare(new IndicatorSqlTools.PrepareInput(
-                "HXZD-003-001", "2026-01-01T00:00:00", "2026-04-01T00:00:00"), context);
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"), context);
         assertThat(prepared.ok()).isTrue();
         assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
         assertThat(prepared.data()).containsKeys(
@@ -102,6 +102,20 @@ class IndicatorSqlToolsTest {
     }
 
     @Test
+    void rejectsPeriodLongerThanOneCalendarMonthBeforeCreatingSqlObject() {
+        ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
+                "HXZD-003-001",
+                "2026-01-01T00:00:00",
+                "2026-02-01T00:00:01"), executionContext(runtimeContext, state));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
+        assertThat(result.summary()).contains("2026-02-01T00:00");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
+    }
+
+    @Test
     void rejectsMissingFieldMappingBeforeSqlGeneration() {
         Map<String, Object> missing = new LinkedHashMap<>(confirmedMapping());
         Map<String, Object> fields = new LinkedHashMap<>((Map<String, Object>) missing.get("fields"));
@@ -109,7 +123,7 @@ class IndicatorSqlToolsTest {
         missing.put("fields", fields);
         when(rules.fieldMapping(anyString(), anyString(), isNull())).thenReturn(missing);
         ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
-                "HXZD-003-001", "2026-01-01T00:00:00", "2026-04-01T00:00:00"),
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
 
         assertThat(result.ok()).isFalse();
@@ -127,7 +141,7 @@ class IndicatorSqlToolsTest {
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
 
         ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
-                "HXZD-003-001", "2026-01-01T00:00:00", "2026-04-01T00:00:00"),
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
 
         assertThat(result.ok()).isFalse();
@@ -139,7 +153,7 @@ class IndicatorSqlToolsTest {
     @Test
     void sqlObjectCannotCrossHospitalBoundary() {
         ToolResult prepared = tools.prepare(new IndicatorSqlTools.PrepareInput(
-                "HXZD-003-001", "2026-01-01T00:00:00", "2026-04-01T00:00:00"),
+                "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
         AgentRuntimeContext otherHospital = new AgentRuntimeContext(
                 new HospitalPrincipal("u1", "doctor", "h2", Set.of(), false, "login-session"),
@@ -276,7 +290,7 @@ class IndicatorSqlToolsTest {
     private static class StubBusinessQuery implements IndicatorBusinessQueryClient {
         @Override
         public List<Map<String, Object>> execute(String sql) {
-            assertThat(sql).contains("'h1'", "'2026-01-01 00:00:00'", "'2026-04-01 00:00:00'");
+            assertThat(sql).contains("'h1'", "'2026-01-01 00:00:00'", "'2026-02-01 00:00:00'");
             assertThat(sql).doesNotContain(":hospital_id", ":start_time", ":end_time");
             return List.of(Map.of(
                     "index_value", 25.0,

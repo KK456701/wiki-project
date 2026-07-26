@@ -38,6 +38,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
+import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.auth.HospitalAuthRepository;
@@ -185,7 +187,7 @@ public class IndicatorDetailService {
                 throw new IllegalArgumentException("明细 SQL 安全校验未通过：" + validation.message());
             }
             String executableSql = parameterBinder.bind(query.sql(), query.parameters());
-            List<Map<String, Object>> rows = businessQuery.execute(executableSql).stream()
+            List<Map<String, Object>> rows = executeForRun(context, executableSql).stream()
                     .map(IndicatorDetailService::normalizeRow)
                     .toList();
             if (rows.size() > properties.getMaxRows()) {
@@ -235,6 +237,23 @@ public class IndicatorDetailService {
                     HttpStatus.SERVICE_UNAVAILABLE,
                     exception);
         }
+    }
+
+    /**
+     * 双库复合运行的明细必须回到产生该聚合结果的数据源查询。普通历史运行仍走原来的
+     * 单库客户端，保持旧会话兼容；只有运行上下文明示 business/real source-id 时才
+     * 选择角色化 DBHub 工具。
+     */
+    private List<Map<String, Object>> executeForRun(RunContext context, String sql) {
+        if (businessQuery instanceof IndicatorDatabaseQueryClient roleClient) {
+            if (context.dbSource().equals(roleClient.sourceId(DatabaseRole.REAL))) {
+                return roleClient.execute(DatabaseRole.REAL, sql);
+            }
+            if (context.dbSource().equals(roleClient.sourceId(DatabaseRole.BUSINESS))) {
+                return roleClient.execute(DatabaseRole.BUSINESS, sql);
+            }
+        }
+        return businessQuery.execute(sql);
     }
 
     public DetailPage getPage(

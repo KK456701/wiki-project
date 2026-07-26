@@ -130,9 +130,9 @@ class AgentRunnerTest {
                   "goal": "解释急会诊及时到位率",
                   "target_indicator": {"raw_name": "transfer_within_48h_ratio"},
                   "time_expression": {
-                    "raw_text": "2026年1月至3月",
+                    "raw_text": "2026年1月",
                     "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-04-01T00:00:00"
+                    "end_time": "2026-02-01T00:00:00"
                   },
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
@@ -212,7 +212,7 @@ class AgentRunnerTest {
                   "time_expression": {
                     "raw_text": "沿用上一轮",
                     "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-07-23T00:00:00"
+                    "end_time": "2026-02-01T00:00:00"
                   },
                   "requested_outputs": ["caliber_explanation"],
                   "constraints": [],
@@ -239,7 +239,7 @@ class AgentRunnerTest {
                         null,
                         null,
                         "2026-01-01T00:00:00",
-                        "2026-07-23T00:00:00",
+                        "2026-02-01T00:00:00",
                         "RUN_001",
                         null,
                         java.util.List.of(),
@@ -372,7 +372,7 @@ class AgentRunnerTest {
                 new IndicatorBusinessQueryClient() {
                     @Override
                     public List<Map<String, Object>> execute(String sql) {
-                        assertThat(sql).contains("'hospital_001'", "'2026-01-01 00:00:00'", "'2026-04-01 00:00:00'");
+                        assertThat(sql).contains("'hospital_001'", "'2026-01-01 00:00:00'", "'2026-02-01 00:00:00'");
                         return List.of(Map.of(
                                 "index_value", 25.0,
                                 "numerator_count", 1,
@@ -400,9 +400,9 @@ class AgentRunnerTest {
                   "goal": "计算急会诊及时到位率",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
                   "time_expression": {
-                    "raw_text": "2026年1月至3月",
+                    "raw_text": "2026年1月",
                     "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-04-01T00:00:00"
+                    "end_time": "2026-02-01T00:00:00"
                   },
                   "requested_outputs": ["trial_result"],
                   "constraints": [],
@@ -425,7 +425,7 @@ class AgentRunnerTest {
         List<Map<String, Object>> events = new ArrayList<>();
 
         AgentRunResult result = runner.run(new AgentRunRequest(
-                "计算2026年1月至3月急会诊及时到位率", "session_001", "ollama-test", null,
+                "计算2026年1月急会诊及时到位率", "session_001", "ollama-test", null,
                 "request_001", "trace_001", "business_test", "{}", "",
                 new HospitalPrincipal(
                         "user_001", "doctor", "hospital_001", Set.of("indicator_detail_view"),
@@ -492,9 +492,9 @@ class AgentRunnerTest {
                   "goal": "解释急会诊及时到位率",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
                   "time_expression": {
-                    "raw_text": "2026年1月至3月",
+                    "raw_text": "2026年1月",
                     "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-04-01T00:00:00"
+                    "end_time": "2026-02-01T00:00:00"
                   },
                   "requested_outputs": ["definition", "formula"],
                   "constraints": [],
@@ -517,7 +517,7 @@ class AgentRunnerTest {
         List<Map<String, Object>> events = new ArrayList<>();
 
         AgentRunResult result = runner.run(new AgentRunRequest(
-                "计算2026-01-01到2026-03-31急会诊及时到位率", "session_001", "ollama-test", null,
+                "计算2026-01-01到2026-02-01急会诊及时到位率", "session_001", "ollama-test", null,
                 "request_001", "trace_001", "business_test", "{}", "",
                 new HospitalPrincipal(
                         "user_001", "doctor", "hospital_001", Set.of("indicator_detail_view"),
@@ -569,9 +569,9 @@ class AgentRunnerTest {
                   "goal": "解释 SQL 以及分子分母口径",
                   "target_indicator": {"raw_name": "急会诊及时到位率"},
                   "time_expression": {
-                    "raw_text": "沿用2026年1月至3月",
+                    "raw_text": "沿用2026年1月",
                     "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-04-01T00:00:00"
+                    "end_time": "2026-02-01T00:00:00"
                   },
                   "requested_outputs": ["prepared_sql_handle"],
                   "constraints": [],
@@ -597,7 +597,7 @@ class AgentRunnerTest {
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.answer())
                 .contains("本院生效口径", "分子口径：及时到位次数", "分母口径：急会诊总次数")
-                .contains("已校验 SQL", "2026-01-01 00:00:00", "2026-04-01 00:00:00")
+                .contains("已校验 SQL", "2026-01-01 00:00:00", "2026-02-01 00:00:00")
                 .contains("该请求只生成并校验 SQL，不执行数据库");
         assertThat(models.calls).isEqualTo(1);
     }
@@ -637,9 +637,9 @@ class AgentRunnerTest {
         var conversation = memory.open(principal, "session_followup");
         AgentRunState previousState = new AgentRunState();
         previousState.currentRuleId("HXZD-003-001");
-        previousState.statPeriod("2026-01-01 00:00:00", "2026-07-22 19:48:59");
+        previousState.statPeriod("2026-01-01 00:00:00", "2026-02-01 00:00:00");
         memory.appendAssistant(conversation, principal,
-                "急会诊及时到位率统计区间为2026-01-01 00:00:00至2026-07-22 19:48:59。",
+                "急会诊及时到位率统计区间为2026-01-01 00:00:00至2026-02-01 00:00:00。",
                 previousState);
         AgentRunner runner = new AgentRunner(
                 new ModelRequestPlanner(models, modelRegistry, properties, new PromptCatalog(), objectMapper),
@@ -658,7 +658,7 @@ class AgentRunnerTest {
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.answer())
                 .contains("分子口径：及时到位次数", "分母口径：急会诊总次数")
-                .contains("2026-01-01 00:00:00", "2026-07-22 19:48:59", "已校验 SQL");
+                .contains("2026-01-01 00:00:00", "2026-02-01 00:00:00", "已校验 SQL");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
                 .contains("followup_plan_resolve")

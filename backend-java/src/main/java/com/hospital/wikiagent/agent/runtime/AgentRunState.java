@@ -32,6 +32,7 @@ public class AgentRunState {
     private final List<ToolResult> lastToolResults = new ArrayList<>();
     private final Map<String, ToolResult> toolResultCache = new HashMap<>();
     private final Map<String, Integer> toolCallCounts = new LinkedHashMap<>();
+    private final Map<String, ExtractionReceipt> extractionReceipts = new LinkedHashMap<>();
     private Consumer<WorkflowProgress> progressReporter = progress -> { };
     private String lastIntent;
     private String lastRuleName;
@@ -173,6 +174,20 @@ public class AgentRunState {
     }
 
     /**
+     * 单个指标子任务在同一统计周期内只允许完成一次源数据抽取。候选口径和后续
+     * 明细诊断复用该安全回执，避免重复触发写真实库的外部接口。
+     */
+    public ExtractionReceipt extractionReceipt(String key) {
+        return key == null ? null : extractionReceipts.get(key);
+    }
+
+    public void extractionReceipt(String key, ExtractionReceipt receipt) {
+        if (key != null && !key.isBlank() && receipt != null) {
+            extractionReceipts.put(key, receipt);
+        }
+    }
+
+    /**
      * 注入单轮、非持久化的 Workflow 进度观察器。领域工具只上报安全汇总，不能在这里
      * 传递 SQL 正文或患者级行。
      */
@@ -217,6 +232,15 @@ public class AgentRunState {
             safeOutput = safeOutput == null ? Map.of() : Map.copyOf(safeOutput);
         }
     }
+
+    public record ExtractionReceipt(
+            String extractionId,
+            long extractedRows,
+            long insertedRows,
+            long updatedRows,
+            long rejectedRows,
+            String sourceSnapshotId,
+            String targetSnapshotId) {}
 
     private static String normalize(String value) {
         return value == null || value.isBlank() ? null : value.strip();
