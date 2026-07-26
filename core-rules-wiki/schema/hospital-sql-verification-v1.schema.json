@@ -20,6 +20,16 @@
           "field_contract": {"type": "object"},
           "field_mapping": {"type": "object"},
           "result_mapping": {"type": "object"},
+          "dual_database_contract": {
+            "type": "object",
+            "required": [
+              "schema_compatible", "verified_source_roles", "source_verification",
+              "overview_result_mapping", "department_comparison_key",
+              "patient_comparison_key", "numerator_classification_field",
+              "department_compare_fields", "patient_compare_fields",
+              "allowed_compare_fields"
+            ]
+          },
           "capabilities": {
             "type": "object",
             "additionalProperties": {

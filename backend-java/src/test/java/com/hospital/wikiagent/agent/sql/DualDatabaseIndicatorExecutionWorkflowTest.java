@@ -33,6 +33,7 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 
 class DualDatabaseIndicatorExecutionWorkflowTest {
     private JdbcTemplate jdbc;
+    private ExtractionProperties extractionProperties;
     private CountingExtractionGateway extraction;
     private StubDualQueryClient database;
     private DualDatabaseIndicatorExecutionWorkflow workflow;
@@ -46,12 +47,12 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
                 .build();
         jdbc = new JdbcTemplate(embedded);
         ObjectMapper mapper = JsonMapper.builder().build();
-        ExtractionProperties properties = new ExtractionProperties();
-        properties.setMode(ExtractionProperties.Mode.REQUIRED);
+        extractionProperties = new ExtractionProperties();
+        extractionProperties.setMode(ExtractionProperties.Mode.REQUIRED);
         extraction = new CountingExtractionGateway();
         database = new StubDualQueryClient();
         workflow = new DualDatabaseIndicatorExecutionWorkflow(
-                properties,
+                extractionProperties,
                 extraction,
                 new HospitalExecutionLock(),
                 database,
@@ -76,6 +77,23 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         assertThat(jdbc.queryForObject(
                 "SELECT comparison_status FROM med_dual_indicator_run", String.class))
                 .isEqualTo("matched");
+    }
+
+    @Test
+    void disabledExtractionStillRunsBothDatabasesWithoutCallingGateway() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        database.businessOverview = overview(11, 394);
+        database.realOverview = overview(11, 394);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("comparison_status", "matched")
+                .containsEntry("extraction_id", "");
+        assertThat(extraction.calls).isZero();
+        assertThat(database.calls).containsExactly("business:overview", "real:overview");
     }
 
     @Test

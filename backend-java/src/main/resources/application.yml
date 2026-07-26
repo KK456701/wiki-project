@@ -54,7 +54,7 @@ wiki:
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     extraction:
-      # 同事的真实抽取接口适配器合并前保持 disabled；required 模式绝不允许伪造成功。
+      # disabled 只跳过抽取，普通计算仍执行双库；required 模式绝不允许伪造抽取成功。
       mode: ${AGENT_EXTRACTION_MODE:disabled}
     upload:
       root: runtime/uploads

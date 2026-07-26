@@ -353,13 +353,18 @@ public class IndicatorSqlTools {
         if (!validator.validate(sql.sqlText(), text(currentMapping.get("main_table"))).ok()) {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
-        boolean dualRequired = dualDatabaseWorkflow != null && dualDatabaseWorkflow.required();
+        /*
+         * 普通指标计算固定走双库 Workflow。抽取开关只决定 Workflow 内部是否先调用
+         * 抽取网关，不能再让 disabled 模式退回旧的业务库单库查询。
+         */
+        boolean dualExecution =
+                dualDatabaseWorkflow != null && dualDatabaseWorkflow.enabled();
         if ("win60_qa_991827".equalsIgnoreCase(sql.dbSourceId())) {
             return failure("unavailable", "DB_SOURCE_RETIRED",
                     "该 SQL 对象引用的数据库已经退役，不能重新执行；请重新发起指标计算。",
                     false);
         }
-        if (!dualRequired && sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
+        if (!dualExecution && sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
                 && !sql.dbSourceId().equals(businessQuery.sourceId())) {
             return failure("error", "TRIAL_SOURCE_MISMATCH", "试运行数据源与 SQL 对象不一致，结果已拒绝。", false);
         }
@@ -376,7 +381,7 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_PARAMETER_MISSING", "SQL 运行参数不完整，请重新准备。", false);
         }
 
-        if (dualRequired) {
+        if (dualExecution) {
             return dualDatabaseWorkflow.execute(sql, currentRule, executable, bound, context);
         }
 

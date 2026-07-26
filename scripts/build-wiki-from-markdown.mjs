@@ -504,8 +504,8 @@ function sqlParameters(sql) {
 
 function resultMappingCandidates(sql) {
   const aliases = [...normalizeSql(sql).matchAll(
-    /\bAS\s+(?:\[([^\]]+)\]|"([^"]+)"|([^\s,()]+))/gi,
-  )].map(match => match[1] || match[2] || match[3]).filter(Boolean);
+    /\bAS\s+(?:\[([^\]]+)\]|"([^"]+)"|'([^']+)'|([^\s,()]+))/gi,
+  )].map(match => match[1] || match[2] || match[3] || match[4]).filter(Boolean);
   const pick = pattern => aliases.find(alias => pattern.test(alias)) || null;
   return {
     numerator_count: pick(/(?:^|_)numerator(?:_count)?$|分子/i),
@@ -605,6 +605,7 @@ function runtimeProfile(indicator, profile) {
     department_detail: validateSqlCapability('department_detail', profile.sqlDepartment),
     patient_detail: validateSqlCapability('patient_detail', profile.sqlPatientDetail),
   };
+  const overviewMappingCandidates = resultMappingCandidates(profile.sqlOverview || '');
   return {
     profile_id: profileId,
     profile_name: profile.title,
@@ -648,7 +649,7 @@ function runtimeProfile(indicator, profile) {
       numerator_count: null,
       denominator_count: null,
     },
-    result_mapping_candidates: resultMappingCandidates(profile.sqlOverview || ''),
+    result_mapping_candidates: overviewMappingCandidates,
     sql_capabilities: sqlCapabilities,
     // 双库查询必须由目标医院验证同构对象和比较键后显式开启。生成器绝不根据
     // SQL 文本猜测两库兼容，从而避免尚未验证的 Profile 被误用于生产比较。
@@ -671,8 +672,8 @@ function runtimeProfile(indicator, profile) {
         real: { metadata_status: 'unverified', compile_status: 'unverified' },
       },
       overview_result_mapping: {
-        numerator_count: 'numerator_count',
-        denominator_count: 'denominator_count',
+        numerator_count: overviewMappingCandidates.numerator_count || '',
+        denominator_count: overviewMappingCandidates.denominator_count || '',
       },
       department_comparison_key: '',
       patient_comparison_key: '',

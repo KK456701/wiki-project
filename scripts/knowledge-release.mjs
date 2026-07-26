@@ -282,17 +282,31 @@ function applyHospitalVerification(candidateRoot, snapshot, verificationPath) {
         object_hash: proof.object_hash || null,
       };
     }
+    applyDualDatabaseVerification(
+      target.profile,
+      verified.dual_database_contract,
+      candidate.hospital_id,
+    );
     const result = target.profile.result_mapping || {};
     const fields = target.profile.field_contract?.business_fields || {};
     const mapping = target.profile.field_mapping?.fields || {};
     const overviewExecutable = target.profile.sql_capabilities?.overview?.status === 'executable';
-    if (overviewExecutable && Object.keys(fields).length > 0 && Object.keys(mapping).length > 0
+    const departmentExecutable =
+      target.profile.sql_capabilities?.department_detail?.status === 'executable';
+    const patientExecutable =
+      target.profile.sql_capabilities?.patient_detail?.status === 'executable';
+    const dualExecutable =
+      target.profile.dual_database_contract?.schema_compatible === true;
+    if (overviewExecutable && departmentExecutable && patientExecutable && dualExecutable
+        && Object.keys(fields).length > 0 && Object.keys(mapping).length > 0
         && result.index_value && result.numerator_count && result.denominator_count) {
       target.profile.execution_status = 'executable';
       target.profile.execution_blockers = [];
     } else {
       target.profile.execution_status = 'documentation_only';
-      target.profile.execution_blockers = ['目标医院验证尚未完成全部概览结果契约'];
+      target.profile.execution_blockers = [
+        '目标医院尚未完成双库概览、科室明细、患者明细与结果契约验证',
+      ];
     }
     touched.add(target.runtimePath);
   }
@@ -316,6 +330,75 @@ function applyHospitalVerification(candidateRoot, snapshot, verificationPath) {
   candidate.verification_sha256 = manifest.dbhub_verification.verification_sha256;
   candidate.verification_applied_at = manifest.dbhub_verification.applied_at;
   writeJson(join(candidateRoot, 'candidate.json'), candidate);
+}
+
+/**
+ * 合并双库验证时只接受固定角色、验证状态、结果列与比较字段，不允许验证文件
+ * 覆盖 SQL 引用或 SQL 哈希。这样医院验证只能提升当前候选里的同一份 SQL，
+ * 不能借验证摘要替换实际执行对象。
+ */
+function applyDualDatabaseVerification(profile, proof, hospitalId) {
+  if (!proof) return;
+  const roles = new Set(proof.verified_source_roles || []);
+  const sourceVerification = proof.source_verification || {};
+  const sourceValidated = role => sourceVerification[role]?.metadata_status === 'validated'
+    && sourceVerification[role]?.compile_status === 'validated';
+  if (proof.schema_compatible !== true
+      || !roles.has('business') || !roles.has('real')
+      || !sourceValidated('business') || !sourceValidated('real')) {
+    throw new Error(`${profile.profile_id}的双库元数据或编译验证未完成`);
+  }
+  const result = proof.overview_result_mapping || {};
+  if (!String(result.numerator_count || '').trim()
+      || !String(result.denominator_count || '').trim()) {
+    throw new Error(`${profile.profile_id}缺少双库概览分子或分母结果列`);
+  }
+  const departmentKey = String(proof.department_comparison_key || '').trim();
+  const patientKey = String(proof.patient_comparison_key || '').trim();
+  const classification = String(proof.numerator_classification_field || '').trim();
+  const allowed = new Set((proof.allowed_compare_fields || []).map(String));
+  const requested = [
+    ...(proof.department_compare_fields || []),
+    ...(proof.patient_compare_fields || []),
+    classification,
+  ].map(String).filter(Boolean);
+  if (!departmentKey || !patientKey || !classification || allowed.size === 0
+      || requested.some(field => !allowed.has(field))) {
+    throw new Error(`${profile.profile_id}的双库明细比较键或允许字段不完整`);
+  }
+  const current = profile.dual_database_contract || {};
+  profile.dual_database_contract = {
+    ...current,
+    schema_compatible: true,
+    verified_source_roles: ['business', 'real'],
+    business_source_role: 'business',
+    real_source_role: 'real',
+    source_verification: {
+      business: {
+        metadata_status: 'validated',
+        compile_status: 'validated',
+      },
+      real: {
+        metadata_status: 'validated',
+        compile_status: 'validated',
+      },
+    },
+    overview_result_mapping: {
+      numerator_count: String(result.numerator_count),
+      denominator_count: String(result.denominator_count),
+    },
+    department_comparison_key: departmentKey,
+    patient_comparison_key: patientKey,
+    numerator_classification_field: classification,
+    department_compare_fields: (proof.department_compare_fields || []).map(String),
+    patient_compare_fields: (proof.patient_compare_fields || []).map(String),
+    allowed_compare_fields: [...allowed],
+    verification_blockers: [],
+    verification: {
+      hospital_id: hospitalId,
+      verified_at: proof.verified_at || new Date().toISOString(),
+    },
+  };
 }
 
 function pointerPath(scope, hospitalId) {

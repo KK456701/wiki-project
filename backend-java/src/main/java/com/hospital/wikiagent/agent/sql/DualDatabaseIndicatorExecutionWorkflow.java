@@ -70,7 +70,17 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         this.diagnosisReports = diagnosisReports;
     }
 
-    public boolean required() {
+    /**
+     * 双库 Workflow 是普通指标计算的固定执行路径，不再由抽取开关控制。
+     */
+    public boolean enabled() {
+        return true;
+    }
+
+    /**
+     * 抽取接口是否是本轮双库计算的强制前置步骤。
+     */
+    public boolean extractionRequired() {
         return extractionProperties.required();
     }
 
@@ -80,12 +90,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             String executableOverview,
             Map<String, Object> boundParameters,
             ToolExecutionContext context) {
-        if (!required()) {
-            return ToolResult.failure(
-                    "unavailable", "DUAL_DATABASE_WORKFLOW_DISABLED",
-                    "双库计算尚未启用。", false);
-        }
-        if (!extractionGateway.available()) {
+        if (extractionRequired() && !extractionGateway.available()) {
             return ToolResult.failure(
                     "unavailable", "EXTRACTION_GATEWAY_UNAVAILABLE",
                     "源数据抽取接口尚未接入，不能执行双库计算。", false);
@@ -122,7 +127,8 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         }
 
         String sourceSql = text(rule.get("source_extract_sql"));
-        if (sourceSql.isBlank() || !validator.validateReadOnly(sourceSql).ok()) {
+        if (extractionRequired()
+                && (sourceSql.isBlank() || !validator.validateReadOnly(sourceSql).ok())) {
             return ToolResult.failure(
                     "validation_failed", "SOURCE_EXTRACT_SQL_UNAVAILABLE",
                     "当前 Profile 的源数据 SQL 尚未通过可执行校验。", false);
@@ -132,18 +138,25 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     "validation_failed", "SQL_REVALIDATION_FAILED",
                     "概览 SQL 在双库执行前未通过只读安全校验。", false);
         }
-        report(context, "source_extraction_prepare", "准备源数据抽取", "success", 0,
-                Map.of(
-                        "source_sql_sha256", sha256(sourceSql),
-                        "release_id", text(rule.get("knowledge_release_id")),
-                        "rule_id", sql.ruleId(),
-                        "profile_id", text(rule.get("profile_id"))));
+        Map<String, Object> extractionPreparation = new LinkedHashMap<>();
+        extractionPreparation.put(
+                "mode", extractionRequired() ? "required" : "disabled");
+        extractionPreparation.put("release_id", text(rule.get("knowledge_release_id")));
+        extractionPreparation.put("rule_id", sql.ruleId());
+        extractionPreparation.put("profile_id", text(rule.get("profile_id")));
+        if (!sourceSql.isBlank()) {
+            extractionPreparation.put("source_sql_sha256", sha256(sourceSql));
+        }
+        report(context, "source_extraction_prepare", "准备源数据抽取",
+                extractionRequired() ? "success" : "skipped", 0,
+                extractionPreparation);
 
         try (HospitalExecutionLock.Lease ignored =
                      executionLock.acquire(context.agentContext().hospitalId())) {
-            ExtractionResult extraction = extract(
-                    sql, rule, sourceSql, boundParameters, context);
-            if (!extraction.successful()) {
+            ExtractionResult extraction = extractionRequired()
+                    ? extract(sql, rule, sourceSql, boundParameters, context)
+                    : skippedExtraction(context);
+            if (!extraction.allowsDualExecution()) {
                 return ToolResult.failure(
                         "error",
                         blank(extraction.errorCode(), "SOURCE_EXTRACTION_FAILED"),
@@ -252,6 +265,30 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                             : "业务库与真实库结果不一致，已执行受控明细诊断。",
                     data);
         }
+    }
+
+    /**
+     * 抽取适配器尚未接入时生成显式的“已跳过”回执。
+     *
+     * <p>回执不包含抽取 ID、行数或快照，因此不会被误认为已经向真实库写入数据；
+     * 它仅记录本轮为何直接进入两个数据库的只读计算。</p>
+     */
+    private ExtractionResult skippedExtraction(ToolExecutionContext context) {
+        ExtractionResult result = new ExtractionResult(
+                "",
+                ExtractionResult.Status.SKIPPED,
+                0, 0, 0, 0,
+                java.time.Instant.now(),
+                "", "",
+                "",
+                "抽取接口未启用，本轮跳过抽取并继续执行双库只读核对。");
+        report(context, "source_data_extraction", "抽取数据到真实库",
+                "skipped", 0,
+                Map.of(
+                        "status", "skipped",
+                        "reason", "extraction_mode_disabled",
+                        "cache_reused", false));
+        return result;
     }
 
     private String saveDiagnosisReport(

@@ -78,7 +78,14 @@ test('当前来源稳定生成35项、45个Profile和169个SQL块', () => {
     assert.equal(dual.schema_compatible, false);
     assert.deepEqual(dual.verified_source_roles, []);
     assert.equal(dual.source_verification.business.metadata_status, 'unverified');
-    assert.equal(dual.overview_result_mapping.numerator_count, 'numerator_count');
+    assert.equal(
+      dual.overview_result_mapping.numerator_count,
+      '分子入院48小时内转科患者人次数',
+    );
+    assert.equal(
+      dual.overview_result_mapping.denominator_count,
+      '分母同期入院患者总人次数',
+    );
     assert.ok(dual.verification_blockers.includes('business_and_real_schema_not_verified'));
     const corrections = JSON.parse(readFileSync(
       join(output, 'sql-correction-manifest.json'),

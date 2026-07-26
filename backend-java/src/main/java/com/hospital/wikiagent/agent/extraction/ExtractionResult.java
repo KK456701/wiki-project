@@ -26,8 +26,20 @@ public record ExtractionResult(
         return status == Status.SUCCESS;
     }
 
+    /**
+     * 判断双库只读计算能否继续。
+     *
+     * <p>{@link Status#SKIPPED} 只表示部署尚未接入抽取接口，运行时按配置跳过了抽取；
+     * 它不会伪装成一次成功抽取，但允许业务库和真实库继续进行只读核对。
+     * 强制抽取模式仍然只接受 {@link Status#SUCCESS}。</p>
+     */
+    public boolean allowsDualExecution() {
+        return status == Status.SUCCESS || status == Status.SKIPPED;
+    }
+
     public enum Status {
         SUCCESS,
+        SKIPPED,
         FAILED
     }
 }

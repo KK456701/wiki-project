@@ -46,8 +46,9 @@ flowchart TD
     DBTASK -->|"否"| E
     DBTASK -->|"是"| PERIOD{"统计区间 ≤ 1个自然月"}
     PERIOD -->|"否"| ASK
-    PERIOD -->|"是且双库关闭"| E
-    PERIOD -->|"是且双库强制"| EX["抽取接口：每子任务一次"]
+    PERIOD -->|"是且抽取关闭"| SKIP["显式跳过抽取"]
+    PERIOD -->|"是且抽取强制"| EX["抽取接口：每子任务一次"]
+    SKIP --> E
     EX --> BO["业务库执行 overview"]
     BO --> RO["真实库执行同一 overview"]
     RO --> MATCH{"分子、分母均相同"}
@@ -82,7 +83,7 @@ flowchart TD
 | `preview_rule_change` | 只读展示口径差异 | 不创建草稿、不审批、不发布 |
 | `inspect_indicator_implementation` | 检查 Profile 状态、字段契约和元数据 | 核心 SQL 安全前置检查，不是实施工作台 |
 | `prepare_indicator_sql` | 从当前 Profile 生成受控 SQL 对象 | 仅 `executable` Profile |
-| `trial_run_indicator_sql` | 禁用抽取时执行现有单库链；强制模式进入双库 Workflow | 先抽取一次，再用相同 SQL/参数严格串行核对两库 |
+| `trial_run_indicator_sql` | 固定进入双库 Workflow | 禁用抽取时直接核对两库；强制抽取时先抽取一次，再用相同 SQL/参数严格串行核对两库 |
 | `resolve_indicator_caliber` | 解析候选/假设口径 | 只从已审批可执行 Profile 中选择 |
 | `prepare_indicator_caliber_sql` | 准备候选口径 SQL | 禁止用户覆盖字段和 SQL |
 | `trial_run_indicator_caliber_sql` | 试运行候选口径 | 结果明确标记为模拟口径 |
@@ -121,7 +122,7 @@ Java 不再读取旧 MQSI 规则表，也不把未实现、无 SQL、字段不�
 - 患者明细只保存在短期受权限保护对象中。
 - 业务 SQL 只能经服务端模板、字段/元数据预检、只读校验和 DBHub 执行。
 - 所有数据库型指标请求使用左闭右开区间，结束时间不得超过开始时间顺延一个自然月。
-- 强制双库模式固定执行“抽取一次 → 业务库概览 → 真实库概览”；分子、分母一致时不查询明细。
+- 普通计算固定执行“可选抽取一次 → 业务库概览 → 真实库概览”；分子、分母一致时不查询明细。
 - 分子或分母不同才执行两库科室和患者明细；仅比例相同不视为一致。
 - 双库差异报告只保存安全摘要和两侧运行 ID；逐条差异 Excel 在授权用户确认后从
   两个短期明细快照生成，不在 Trace 或 Evidence 中保存患者行。
