@@ -33,7 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Component
 public class HybridIndicatorResolver {
-    public static final String VERSION = "hybrid-indicator-resolver-java-v1";
+    public static final String VERSION = "hybrid-indicator-resolver-java-v2";
     private static final double SEMANTIC_THRESHOLD = 0.68;
     private static final double SEMANTIC_MARGIN = 0.12;
     private static final int MAX_INDICATORS = 3;
@@ -170,6 +170,20 @@ public class HybridIndicatorResolver {
 
     private List<CatalogItem> catalog(String hospitalId) {
         Map<String, CatalogBuilder> byRule = new LinkedHashMap<>();
+
+        // 当前发布的 HXZD Wiki 是指标身份的唯一权威目录。术语库只允许为这些指标
+        // 补充已审核别名，不能把历史 MQSI 规则重新加入候选集，否则名称精确匹配
+        // 会先占用文本片段，导致后续 Wiki 中的新编号永远没有机会被选择。
+        for (Map<String, String> item : rules.activeIndicatorNames(hospitalId, 500)) {
+            String ruleId = text(item.get("rule_id"));
+            String name = text(item.get("rule_name"));
+            if (ruleId.isBlank() || name.isBlank()) continue;
+            CatalogBuilder builder = byRule.computeIfAbsent(ruleId,
+                    ignored -> new CatalogBuilder(ruleId, "RULE:" + ruleId, name));
+            if (builder.canonicalName.isBlank()) builder.canonicalName = name;
+            builder.names.add(name);
+        }
+
         Map<String, Map<String, Object>> concepts = new LinkedHashMap<>();
         try {
             for (Map<String, Object> concept : terminologyRepository.concepts()) {
@@ -192,23 +206,18 @@ public class HybridIndicatorResolver {
                 Map<String, Object> concept = concepts.get(code);
                 String ruleId = text(link.get("index_code"));
                 if (concept == null || ruleId.isBlank()) continue;
-                CatalogBuilder builder = byRule.computeIfAbsent(ruleId,
-                        ignored -> new CatalogBuilder(ruleId, code,
-                                text(concept.get("canonical_name"))));
-                builder.names.add(builder.canonicalName);
+                CatalogBuilder builder = byRule.get(ruleId);
+                if (builder == null) {
+                    // 历史术语发布包可能仍关联已下线的 MQSI 编号。该链接仅被忽略，
+                    // 不删除历史数据，也不允许它污染当前运行时检索目录。
+                    continue;
+                }
+                String terminologyName = text(concept.get("canonical_name"));
+                if (!terminologyName.isBlank()) builder.names.add(terminologyName);
                 builder.names.addAll(aliases.getOrDefault(code, List.of()));
             }
         } catch (RuntimeException ignored) {
             // 生效指标目录仍可单独作为完整兜底。
-        }
-        for (Map<String, String> item : rules.activeIndicatorNames(hospitalId, 500)) {
-            String ruleId = text(item.get("rule_id"));
-            String name = text(item.get("rule_name"));
-            if (ruleId.isBlank() || name.isBlank()) continue;
-            CatalogBuilder builder = byRule.computeIfAbsent(ruleId,
-                    ignored -> new CatalogBuilder(ruleId, "RULE:" + ruleId, name));
-            if (builder.canonicalName.isBlank()) builder.canonicalName = name;
-            builder.names.add(name);
         }
         return byRule.values().stream().map(CatalogBuilder::build).toList();
     }

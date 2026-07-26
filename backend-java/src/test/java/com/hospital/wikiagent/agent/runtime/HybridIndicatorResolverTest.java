@@ -75,6 +75,36 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
+    void staleTerminologyRuleLinkCannotOverrideCurrentWikiRuleId() {
+        Fixture fixture = fixture(List.of(
+                rule("HXZD-001-001", "患者入院48小时内转科的比例")), null);
+        when(fixture.repository().concepts()).thenReturn(List.of(Map.of(
+                "concept_code", "IND_MQSI2025_001",
+                "concept_type", "indicator",
+                "canonical_name", "患者入院48小时内转科的比例")));
+        when(fixture.repository().ruleLinks()).thenReturn(List.of(Map.of(
+                "concept_code", "IND_MQSI2025_001",
+                "index_code", "MQSI2025_001")));
+        when(fixture.terminology().normalize(anyString(), anyString())).thenReturn(Map.of(
+                "matches", List.of(Map.of(
+                        "matched_text", "患者入院48小时内转科的比例",
+                        "canonical_name", "患者入院48小时内转科的比例",
+                        "concept_code", "IND_MQSI2025_001",
+                        "linked_rule_ids", List.of("MQSI2025_001"))),
+                "release_version", "stale-term-v1"));
+
+        var result = fixture.resolver().resolve(
+                "统计患者入院48小时内转科的比例，从2026年1月1日到2026年2月1日",
+                "hospital_001", "ollama-test", "trace-stale", "root",
+                AgentRunObserver.noop());
+
+        assertThat(result.indicators()).singleElement().satisfies(value -> {
+            assertThat(value.ruleId()).isEqualTo("HXZD-001-001");
+            assertThat(value.canonicalName()).isEqualTo("患者入院48小时内转科的比例");
+        });
+    }
+
+    @Test
     void llmMayOnlyChooseAnAllowlistedCandidate() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
         when(models.complete(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(Duration.class)))
@@ -140,12 +170,16 @@ class HybridIndicatorResolverTest {
         ObjectMapper mapper = JsonMapper.builder().build();
         return new Fixture(new HybridIndicatorResolver(
                 terminology, repository, rules, models, new AgentModelRegistry(properties),
-                properties, new PromptCatalog(), mapper), models);
+                properties, new PromptCatalog(), mapper), models, repository, terminology);
     }
 
     private static Map<String, String> rule(String id, String name) {
         return Map.of("rule_id", id, "rule_name", name);
     }
 
-    private record Fixture(HybridIndicatorResolver resolver, AgentModelInvoker models) { }
+    private record Fixture(
+            HybridIndicatorResolver resolver,
+            AgentModelInvoker models,
+            TerminologyRepository repository,
+            TerminologyService terminology) { }
 }
