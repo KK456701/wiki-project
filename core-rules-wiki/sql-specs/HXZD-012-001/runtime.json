@@ -148,6 +148,7 @@
         "target_direction": "<="
       },
       "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
         "overview_result_mapping": {
           "index_value": "index_value",
           "component_left": "分子-四级手术并发症发生率",

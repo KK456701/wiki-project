@@ -150,6 +150,7 @@
         "target_direction": "<="
       },
       "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
         "overview_result_mapping": {
           "index_value": "监测情况",
           "sample_count": "sample_count",
