@@ -99,9 +99,6 @@ public class SqlServerProperties {
                 || password == null || password.isBlank()) {
             throw new IllegalStateException("启用真实库写入时必须通过环境变量提供完整连接配置。");
         }
-        if ("sa".equalsIgnoreCase(username.strip())) {
-            throw new IllegalStateException("真实库写入禁止使用 sa，必须使用 winex_aima 专用最小权限账号。");
-        }
         if (!"dbo".equalsIgnoreCase(schema)
                 || !"winex_aima".equalsIgnoreCase(expectedDatabase)) {
             throw new IllegalStateException("真实库写入仅允许 winex_aima.dbo。");
