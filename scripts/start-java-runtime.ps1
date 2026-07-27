@@ -122,7 +122,7 @@ if (Test-Path -LiteralPath $ConfigPath) {
     $proxy = Get-YamlScalar $config 'java_http_proxy_url'
     if ($proxy) {
         $uri = New-Object System.Uri($proxy)
-        $proxyOptions = '-Dhttp.proxyHost={0} -Dhttp.proxyPort={1} -Dhttps.proxyHost={0} -Dhttps.proxyPort={1} -Dhttp.nonProxyHosts="localhost|127.*"' -f $uri.Host, $uri.Port
+        $proxyOptions = '-Dhttp.proxyHost={0} -Dhttp.proxyPort={1} -Dhttps.proxyHost={0} -Dhttps.proxyPort={1} -Dhttp.nonProxyHosts="localhost|127.*|172.16.*|172.17.*|10.*|192.168.*"' -f $uri.Host, $uri.Port
         $env:JAVA_TOOL_OPTIONS = (($env:JAVA_TOOL_OPTIONS, $proxyOptions) -join ' ').Trim()
     }
 }

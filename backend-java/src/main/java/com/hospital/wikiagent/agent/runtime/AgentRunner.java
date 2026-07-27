@@ -1813,8 +1813,15 @@ public class AgentRunner {
         // 2) RULE_EXPLANATION → TRIAL_RUN：用户提供了具体时间范围（提供时间意味着想算出结果）
         if (plan.intent() == PlanIntent.RULE_EXPLANATION
                 && hasExplicitTimeRange(plan, compact)) {
-            return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+            RequestPlan upgraded = plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
                     .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT));
+            // Planner 认定为解释意图时可能未提取时间，升级后必须把原文时间带入
+            RequestPlan.TimeExpression time = upgraded.timeExpression();
+            if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null) {
+                upgraded = upgraded.withTimeExpression(
+                        new RequestPlan.TimeExpression(query, null, null));
+            }
+            return upgraded;
         }
 
         return plan;
