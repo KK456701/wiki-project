@@ -3,6 +3,7 @@ package com.hospital.wikiagent.agent.extraction;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import cn.hutool.core.lang.Snowflake;
 import cn.hutool.core.util.StrUtil;
 
 import org.slf4j.Logger;
@@ -44,6 +46,8 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
     private static final int SQL_SERVER_MAX_PARAMS = 2000;
     private static final int DEFAULT_INSERT_BATCH_ROWS = 200;
     private static final int ENCOUNTER_ID_BATCH_SIZE = 500;
+
+    private final Snowflake snowflake = new Snowflake(1, 1);
 
     /** 患者维度表：按 ENCOUNTER_ID 过滤抽取。 */
     private static final Set<String> PATIENT_TABLES = Set.of(
@@ -185,7 +189,7 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
         }
     }
 
-    // ==================== 数据写入 ====================
+    // ==================== 数据写入（逻辑同 SyncDataService） ====================
 
     private void replaceTableData(String tableName, List<Map<String, Object>> rows) {
         String qualified = qualifyTable(tableName);
@@ -195,29 +199,56 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
         if (rows == null || rows.isEmpty()) {
             return;
         }
-        List<Map<String, Object>> normalized = rows.stream()
-                .map(this::convertKeysToUpperSnakeCase)
+        // 生成主键列（表名_ID），用 Snowflake 填充（同 SyncDataService 逻辑）
+        String pkColumn = tableName.toUpperCase(Locale.ROOT) + "_ID";
+        List<Map<String, Object>> converted = rows.stream()
+                .map(row -> {
+                    Map<String, Object> newRow = convertKeysToUpperSnakeCase(row);
+                    newRow.put(pkColumn, snowflake.nextId());
+                    return newRow;
+                })
                 .collect(Collectors.toList());
-        batchInsert(qualified, normalized);
+        insertRows(tableName, converted);
     }
 
-    private void batchInsert(String qualifiedTable, List<Map<String, Object>> rows) {
-        if (rows.isEmpty()) {
+    /** 按目标表实际列插入（同 SyncDataService.insertRows）。 */
+    private void insertRows(String tableName, List<Map<String, Object>> rows) {
+        List<String> columns = resolveLocalColumns(tableName);
+        if (columns.isEmpty()) {
+            log.warn("表 {} 无法解析列，跳过插入", tableName);
             return;
         }
-        // 从第一行推断列名，再与目标表实际列取交集（避免 MCP 返回目标表不存在的列）
-        Set<String> targetCols = getTargetTableColumns(qualifiedTable);
-        List<String> columns = new ArrayList<>(rows.get(0).keySet());
-        if (!targetCols.isEmpty()) {
-            columns = columns.stream()
-                    .filter(c -> targetCols.contains(c.toUpperCase(Locale.ROOT)))
-                    .collect(Collectors.toList());
-        }
-        if (columns.isEmpty()) {
-            log.warn("表 {} 无匹配列，跳过插入", qualifiedTable);
+        if (rows == null || rows.isEmpty()) {
             return;
         }
 
+        // 将每行规范化为目标表全列（缺失的填 null → DEFAULT）
+        List<Map<String, Object>> normalizedRows = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            if (row == null || row.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> upperRow = new HashMap<>(row.size());
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                if (entry.getKey() != null) {
+                    upperRow.put(entry.getKey().toUpperCase(Locale.ROOT), entry.getValue());
+                }
+            }
+            Map<String, Object> fullRow = new LinkedHashMap<>(columns.size());
+            for (String column : columns) {
+                fullRow.put(column, upperRow.get(column));
+            }
+            normalizedRows.add(fullRow);
+        }
+        if (normalizedRows.isEmpty()) {
+            return;
+        }
+        batchInsert(qualifyTable(tableName), columns, normalizedRows);
+        log.info("插入 {} 行到 {}", normalizedRows.size(), tableName);
+    }
+
+    /** 批量 INSERT，null 值用 DEFAULT（同 SyncDataService.batchInsert）。 */
+    private void batchInsert(String qualifiedTable, List<String> columns, List<Map<String, Object>> rows) {
         int maxRowsPerBatch = Math.max(1, Math.min(
                 DEFAULT_INSERT_BATCH_ROWS,
                 SQL_SERVER_MAX_PARAMS / columns.size()));
@@ -247,24 +278,38 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
                     + String.join(",", valueGroups);
             sqlServerJdbcTemplate.update(sql, params.toArray());
         }
-        log.info("批量插入 {} 行到 {} ({} 列)", rows.size(), qualifiedTable, columns.size());
     }
 
-    /** 查询目标表的实际列名（大写），用于过滤 MCP 返回的多余列。 */
-    private Set<String> getTargetTableColumns(String qualifiedTable) {
-        try {
-            // qualifiedTable 格式: dbo.TABLE_NAME
-            String[] parts = qualifiedTable.split("\\.");
-            String schema = parts.length > 1 ? parts[0] : "dbo";
-            String table = parts.length > 1 ? parts[1] : parts[0];
-            List<String> cols = sqlServerJdbcTemplate.queryForList(
-                    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",
-                    String.class, schema, table);
-            return cols.stream().map(c -> c.toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
-        } catch (Exception e) {
-            log.warn("查询表 {} 列信息失败，将使用全部列: {}", qualifiedTable, e.getMessage());
-            return Set.of();
+    /** 解析目标表实际列名（大写，按序号排列），带缓存。 */
+    private final Map<String, List<String>> localColumnCache = new HashMap<>();
+
+    private List<String> resolveLocalColumns(String tableName) {
+        String cacheKey = tableName == null ? "" : tableName.toUpperCase(Locale.ROOT);
+        if (localColumnCache.containsKey(cacheKey)) {
+            return localColumnCache.get(cacheKey);
         }
+        List<String> columns = new ArrayList<>();
+        try {
+            String schema = resolveSchema();
+            List<String> names = sqlServerJdbcTemplate.queryForList(
+                    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                            + "WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION",
+                    String.class, schema, tableName);
+            for (String name : names) {
+                if (name != null && !name.isBlank()) {
+                    columns.add(name.toUpperCase(Locale.ROOT));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析表 {} 列失败: {}", tableName, e.getMessage());
+        }
+        localColumnCache.put(cacheKey, columns);
+        return columns;
+    }
+
+    private String resolveSchema() {
+        String schema = sqlServerProperties.getSchema();
+        return (schema == null || schema.isBlank()) ? "dbo" : schema;
     }
 
     // ==================== 辅助方法 ====================
@@ -300,11 +345,7 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
     }
 
     private String qualifyTable(String tableName) {
-        String schema = sqlServerProperties.getSchema();
-        if (schema == null || schema.isBlank()) {
-            schema = "dbo";
-        }
-        return schema + "." + tableName;
+        return resolveSchema() + "." + tableName;
     }
 
     private static Object valueIgnoreCase(Map<String, Object> row, String key) {
