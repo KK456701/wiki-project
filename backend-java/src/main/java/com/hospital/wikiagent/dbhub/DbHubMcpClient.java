@@ -204,14 +204,14 @@ public class DbHubMcpClient {
      * {@code {"jsonrpc":"2.0","method":"tools/call","params":{"name":"...","arguments":{"domainNo":"...","params":{...},"hospitalSOID":"..."}}}}
      *
      * @param name         MCP tool name, e.g. getPatientTreatment
-     * @param domainNo     business domain number, e.g. Encounter
+     * @param sqlScript     business domain number, e.g. Encounter
      * @param params       tool business params, e.g. {@code {"encounterId":"..."}}
      * @param hospitalSOID hospital SOID
      * @return MCP result node (JSON-RPC wrapper removed and errors validated)
      */
-    public JsonNode callTool(String name, String domainNo, Map<String, Object> params, Long hospitalSOID) {
+    public JsonNode callTool(String name, String sqlScript, Map<String, Object> params, Long hospitalSOID) {
         Map<String, Object> arguments = new LinkedHashMap<>();
-        arguments.put("domainNo", domainNo);
+        arguments.put("sqlScript", sqlScript);
         if (params == null) {
             arguments.put("params", "");
         } else {

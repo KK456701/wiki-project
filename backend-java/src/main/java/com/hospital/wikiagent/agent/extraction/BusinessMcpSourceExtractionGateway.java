@@ -54,9 +54,9 @@ import com.hospital.wikiagent.sqlserver.RealDatabaseSafetyVerifier;
  * 的不可变知识发布包，时间与医院参数由服务端绑定；写锁会一直保持到本轮真实库计算
  * 消费完该快照。</p>
  */
-@Component
-@ConditionalOnProperty(prefix = "wiki.agent.extraction", name = "mode", havingValue = "required")
-@ConditionalOnProperty(prefix = "wiki.sqlserver", name = "enabled", havingValue = "true")
+// @Component — 已由 McpSyncSourceExtractionGateway 替代（走同事的业务 MCP）
+// @ConditionalOnProperty(prefix = "wiki.agent.extraction", name = "mode", havingValue = "required")
+// @ConditionalOnProperty(prefix = "wiki.sqlserver", name = "enabled", havingValue = "true")
 public class BusinessMcpSourceExtractionGateway implements SourceExtractionGateway {
     private static final String APP_LOCK = "winex_aima:global-profile-snapshot";
     private static final String BUSINESS_SCHEMA = "WINDBA_GN";

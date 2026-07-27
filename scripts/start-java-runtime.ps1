@@ -115,6 +115,10 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'AGENT_EXTRACTION_MODE' (Get-YamlScalar $config 'agent_extraction_mode')
     Set-EnvironmentDefault 'WIKI_EXTRACTION_HOSPITAL_SOID' (
         Get-YamlScalar $config 'extraction_hospital_soid')
+    Set-EnvironmentDefault 'WIKI_SQLSERVER_ENABLED' (Get-YamlScalar $config 'sqlserver_enabled')
+    Set-EnvironmentDefault 'WIKI_SQLSERVER_URL' (Get-YamlScalar $config 'sqlserver_url')
+    Set-EnvironmentDefault 'WIKI_SQLSERVER_USERNAME' (Get-YamlScalar $config 'sqlserver_username')
+    Set-EnvironmentDefault 'WIKI_SQLSERVER_PASSWORD' (Get-YamlScalar $config 'sqlserver_password')
     $proxy = Get-YamlScalar $config 'java_http_proxy_url'
     if ($proxy) {
         $uri = New-Object System.Uri($proxy)
