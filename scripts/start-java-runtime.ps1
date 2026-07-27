@@ -104,6 +104,9 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'DBHUB_API_URL' (Get-YamlScalar $config 'dbhub_api_url')
     Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
     Set-EnvironmentDefault 'DBHUB_BIZ_MCP_URL' (Get-YamlScalar $config 'dbhub_biz_mcp_url')
+    # biz-mcp-url 必须始终用 config.yaml 的值（防止旧用户级环境变量干扰）
+    $bizMcpUrl = Get-YamlScalar $config 'dbhub_biz_mcp_url'
+    if ($bizMcpUrl) { [Environment]::SetEnvironmentVariable('DBHUB_BIZ_MCP_URL', $bizMcpUrl, 'Process') }
     Set-EnvironmentDefault 'DBHUB_BUSINESS_SOURCE_ID' (Get-YamlScalar $config 'dbhub_business_source_id')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_business_execute_tool')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_DATABASE' (Get-YamlScalar $config 'dbhub_business_database')
