@@ -38,13 +38,17 @@
         "dependency_tables": [
           "MRAS_TARGET_DEFINITION",
           "CLIBASIC_SURGERY",
-          "MRAS_PATIENT_EVENT"
+          "MRAS_PATIENT_EVENT",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
         ],
         "target_tables": [
           "MRAS_BUSINESS_SUR_GRADE",
           "MRAS_TARGET_DEFINITION",
           "CLIBASIC_SURGERY",
-          "MRAS_PATIENT_EVENT"
+          "MRAS_PATIENT_EVENT",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_BUSINESS_SUR_GRADE": [

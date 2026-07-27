@@ -153,6 +153,23 @@
           "component_left": "分子-四级手术并发症发生率",
           "component_right": "分母-三级手术并发症发生率"
         }
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_SUR_GRADE",
+        "event_name": "手术分级管理制度",
+        "source_main_table": "CLIBASIC_SURGERY, INPATIENT_EMR_SET, INP_SURGICAL_ANESTHESIA_PLAN, INP_SURGICAL_PLAN, MAHP_DMTS_MAIN, MRAS_PATIENT_EVENT, VALUE_SET",
+        "intermediate_table": "MRAS_BUSINESS_SUR_GRADE",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "data_affecting_tables": [
+          "MRAS_PATIENT_EVENT"
+        ],
+        "affects_calculation": true,
+        "data_source": "病案管理系统、住院医生站"
       }
     },
     {

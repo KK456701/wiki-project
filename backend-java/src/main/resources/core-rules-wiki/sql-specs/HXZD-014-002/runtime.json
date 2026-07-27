@@ -135,6 +135,23 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_CV_RPT",
+        "event_name": "危急值报告",
+        "source_main_table": "CRITICAL_VALUE_REPORT, CV_REPORT_ACTION_LOG, EMPLOYEE_INFO, INPATIENT_ENCOUNTER, INPATIENT_PARTICIPANT, ORGANIZATION",
+        "intermediate_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "reference_tables": [
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPAT_TRANSFER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "电子病历系统、住院医生站"
       }
     }
   ],

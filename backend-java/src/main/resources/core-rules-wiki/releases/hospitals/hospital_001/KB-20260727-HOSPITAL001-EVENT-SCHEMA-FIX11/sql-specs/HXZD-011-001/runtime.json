@@ -37,11 +37,19 @@
         "event_no": "CORE_SURGERY",
         "event_table": "MRAS_BUSINESS_SURGERY",
         "dependency_tables": [
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "INP_SURGICAL_PLAN",
+          "MRAS_ORGANIZATION",
+          "INP_SURGICAL_ANESTHESIA_PLAN"
         ],
         "target_tables": [
           "MRAS_BUSINESS_SURGERY",
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "INP_SURGICAL_PLAN",
+          "MRAS_ORGANIZATION",
+          "INP_SURGICAL_ANESTHESIA_PLAN"
         ],
         "allowed_result_fields": {
           "MRAS_BUSINESS_SURGERY": [

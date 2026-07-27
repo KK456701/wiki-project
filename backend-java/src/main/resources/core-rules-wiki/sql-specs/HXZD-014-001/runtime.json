@@ -155,6 +155,19 @@
           "sample_count": "sample_count",
           "target_value": "目标值"
         }
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_CV_RPT",
+        "event_name": "危急值报告",
+        "source_main_table": "CRITICAL_VALUE_REPORT, CV_REPORT_ACTION_LOG, EMPLOYEE_INFO, INPATIENT_ENCOUNTER, INPATIENT_PARTICIPANT, ORGANIZATION",
+        "intermediate_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "reference_tables": [
+          "EMPLOYEE_INFO"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "医技系统、医生站/护士站"
       }
     }
   ],

@@ -35,11 +35,21 @@
         "event_no": "CORE_FDR",
         "event_table": "MRAS_BUSINESS_FIRSTVISIT",
         "dependency_tables": [
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION",
+          "BUSINESS_UNIT_X_BU_TYPE",
+          "INPAT_TRANSFER"
         ],
         "target_tables": [
           "MRAS_BUSINESS_FIRSTVISIT",
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION",
+          "BUSINESS_UNIT_X_BU_TYPE",
+          "INPAT_TRANSFER"
         ],
         "allowed_result_fields": {
           "MRAS_BUSINESS_FIRSTVISIT": [

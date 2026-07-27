@@ -39,12 +39,20 @@
         "dependency_tables": [
           "MRAS_TARGET_DEFINITION",
           "MRAS_MEDTECH_PRO",
-          "MRAS_MEDTECH_PROC"
+          "MRAS_MEDTECH_PROC",
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPATIENT_PARTICIPANT",
+          "MRAS_ORGANIZATION"
         ],
         "target_tables": [
           "MRAS_TARGET_DEFINITION",
           "MRAS_MEDTECH_PRO",
-          "MRAS_MEDTECH_PROC"
+          "MRAS_MEDTECH_PROC",
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPATIENT_PARTICIPANT",
+          "MRAS_ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_TARGET_DEFINITION": [

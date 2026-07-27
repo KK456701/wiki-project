@@ -136,6 +136,20 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_OP_DISC",
+        "event_name": "术前讨论制度",
+        "source_main_table": "EMPLOYEE_INFO, MRAS_PATIENT_EVENT, VALUE_SET",
+        "intermediate_table": "MRAS_BUSINESS_OP_DISC",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "电子病历系统"
       }
     },
     {

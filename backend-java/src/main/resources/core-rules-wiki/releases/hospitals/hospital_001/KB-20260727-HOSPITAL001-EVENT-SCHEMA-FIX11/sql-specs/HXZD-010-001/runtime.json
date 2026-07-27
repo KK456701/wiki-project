@@ -40,13 +40,19 @@
           "MRAS_TARGET_DEFINITION",
           "INP_CLI_ORDER",
           "INPATIENT_ENCOUNTER",
-          "ORGANIZATION"
+          "ORGANIZATION",
+          "EMPLOYEE_INFO",
+          "INPATIENT_PARTICIPANT",
+          "MRAS_ORGANIZATION"
         ],
         "target_tables": [
           "MRAS_TARGET_DEFINITION",
           "INP_CLI_ORDER",
           "INPATIENT_ENCOUNTER",
-          "ORGANIZATION"
+          "ORGANIZATION",
+          "EMPLOYEE_INFO",
+          "INPATIENT_PARTICIPANT",
+          "MRAS_ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_TARGET_DEFINITION": [

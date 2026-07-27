@@ -138,6 +138,21 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_CONSUL_OUT",
+        "event_name": "门急诊会诊",
+        "source_main_table": "OUTPATIENT_ENCOUNTER",
+        "intermediate_table": "MRAS_BUSINESS_CONSULTATION",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION",
+          "VALUE_SET"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "住院医生站、会诊管理系统"
       }
     }
   ],

@@ -128,6 +128,20 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_SHIFTHANDOVER",
+        "event_name": "值班交接班",
+        "source_main_table": null,
+        "intermediate_table": "MRAS_BUSINESS_SHIFTHANDOVER",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "住院医生站、交接班管理系统"
       }
     }
   ],

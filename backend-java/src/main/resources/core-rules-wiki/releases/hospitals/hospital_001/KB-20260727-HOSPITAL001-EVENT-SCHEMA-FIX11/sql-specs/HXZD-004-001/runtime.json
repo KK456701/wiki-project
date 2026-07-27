@@ -36,11 +36,15 @@
         "event_no": "GRADE_CARE_V2",
         "event_table": "MRAS_BUSINESS_GRADED_CARE",
         "dependency_tables": [
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
         ],
         "target_tables": [
           "MRAS_BUSINESS_GRADED_CARE",
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_BUSINESS_GRADED_CARE": [

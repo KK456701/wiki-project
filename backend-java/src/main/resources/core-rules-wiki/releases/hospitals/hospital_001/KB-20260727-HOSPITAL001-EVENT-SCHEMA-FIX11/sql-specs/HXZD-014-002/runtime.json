@@ -37,11 +37,21 @@
         "event_no": "CORE_CV_RPT",
         "event_table": "MRAS_BUSINESS_CRITICAL_RPT",
         "dependency_tables": [
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPAT_TRANSFER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION"
         ],
         "target_tables": [
           "MRAS_BUSINESS_CRITICAL_RPT",
-          "MRAS_TARGET_DEFINITION"
+          "MRAS_TARGET_DEFINITION",
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPAT_TRANSFER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_BUSINESS_CRITICAL_RPT": [

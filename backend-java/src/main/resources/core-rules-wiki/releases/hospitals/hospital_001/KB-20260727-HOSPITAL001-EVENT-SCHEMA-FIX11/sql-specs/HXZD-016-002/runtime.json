@@ -38,12 +38,17 @@
         "event_table": "MRAS_PATIENT_EVENT",
         "dependency_tables": [
           "MRAS_TARGET_DEFINITION",
-          "MRAS_INDEX_SURGREC"
+          "MRAS_INDEX_SURGREC",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION",
+          "MRAS_PATIENT_EVENT"
         ],
         "target_tables": [
           "MRAS_PATIENT_EVENT",
           "MRAS_TARGET_DEFINITION",
-          "MRAS_INDEX_SURGREC"
+          "MRAS_INDEX_SURGREC",
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
         ],
         "allowed_result_fields": {
           "MRAS_PATIENT_EVENT": [

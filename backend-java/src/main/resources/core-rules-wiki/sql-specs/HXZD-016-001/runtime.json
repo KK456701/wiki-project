@@ -132,6 +132,22 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_BLOOD_RECORD",
+        "event_name": "临床用血后评估记录",
+        "source_main_table": "EMPLOYEE_INFO, INPATIENT_EMR_SET, INPATIENT_ENCOUNTER, INPATIENT_PARTICIPANT, INP_CLI_ORDER, INP_CLI_ORDER_ITEM, ORGANIZATION",
+        "intermediate_table": "MRAS_BUSINESS_BLOOD_AUDIT",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "INPAT_TRANSFER",
+          "MRAS_ORGANIZATION",
+          "ORGANIZATION"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "电子病历系统、住院医生站"
       }
     }
   ],

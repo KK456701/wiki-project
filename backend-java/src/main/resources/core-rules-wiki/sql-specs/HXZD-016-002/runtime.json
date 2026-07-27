@@ -127,6 +127,23 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_BLOOD_SURG",
+        "event_name": "术中自体血回输",
+        "source_main_table": null,
+        "intermediate_table": null,
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
+        ],
+        "data_affecting_tables": [
+          "MRAS_INDEX_SURGREC",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "affects_calculation": true,
+        "data_source": "手麻管理系统（数据平台）"
       }
     }
   ],

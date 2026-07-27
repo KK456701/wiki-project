@@ -130,6 +130,25 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "无",
+        "event_name": null,
+        "source_main_table": null,
+        "intermediate_table": null,
+        "reference_tables": [
+          "EMPLOYEE_INFO",
+          "INPATIENT_ENCOUNTER",
+          "INPATIENT_PARTICIPANT",
+          "MRAS_ORGANIZATION"
+        ],
+        "data_affecting_tables": [
+          "MRAS_MEDTECH_PRO",
+          "MRAS_MEDTECH_PROC"
+        ],
+        "affects_calculation": true,
+        "data_source": "医务系统（新技术新项目管理）"
       }
     }
   ],

@@ -138,6 +138,20 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
+      },
+      "data_lineage": {
+        "schema_version": "data-lineage-v1",
+        "event_no": "CORE_WARDROUND",
+        "event_name": "三级查房",
+        "source_main_table": "住院医生站主表： INPATIENT_ENCOUNTER",
+        "intermediate_table": "MRAS_BUSINESS_WARDROUND",
+        "reference_tables": [
+          "INPATIENT_ENCOUNTER",
+          "MRAS_ORGANIZATION"
+        ],
+        "data_affecting_tables": [],
+        "affects_calculation": false,
+        "data_source": "住院医生站"
       }
     }
   ],
