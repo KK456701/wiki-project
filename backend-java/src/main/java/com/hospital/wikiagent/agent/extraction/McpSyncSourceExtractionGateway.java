@@ -1,5 +1,6 @@
 package com.hospital.wikiagent.agent.extraction;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -222,6 +223,9 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             return;
         }
 
+        // 查找 NOT NULL 且无默认约束的列（MCP 数据可能不包含这些列，如 CREATED_AT）
+        Set<String> noDefaultNotNull = getNotNullNoDefaultColumns(tableName);
+
         // 将每行规范化为目标表全列（缺失的填 null → DEFAULT）
         List<Map<String, Object>> normalizedRows = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
@@ -236,7 +240,12 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             }
             Map<String, Object> fullRow = new LinkedHashMap<>(columns.size());
             for (String column : columns) {
-                fullRow.put(column, upperRow.get(column));
+                Object val = upperRow.get(column);
+                if (val == null && noDefaultNotNull.contains(column)) {
+                    // NOT NULL 无默认值的列：自动填充当前时间（审计列）
+                    val = Timestamp.from(Instant.now());
+                }
+                fullRow.put(column, val);
             }
             normalizedRows.add(fullRow);
         }
@@ -282,6 +291,8 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
 
     /** 解析目标表实际列名（大写，按序号排列），带缓存。 */
     private final Map<String, List<String>> localColumnCache = new HashMap<>();
+    /** NOT NULL 且无默认约束的列缓存。 */
+    private final Map<String, Set<String>> notNullNoDefaultCache = new HashMap<>();
 
     private List<String> resolveLocalColumns(String tableName) {
         String cacheKey = tableName == null ? "" : tableName.toUpperCase(Locale.ROOT);
@@ -305,6 +316,33 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
         }
         localColumnCache.put(cacheKey, columns);
         return columns;
+    }
+
+    /** 查询 NOT NULL 且无 DEFAULT 约束的列（排除 IDENTITY），这些列必须显式提供值。 */
+    private Set<String> getNotNullNoDefaultColumns(String tableName) {
+        String cacheKey = tableName == null ? "" : tableName.toUpperCase(Locale.ROOT);
+        if (notNullNoDefaultCache.containsKey(cacheKey)) {
+            return notNullNoDefaultCache.get(cacheKey);
+        }
+        Set<String> result = new LinkedHashSet<>();
+        try {
+            String schema = resolveSchema();
+            List<String> cols = sqlServerJdbcTemplate.queryForList(
+                    "SELECT c.COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS c "
+                            + "WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? AND c.IS_NULLABLE='NO' "
+                            + "AND NOT EXISTS (SELECT 1 FROM sys.default_constraints dc "
+                            + "  JOIN sys.columns sc ON dc.parent_object_id=sc.object_id AND dc.parent_column_id=sc.column_id "
+                            + "  WHERE sc.object_id=OBJECT_ID(?+'.'+?) AND sc.name=c.COLUMN_NAME) "
+                            + "AND COLUMNPROPERTY(OBJECT_ID(?+'.'+?), c.COLUMN_NAME, 'IsIdentity')=0",
+                    String.class, schema, tableName, schema, tableName, schema, tableName);
+            for (String col : cols) {
+                result.add(col.toUpperCase(Locale.ROOT));
+            }
+        } catch (Exception e) {
+            log.warn("查询表 {} NOT NULL 无默认列失败: {}", tableName, e.getMessage());
+        }
+        notNullNoDefaultCache.put(cacheKey, result);
+        return result;
     }
 
     private String resolveSchema() {

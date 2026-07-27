@@ -84,7 +84,7 @@ public class AgentRunController {
         String traceId = id("TRACE_");
         String resolvedRequestId = requestId == null || requestId.isBlank() ? id("REQ_") : requestId;
         traces.start(traceId, request.sessionId(), principal, request.query());
-        SseEmitter emitter = new SseEmitter(300_000L);
+        SseEmitter emitter = new SseEmitter(900_000L); // 15分钟（批量指标可能耗时较长）
         streamExecutor.submit(() -> {
             try {
                 var result = runner.run(
