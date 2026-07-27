@@ -1,0 +1,144 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-011-002",
+  "rule_name": "麻醉医师手术时间重合率",
+  "category": "手术安全核查制度",
+  "definition": "同一时间内手术麻醉医师为同一人的手术例数占同期住院患者手术总例数的比例。",
+  "formula": "分子：同一时间内手术麻醉医师为同一人的手术例数\n分母：同期住院患者手术总例数\n公式：同一时间内手术麻醉医师为同一人的手术例数 / 同期住院患者手术总例数 * 100%",
+  "note": "本指标中\"同一时间\"是指手术未结束时间与其他手术开始时间重合。",
+  "significance": "反映麻醉医师参与手术安全核查情况。",
+  "default_profile": "HXZD-011-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-011-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "同一时间内手术麻醉医师为同一人的手术例数",
+      "numerator_caliber": "1、单位时间内，同一个麻醉医师，手术时间重合的手术数量。\n2、麻醉医师：取数据平台中的手麻相关数据\n3、手术重合举例：A手术开始时间和结束时间区间跟任意B手术开始时间和结束时间的区间有重合。即A手术和B手术都属于重合，统计为2。\n4、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据",
+      "denominator_rule": "同期住院患者手术总例数",
+      "denominator_caliber": "单位时间内手术完成总例数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "cast",
+            "getdate",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "35509f5df66b5e5f8b22bc4b832d7c694d9bd092ceb95488b4914650a3ab1800"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7073c9861571085e8db13df96b62d1aa6f8c1016b09120338ecd910686ed92d2"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "eb5b683337835ffc6bcecce6f9db0461016a3c6b40aa2a8b1689ca1263375686"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e57c9c4098effba3a5cb4fc00b9afef354770fdefac0be4466a715249900e205"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SURGERY",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

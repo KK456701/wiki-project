@@ -1,0 +1,232 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-014-001",
+  "rule_name": "危急值报告时间",
+  "category": "危急值报告制度",
+  "definition": "将出现危急值到临床科室获取危急值的时间，由长到短排序后取其中位数。",
+  "formula": "危急值报告时间(中位数) = X(n+1)/2, n为奇数；\n危急值报告时间(中位数) = (Xn/2 + Xn/2+1)/2, n为偶数",
+  "note": "1. n为实际报告的危急值项目数; X为出现危急值到临床科室获取危急值的时间。\n2.分别计算住院、门诊、急诊危急值报告时间。",
+  "significance": "反映危急值上报的效率。",
+  "default_profile": "HXZD-014-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-014-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "report_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "不适用（中位数指标；X为每条业务记录的报告耗时）",
+      "numerator_caliber": "",
+      "denominator_rule": "不适用（中位数指标；n为纳入统计的有效业务记录数）",
+      "denominator_caliber": "",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": null,
+        "denominator_count": null,
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "convert",
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "f858371ccbdd85dfd559d38d534c8846f1bcdeec27e31e955172e5ff13e90955"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "avg",
+            "cast",
+            "count",
+            "datediff",
+            "round",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "79018627e5f8e411bba8facbf8887b3d1aef0ddcfa1493ab411566e90ee84d32"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "avg",
+            "cast",
+            "count",
+            "datediff",
+            "round",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ed266972be45ab9c75413b4918e80c52dda00e2cb6fd4a7c8e731d3dac7f6d28"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "5c2e79177db0fec4b60f05539c4416d448e8b3a49f224b3cff90ab98c0c3b806"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "f858371ccbdd85dfd559d38d534c8846f1bcdeec27e31e955172e5ff13e90955",
+            "overview": "79018627e5f8e411bba8facbf8887b3d1aef0ddcfa1493ab411566e90ee84d32",
+            "department_detail": "ed266972be45ab9c75413b4918e80c52dda00e2cb6fd4a7c8e731d3dac7f6d28",
+            "patient_detail": "5c2e79177db0fec4b60f05539c4416d448e8b3a49f224b3cff90ab98c0c3b806"
+          },
+          "real": {
+            "source_extract": "f858371ccbdd85dfd559d38d534c8846f1bcdeec27e31e955172e5ff13e90955",
+            "overview": "79018627e5f8e411bba8facbf8887b3d1aef0ddcfa1493ab411566e90ee84d32",
+            "department_detail": "ed266972be45ab9c75413b4918e80c52dda00e2cb6fd4a7c8e731d3dac7f6d28",
+            "patient_detail": "5c2e79177db0fec4b60f05539c4416d448e8b3a49f224b3cff90ab98c0c3b806"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "index_value": "监测情况",
+          "sample_count": "sample_count",
+          "target_value": "target_value"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      },
+      "result_contract": {
+        "value_type": "median_duration",
+        "unit": "minutes",
+        "target_value": 5,
+        "target_direction": "<="
+      }
+    }
+  ],
+  "quality_checks": [],
+  "unit": "minutes"
+}

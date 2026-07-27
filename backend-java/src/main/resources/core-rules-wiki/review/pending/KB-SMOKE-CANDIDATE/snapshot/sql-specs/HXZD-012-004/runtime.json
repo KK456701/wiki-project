@@ -1,0 +1,271 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-012-004",
+  "rule_name": "三、四级手术实际开展率",
+  "category": "手术分级管理制度",
+  "definition": "实际开展的三、四级手术术种数占同期备案的三、四级手术术种数的比例。",
+  "formula": "分子：实际开展的三、四级手术术种数\n分母：同期备案的三、四级手术术种数\n公式：实际开展的三、四级手术术种数 / 同期备案的三、四级手术术种数 * 100%",
+  "note": "本指标中的三、四级手术备案是指按《医疗机构手术分级管理办法》（国卫办医政发[2022]18号）要求，向核发《医疗机构执业许可证》的卫生健康行政部门报送本机构三、四级手术管理目录信息。",
+  "significance": "反映手术分级的合理性。",
+  "default_profile": "HXZD-012-004-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-012-004-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "实际开展的三、四级手术术种数",
+      "numerator_caliber": "1、单位时间内完成的三四级手术术种数（相同手术去重）\n2、三、四级手术相关数据来源为【医生站】\n3、手术结束时间由手麻回写给医生站。\n4、说明：只统计手术类型为手术、介入治疗的数据",
+      "denominator_rule": "同期备案的三、四级手术术种数",
+      "denominator_caliber": "1、三、四级手术临床服务总数量\n2、取统一配置维护的手术临床服务中，启用状态的三、四级手术总数\n3、说明：只统计手术类型为手术、介入治疗的数据",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/overview.sql",
+        "department": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "isnull",
+            "left",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "72e90e7eecbf5e18b2051dd16e6f86ebf261f25c3d820be60661bba033f6eb99"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ae1f4670929a9b1a28dbb5eac079dd2b2dd8e0b8ad3c40bd066dfaeb6238a0ef"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "46f0723f7cbc5893bec08266e449da3286dab2eed34e2f0a4eabdad2ed5d9f24"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "8efc723fe5986f88b907c1972de2cc6c8b5cffcb4706c76c37e46c5ff157a2ca"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-012-004-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "实际开展的三、四级手术术种数",
+      "numerator_caliber": "1、单位时间内出区的患者，病案首页的手术信息中录入的三四级手术术种总数（相同手术去重）\n2、三、四级手术相关数据来源为【病案首页】\n3、说明：只统计手术类型为手术、介入治疗的数据",
+      "denominator_rule": "同期备案的三、四级手术术种数",
+      "denominator_caliber": "1、三、四级手术临床服务总数量\n2、取统一配置维护的手术临床服务中，启用状态的三、四级手术总数\n3、说明：只统计手术类型为手术、介入治疗的数据",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "19b1935d85bbc050442e214eacdc6c5080b8dc547c549c6119398acfbe8871ef"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ae1f4670929a9b1a28dbb5eac079dd2b2dd8e0b8ad3c40bd066dfaeb6238a0ef"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "46f0723f7cbc5893bec08266e449da3286dab2eed34e2f0a4eabdad2ed5d9f24"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "8efc723fe5986f88b907c1972de2cc6c8b5cffcb4706c76c37e46c5ff157a2ca"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

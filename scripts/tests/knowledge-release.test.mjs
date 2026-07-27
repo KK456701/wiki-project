@@ -86,6 +86,69 @@ test('当前来源稳定生成35项、45个Profile和169个SQL块', () => {
       dual.overview_result_mapping.denominator_count,
       '分母同期入院患者总人次数',
     );
+    assert.equal(dual.overview_result_mapping.target_value, '目标值');
+    let rulesWithDynamicTarget = 0;
+    for (const item of manifest.files ? Object.keys(manifest.files) : []) {
+      const match = item.match(/^sql-specs\/([^/]+)\/runtime\.json$/);
+      if (!match) continue;
+      const candidate = JSON.parse(readFileSync(join(output, ...item.split('/')), 'utf-8'));
+      if (candidate.profiles.some(profile => (
+        profile.dual_database_contract?.overview_result_mapping?.target_value
+      ))) {
+        rulesWithDynamicTarget += 1;
+      }
+    }
+    assert.equal(rulesWithDynamicTarget, 33);
+    for (const ruleId of ['HXZD-012-001', 'HXZD-012-002']) {
+      const ratio = JSON.parse(readFileSync(
+        join(output, 'sql-specs', ruleId, 'runtime.json'),
+        'utf-8',
+      ));
+      const ratioMapping = ratio.profiles[0].dual_database_contract.overview_result_mapping;
+      assert.equal(ratioMapping.index_value, 'index_value');
+      assert.match(ratioMapping.component_left, /^分子-/);
+      assert.match(ratioMapping.component_right, /^分母-/);
+      assert.equal(
+        ratioMapping.target_value,
+        undefined,
+      );
+      assert.match(ratio.formula, /最终结果 = 四级手术.*率 ÷ 三级手术.*率/);
+    }
+    const scalar = JSON.parse(readFileSync(
+      join(output, 'sql-specs', 'HXZD-014-001', 'runtime.json'),
+      'utf-8',
+    ));
+    const scalarMapping =
+      scalar.profiles[0].dual_database_contract.overview_result_mapping;
+    assert.equal(scalar.profiles[0].result_contract.value_type, 'median_duration');
+    assert.equal(scalar.profiles[0].result_contract.unit, 'minutes');
+    assert.equal(scalar.profiles[0].result_contract.target_value, 5);
+    assert.equal(scalarMapping.index_value, '监测情况');
+    assert.equal(scalarMapping.sample_count, 'sample_count');
+    assert.equal(scalarMapping.target_value, '目标值');
+    const difficultCase = JSON.parse(readFileSync(
+      join(output, 'sql-specs', 'HXZD-006-001', 'runtime.json'),
+      'utf-8',
+    ));
+    assert.equal(
+      difficultCase.profiles[0].dual_database_contract
+        .overview_result_mapping.denominator_count,
+      '分母同期非计划再次住院手术的数量',
+    );
+    assert.match(
+      readFileSync(
+        join(
+          output,
+          'sql-specs',
+          'HXZD-006-001',
+          'profiles',
+          'HXZD-006-001-company-default',
+          'overview.sql',
+        ),
+        'utf-8',
+      ),
+      /AS "分母同期非计划再次住院手术的数量"/,
+    );
     assert.ok(dual.verification_blockers.includes('business_and_real_schema_not_verified'));
     const corrections = JSON.parse(readFileSync(
       join(output, 'sql-correction-manifest.json'),

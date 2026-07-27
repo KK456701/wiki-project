@@ -1,0 +1,267 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-015-001",
+  "rule_name": "特殊使用级抗菌药物使用会诊率",
+  "category": "抗菌药物分级管理制度",
+  "definition": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量占同期特殊使用级抗菌药物使用医嘱总数量的比例。",
+  "formula": "分子：特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量\n分母：同期特殊使用级抗菌药物使用医嘱总数量\n公式： 特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量 / 同期特殊使用级抗菌药物使用医嘱总数量 * 100%",
+  "note": "1.特殊使用级抗菌药物包括如第三、四代头孢菌素、碳青霉烯类、万古霉素等。\n2.使用医嘱与会诊记录相对应是指特殊使用级抗菌药物使用时经抗菌药物管理工作机构指定的专业技术人员会诊同意后，按程序合理使用抗菌药物。",
+  "significance": "反映特殊使用级抗菌药物使用的规范性。",
+  "default_profile": "HXZD-015-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-015-001-company-default",
+      "profile_name": "推荐方案：特殊级抗菌药物走医务报批",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的特殊级抗菌药物中，药品跟特殊级抗菌药会诊审批的药品一致的数量。\n2、取医务特殊级抗菌药报批单的医嘱和药品医嘱一致的数量\n3、不包含已失效和已作废的医嘱",
+      "denominator_rule": "同期特殊使用级抗菌药物使用医嘱总数量",
+      "denominator_caliber": "单位时间内特殊级抗菌药物医嘱总次数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_nchar"
+          ],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "getdate",
+            "to_nchar"
+          ],
+          "unknown_functions": [
+            "to_nchar"
+          ],
+          "normalized_sha256": "b571699c36a392f5ca18b6a716c196b81ec4bfd02aabf48dade569a92a40b17d"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ee5370233bec9240665dffeeff6d7c3a43d2a3864476f19f9522a6b935c1458c"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "61f03dea75f956a4e0ecf7399812103c044bcdbe7b9bc28c080854b72b4e047f"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "8224b12ebabab1af12581692f29397b32c7c959351f7d030a2dc866cdc7ac078"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_ANTI",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-015-001-company-candidate-01",
+      "profile_name": "可选方案：特殊级抗菌药物走会诊管理系统",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的特殊级抗菌药物，跟特殊级抗菌药物会诊的药品一致的数量\n2、数据来源为会诊管理系统，通过会诊和医嘱关联关系判断一致性。",
+      "denominator_rule": "同期特殊使用级抗菌药物使用医嘱总数量",
+      "denominator_caliber": "单位时间内特殊级抗菌药物医嘱总次数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e1fd77029129764803a5478f9fd0d11ac4454b0018e0aa9ef886a59b5c41043a"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ee5370233bec9240665dffeeff6d7c3a43d2a3864476f19f9522a6b935c1458c"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "61f03dea75f956a4e0ecf7399812103c044bcdbe7b9bc28c080854b72b4e047f"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "8224b12ebabab1af12581692f29397b32c7c959351f7d030a2dc866cdc7ac078"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_ANTI",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

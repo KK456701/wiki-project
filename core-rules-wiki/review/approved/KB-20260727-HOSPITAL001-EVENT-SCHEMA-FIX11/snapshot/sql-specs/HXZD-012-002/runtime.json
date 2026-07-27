@@ -1,0 +1,901 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-012-002",
+  "rule_name": "四级手术与三级手术患者死亡率比",
+  "category": "手术分级管理制度",
+  "definition": "四级手术患者死亡率与三级手术患者死亡率的比。",
+  "formula": "四级手术患者死亡率 = 四级手术死亡患者数 ÷ 四级手术患者数\n三级手术患者死亡率 = 三级手术死亡患者数 ÷ 三级手术患者数\n最终结果 = 四级手术患者死亡率 ÷ 三级手术患者死亡率\n三级手术患者死亡率为0时结果为无样本",
+  "note": "各级手术患者死亡率为各级手术患者死亡人数占同期各级手术患者人数的比例。",
+  "significance": "反映手术分级管理的合理性。",
+  "unit": "ratio",
+  "default_profile": "HXZD-012-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-012-002-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_SUR_GRADE",
+        "event_table": "MRAS_BUSINESS_SUR_GRADE",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION",
+          "CLIBASIC_SURGERY",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_SUR_GRADE",
+          "MRAS_TARGET_DEFINITION",
+          "CLIBASIC_SURGERY",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_SUR_GRADE": [
+            "MRAS_BUSINESS_SUR_GRADE_ID",
+            "MRAS_BUSINESS_INDEX_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "ENCOUNTER_TYPE_CODE",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "SURG_NAME",
+            "SURG_LEVEL_CODE",
+            "SURG_AT",
+            "APPLY_CHIEF_NAME",
+            "APPLY_CHIEF_BY",
+            "ACTUAL_CHIEF_NAME",
+            "ACTUAL_CHIEF_BY",
+            "HOSPITAL_AREA_ID",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "SURGERY_CHIEF_ID_SET",
+            "SURG_LEVEL_NAME",
+            "CURRENT_ADMITTER_ID",
+            "SURGERY_START_AT",
+            "MRAS_EVENT_DEFINE_ID",
+            "IMRN",
+            "DISCHARGED_FROM_WARD_AT",
+            "DEATH_FLAG",
+            "EVENT_NO",
+            "EVENT_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "SURGERY_ID",
+            "PREOP_MDT_COMPLETED",
+            "DEATH_AT",
+            "SURGERY_END_AT",
+            "VERSION",
+            "ADMITTED_TO_WARD_AT",
+            "PREOP_MDT_COMPLETED_AT",
+            "ACTUAL_CHIEF_NO",
+            "MINI_INVASIVE_SURGERY_FLAG",
+            "CURRENT_ATTENDER_ID",
+            "ACTUAL_CHIEF_DEPT_NO",
+            "CURRENT_ATTENDER_NAME",
+            "ACTUAL_CHIEF_DEPT_ID",
+            "CURRENT_ADMITTER_NO",
+            "ACTUAL_CHIEF_DEPT_NAME",
+            "CURRENT_ATTENDER_NO"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ],
+          "CLIBASIC_SURGERY": [
+            "CLIBASIC_SURGERY_ID",
+            "SURGERY_CODE",
+            "SURGERY_NO",
+            "SURGERY_NAME",
+            "SURGERY_GRADE_NAME",
+            "SURGERY_GRADE_CODE",
+            "CHIEF_OPER_DEPARTMENT",
+            "PROVINCE_SURGERY_GRADE_CODE",
+            "PROVINCE_SURGERY_GRADE_NAME",
+            "MEDTECH_START_AT",
+            "MEDTECH_END_AT",
+            "SH_SURGERY_GRADE_NAME",
+            "SH_SURGERY_GRADE_CODE",
+            "SUG_SURGERY_GRADE_CODE",
+            "SUG_SURGERY_GRADE_NAME",
+            "SURGERY_INCISION_CODE",
+            "SURGERY_INCISION_NAME",
+            "SURGERY_INCISION_ATTR_CODE",
+            "SURGERY_INCISION_ATTR_NAME",
+            "ENABLED_FLAG",
+            "CLI_SERVICE_MATCHED_FLAG",
+            "SURGERY_DIR_NAME",
+            "SURGERY_DIR_NO",
+            "SURGIRY_ROUTE_CODE",
+            "SURGIRY_ROUTE_NAME",
+            "MAJOR_SURGERY_FLAG",
+            "CONCEPT_ID",
+            "MINI_INVASIVE_SURGERY_FLAG",
+            "MEMO",
+            "HOSPITAL_AREA_ID",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "OFFICIAL_FLAG",
+            "PINYIN",
+            "WUBI",
+            "SHORTCUT",
+            "CREATED_AT",
+            "CREATED_BY",
+            "MODIFIED_AT",
+            "MODIFIED_BY"
+          ],
+          "MRAS_PATIENT_EVENT": [
+            "MRAS_PATIENT_EVENT_ID",
+            "MRAS_EVENT_DEFINE_ID",
+            "ENCOUNTER_ID",
+            "PERSON_ID",
+            "PERSON_NAME",
+            "EVENT_NO",
+            "EVENT_NAME",
+            "EVENT_AT",
+            "EVENT_END_AT",
+            "BIZ_ID",
+            "EXTRACT_AT",
+            "EMPLOYEE_ID",
+            "EMPLOYEE_NAME",
+            "DEPT_ID",
+            "DEPT_NAME",
+            "WARD_ID",
+            "WARD_NAME",
+            "MEDICAL_GROUP_ID",
+            "MEDICAL_GROUP_NAME",
+            "MEMO",
+            "HOSPITAL_AREA_ID",
+            "BIZ_ATTR_ONE_ID",
+            "BIZ_ATTR_TWO_ID",
+            "BIZ_ATTR_TRI_ID",
+            "BIZ_ATTR_FOUR_ID",
+            "BIZ_ATTR_FIVE_ID",
+            "BIZ_ATTR_SIX_ID",
+            "BIZ_ATTR_ONE_NO",
+            "BIZ_ATTR_TWO_NO",
+            "BIZ_ATTR_TRI_NO",
+            "BIZ_ATTR_FOUR_NO",
+            "BIZ_ATTR_ONE_COST",
+            "BIZ_ATTR_TWO_COST",
+            "BIZ_ATTR_TRI_COST",
+            "BIZ_ATTR_FOUR_COST",
+            "BIZ_ATTR_ONE_NAME",
+            "BIZ_ATTR_TWO_NAME",
+            "BIZ_ATTR_TRI_NAME",
+            "BIZ_ATTR_FOUR_NAME",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_AT",
+            "CREATED_BY",
+            "MODIFIED_AT",
+            "MODIFIED_BY",
+            "BIZ_ATTR_ONE_AT",
+            "BIZ_ATTR_TWO_AT",
+            "REPORT_FLAG",
+            "BIZ_ATTR_FIVE_NO",
+            "BIZ_ATTR_SEVEN_NO",
+            "BIZ_ATTR_TEN_ID",
+            "BIZ_ATTR_EIGHT_NO",
+            "BIZ_ATTR_TEN_NO",
+            "BIZ_ATTR_NINE_NO",
+            "BIZ_ATTR_EIGHT_ID",
+            "BIZ_ATTR_NINE_ID",
+            "BIZ_ATTR_SIX_NO",
+            "BIZ_ATTR_SEVEN_ID"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_SUR_GRADE": "b0ed7927d50549e85c0da9c576494d4e6954b46026f259b6e44916637a628ee5",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578",
+          "CLIBASIC_SURGERY": "7b8197a493443ea85c488242b16bc9dfa0cfeb6fae94e21f446627118e9ecc52",
+          "MRAS_PATIENT_EVENT": "42c6aed2be5c9e259847fb24dc3ba32c353a68bb66e605ecfb3567b56c666904"
+        },
+        "target_structure_fingerprint": "0ccd7e5ed8bd5dee7bdfff11eda86afaabc7a4a2eca58e9e94cffb2d7052937a",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "rate_ratio",
+        "unit": "ratio",
+        "target_value": null,
+        "target_direction": "<="
+      },
+      "numerator_rule": "四级手术患者死亡率",
+      "numerator_caliber": "1、单位时间内完成四级手术的患者且死亡的人数/单位时间完成的四级手术例数\n2、四级手术相关数据来源为【医生站】，统计单位时间内完成四级手术的患者人数（一个患者多次四级手术，统一为1）。\n3、说明：一个患者在院期间做了三级手术和四级手术，若患者死亡，则按高等级手术归属。\n4、死亡患者取病案首页中转归情况=死亡",
+      "denominator_rule": "三级手术患者死亡率",
+      "denominator_caliber": "1、单位时间内完成三级手术的患者且死亡的人数/单位时间完成的三级手术例数\n2、三级手术相关数据来源为【医生站】，统计单位时间内完成三级手术的患者人数（一个患者多次四级手术，统一为1）。\n3、说明：一个患者在院期间做了三级手术和四级手术，若患者死亡，则按高等级手术归属。\n4、死亡患者取病案首页中转归情况=死亡",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子-四级手术患者死亡率",
+        "denominator_count": "分母-三级手术患者死亡率",
+        "index_value": "index_value",
+        "component_left": "分子-四级手术患者死亡率",
+        "component_right": "分母-三级手术患者死亡率",
+        "sample_count": null,
+        "target_value": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "isnull",
+            "left",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59",
+            "overview": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7",
+            "department_detail": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f",
+            "patient_detail": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+          },
+          "real": {
+            "source_extract": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59",
+            "overview": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7",
+            "department_detail": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f",
+            "patient_detail": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "index_value": "index_value",
+          "component_left": "分子-四级手术患者死亡率",
+          "component_right": "分母-三级手术患者死亡率"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    },
+    {
+      "profile_id": "HXZD-012-002-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_SUR_GRADE_V2",
+        "event_table": "MRAS_BUSINESS_SUR_GRADE",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION",
+          "CLIBASIC_SURGERY",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_SUR_GRADE",
+          "MRAS_TARGET_DEFINITION",
+          "CLIBASIC_SURGERY",
+          "MRAS_PATIENT_EVENT"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_SUR_GRADE": [
+            "MRAS_BUSINESS_SUR_GRADE_ID",
+            "MRAS_BUSINESS_INDEX_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "ENCOUNTER_TYPE_CODE",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "SURG_NAME",
+            "SURG_LEVEL_CODE",
+            "SURG_AT",
+            "APPLY_CHIEF_NAME",
+            "APPLY_CHIEF_BY",
+            "ACTUAL_CHIEF_NAME",
+            "ACTUAL_CHIEF_BY",
+            "HOSPITAL_AREA_ID",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "SURGERY_CHIEF_ID_SET",
+            "SURG_LEVEL_NAME",
+            "CURRENT_ADMITTER_ID",
+            "SURGERY_START_AT",
+            "MRAS_EVENT_DEFINE_ID",
+            "IMRN",
+            "DISCHARGED_FROM_WARD_AT",
+            "DEATH_FLAG",
+            "EVENT_NO",
+            "EVENT_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "SURGERY_ID",
+            "PREOP_MDT_COMPLETED",
+            "DEATH_AT",
+            "SURGERY_END_AT",
+            "VERSION",
+            "ADMITTED_TO_WARD_AT",
+            "PREOP_MDT_COMPLETED_AT",
+            "ACTUAL_CHIEF_NO",
+            "MINI_INVASIVE_SURGERY_FLAG",
+            "CURRENT_ATTENDER_ID",
+            "ACTUAL_CHIEF_DEPT_NO",
+            "CURRENT_ATTENDER_NAME",
+            "ACTUAL_CHIEF_DEPT_ID",
+            "CURRENT_ADMITTER_NO",
+            "ACTUAL_CHIEF_DEPT_NAME",
+            "CURRENT_ATTENDER_NO"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ],
+          "CLIBASIC_SURGERY": [
+            "CLIBASIC_SURGERY_ID",
+            "SURGERY_CODE",
+            "SURGERY_NO",
+            "SURGERY_NAME",
+            "SURGERY_GRADE_NAME",
+            "SURGERY_GRADE_CODE",
+            "CHIEF_OPER_DEPARTMENT",
+            "PROVINCE_SURGERY_GRADE_CODE",
+            "PROVINCE_SURGERY_GRADE_NAME",
+            "MEDTECH_START_AT",
+            "MEDTECH_END_AT",
+            "SH_SURGERY_GRADE_NAME",
+            "SH_SURGERY_GRADE_CODE",
+            "SUG_SURGERY_GRADE_CODE",
+            "SUG_SURGERY_GRADE_NAME",
+            "SURGERY_INCISION_CODE",
+            "SURGERY_INCISION_NAME",
+            "SURGERY_INCISION_ATTR_CODE",
+            "SURGERY_INCISION_ATTR_NAME",
+            "ENABLED_FLAG",
+            "CLI_SERVICE_MATCHED_FLAG",
+            "SURGERY_DIR_NAME",
+            "SURGERY_DIR_NO",
+            "SURGIRY_ROUTE_CODE",
+            "SURGIRY_ROUTE_NAME",
+            "MAJOR_SURGERY_FLAG",
+            "CONCEPT_ID",
+            "MINI_INVASIVE_SURGERY_FLAG",
+            "MEMO",
+            "HOSPITAL_AREA_ID",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "OFFICIAL_FLAG",
+            "PINYIN",
+            "WUBI",
+            "SHORTCUT",
+            "CREATED_AT",
+            "CREATED_BY",
+            "MODIFIED_AT",
+            "MODIFIED_BY"
+          ],
+          "MRAS_PATIENT_EVENT": [
+            "MRAS_PATIENT_EVENT_ID",
+            "MRAS_EVENT_DEFINE_ID",
+            "ENCOUNTER_ID",
+            "PERSON_ID",
+            "PERSON_NAME",
+            "EVENT_NO",
+            "EVENT_NAME",
+            "EVENT_AT",
+            "EVENT_END_AT",
+            "BIZ_ID",
+            "EXTRACT_AT",
+            "EMPLOYEE_ID",
+            "EMPLOYEE_NAME",
+            "DEPT_ID",
+            "DEPT_NAME",
+            "WARD_ID",
+            "WARD_NAME",
+            "MEDICAL_GROUP_ID",
+            "MEDICAL_GROUP_NAME",
+            "MEMO",
+            "HOSPITAL_AREA_ID",
+            "BIZ_ATTR_ONE_ID",
+            "BIZ_ATTR_TWO_ID",
+            "BIZ_ATTR_TRI_ID",
+            "BIZ_ATTR_FOUR_ID",
+            "BIZ_ATTR_FIVE_ID",
+            "BIZ_ATTR_SIX_ID",
+            "BIZ_ATTR_ONE_NO",
+            "BIZ_ATTR_TWO_NO",
+            "BIZ_ATTR_TRI_NO",
+            "BIZ_ATTR_FOUR_NO",
+            "BIZ_ATTR_ONE_COST",
+            "BIZ_ATTR_TWO_COST",
+            "BIZ_ATTR_TRI_COST",
+            "BIZ_ATTR_FOUR_COST",
+            "BIZ_ATTR_ONE_NAME",
+            "BIZ_ATTR_TWO_NAME",
+            "BIZ_ATTR_TRI_NAME",
+            "BIZ_ATTR_FOUR_NAME",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_AT",
+            "CREATED_BY",
+            "MODIFIED_AT",
+            "MODIFIED_BY",
+            "BIZ_ATTR_ONE_AT",
+            "BIZ_ATTR_TWO_AT",
+            "REPORT_FLAG",
+            "BIZ_ATTR_FIVE_NO",
+            "BIZ_ATTR_SEVEN_NO",
+            "BIZ_ATTR_TEN_ID",
+            "BIZ_ATTR_EIGHT_NO",
+            "BIZ_ATTR_TEN_NO",
+            "BIZ_ATTR_NINE_NO",
+            "BIZ_ATTR_EIGHT_ID",
+            "BIZ_ATTR_NINE_ID",
+            "BIZ_ATTR_SIX_NO",
+            "BIZ_ATTR_SEVEN_ID"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_SUR_GRADE": "b0ed7927d50549e85c0da9c576494d4e6954b46026f259b6e44916637a628ee5",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578",
+          "CLIBASIC_SURGERY": "7b8197a493443ea85c488242b16bc9dfa0cfeb6fae94e21f446627118e9ecc52",
+          "MRAS_PATIENT_EVENT": "42c6aed2be5c9e259847fb24dc3ba32c353a68bb66e605ecfb3567b56c666904"
+        },
+        "target_structure_fingerprint": "0ccd7e5ed8bd5dee7bdfff11eda86afaabc7a4a2eca58e9e94cffb2d7052937a",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "rate_ratio",
+        "unit": "ratio",
+        "target_value": null,
+        "target_direction": "<="
+      },
+      "numerator_rule": "四级手术患者死亡率",
+      "numerator_caliber": "1、单位时间内出区的患者中，有做过四级手术且死亡的人数/单位时间出区的四级手术患者数\n2、四级手术相关数据来源为【病案首页】，统计单位时间内完成四级手术的患者人数（一个患者多次四级手术，统一为1）。\n3、说明：一个患者在院期间做了三级手术和四级手术，若患者死亡，则按高等级手术归属。\n4、死亡患者取病案首页中转归情况=死亡",
+      "denominator_rule": "三级手术患者死亡率",
+      "denominator_caliber": "1、单位时间内出区的患者中，有做过三级手术且死亡的人数/单位时间出区的三级手术患者数\n2、三级手术相关数据来源为【病案首页】，统计单位时间内完成三级手术的患者人数（一个患者多次四级手术，统一为1）。\n3、说明：一个患者在院期间做了三级手术和四级手术，若患者死亡，则按高等级手术归属。\n4、死亡患者取病案首页中转归情况=死亡",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子-四级手术患者死亡率",
+        "denominator_count": "分母-三级手术患者死亡率",
+        "index_value": "index_value",
+        "component_left": "分子-四级手术患者死亡率",
+        "component_right": "分母-三级手术患者死亡率",
+        "sample_count": null,
+        "target_value": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7",
+            "overview": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7",
+            "department_detail": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f",
+            "patient_detail": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+          },
+          "real": {
+            "source_extract": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7",
+            "overview": "13592ea814ebafd8130cdcd159a62c93f6cc2a0c069a7c53e9ead0ec3c19d6a7",
+            "department_detail": "c86dc2d47b5f779b832e19f3ff73d3df1253eb93d097431e1e36e111ea82fe2f",
+            "patient_detail": "d7bf1c42da60710a0ad829b83465cc5d075ed3520f39a7c886622b81328e800f"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "index_value": "index_value",
+          "component_left": "分子-四级手术患者死亡率",
+          "component_right": "分母-三级手术患者死亡率"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

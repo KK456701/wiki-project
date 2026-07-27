@@ -17,6 +17,7 @@ public class DbHubProperties {
 
     private String apiUrl = "http://127.0.0.1:8080";
     private String mcpUrl = "http://127.0.0.1:8080/mcp";
+    private String bizMcpUrl = "http://127.0.0.1:8080/mcp";
     private int timeoutSeconds = 10;
     private Sources sources = new Sources();
 
@@ -128,9 +129,9 @@ public class DbHubProperties {
 
     public static class Sources {
         private Source business = source(
-                BUSINESS_SOURCE_ID, "execute_sql_winex_all_dev", "WiNEX_All_DEV");
+                BUSINESS_SOURCE_ID, "execute_sql_winex_all_dev", "WiNEX_All_DEV", "WINDBA_GN");
         private Source real = source(
-                REAL_SOURCE_ID, "execute_sql_winex_aima", "winex_aima");
+                REAL_SOURCE_ID, "execute_sql_winex_aima", "winex_aima", "dbo");
 
         public Source getBusiness() {
             return business;
@@ -148,13 +149,22 @@ public class DbHubProperties {
             this.real = real == null ? new Source() : real;
         }
 
-        private static Source source(String sourceId, String tool, String databaseName) {
+        private static Source source(
+                String sourceId, String tool, String databaseName, String schemaName) {
             Source value = new Source();
             value.setSourceId(sourceId);
             value.setExecuteTool(tool);
             value.setDatabaseName(databaseName);
-            value.setSchemaName("dbo");
+            value.setSchemaName(schemaName);
             return value;
         }
+    }
+
+    public String getBizMcpUrl() {
+        return bizMcpUrl;
+    }
+
+    public void setBizMcpUrl(String bizMcpUrl) {
+        this.bizMcpUrl = bizMcpUrl;
     }
 }

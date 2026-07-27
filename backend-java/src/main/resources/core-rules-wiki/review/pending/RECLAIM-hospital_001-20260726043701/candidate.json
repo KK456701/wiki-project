@@ -1,0 +1,13 @@
+{
+  "schema_version": "knowledge-candidate-v2",
+  "candidate_id": "RECLAIM-hospital_001-20260726043701",
+  "status": "pending_review",
+  "scope": "hospital_reclaim",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "current_company_release_id": "KB-20260726-7e71f92e431a",
+  "created_at": "2026-07-26T04:37:01.559Z",
+  "merge_policy": "three_way_review_required",
+  "base_version_conflict": false,
+  "conflict_count": 0
+}

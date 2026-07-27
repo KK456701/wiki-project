@@ -1,0 +1,364 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-011-002",
+  "rule_name": "麻醉医师手术时间重合率",
+  "category": "手术安全核查制度",
+  "definition": "同一时间内手术麻醉医师为同一人的手术例数占同期住院患者手术总例数的比例。",
+  "formula": "分子：同一时间内手术麻醉医师为同一人的手术例数\n分母：同期住院患者手术总例数\n公式：同一时间内手术麻醉医师为同一人的手术例数 / 同期住院患者手术总例数 * 100%",
+  "note": "本指标中\"同一时间\"是指手术未结束时间与其他手术开始时间重合。",
+  "significance": "反映麻醉医师参与手术安全核查情况。",
+  "unit": "percentage",
+  "default_profile": "HXZD-011-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-011-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_SURGERY",
+        "event_table": "MRAS_BUSINESS_SURGERY",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_SURGERY",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_SURGERY": [
+            "MRAS_BUSINESS_SURGERY_ID",
+            "MRAS_BUSINESS_INDEX_ID",
+            "ENCOUNTER_ID",
+            "PERSON_ID",
+            "PERSON_NAME",
+            "IMRN",
+            "DEPT_ID",
+            "DEPT_NAME",
+            "WARD_ID",
+            "WARD_NAME",
+            "ADMITTED_TO_WARD_AT",
+            "DISCHARGED_FROM_WARD_AT",
+            "SURGERY_START_AT",
+            "SURGERY_END_AT",
+            "OPERATOR_OVERLAP",
+            "ANES_DOCT_OVERLAP",
+            "OVERLAP_OPERATOR_SURGERIES",
+            "OVERLAP_ANES_DOCT_SURGERIES",
+            "SURGERY_NAME",
+            "BIZ_ATTR_ONE_ID",
+            "BIZ_ATTR_TWO_ID",
+            "BIZ_ATTR_TRI_ID",
+            "BIZ_ATTR_ONE_NO",
+            "BIZ_ATTR_TWO_NO",
+            "BIZ_ATTR_TRI_NO",
+            "BIZ_ATTR_ONE_COST",
+            "BIZ_ATTR_TWO_COST",
+            "BIZ_ATTR_TRI_COST",
+            "BIZ_ATTR_FOUR_COST",
+            "BIZ_ATTR_ONE_NAME",
+            "BIZ_ATTR_TWO_NAME",
+            "BIZ_ATTR_TRI_NAME",
+            "BIZ_ATTR_FOUR_NAME",
+            "MEMO",
+            "MRAS_EVENT_DEFINE_ID",
+            "EVENT_AT",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "EVENT_NAME",
+            "EVENT_NO",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "EMPLOYEE_ID",
+            "EVENT_END_AT",
+            "EMPLOYEE_NAME",
+            "VERSION",
+            "ANESTHESIA_DOCTOR_NAME",
+            "MAIN_DOCTOR_NO",
+            "CURRENT_ATTENDER_ID",
+            "CURRENT_ATTENDER_NAME",
+            "MAIN_DOCTOR_NAME",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ADMITTER_NO",
+            "ANESTHESIA_DOCTOR_NO",
+            "CURRENT_ADMITTER_ID",
+            "MAIN_DOCTOR_ID",
+            "ANESTHESIA_DOCTOR_ID",
+            "CURRENT_ATTENDER_NO"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_SURGERY": "4a637aef1459e23d526c0d63fe656b895e76240b88beae4723e1ced9de6afb23",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "206324bbb0482abf4d1ce2f0853334226fd137445eb5658912f2bf8e7b5bc5fc",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 0,
+        "target_direction": "<="
+      },
+      "numerator_rule": "同一时间内手术麻醉医师为同一人的手术例数",
+      "numerator_caliber": "1、单位时间内，同一个麻醉医师，手术时间重合的手术数量。\n2、麻醉医师：取数据平台中的手麻相关数据\n3、手术重合举例：A手术开始时间和结束时间区间跟任意B手术开始时间和结束时间的区间有重合。即A手术和B手术都属于重合，统计为2。\n4、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据",
+      "denominator_rule": "同期住院患者手术总例数",
+      "denominator_caliber": "单位时间内手术完成总例数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子同一时间内手术麻醉医师为同一人的手术例数",
+        "denominator_count": "分母同期住院患者手术总例数",
+        "index_value": "监测情况",
+        "component_left": "分子同一时间内手术麻醉医师为同一人的手术例数",
+        "component_right": "分母同期住院患者手术总例数",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "cast",
+            "getdate",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "70e85b474cfae676f13ef487cc071fb05dd46a66b5f40620d477dca7cc53a695"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "cfde0a72fe7d4689f6c8be4ce6fa00d8abca281f068f3830c19210e0aebede34"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "250ac10fda258400d27ac5977816fde61f6c7193f08bd64d19d41c8c872e0ad5"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：withwith"
+          ],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "max",
+            "stuff",
+            "withwith"
+          ],
+          "unknown_functions": [
+            "withwith"
+          ],
+          "normalized_sha256": "4e74a1918e9f2a5d376baffc07c1571216bbd2e8e2d79aeec7c8ea85f8a5d9e4"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "70e85b474cfae676f13ef487cc071fb05dd46a66b5f40620d477dca7cc53a695",
+            "overview": "cfde0a72fe7d4689f6c8be4ce6fa00d8abca281f068f3830c19210e0aebede34",
+            "department_detail": "250ac10fda258400d27ac5977816fde61f6c7193f08bd64d19d41c8c872e0ad5",
+            "patient_detail": "4e74a1918e9f2a5d376baffc07c1571216bbd2e8e2d79aeec7c8ea85f8a5d9e4"
+          },
+          "real": {
+            "source_extract": "70e85b474cfae676f13ef487cc071fb05dd46a66b5f40620d477dca7cc53a695",
+            "overview": "cfde0a72fe7d4689f6c8be4ce6fa00d8abca281f068f3830c19210e0aebede34",
+            "department_detail": "250ac10fda258400d27ac5977816fde61f6c7193f08bd64d19d41c8c872e0ad5",
+            "patient_detail": "4e74a1918e9f2a5d376baffc07c1571216bbd2e8e2d79aeec7c8ea85f8a5d9e4"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子同一时间内手术麻醉医师为同一人的手术例数",
+          "denominator_count": "分母同期住院患者手术总例数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SURGERY",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

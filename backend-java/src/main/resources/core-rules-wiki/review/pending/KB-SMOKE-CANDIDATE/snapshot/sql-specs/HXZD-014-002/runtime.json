@@ -1,0 +1,142 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-014-002",
+  "rule_name": "住院患者危急值当日及时处置率",
+  "category": "危急值报告制度",
+  "definition": "当日处置的住院患者危急值项目数占同期临床科室接获住院患者危急值项目数的比例。",
+  "formula": "分子：当日处置的住院患者危急值项目数\n分母：同期临床科室接获住院患者危急值项目数\n公式：当日处置的住院患者危急值项目数 / 同期临床科室接获住院患者危急值项目数 * 100%",
+  "note": "1.本指标只统计住院患者危急值处置情况，不包括门急诊患者危急值。\n2.当日处置的危急值项目数以危急值出现当日的病程记录为准，若无记录则视为未处置。",
+  "significance": "反映危急值规范化管理程度。",
+  "default_profile": "HXZD-014-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-014-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "report_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "当日处置的住院患者危急值项目数",
+      "numerator_caliber": "1、单位时间内接收的危急值，其危急值记录为当日完成的数量，排除已召回的危急值。\n2、“当日完成”定义：危急值接收后24小时内完成危急值记录",
+      "denominator_rule": "同期临床科室接获住院患者危急值项目数",
+      "denominator_caliber": "1、单位时间内，危急值接收数量\n2、医生或护士任意一人接收即可（取第一个接收的时间）\n3、当前指标只统计住院危急值，排除已召回的危急值。",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "convert",
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7da9e67346db56e53f94970ecc58aff3729fae4a4faa9402ca8d5d887ee92f93"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ccf07f4e829bc8143c4e153a63c9c3f309e739c5a81e571b060273a4584ccfe1"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "2791febc18ad574eac580941630bf70570dd23f2bb0b19f32180c7ff2d9708dc"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "8013e243834625e1ae6f8b099102799bcf00fa08e29139a696640f1cc48993b0"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CRITICAL_RPT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

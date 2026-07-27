@@ -1,0 +1,79 @@
+---
+page_type: caliber_profile
+profile_id: HXZD-012-004-company-candidate-01
+rule_id: HXZD-012-004
+profile_name: 可选方案：手术数据来源：病案首页
+owner_scope: company
+status: approved
+execution_status: documentation_only
+effective_from: 2025-01-01
+effective_to:
+time_dimension: admitted_to_ward_at
+patient_scope:
+  - inpatient_discharged
+dedup_key: encounter_id
+direction: higher_is_better
+runtime_manifest: ../../../sql-specs/HXZD-012-004/runtime.json
+updated_at: 2026-07-27
+---
+
+# 可选方案：手术数据来源：病案首页
+
+## 元数据
+
+| 字段 | 值 |
+|---|---|
+| 指标编码 | — |
+| 扩展指标编码 | HXZD-012-004_002 |
+| 版本 | 公版 |
+| 指标名称别名 | 三、四级手术实际开展率_出区时间 |
+| 源表主表来源 | CLIBASIC_SURGERY, INPATIENT_EMR_SET, MAHP_DMTS_ICD_OPERATION, MAHP_DMTS_MAIN, MRAS_PATIENT_EVENT, VALUE_SET |
+| XXJOB作业 | T+1 |
+| 中间表 | MRAS_BUSINESS_SUR_GRADE |
+| 业务表(不影响数据) | INPATIENT_ENCOUNTER, MRAS_ORGANIZATION |
+| 业务表(影响数据) | CLIBASIC_SURGERY |
+| 是否影响数据 | 是 |
+| 方案类型 | 可选方案 |
+| 方案说明 | 手术数据来源：病案首页 |
+| 关联事件 | CORE_SUR_GRADE_V2 |
+| 事件名称 | 手术分级管理制度2 |
+| 时间维度 | 出区时间 |
+| 患者范围 | 出院患者 |
+| 数据来源 | 病案管理系统、住院医生站、手术临床服务 |
+| 指标导向 | 逐步提高 |
+| 计量单位 | 百分比 |
+| 目标值 | 1 |
+| 异常范围初筛 | < 30% |
+
+## 分子
+
+实际开展的三、四级手术术种数
+
+### 统计口径
+
+1、单位时间内出区的患者，病案首页的手术信息中录入的三四级手术术种总数（相同手术去重）
+2、三、四级手术相关数据来源为【病案首页】
+3、说明：只统计手术类型为手术、介入治疗的数据
+
+## 分母
+
+同期备案的三、四级手术术种数
+
+### 统计口径
+
+1、三、四级手术临床服务总数量
+2、取统一配置维护的手术临床服务中，启用状态的三、四级手术总数
+3、说明：只统计手术类型为手术、介入治疗的数据
+
+## 可配置参数
+
+无。
+
+## 执行引用
+
+- 当前执行状态：`documentation_only`
+- 阻断原因：缺少经确认的医院字段契约和统一结果列映射
+- 源表 SQL：`sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/etl_source.sql`
+- 概览 SQL：`sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/overview.sql`
+- 科室 SQL：`sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/department.sql`
+- 患者明细 SQL：`sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/patient_detail.sql`

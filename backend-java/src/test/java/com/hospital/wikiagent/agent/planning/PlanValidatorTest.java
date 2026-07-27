@@ -114,7 +114,7 @@ class PlanValidatorTest {
     }
 
     @Test
-    void rejectsPeriodLongerThanOneMonthBeforeExecution() {
+    void allowsControlledLongPeriodBeforeExecution() {
         PlanValidation result = validator.validate(plan(
                 List.of(),
                 new RequestPlan.TimeExpression(
@@ -122,9 +122,26 @@ class PlanValidatorTest {
                         "2026-01-01T00:00:00",
                         "2026-02-01T00:00:01")));
 
-        assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
-        assertThat(result.message()).contains("2026-02-01T00:00");
+        assertThat(result.ok()).isTrue();
+    }
+
+    @Test
+    void batchValidationAllowsExplicitCrossMonthAggregatePeriod() {
+        TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
+                Instant.parse("2026-07-26T15:30:00Z"),
+                ZoneId.of("Asia/Shanghai")));
+        PlanValidator fixedValidator = new PlanValidator(resolver);
+
+        PlanValidation result = fixedValidator.validateBatch(plan(
+                List.of(),
+                new RequestPlan.TimeExpression(
+                        "从25年2月份开始",
+                        "2025-02-01T00:00:00",
+                        "2026-07-26T23:30:00")));
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2025-02-01T00:00");
+        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-26T23:30");
     }
 
     @Test
@@ -163,8 +180,9 @@ class PlanValidatorTest {
                 List.of(),
                 new RequestPlan.TimeExpression("从26年一月份到现在", null, null)));
 
-        assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
+        assertThat(result.ok()).isTrue();
+        assertThat(result.resolvedTime().startTime().toString())
+                .isEqualTo("2026-01-01T00:00");
     }
 
     @Test
@@ -181,8 +199,9 @@ class PlanValidatorTest {
                         "2025-01-01 00:00:00",
                         "2026-07-22 00:00:00")));
 
-        assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
+        assertThat(result.ok()).isTrue();
+        assertThat(result.resolvedTime().startTime().toString())
+                .isEqualTo("2026-01-01T00:00");
     }
 
     private static RequestPlan plan(List<String> constraints, RequestPlan.TimeExpression time) {

@@ -1,0 +1,503 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "release_id": "KB-SMOKE-CANDIDATE",
+  "generated_at": "2026-07-26",
+  "rules": [
+    {
+      "rule_id": "HXZD-001-001",
+      "rule_name": "患者入院48小时内转科的比例",
+      "aliases": [
+        "患者入院48小时内转科的比例_入区时间"
+      ],
+      "category": "首诊负责制度",
+      "national_path": "wiki/indicators/HXZD-001-001/index.md",
+      "company_path": "wiki/indicators/HXZD-001-001/index.md",
+      "runtime_path": "sql-specs/HXZD-001-001/runtime.json",
+      "default_profile": "HXZD-001-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-002-001",
+      "rule_name": "患者入院8小时内查房率",
+      "aliases": [
+        "患者入院8小时内查房率"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/indicators/HXZD-002-001/index.md",
+      "company_path": "wiki/indicators/HXZD-002-001/index.md",
+      "runtime_path": "sql-specs/HXZD-002-001/runtime.json",
+      "default_profile": "HXZD-002-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-002-002",
+      "rule_name": "上级医师查房记录规范率",
+      "aliases": [
+        "上级医师查房记录规范率"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/indicators/HXZD-002-002/index.md",
+      "company_path": "wiki/indicators/HXZD-002-002/index.md",
+      "runtime_path": "sql-specs/HXZD-002-002/runtime.json",
+      "default_profile": "HXZD-002-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-002-003",
+      "rule_name": "住院患者非计划手术率",
+      "aliases": [
+        "住院患者非计划手术率"
+      ],
+      "category": "三级查房制度",
+      "national_path": "wiki/indicators/HXZD-002-003/index.md",
+      "company_path": "wiki/indicators/HXZD-002-003/index.md",
+      "runtime_path": "sql-specs/HXZD-002-003/runtime.json",
+      "default_profile": "HXZD-002-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-003-001",
+      "rule_name": "急会诊及时到位率",
+      "aliases": [
+        "急会诊及时到位率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/indicators/HXZD-003-001/index.md",
+      "company_path": "wiki/indicators/HXZD-003-001/index.md",
+      "runtime_path": "sql-specs/HXZD-003-001/runtime.json",
+      "default_profile": "HXZD-003-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-003-002",
+      "rule_name": "急会诊有效率",
+      "aliases": [
+        "急会诊有效率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/indicators/HXZD-003-002/index.md",
+      "company_path": "wiki/indicators/HXZD-003-002/index.md",
+      "runtime_path": "sql-specs/HXZD-003-002/runtime.json",
+      "default_profile": "HXZD-003-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-003-003",
+      "rule_name": "普通会诊及时完成率",
+      "aliases": [
+        "普通会诊及时完成率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/indicators/HXZD-003-003/index.md",
+      "company_path": "wiki/indicators/HXZD-003-003/index.md",
+      "runtime_path": "sql-specs/HXZD-003-003/runtime.json",
+      "default_profile": "HXZD-003-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-003-004",
+      "rule_name": "普通会诊有效率",
+      "aliases": [
+        "普通会诊有效率"
+      ],
+      "category": "会诊制度",
+      "national_path": "wiki/indicators/HXZD-003-004/index.md",
+      "company_path": "wiki/indicators/HXZD-003-004/index.md",
+      "runtime_path": "sql-specs/HXZD-003-004/runtime.json",
+      "default_profile": "HXZD-003-004-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-004-001",
+      "rule_name": "手术患者特级护理/一级护理出院率",
+      "aliases": [
+        "手术患者特级护理/一级护理出院率"
+      ],
+      "category": "分级护理制度",
+      "national_path": "wiki/indicators/HXZD-004-001/index.md",
+      "company_path": "wiki/indicators/HXZD-004-001/index.md",
+      "runtime_path": "sql-specs/HXZD-004-001/runtime.json",
+      "default_profile": "HXZD-004-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-005-001",
+      "rule_name": "四级手术患者手术当日床旁交接班占比",
+      "aliases": [
+        "四级手术患者手术当日床旁交接班占比"
+      ],
+      "category": "值班和交接班制度",
+      "national_path": "wiki/indicators/HXZD-005-001/index.md",
+      "company_path": "wiki/indicators/HXZD-005-001/index.md",
+      "runtime_path": "sql-specs/HXZD-005-001/runtime.json",
+      "default_profile": "HXZD-005-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-006-001",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论完成率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论完成率"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-006-001/index.md",
+      "company_path": "wiki/indicators/HXZD-006-001/index.md",
+      "runtime_path": "sql-specs/HXZD-006-001/runtime.json",
+      "default_profile": "HXZD-006-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-006-002",
+      "rule_name": "非计划再次住院/手术患者疑难病例讨论记录完整率",
+      "aliases": [
+        "非计划再次住院/手术患者疑难病例讨论记录完整率"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-006-002/index.md",
+      "company_path": "wiki/indicators/HXZD-006-002/index.md",
+      "runtime_path": "sql-specs/HXZD-006-002/runtime.json",
+      "default_profile": "HXZD-006-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-006-003",
+      "rule_name": "高额异常费用患者进行疑难病例讨论的占比",
+      "aliases": [
+        "高额异常费用患者进行疑难病例讨论的占比_出区时间",
+        "高额异常费用患者进行疑难病例讨论的占比_入区时间"
+      ],
+      "category": "疑难病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-006-003/index.md",
+      "company_path": "wiki/indicators/HXZD-006-003/index.md",
+      "runtime_path": "sql-specs/HXZD-006-003/runtime.json",
+      "default_profile": "HXZD-006-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-007-001",
+      "rule_name": "急危重症患者抢救成功率",
+      "aliases": [
+        "急危重症患者抢救成功率"
+      ],
+      "category": "急危重患者抢救制度",
+      "national_path": "wiki/indicators/HXZD-007-001/index.md",
+      "company_path": "wiki/indicators/HXZD-007-001/index.md",
+      "runtime_path": "sql-specs/HXZD-007-001/runtime.json",
+      "default_profile": "HXZD-007-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-008-001",
+      "rule_name": "术前讨论完成率",
+      "aliases": [
+        "术前讨论完成率"
+      ],
+      "category": "术前讨论制度",
+      "national_path": "wiki/indicators/HXZD-008-001/index.md",
+      "company_path": "wiki/indicators/HXZD-008-001/index.md",
+      "runtime_path": "sql-specs/HXZD-008-001/runtime.json",
+      "default_profile": "HXZD-008-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-008-002",
+      "rule_name": "术者参加术前讨论率",
+      "aliases": [
+        "术者参加术前讨论率_病历完成时间",
+        "术者参加术前讨论率_出区时间"
+      ],
+      "category": "术前讨论制度",
+      "national_path": "wiki/indicators/HXZD-008-002/index.md",
+      "company_path": "wiki/indicators/HXZD-008-002/index.md",
+      "runtime_path": "sql-specs/HXZD-008-002/runtime.json",
+      "default_profile": "HXZD-008-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-008-003",
+      "rule_name": "术前讨论计划手术一致率",
+      "aliases": [
+        "术前讨论计划手术一致率"
+      ],
+      "category": "术前讨论制度",
+      "national_path": "wiki/indicators/HXZD-008-003/index.md",
+      "company_path": "wiki/indicators/HXZD-008-003/index.md",
+      "runtime_path": "sql-specs/HXZD-008-003/runtime.json",
+      "default_profile": "HXZD-008-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-008-004",
+      "rule_name": "实际手术术者与计划手术术者一致率",
+      "aliases": [
+        "实际手术术者与计划手术术者一致率"
+      ],
+      "category": "术前讨论制度",
+      "national_path": "wiki/indicators/HXZD-008-004/index.md",
+      "company_path": "wiki/indicators/HXZD-008-004/index.md",
+      "runtime_path": "sql-specs/HXZD-008-004/runtime.json",
+      "default_profile": "HXZD-008-004-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-009-001",
+      "rule_name": "死亡病例讨论5日完成率",
+      "aliases": [
+        "死亡病例讨论5日完成率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-009-001/index.md",
+      "company_path": "wiki/indicators/HXZD-009-001/index.md",
+      "runtime_path": "sql-specs/HXZD-009-001/runtime.json",
+      "default_profile": "HXZD-009-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-009-002",
+      "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+      "aliases": [
+        "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值_出院患者",
+        "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-009-002/index.md",
+      "company_path": "wiki/indicators/HXZD-009-002/index.md",
+      "runtime_path": "sql-specs/HXZD-009-002/runtime.json",
+      "default_profile": "HXZD-009-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-009-003",
+      "rule_name": "科主任主持死亡病例讨论率",
+      "aliases": [
+        "科主任主持死亡病例讨论率_死亡讨论记录",
+        "科主任主持死亡病例讨论率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-009-003/index.md",
+      "company_path": "wiki/indicators/HXZD-009-003/index.md",
+      "runtime_path": "sql-specs/HXZD-009-003/runtime.json",
+      "default_profile": "HXZD-009-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-009-004",
+      "rule_name": "死亡患者病案上传率",
+      "aliases": [
+        "死亡患者病案上传率"
+      ],
+      "category": "死亡病例讨论制度",
+      "national_path": "wiki/indicators/HXZD-009-004/index.md",
+      "company_path": "wiki/indicators/HXZD-009-004/index.md",
+      "runtime_path": "sql-specs/HXZD-009-004/runtime.json",
+      "default_profile": null,
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-010-001",
+      "rule_name": "长期医嘱当日终止率",
+      "aliases": [
+        "长期医嘱当日终止率"
+      ],
+      "category": "查对制度",
+      "national_path": "wiki/indicators/HXZD-010-001/index.md",
+      "company_path": "wiki/indicators/HXZD-010-001/index.md",
+      "runtime_path": "sql-specs/HXZD-010-001/runtime.json",
+      "default_profile": "HXZD-010-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-011-001",
+      "rule_name": "手术医师手术时间重合率",
+      "aliases": [
+        "手术医师手术时间重合率"
+      ],
+      "category": "手术安全核查制度",
+      "national_path": "wiki/indicators/HXZD-011-001/index.md",
+      "company_path": "wiki/indicators/HXZD-011-001/index.md",
+      "runtime_path": "sql-specs/HXZD-011-001/runtime.json",
+      "default_profile": "HXZD-011-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-011-002",
+      "rule_name": "麻醉医师手术时间重合率",
+      "aliases": [
+        "麻醉医师手术时间重合率"
+      ],
+      "category": "手术安全核查制度",
+      "national_path": "wiki/indicators/HXZD-011-002/index.md",
+      "company_path": "wiki/indicators/HXZD-011-002/index.md",
+      "runtime_path": "sql-specs/HXZD-011-002/runtime.json",
+      "default_profile": "HXZD-011-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-012-001",
+      "rule_name": "四级手术与三级手术并发症发生率比",
+      "aliases": [
+        "四级手术与三级手术并发症发生率比"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/indicators/HXZD-012-001/index.md",
+      "company_path": "wiki/indicators/HXZD-012-001/index.md",
+      "runtime_path": "sql-specs/HXZD-012-001/runtime.json",
+      "default_profile": "HXZD-012-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-012-002",
+      "rule_name": "四级手术与三级手术患者死亡率比",
+      "aliases": [
+        "四级手术与三级手术患者死亡率比"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/indicators/HXZD-012-002/index.md",
+      "company_path": "wiki/indicators/HXZD-012-002/index.md",
+      "runtime_path": "sql-specs/HXZD-012-002/runtime.json",
+      "default_profile": "HXZD-012-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-012-003",
+      "rule_name": "四级手术术前多学科讨论完成率",
+      "aliases": [
+        "四级手术术前多学科讨论完成率"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/indicators/HXZD-012-003/index.md",
+      "company_path": "wiki/indicators/HXZD-012-003/index.md",
+      "runtime_path": "sql-specs/HXZD-012-003/runtime.json",
+      "default_profile": "HXZD-012-003-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-012-004",
+      "rule_name": "三、四级手术实际开展率",
+      "aliases": [
+        "三、四级手术实际开展率_手术完成时间",
+        "三、四级手术实际开展率_出区时间"
+      ],
+      "category": "手术分级管理制度",
+      "national_path": "wiki/indicators/HXZD-012-004/index.md",
+      "company_path": "wiki/indicators/HXZD-012-004/index.md",
+      "runtime_path": "sql-specs/HXZD-012-004/runtime.json",
+      "default_profile": "HXZD-012-004-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-013-001",
+      "rule_name": "新技术新项目留存转化率",
+      "aliases": [
+        "新技术新项目留存转化率"
+      ],
+      "category": "新技术和新项目准入制度",
+      "national_path": "wiki/indicators/HXZD-013-001/index.md",
+      "company_path": "wiki/indicators/HXZD-013-001/index.md",
+      "runtime_path": "sql-specs/HXZD-013-001/runtime.json",
+      "default_profile": "HXZD-013-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-014-001",
+      "rule_name": "危急值报告时间",
+      "aliases": [
+        "危急值报告时间"
+      ],
+      "category": "危急值报告制度",
+      "national_path": "wiki/indicators/HXZD-014-001/index.md",
+      "company_path": "wiki/indicators/HXZD-014-001/index.md",
+      "runtime_path": "sql-specs/HXZD-014-001/runtime.json",
+      "default_profile": "HXZD-014-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-014-002",
+      "rule_name": "住院患者危急值当日及时处置率",
+      "aliases": [
+        "住院患者危急值当日及时处置率"
+      ],
+      "category": "危急值报告制度",
+      "national_path": "wiki/indicators/HXZD-014-002/index.md",
+      "company_path": "wiki/indicators/HXZD-014-002/index.md",
+      "runtime_path": "sql-specs/HXZD-014-002/runtime.json",
+      "default_profile": "HXZD-014-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-015-001",
+      "rule_name": "特殊使用级抗菌药物使用会诊率",
+      "aliases": [
+        "特殊使用级抗菌药物使用会诊率_医务报批",
+        "特殊使用级抗菌药物使用会诊率_会诊管理"
+      ],
+      "category": "抗菌药物分级管理制度",
+      "national_path": "wiki/indicators/HXZD-015-001/index.md",
+      "company_path": "wiki/indicators/HXZD-015-001/index.md",
+      "runtime_path": "sql-specs/HXZD-015-001/runtime.json",
+      "default_profile": "HXZD-015-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-016-001",
+      "rule_name": "临床用血后评估记录率",
+      "aliases": [
+        "临床用血后评估记录率"
+      ],
+      "category": "临床用血审核制度",
+      "national_path": "wiki/indicators/HXZD-016-001/index.md",
+      "company_path": "wiki/indicators/HXZD-016-001/index.md",
+      "runtime_path": "sql-specs/HXZD-016-001/runtime.json",
+      "default_profile": "HXZD-016-001-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    },
+    {
+      "rule_id": "HXZD-016-002",
+      "rule_name": "术中自体血回输率",
+      "aliases": [
+        "术中自体血回输率"
+      ],
+      "category": "临床用血审核制度",
+      "national_path": "wiki/indicators/HXZD-016-002/index.md",
+      "company_path": "wiki/indicators/HXZD-016-002/index.md",
+      "runtime_path": "sql-specs/HXZD-016-002/runtime.json",
+      "default_profile": "HXZD-016-002-company-default",
+      "status": "active",
+      "source_path": "review/pending/KB-SMOKE-CANDIDATE/source/35项核心制度指标完整提取.md"
+    }
+  ]
+}

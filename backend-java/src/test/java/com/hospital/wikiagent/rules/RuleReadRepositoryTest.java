@@ -29,7 +29,8 @@ class RuleReadRepositoryTest {
                 .build();
         ObjectMapper objectMapper = new ObjectMapper();
         WikiRuleKnowledgeSource wiki = new WikiRuleKnowledgeSource(
-                Path.of("..", "core-rules-wiki").toString(), objectMapper);
+                Path.of("src", "main", "resources", "core-rules-wiki").toString(),
+                objectMapper);
         repository = new RuleReadRepository(new JdbcTemplate(database), wiki);
     }
 

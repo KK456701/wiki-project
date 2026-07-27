@@ -1,0 +1,17 @@
+{
+  "schema_version": "knowledge-candidate-v2",
+  "candidate_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX8",
+  "release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX8",
+  "status": "published",
+  "scope": "hospital",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "model_id": "deterministic-adapter",
+  "prompt_version": "knowledge-release-normalizer-v1",
+  "prompt_sha256": "52a0288fc1c5af8b3cf50bfa029dba1da0424ca72679fcb916b65bd69c1c16ce",
+  "created_at": "2026-07-27T01:09:48.149Z",
+  "unresolved_questions": [],
+  "verification_sha256": "0cec52034385fa53aca8e088516ebca2ba26815b267f941a44b3759042806b16",
+  "verification_applied_at": "2026-07-27T01:10:04.816Z",
+  "published_at": "2026-07-27T01:10:19.610Z"
+}

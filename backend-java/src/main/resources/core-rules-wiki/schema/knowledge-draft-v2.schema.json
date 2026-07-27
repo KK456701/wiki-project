@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "knowledge-draft-v2",
+  "title": "核心制度指标知识发布候选",
+  "type": "object",
+  "required": ["schema_version", "source", "indicators", "sql_blocks", "unresolved_questions"],
+  "properties": {
+    "schema_version": {"const": "knowledge-draft-v2"},
+    "source": {
+      "type": "object",
+      "required": ["file_name", "sha256"],
+      "properties": {
+        "file_name": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "indicators": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id", "rule_name", "system_id", "system_name", "definition",
+          "formula", "profiles", "source_refs", "confidence"
+        ],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^HXZD-[0-9]{3}-[0-9]{3}$"},
+          "rule_name": {"type": "string", "minLength": 1},
+          "system_id": {"type": "string", "pattern": "^HXZD-[0-9]{3}$"},
+          "system_name": {"type": "string", "minLength": 1},
+          "definition": {"type": "string", "minLength": 1},
+          "formula": {"type": "string", "minLength": 1},
+          "note": {"type": "string"},
+          "significance": {"type": "string"},
+          "source_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "profiles": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "profile_name", "numerator", "denominator", "sql_refs",
+                "source_refs", "confidence"
+              ],
+              "properties": {
+                "profile_name": {"type": "string", "minLength": 1},
+                "numerator": {"type": "string"},
+                "denominator": {"type": "string"},
+                "numerator_caliber": {"type": "string"},
+                "denominator_caliber": {"type": "string"},
+                "configurable_parameters": {"type": "string"},
+                "meta": {"type": "object"},
+                "sql_refs": {
+                  "type": "object",
+                  "properties": {
+                    "source_extract": {"type": ["string", "null"]},
+                    "overview": {"type": ["string", "null"]},
+                    "department_detail": {"type": ["string", "null"]},
+                    "patient_detail": {"type": ["string", "null"]}
+                  },
+                  "additionalProperties": false
+                },
+                "source_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "sql_blocks": {
+      "type": "object",
+      "description": "由确定性提取器写入；模型只能引用已有block id，不能改写SQL。",
+      "additionalProperties": {"type": "string"}
+    },
+    "unresolved_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "reason", "source_ref"],
+        "properties": {
+          "field": {"type": "string"},
+          "reason": {"type": "string"},
+          "source_ref": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

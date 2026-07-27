@@ -103,6 +103,7 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'OLLAMA_BASE_URL' (Get-YamlScalar $config 'ollama_base_url')
     Set-EnvironmentDefault 'DBHUB_API_URL' (Get-YamlScalar $config 'dbhub_api_url')
     Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
+    Set-EnvironmentDefault 'DBHUB_BIZ_MCP_URL' (Get-YamlScalar $config 'dbhub_biz_mcp_url')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_SOURCE_ID' (Get-YamlScalar $config 'dbhub_business_source_id')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_EXECUTE_TOOL' (Get-YamlScalar $config 'dbhub_business_execute_tool')
     Set-EnvironmentDefault 'DBHUB_BUSINESS_DATABASE' (Get-YamlScalar $config 'dbhub_business_database')
@@ -112,6 +113,8 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'DBHUB_REAL_DATABASE' (Get-YamlScalar $config 'dbhub_real_database')
     Set-EnvironmentDefault 'DBHUB_REAL_SCHEMA' (Get-YamlScalar $config 'dbhub_real_schema')
     Set-EnvironmentDefault 'AGENT_EXTRACTION_MODE' (Get-YamlScalar $config 'agent_extraction_mode')
+    Set-EnvironmentDefault 'WIKI_EXTRACTION_HOSPITAL_SOID' (
+        Get-YamlScalar $config 'extraction_hospital_soid')
     $proxy = Get-YamlScalar $config 'java_http_proxy_url'
     if ($proxy) {
         $uri = New-Object System.Uri($proxy)

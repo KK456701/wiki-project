@@ -26,7 +26,6 @@ import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.dbhub.DatabaseSourceException;
-import com.hospital.wikiagent.dbhub.DbHubMcpException;
 import com.hospital.wikiagent.dbhub.DbHubProperties;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
@@ -70,17 +69,20 @@ public class IndicatorSqlTools {
     }
 
     /**
-     * 双库执行是可选的增强链路。使用 setter 注入可以让现有单库测试和禁用模式保持
-     * 原构造契约；生产 Spring 容器存在 Workflow 时会自动完成注入。
+     * 受控计算工作流沿用 setter 注入以保持构造契约兼容；生产运行缺少该 Bean 时
+     * 普通计算会明确失败，不会退回业务库直查。
      */
     @Autowired(required = false)
-    void setDualDatabaseWorkflow(DualDatabaseIndicatorExecutionWorkflow dualDatabaseWorkflow) {
+    public void setDualDatabaseWorkflow(
+            DualDatabaseIndicatorExecutionWorkflow dualDatabaseWorkflow) {
         this.dualDatabaseWorkflow = dualDatabaseWorkflow;
     }
 
     public ToolResult inspect(InspectInput input, ToolExecutionContext context) {
-        Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
-        Map<String, Object> mapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
+        Map<String, Object> rule = rules.effectiveRule(
+                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
+        Map<String, Object> mapping = rules.fieldMapping(
+                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
         Inspection inspection = inspection(rule, mapping);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("rule_id", input.ruleId());
@@ -112,7 +114,7 @@ public class IndicatorSqlTools {
     }
 
     public ToolResult prepare(PrepareInput input, ToolExecutionContext context) {
-        return prepareInternal(input, Map.of(), Map.of(), null, context);
+        return prepareInternal(input, Map.of(), Map.of(), input.profileId(), context);
     }
 
     /**
@@ -174,7 +176,10 @@ public class IndicatorSqlTools {
         } catch (RuntimeException exception) {
             return failure("validation_failed", "STAT_PERIOD_INVALID", "统计时间格式无效。", false);
         }
-        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(start, end);
+        boolean sqlDisplayOnly = PlanIntent.INDICATOR_SQL_PREPARE.value()
+                .equals(state.lastIntent());
+        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(
+                start, end, !sqlDisplayOnly);
         if (!period.ok()) {
             return failure("validation_failed", period.code(), period.message(), false);
         }
@@ -189,15 +194,15 @@ public class IndicatorSqlTools {
             /*
              * “给我 SQL”与“执行 SQL”是两种不同能力。对于 documentation_only
              * Profile，明确的 SQL_PREPARE 计划只查看知识库原稿。普通指标计算允许
-             * 使用已通过静态门禁、且具备确定性结果列映射的 overview SQL；它会
-             * 在业务库和真实库各执行一次，以实际结果验证数据库兼容性。候选口径和
+             * 使用已通过静态门禁、且具备确定性结果列映射的 overview SQL；完成
+             * 受控抽取后只在真实库执行。候选口径和
              * 诊断仍必须使用完整执行契约，不能借概览试算绕过治理边界。
              */
             if (diagnosticProfileId == null
                     && PlanIntent.INDICATOR_SQL_PREPARE.value().equals(state.lastIntent())) {
                 return prepareReferenceOnly(input, start, end, rule, context);
             }
-            if (diagnosticProfileId != null || !overviewStaticRuntime) {
+            if (!overviewStaticRuntime) {
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("rule_id", input.ruleId());
                 data.put("profile_id", rule.get("profile_id"));
@@ -469,19 +474,20 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
         /*
-         * 普通指标计算固定走双库 Workflow。抽取开关只决定 Workflow 内部是否先调用
-         * 抽取网关，不能再让 disabled 模式退回旧的业务库单库查询。
+         * 普通指标计算固定走受控 Workflow：先抽取到真实库，再仅查询真实库。
+         * Workflow 缺失时必须失败，绝不能回退为业务库直查。
          */
-        boolean dualExecution =
+        boolean controlledExecution =
                 dualDatabaseWorkflow != null && dualDatabaseWorkflow.enabled();
         if ("win60_qa_991827".equalsIgnoreCase(sql.dbSourceId())) {
             return failure("unavailable", "DB_SOURCE_RETIRED",
                     "该 SQL 对象引用的数据库已经退役，不能重新执行；请重新发起指标计算。",
                     false);
         }
-        if (!dualExecution && sql.dbSourceId() != null && !sql.dbSourceId().isBlank()
-                && !sql.dbSourceId().equals(businessQuery.sourceId())) {
-            return failure("error", "TRIAL_SOURCE_MISMATCH", "试运行数据源与 SQL 对象不一致，结果已拒绝。", false);
+        if (!controlledExecution) {
+            return failure(
+                    "unavailable", "REAL_CALCULATION_WORKFLOW_UNAVAILABLE",
+                    "真实库指标计算工作流不可用，未执行任何数据库查询。", false);
         }
 
         Map<String, Object> bound = new LinkedHashMap<>(sql.params());
@@ -496,83 +502,8 @@ public class IndicatorSqlTools {
             return failure("validation_failed", "SQL_PARAMETER_MISSING", "SQL 运行参数不完整，请重新准备。", false);
         }
 
-        if (dualExecution) {
-            return dualDatabaseWorkflow.execute(sql, currentRule, executable, bound, context);
-        }
-
-        String runId = id("RUN_");
-        long started = System.nanoTime();
-        try {
-            List<Map<String, Object>> rows;
-            try {
-                rows = businessQuery.execute(executable);
-            } catch (DbHubMcpException exception) {
-                if (!transientConnectionFailure(exception.getMessage())) {
-                    throw exception;
-                }
-                rows = businessQuery.execute(executable);
-            }
-            long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
-            Map<String, Object> first = rows.isEmpty() ? Map.of() : rows.get(0);
-            Map<String, Object> resultMapping = objectMap(currentRule.get("result_mapping"));
-            String resultColumn = first(
-                    text(resultMapping.get("index_value")), "index_value");
-            String numeratorColumn = first(
-                    text(resultMapping.get("numerator_count")), "numerator_count");
-            String denominatorColumn = first(
-                    text(resultMapping.get("denominator_count")), "denominator_count");
-            Number resultValue = number(value(first, resultColumn));
-            Long numerator = longValue(value(first, numeratorColumn));
-            Long denominator = longValue(value(first, denominatorColumn));
-            if (denominator == null) {
-                denominator = longValue(value(first, "sample_count"));
-            }
-            Number verifiedValue = verifiedPercentage(resultValue, numerator, denominator);
-            if (verifiedValue == null && resultValue != null && numerator != null && denominator != null) {
-                return failure("validation_failed", "NUMERIC_RESULT_INCONSISTENT",
-                        "SQL返回指标值与分子分母复算结果不一致，本次结果已拒绝。", false);
-            }
-            if (verifiedValue != null) {
-                resultValue = verifiedValue;
-            }
-            String status = resultValue == null ? "empty" : "success";
-            Map<String, Object> runContext = new LinkedHashMap<>(sql.contextSnapshot());
-            objects.saveRun(runId, sql, status, resultValue, numerator, denominator, "", durationMs,
-                    context.agentContext().userId(), runContext);
-            state.lastRunId(runId);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("sql_id", sql.sqlId());
-            data.put("run_id", runId);
-            data.put("status", status);
-            data.put("result_value", resultValue);
-            data.put("numerator_count", numerator);
-            data.put("denominator_count", denominator);
-            data.put("no_sample", denominator != null && denominator == 0);
-            data.put("duration_ms", durationMs);
-            data.put("source", businessQuery.sourceId());
-            data.put("hospital_id", context.agentContext().hospitalId());
-            data.put("source_role", sourceRole(sql.dbSourceId()));
-            data.put("db_source_id", sql.dbSourceId());
-            data.put("rule_id", sql.ruleId());
-            data.put("profile_id", profileId);
-            data.put("context_digest", sql.contextDigest());
-            data.put("stat_start", sql.statStart());
-            data.put("stat_end", sql.statEnd());
-            return ToolResult.success("TRIAL_RUN_COMPLETED",
-                    "success".equals(status) ? "只读试运行完成，已获得聚合结果。"
-                            : "只读试运行完成，当前统计区间没有可用样本。",
-                    data);
-        } catch (RuntimeException exception) {
-            long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
-            try {
-                objects.saveRun(runId, sql, "failed", null, null, null, "DBHub query failed", durationMs,
-                        context.agentContext().userId(), sql.contextSnapshot());
-            } catch (RuntimeException ignored) {
-                // 原始 DBHub 错误优先，日志失败不能泄漏内部连接信息。
-            }
-            return failure("error", "TRIAL_RUN_FAILED", "只读试运行失败，未获得可用聚合结果。", true);
-        }
+        return dualDatabaseWorkflow.execute(
+                sql, currentRule, executable, bound, context);
     }
 
     private Inspection inspection(Map<String, Object> rule, Map<String, Object> mapping) {
@@ -581,12 +512,12 @@ public class IndicatorSqlTools {
                 objectMap(rule.get("field_contract")).get("business_fields"));
         required.addAll(businessFields.keySet());
         /*
-         * 新版知识发布流程会在目标医院同时完成 business/real 两个数据源的元数据和
-         * 编译验证，并把结果固化进不可变 Profile。该发布契约比本机 SQLite 中可能
+         * 新版知识发布流程会完成真实库概览 SQL 的元数据和编译验证，并把结果固化
+         * 进不可变 Profile。该发布契约比本机 SQLite 中可能
          * 尚未同步的元数据缓存更权威；只有发布契约不完整时，才要求缓存中每个字段
          * 都存在实际类型。字段映射缺失、未确认、类型冲突和关联缺失仍然始终阻断。
          */
-        boolean publishedDualContractVerified = publishedDualContractVerified(rule);
+        boolean publishedRealContractVerified = publishedRealContractVerified(rule);
         Set<String> mapped = new LinkedHashSet<>(objectMap(mapping.get("fields")).keySet());
         List<String> missing = required.stream().filter(value -> !mapped.contains(value)).sorted().toList();
         List<String> unconfirmed = listOfMaps(mapping.get("items")).stream()
@@ -600,7 +531,9 @@ public class IndicatorSqlTools {
             String mappedColumn = text(item.get("table_name")) + "." + text(item.get("column_name"));
             String actual = text(item.get("metadata_data_type")).toLowerCase(Locale.ROOT);
             if (actual.isBlank()) {
-                missingColumns.add(mappedColumn);
+                if (!publishedRealContractVerified) {
+                    missingColumns.add(mappedColumn);
+                }
                 continue;
             }
             String expected = text(objectMap(businessFields.get(businessField)).get("type"))
@@ -626,27 +559,19 @@ public class IndicatorSqlTools {
         }
         boolean ready = "confirmed".equals(mapping.get("status"))
                 && missing.isEmpty() && unconfirmed.isEmpty()
-                && (publishedDualContractVerified || missingColumns.isEmpty())
+                && (publishedRealContractVerified || missingColumns.isEmpty())
                 && typeMismatches.isEmpty() && missingRelations.isEmpty();
         return new Inspection(ready, mapped.stream().sorted().toList(), required.stream().sorted().toList(),
                 missing, unconfirmed, missingColumns.stream().sorted().toList(),
                 typeMismatches.stream().sorted().toList(), missingRelations.stream().sorted().toList());
     }
 
-    private static boolean publishedDualContractVerified(Map<String, Object> rule) {
+    private static boolean publishedRealContractVerified(Map<String, Object> rule) {
         Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
-        if (!Boolean.TRUE.equals(contract.get("schema_compatible"))) {
-            return false;
-        }
         Map<String, Object> sourceVerification = objectMap(contract.get("source_verification"));
-        for (String role : List.of("business", "real")) {
-            Map<String, Object> verification = objectMap(sourceVerification.get(role));
-            if (!"validated".equalsIgnoreCase(text(verification.get("metadata_status")))
-                    || !"validated".equalsIgnoreCase(text(verification.get("compile_status")))) {
-                return false;
-            }
-        }
-        return true;
+        Map<String, Object> verification = objectMap(sourceVerification.get("real"));
+        return "validated".equalsIgnoreCase(text(verification.get("metadata_status")))
+                && "validated".equalsIgnoreCase(text(verification.get("compile_status")));
     }
 
     private static boolean typesCompatible(String expected, String actual) {
@@ -845,27 +770,6 @@ public class IndicatorSqlTools {
         return number == null ? null : number.longValue();
     }
 
-    private static Number verifiedPercentage(Number returned, Long numerator, Long denominator) {
-        if (numerator == null || denominator == null) {
-            return returned;
-        }
-        double calculated = denominator == 0
-                ? 0.0
-                : numerator.doubleValue() * 100.0 / denominator.doubleValue();
-        if (returned != null && Math.abs(returned.doubleValue() - calculated) > 0.011) {
-            return null;
-        }
-        // 对外契约历史上使用 JSON number（Double）。这里先按两位小数复算，再返回
-        // Double，避免 25.00 与 25.0 因 Java 数值类型不同导致 Evidence/回答契约误判。
-        return Math.round(calculated * 100.0) / 100.0;
-    }
-
-    private static boolean transientConnectionFailure(String message) {
-        String value = message == null ? "" : message.toLowerCase(Locale.ROOT);
-        return List.of("socket hang up", "connection lost", "connection reset", "connection aborted", "连接中断", "连接已断开")
-                .stream().anyMatch(value::contains);
-    }
-
     private String sourceId(ToolExecutionContext context) {
         String requested = context.agentContext().dbSourceId();
         if (requested == null || requested.isBlank()
@@ -877,8 +781,8 @@ public class IndicatorSqlTools {
             throw DatabaseSourceException.retired();
         }
         /*
-         * 真实库只允许由双库 Workflow 在服务端按 DatabaseRole.REAL 选择。普通聊天
-         * 请求不能直接指定真实库或任意 DBHub source-id，防止绕过抽取和双库核对。
+         * 真实库只允许由受控 Workflow 在服务端按 DatabaseRole.REAL 选择。普通聊天
+         * 请求不能直接指定真实库或任意 DBHub source-id，防止绕过抽取阶段。
          */
         throw DatabaseSourceException.invalid();
     }
@@ -941,21 +845,32 @@ public class IndicatorSqlTools {
         return "";
     }
 
-    public record InspectInput(String ruleId) {
+    public record InspectInput(String ruleId, String profileId) {
         public InspectInput {
             ruleId = ruleId == null ? "" : ruleId.strip();
+            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
             if (ruleId.isEmpty()) throw new IllegalArgumentException("规则编号不能为空");
+        }
+
+        public InspectInput(String ruleId) {
+            this(ruleId, null);
         }
     }
 
-    public record PrepareInput(String ruleId, String statStartTime, String statEndTime) {
+    public record PrepareInput(
+            String ruleId, String statStartTime, String statEndTime, String profileId) {
         public PrepareInput {
             ruleId = ruleId == null ? "" : ruleId.strip();
             statStartTime = statStartTime == null ? "" : statStartTime.strip();
             statEndTime = statEndTime == null ? "" : statEndTime.strip();
+            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
             if (ruleId.isEmpty() || statStartTime.isEmpty() || statEndTime.isEmpty()) {
                 throw new IllegalArgumentException("SQL 准备参数不完整");
             }
+        }
+
+        public PrepareInput(String ruleId, String statStartTime, String statEndTime) {
+            this(ruleId, statStartTime, statEndTime, null);
         }
     }
 

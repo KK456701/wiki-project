@@ -2,6 +2,8 @@ package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 class CompoundRequestSplitterTest {
@@ -25,6 +27,21 @@ class CompoundRequestSplitterTest {
     @Test
     void doesNotSplitOrdinarySingleIndicatorSentence() {
         var result = splitter.split("急会诊及时到位率的分子和分母分别是什么意思？", "");
+
+        assertThat(result.compound()).isFalse();
+    }
+
+    @Test
+    void doesNotSplitConjunctionInsideResolvedCanonicalIndicatorName() {
+        var ratio = new HybridIndicatorResolver.ResolvedIndicator(
+                "四级手术与三级手术并发症发生率比",
+                "四级手术与三级手术并发症发生率比",
+                "HXZD-012-001", "RULE:HXZD-012-001",
+                "rule", 1.0, 0, 18);
+
+        var result = splitter.split(
+                "四级手术与三级手术并发症发生率比这个怎么算的？",
+                "", "hospital_001", java.util.List.of(ratio));
 
         assertThat(result.compound()).isFalse();
     }
@@ -68,6 +85,26 @@ class CompoundRequestSplitterTest {
                 "急会诊及时到位率", "患者入院 48 小时内转科的比例");
         assertThat(result.tasks()).extracting("resolvedIndicator")
                 .containsExactly(first, second);
+    }
+
+    @Test
+    void preservesRequestedExplanationFieldsForEveryResolvedIndicator() {
+        var first = new HybridIndicatorResolver.ResolvedIndicator(
+                "转科", "患者入院48小时内转科的比例", "HXZD-001-001",
+                "RULE:HXZD-001-001", "exact", 1.0, 0, 2);
+        var second = new HybridIndicatorResolver.ResolvedIndicator(
+                "会诊", "急会诊及时到位率", "HXZD-003-001",
+                "RULE:HXZD-003-001", "exact", 1.0, 3, 5);
+
+        var result = splitter.split(
+                "这两个指标的定义、分子、分母和排除条件分别是什么？",
+                "", "hospital_001", java.util.List.of(first, second));
+
+        assertThat(result.kind()).isEqualTo(
+                CompoundRequestSplitter.RequestKind.RULE_EXPLANATION);
+        assertThat(result.tasks()).allSatisfy(task ->
+                assertThat(task.query()).contains(
+                        "定义", "分子", "分母", "排除条件"));
     }
 
     @Test
@@ -183,5 +220,84 @@ class CompoundRequestSplitterTest {
         assertThat(result.compound()).isTrue();
         assertThat(result.followup()).isTrue();
         assertThat(result.kind()).isEqualTo(CompoundRequestSplitter.RequestKind.TRIAL_RUN);
+    }
+
+    @Test
+    void currentCalculationOverridesPreviousSqlIntentForRememberedCompoundScope() {
+        String history = """
+                用户：最后这个指标的 SQL 怎么写？
+                助手：## 四级手术与三级手术并发症发生率比
+                SQL 内容
+                """;
+
+        var result = splitter.split(
+                "按上次统计时间计算这三个指标", history, "hospital_001",
+                java.util.List.of(),
+                java.util.List.of(
+                        "患者入院48小时内转科的比例",
+                        "急会诊及时到位率",
+                        "四级手术与三级手术并发症发生率比"));
+
+        assertThat(result.compound()).isTrue();
+        assertThat(result.kind()).isEqualTo(CompoundRequestSplitter.RequestKind.TRIAL_RUN);
+        assertThat(result.tasks()).extracting("target").containsExactly(
+                "患者入院48小时内转科的比例",
+                "急会诊及时到位率",
+                "四级手术与三级手术并发症发生率比");
+    }
+
+    @Test
+    void routesThreeFiveThirtyFourAndThirtyFiveTargetsForEverySupportedOperation() {
+        record Case(String query, CompoundRequestSplitter.RequestKind kind) {}
+        List<Case> operations = List.of(
+                new Case("查询这些指标的定义", CompoundRequestSplitter.RequestKind.RULE_EXPLANATION),
+                new Case("查询这些指标的分子分母口径", CompoundRequestSplitter.RequestKind.RULE_EXPLANATION),
+                new Case("查询这些指标当前使用的 Profile", CompoundRequestSplitter.RequestKind.RULE_EXPLANATION),
+                new Case("生成这些指标的 SQL", CompoundRequestSplitter.RequestKind.SQL_PREPARE),
+                new Case("计算这些指标的结果", CompoundRequestSplitter.RequestKind.TRIAL_RUN),
+                new Case("排查这些指标的结果异常", CompoundRequestSplitter.RequestKind.DIAGNOSIS));
+
+        for (int count : List.of(3, 5, 34, 35)) {
+            List<HybridIndicatorResolver.ResolvedIndicator> targets =
+                    java.util.stream.IntStream.rangeClosed(1, count)
+                            .mapToObj(index -> new HybridIndicatorResolver.ResolvedIndicator(
+                                    "验收指标" + index,
+                                    "验收指标" + index,
+                                    "R" + index,
+                                    "RULE:R" + index,
+                                    "test",
+                                    1.0,
+                                    index,
+                                    index + 1))
+                            .toList();
+            for (Case operation : operations) {
+                var result = splitter.split(
+                        operation.query(), "", "hospital_001", targets, List.of());
+
+                assertThat(result.tasks())
+                        .as("%s targets for %s", count, operation.query())
+                        .hasSize(count);
+                assertThat(result.kind()).isEqualTo(operation.kind());
+                assertThat(result.tasks()).extracting(
+                                task -> task.resolvedIndicator().ruleId())
+                        .containsExactlyElementsOf(
+                                java.util.stream.IntStream.rangeClosed(1, count)
+                                        .mapToObj(index -> "R" + index)
+                                        .toList());
+            }
+        }
+    }
+
+    @Test
+    void oneResolvedTargetStaysOnSingleIndicatorPath() {
+        var target = new HybridIndicatorResolver.ResolvedIndicator(
+                "验收指标1", "验收指标1", "R1", "RULE:R1",
+                "test", 1.0, 0, 5);
+
+        var result = splitter.split(
+                "验收指标1的定义", "", "hospital_001", List.of(target), List.of());
+
+        assertThat(result.compound()).isFalse();
+        assertThat(result.tasks()).isEmpty();
     }
 }

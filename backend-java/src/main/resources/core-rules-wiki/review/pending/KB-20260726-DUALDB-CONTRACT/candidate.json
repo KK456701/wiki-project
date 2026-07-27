@@ -1,0 +1,14 @@
+{
+  "schema_version": "knowledge-candidate-v2",
+  "candidate_id": "KB-20260726-DUALDB-CONTRACT",
+  "release_id": "KB-20260726-DUALDB-CONTRACT",
+  "status": "pending_review",
+  "scope": "company",
+  "hospital_id": null,
+  "base_release_id": null,
+  "model_id": "deterministic-adapter",
+  "prompt_version": "knowledge-release-normalizer-v1",
+  "prompt_sha256": "52a0288fc1c5af8b3cf50bfa029dba1da0424ca72679fcb916b65bd69c1c16ce",
+  "created_at": "2026-07-26T07:28:39.219Z",
+  "unresolved_questions": []
+}

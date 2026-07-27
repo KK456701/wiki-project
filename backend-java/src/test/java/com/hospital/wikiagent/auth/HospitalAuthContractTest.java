@@ -3,8 +3,6 @@ package com.hospital.wikiagent.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
@@ -56,9 +54,11 @@ class HospitalAuthContractTest {
 
     @Test
     void cryptoMatchesFrozenCompatibilityVector() throws Exception {
-        Path fixture = Path.of("..", "contracts", "migration", "v1", "auth-crypto-vector.json").normalize();
         @SuppressWarnings("unchecked")
-        Map<String, Object> vector = new ObjectMapper().readValue(Files.readString(fixture), Map.class);
+        Map<String, Object> vector = new ObjectMapper().readValue(
+                new ClassPathResource("contracts/migration/v1/auth-crypto-vector.json")
+                        .getInputStream(),
+                Map.class);
         byte[] salt = HexFormat.of().parseHex(vector.get("salt_hex").toString());
 
         assertThat(HospitalAuthService.hashPassword(

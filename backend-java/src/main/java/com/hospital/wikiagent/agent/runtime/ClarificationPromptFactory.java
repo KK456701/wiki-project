@@ -81,24 +81,35 @@ public class ClarificationPromptFactory {
             HybridIndicatorResolver.Resolution resolution,
             String hospitalId,
             String originalQuery) {
-        List<Option> recommended = new ArrayList<>();
+        Map<String, Option> recommended = new LinkedHashMap<>();
         for (var ambiguity : resolution.ambiguities()) {
             for (var candidate : ambiguity.candidates()) {
-                recommended.add(new Option(
+                recommended.putIfAbsent(candidate.ruleId(), new Option(
                         "indicator:" + candidate.ruleId(),
                         candidate.canonicalName(),
                         candidate.canonicalName() + "（" + candidate.ruleId() + "）",
                         "系统根据“" + ambiguity.mention() + "”召回的候选指标",
                         "推荐匹配"));
+                if (recommended.size() >= 3) {
+                    break;
+                }
             }
+            if (recommended.size() >= 3) break;
         }
-        return indicatorPrompt(
+        boolean multiple = asksForMultipleIndicators(originalQuery);
+        return new AgentClarification(
                 "INDICATOR_AMBIGUOUS",
+                "indicator_selection",
+                "先确认要处理的指标",
+                multiple
+                        ? "请选择一个或多个候选指标，选好后我会继续处理上一条问题。"
+                        : "请选择一个候选指标，选择后我会继续处理上一条问题。",
                 "我识别到指标名称存在歧义，请选择要继续处理的指标。",
-                null,
-                hospitalId,
-                originalQuery,
-                recommended);
+                multiple ? "multiple" : "single",
+                List.copyOf(recommended.values()),
+                true,
+                "也可以输入更完整的正式指标名称",
+                resumePrefix(originalQuery, "我选择的指标是："));
     }
 
     /**
@@ -130,6 +141,35 @@ public class ClarificationPromptFactory {
                 null, hospitalId, originalQuery, List.of());
     }
 
+    public AgentClarification intentForAllIndicators(String originalQuery) {
+        return intentPrompt(
+                "INTENT_AMBIGUOUS",
+                "已经确认范围是全部指标，请再选择要执行的操作。",
+                originalQuery);
+    }
+
+    public AgentClarification intentForIndicator(
+            String originalQuery, String indicatorName) {
+        return intentPrompt(
+                "INTENT_AMBIGUOUS",
+                "已经确认指标是“" + safe(indicatorName) + "”，请再选择要执行的操作。",
+                originalQuery);
+    }
+
+    public AgentClarification missingOperationAndIndicator(String originalQuery) {
+        return new AgentClarification(
+                "REQUEST_CONTEXT_MISSING",
+                "free_text",
+                "请补充要处理的操作和指标",
+                "已识别到统计时间，但还不知道要处理哪个指标、执行什么操作。",
+                "请同时说明指标名称，以及要查询定义、口径、SQL、计算结果还是排查异常。",
+                "single",
+                List.of(),
+                true,
+                "例如：计算急会诊及时到位率",
+                resumePrefix(originalQuery, "补充操作和指标："));
+    }
+
     /**
      * 判断 query 是否用复数指代引用指标（如“这两个指标”“这些指标”“哪几个指标”）。
      *
@@ -152,6 +192,14 @@ public class ClarificationPromptFactory {
             String originalQuery,
             List<Option> recommended) {
         Map<String, Option> options = new LinkedHashMap<>();
+        if (supportsAllIndicatorSelection(originalQuery)) {
+            options.put("indicator:all", new Option(
+                    "indicator:all",
+                    "全部指标",
+                    "全部指标",
+                    "计算当前医院全部正式指标",
+                    "范围选择"));
+        }
         for (Option option : recommended) options.putIfAbsent(option.id(), option);
         for (Option option : stateCandidates(state)) options.putIfAbsent(option.id(), option);
         for (Map<String, String> item : activeIndicators(hospitalId)) {
@@ -163,7 +211,7 @@ public class ClarificationPromptFactory {
                     ruleName,
                     ruleName + "（" + ruleId + "）",
                     "当前医院可查询的正式指标",
-                    "全部指标"));
+                    "单项指标"));
         }
         boolean multiple = asksForMultipleIndicators(originalQuery);
         String question = options.isEmpty()
@@ -433,7 +481,21 @@ public class ClarificationPromptFactory {
     }
 
     private static String resumePrefix(String originalQuery, String action) {
-        return action;
+        String original = safe(originalQuery);
+        if (original.isBlank()) {
+            return action;
+        }
+        if (original.length() > 200) {
+            original = original.substring(0, 200);
+        }
+        return "继续处理上一条请求“" + original + "”。" + action;
+    }
+
+    private static boolean supportsAllIndicatorSelection(String query) {
+        String value = safe(query).replaceAll("\\s+", "");
+        return java.util.regex.Pattern.compile(
+                "计算|结果|数值|试运行|统计|时间|本月|今年|去年|\\d{2,4}年")
+                .matcher(value).find();
     }
 
     private static String first(String... values) {

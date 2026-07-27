@@ -71,6 +71,49 @@ class FinalAnswerComposerTest {
     }
 
     @Test
+    void fallsBackToVerifiedEvidenceWhenAnswerModelTimesOut() {
+        AgentModelProperties properties = AgentModelRegistryTest.properties();
+        FinalAnswerComposer composer = new FinalAnswerComposer(
+                (modelId, systemPrompt, userPrompt, timeout) -> {
+                    throw new AgentModelUnavailableException(
+                            "MODEL_CALL_FAILED", "模型调用超时");
+                },
+                new AgentModelRegistry(properties),
+                properties,
+                new PromptCatalog(),
+                new ObjectMapper());
+
+        var result = composer.compose(new FinalAnswerComposer.FinalAnswerInput(
+                "急会诊结果是多少", "计算急会诊及时到位率", "ollama-test",
+                LocalDate.of(2026, 7, 22), "", List.of(verifiedEvidence())));
+
+        assertThat(result.deterministicFallback()).isTrue();
+        assertThat(result.content()).contains(
+                "## 结果速览", "| 分子 | 3 |", "| 分母 | 68 |", "**4.41%**");
+    }
+
+    @Test
+    void deterministicCompositionDoesNotInvokeModel() {
+        AgentModelProperties properties = AgentModelRegistryTest.properties();
+        FinalAnswerComposer composer = new FinalAnswerComposer(
+                (modelId, systemPrompt, userPrompt, timeout) -> {
+                    throw new AssertionError("deterministic composition must not invoke model");
+                },
+                new AgentModelRegistry(properties),
+                properties,
+                new PromptCatalog(),
+                new ObjectMapper());
+
+        var result = composer.composeDeterministic(
+                new FinalAnswerComposer.FinalAnswerInput(
+                        "急会诊结果是多少", "计算急会诊及时到位率", "ollama-test",
+                        LocalDate.of(2026, 7, 22), "", List.of(verifiedEvidence())));
+
+        assertThat(result.deterministicFallback()).isTrue();
+        assertThat(result.content()).contains("| 分子 | 3 |", "| 分母 | 68 |");
+    }
+
+    @Test
     void injectsOnlyTheTemplateSelectedForCurrentIntent() {
         CapturingInvoker invoker = new CapturingInvoker("""
                 # 急会诊及时到位率 · 统计结果

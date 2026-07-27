@@ -1,0 +1,149 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-010-001",
+  "rule_name": "长期医嘱当日终止率",
+  "category": "查对制度",
+  "definition": "开具长期医嘱后当日终止执行的医嘱数量占同期开具长期医嘱总数量的比例。",
+  "formula": "分子：开具长期医嘱后当日终止执行的医嘱数量\n分母：同期开具长期医嘱总数量\n公式：开具长期医嘱后当日终止执行的医嘱数量 / 同期开具长期医嘱总数量 * 100%",
+  "note": "——",
+  "significance": "反映查对制度的落实和管理情况。",
+  "default_profile": "HXZD-010-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-010-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "开具长期医嘱后当日终止执行的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的长期医嘱中，开立日期=停止医嘱日期的数量（只判断日期）（排除当日停止医嘱后，24小时内开立了转科、出院、死亡医嘱的医嘱）\n2、“当日”定义：24小时内停止的医嘱，都算作当日停止\n3、不包含24小时出入院患者的医嘱，以及已失效和已作废的医嘱；",
+      "denominator_rule": "同期开具长期医嘱总数量",
+      "denominator_caliber": "单位时间内医生站开立长期医嘱的数量",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 57 | 下拉单选 | 当天停止医嘱定义：24小时内停止的医嘱；<br>当天停止医嘱定义：当天凌晨24点前停止的医嘱 |",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_char、trunc"
+          ],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number",
+            "to_char",
+            "trunc"
+          ],
+          "unknown_functions": [
+            "to_char",
+            "trunc"
+          ],
+          "normalized_sha256": "5cd27dc7e898eee8cf1a96aee10e147ffe99f6d8921a08a9611e2f1cb6641553"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e4d31b0849cfcf6314574637bd1f45b22cf5cef4d58fb99b18d48a975de9c103"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "8519cb03f211a86b1f6d8378df5ec87bcd77083976daa8249595c1fc6a80a525"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e6499a3baf97094f064f8069526a20fabaa4a6e75624ceafc1e011e40e8a1700"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

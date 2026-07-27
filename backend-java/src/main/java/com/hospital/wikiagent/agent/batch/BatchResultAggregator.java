@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.batch;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 import org.springframework.stereotype.Component;
 
@@ -28,15 +29,53 @@ public class BatchResultAggregator {
     public String aggregate(
             List<IndicatorExecutionResult> results, String statStart, String statEnd) {
         List<IndicatorExecutionResult> values = results == null ? List.of() : results;
+        long indicatorCount = values.stream()
+                .map(IndicatorExecutionResult::ruleId)
+                .filter(Objects::nonNull)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .count();
+        boolean profileResults = values.stream()
+                .anyMatch(value -> value.profileId() != null);
+        return render(values, statStart, statEnd, indicatorCount, profileResults);
+    }
+
+    /**
+     * Profile 批量运行必须保留用户选择的指标范围数量；没有已审批 Profile 的草稿指标
+     * 不生成任务，但仍属于本次 35 项范围。
+     */
+    public String aggregateProfiles(
+            List<IndicatorExecutionResult> results,
+            String statStart,
+            String statEnd,
+            int requestedIndicatorCount) {
+        List<IndicatorExecutionResult> values = results == null ? List.of() : results;
+        return render(values, statStart, statEnd, requestedIndicatorCount, true);
+    }
+
+    private String render(
+            List<IndicatorExecutionResult> values,
+            String statStart,
+            String statEnd,
+            long indicatorCount,
+            boolean profileResults) {
         long succeeded = values.stream().filter(r -> r.status() == Status.SUCCESS).count();
         long noSample = values.stream().filter(r -> r.status() == Status.NO_SAMPLE).count();
         long failed = values.stream().filter(r -> r.status() == Status.FAILED).count();
 
         StringBuilder output = new StringBuilder();
-        output.append("共 ").append(values.size()).append(" 项：")
-                .append(succeeded).append(" 项成功、")
-                .append(noSample).append(" 项无样本、")
-                .append(failed).append(" 项失败");
+        if (profileResults) {
+            output.append("共 ").append(indicatorCount).append(" 项指标、")
+                    .append(values.size()).append(" 个已审批口径：")
+                    .append(succeeded).append(" 个口径成功、")
+                    .append(noSample).append(" 个口径无样本、")
+                    .append(failed).append(" 个口径失败");
+        } else {
+            output.append("共 ").append(values.size()).append(" 项：")
+                    .append(succeeded).append(" 项成功、")
+                    .append(noSample).append(" 项无样本、")
+                    .append(failed).append(" 项失败");
+        }
         if (statStart != null && !statStart.isBlank() && statEnd != null && !statEnd.isBlank()) {
             output.append("；统计区间 ").append(statStart.strip())
                     .append(" 至 ").append(statEnd.strip()).append("（左闭右开）");
@@ -46,16 +85,32 @@ public class BatchResultAggregator {
         List<IndicatorExecutionResult> rows = values.stream()
                 .filter(IndicatorExecutionResult::ok).toList();
         if (!rows.isEmpty()) {
-            output.append("\n| 指标 | 结果值 | 分子/分母 | 目标值 | 达标 | 统计区间 |\n");
-            output.append("| --- | --- | --- | --- | --- | --- |\n");
+            output.append(profileResults
+                    ? "\n| 指标 | Profile | 结果值 | 计算构成 | 目标值 | 达标 | 统计区间 |\n"
+                    : "\n| 指标 | 结果值 | 计算构成 | 目标值 | 达标 | 统计区间 |\n");
+            output.append(profileResults
+                    ? "| --- | --- | --- | --- | --- | --- | --- |\n"
+                    : "| --- | --- | --- | --- | --- | --- |\n");
             for (IndicatorExecutionResult row : rows) {
-                output.append("| ").append(row.ruleName())
+                output.append("| ").append(row.ruleName());
+                if (profileResults) {
+                    output.append(" | ").append(formatProfile(row));
+                }
+                output
                         .append(" | ").append(formatValue(row))
                         .append(" | ").append(formatFraction(row))
                         .append(" | ").append(formatTarget(row))
                         .append(" | ").append(compliance(row))
                         .append(" | ").append(formatPeriod(row, statStart, statEnd))
                         .append(" |\n");
+            }
+            output.append("\n> 列说明：结果值是最终指标值；计算构成展示分子/分母、"
+                    + "率比两侧发生率或标量统计结构；目标值来自本院运行配置或审批口径；"
+                    + "达标按指标方向比较，无结果、无目标或目标冲突时不判定。\n");
+            if (values.stream().anyMatch(value ->
+                    "existing_snapshot_not_refreshed".equals(value.dataFreshness()))) {
+                output.append("\n> 数据新鲜度：本轮未刷新真实库数据，"
+                        + "结果与比较结论基于当前已有快照。\n");
             }
         }
 
@@ -65,6 +120,9 @@ public class BatchResultAggregator {
             output.append("\n**失败指标**\n\n");
             for (IndicatorExecutionResult failure : failures) {
                 output.append("- ").append(failure.ruleName());
+                if (failure.profileName() != null) {
+                    output.append(" / ").append(failure.profileName());
+                }
                 if (failure.errorCode() != null) {
                     output.append("（").append(failure.errorCode()).append("）");
                 }
@@ -78,6 +136,20 @@ public class BatchResultAggregator {
         return output.toString().stripTrailing();
     }
 
+    private static String formatProfile(IndicatorExecutionResult result) {
+        if (result.profileName() == null && result.profileId() == null) {
+            return DASH;
+        }
+        if (result.profileName() == null) {
+            return result.profileId();
+        }
+        if (result.profileId() == null
+                || result.profileName().equals(result.profileId())) {
+            return result.profileName();
+        }
+        return result.profileName() + "（" + result.profileId() + "）";
+    }
+
     private static String formatValue(IndicatorExecutionResult result) {
         if (result.status() == Status.NO_SAMPLE) {
             return "无样本";
@@ -86,27 +158,51 @@ public class BatchResultAggregator {
             return DASH;
         }
         String formatted = String.format(Locale.ROOT, "%.2f", result.resultValue());
-        return "percent".equalsIgnoreCase(result.unit()) ? formatted + "%" : formatted;
+        return switch (normalizeUnit(result.unit())) {
+            case "percent" -> formatted + "%";
+            case "ratio" -> formatted + " 倍";
+            case "minutes" -> formatted + " 分钟";
+            default -> formatted;
+        };
     }
 
     private static String formatFraction(IndicatorExecutionResult result) {
+        if (result.calculationDisplay() != null) {
+            return result.calculationDisplay();
+        }
         if (result.numerator() == null || result.denominator() == null) {
-            return DASH;
+            return "不适用";
         }
         return result.numerator() + "/" + result.denominator();
     }
 
     private static String formatTarget(IndicatorExecutionResult result) {
-        return result.targetValue() == null ? DASH : String.valueOf(result.targetValue());
+        if (result.targetValue() == null) {
+            return "未配置";
+        }
+        Double numeric = toDouble(result.targetValue());
+        if (numeric == null) {
+            return String.valueOf(result.targetValue());
+        }
+        String formatted = String.format(Locale.ROOT, "%.2f", numeric);
+        return switch (normalizeUnit(result.unit())) {
+            case "percent" -> formatted + "%";
+            case "ratio" -> formatted + " 倍";
+            case "minutes" -> formatted + " 分钟";
+            default -> formatted;
+        };
     }
 
     private static String compliance(IndicatorExecutionResult result) {
+        if (result.status() == Status.NO_SAMPLE) {
+            return "不判定";
+        }
         Double value = result.resultValue();
         Double target = toDouble(result.targetValue());
         if (value == null || target == null) {
-            return DASH;
+            return "不判定";
         }
-        String direction = result.targetDirection() == null ? ">=" : result.targetDirection();
+        String direction = normalizeDirection(result.targetDirection());
         boolean met = switch (direction) {
             case "<=" -> value <= target;
             case "<" -> value < target;
@@ -114,6 +210,27 @@ public class BatchResultAggregator {
             default -> value >= target;
         };
         return met ? "达标" : "未达标";
+    }
+
+    private static String normalizeUnit(String value) {
+        if (value == null) return "";
+        return switch (value.strip().toLowerCase(Locale.ROOT)) {
+            case "percentage", "percent", "%" -> "percent";
+            case "ratio", "倍" -> "ratio";
+            case "minute", "minutes", "分钟" -> "minutes";
+            default -> value.strip().toLowerCase(Locale.ROOT);
+        };
+    }
+
+    private static String normalizeDirection(String value) {
+        if (value == null || value.isBlank()) {
+            return ">=";
+        }
+        return switch (value.strip().toLowerCase(Locale.ROOT)) {
+            case "lower_is_better", "lower", "<=" -> "<=";
+            case "higher_is_better", "higher", ">=" -> ">=";
+            default -> value.strip();
+        };
     }
 
     private static String formatPeriod(

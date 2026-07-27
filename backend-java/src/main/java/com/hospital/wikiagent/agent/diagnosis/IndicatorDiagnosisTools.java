@@ -1,5 +1,7 @@
 package com.hospital.wikiagent.agent.diagnosis;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,12 +47,57 @@ public class IndicatorDiagnosisTools {
             return failure("validation_failed", "RULE_NOT_VERIFIED",
                     "该指标尚未经过规则搜索或读取，不能启动诊断。", false);
         }
-        Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
-        Map<String, Object> mapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
+        if (input.profileId() != null) {
+            return diagnoseProfile(input, context);
+        }
+        List<Map<String, Object>> profiles = rules.caliberProfiles(
+                input.ruleId(), context.agentContext().hospitalId());
+        if (profiles.isEmpty()) {
+            return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
+                    "当前指标没有可诊断的已审批 Profile。", false);
+        }
+        List<Map<String, Object>> profileReports = new ArrayList<>();
+        for (Map<String, Object> profile : profiles) {
+            String profileId = text(profile.get("profile_id"));
+            String profileName = first(
+                    text(profile.get("profile_name")),
+                    text(profile.get("label")),
+                    profileId);
+            ToolResult result = diagnoseProfile(
+                    new Input(
+                            input.ruleId(), input.issueDescription(),
+                            input.statPeriod(), profileId),
+                    context);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("profile_id", profileId);
+            item.put("profile_name", profileName);
+            item.put("ok", result.ok());
+            item.put("code", result.code());
+            item.put("summary", result.summary());
+            item.put("report", result.data());
+            profileReports.add(item);
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("rule_id", input.ruleId());
+        data.put("approved_profile_count", profileReports.size());
+        data.put("profile_reports", profileReports);
+        data.put("summary", "已逐一诊断 " + profileReports.size() + " 个已审批 Profile。");
+        return ToolResult.success(
+                "INDICATOR_DIAGNOSED",
+                "指标全部已审批 Profile 诊断已完成。",
+                data);
+    }
+
+    private ToolResult diagnoseProfile(Input input, ToolExecutionContext context) {
+        context.runState().currentCaliber(input.profileId(), input.profileId());
+        Map<String, Object> rule = rules.effectiveRule(
+                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
+        Map<String, Object> mapping = rules.fieldMapping(
+                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
         List<Map<String, Object>> layers = new ArrayList<>();
 
         ToolResult implementation = sqlTools.inspect(
-                new IndicatorSqlTools.InspectInput(input.ruleId()), context);
+                new IndicatorSqlTools.InspectInput(input.ruleId(), input.profileId()), context);
         Map<String, Object> structure = structureLayer(implementation);
         layers.add(structure);
         if (!Boolean.TRUE.equals(structure.get("ok"))) {
@@ -58,8 +105,81 @@ public class IndicatorDiagnosisTools {
         }
 
         layers.add(ruleLayer(rule));
+        Map<String, Object> execution = executionLayer(input, context);
+        layers.add(execution);
+        if (!Boolean.TRUE.equals(execution.get("ok"))) {
+            return finish(input, context, layers);
+        }
         layers.add(dataLayer(rule, mapping));
         return finish(input, context, layers);
+    }
+
+    /**
+     * 显式诊断在当前子任务内重新准备并执行审批 SQL，不依赖历史计算结果。
+     * 生产环境的 SQL 工具会进入统一的抽取、双库概览和明细比较 Workflow。
+     */
+    private Map<String, Object> executionLayer(
+            Input input, ToolExecutionContext context) {
+        LocalDateTime[] period = parsePeriod(input.statPeriod());
+        if (period == null) {
+            return layer(3, "数据快照与双库诊断", false, List.of(
+                    check("stat_period", "fail",
+                            "诊断需要明确的统计开始时间和结束时间。",
+                            "确认统计区间后重新诊断。")));
+        }
+        ToolResult prepared = sqlTools.prepare(
+                new IndicatorSqlTools.PrepareInput(
+                        input.ruleId(), period[0].toString(), period[1].toString(),
+                        input.profileId()),
+                context);
+        if (!prepared.ok()) {
+            return layer(3, "数据快照与双库诊断", false, List.of(
+                    check("sql_prepare", "fail",
+                            "审批 SQL 准备失败：" + prepared.summary(),
+                            "根据错误码 " + prepared.code() + " 修正执行契约后重试。")));
+        }
+        ToolResult trial = sqlTools.trial(
+                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sql_id"))),
+                context);
+        if (!trial.ok()) {
+            return layer(3, "数据快照与双库诊断", false, List.of(
+                    check("dual_execution", "fail",
+                            "数据准备或双库诊断失败：" + trial.summary(),
+                            "根据错误码 " + trial.code() + " 检查抽取、DBHub 或明细契约。")));
+        }
+
+        List<Map<String, Object>> checks = new ArrayList<>();
+        String extractionStatus = text(trial.data().get("extraction_status"));
+        if ("SKIPPED_DISABLED".equals(extractionStatus)) {
+            checks.add(check("source_extraction", "warn",
+                    "抽取模式未启用，本轮未刷新真实库数据，结论基于现有快照。",
+                    "启用并补齐抽取契约后可获得本轮新鲜快照。"));
+        } else {
+            checks.add(check("source_extraction", "pass",
+                    "本轮已完成数据快照准备。", ""));
+        }
+        checks.add(check("dual_overview", "pass",
+                "已完成业务库与真实库概览核对，状态："
+                        + text(trial.data().get("comparison_status")) + "。", ""));
+        Map<String, Object> dualDiagnosis =
+                objectMap(trial.data().get("dual_difference_diagnosis"));
+        String detailStatus = text(dualDiagnosis.get("status"));
+        checks.add("completed".equals(detailStatus)
+                ? check("dual_detail", "pass",
+                        "已完成科室和患者明细比较。", "")
+                : check("dual_detail", "warn",
+                        "明细诊断未完整完成：" + text(dualDiagnosis.get("reason")),
+                        "补齐并验证科室和患者明细比较契约。"));
+        Map<String, Object> result = layer(3, "数据快照与双库诊断", true, checks);
+        result.put("run_id", trial.data().get("run_id"));
+        result.put("diagnosis_report_id", trial.data().get("diagnosis_report_id"));
+        result.put("extraction_status", extractionStatus);
+        result.put("data_freshness", trial.data().get("data_freshness"));
+        result.put("comparison_status", trial.data().get("comparison_status"));
+        result.put("business_result", trial.data().get("business_result"));
+        result.put("real_result", trial.data().get("real_result"));
+        result.put("dual_difference_diagnosis", dualDiagnosis);
+        return result;
     }
 
     private ToolResult finish(Input input, ToolExecutionContext context, List<Map<String, Object>> layers) {
@@ -88,13 +208,44 @@ public class IndicatorDiagnosisTools {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("rule_id", input.ruleId());
+        data.put("profile_id", input.profileId());
         data.put("diagnose_status", status);
         data.put("report_id", reportId);
         data.put("summary", summary);
         data.put("user_summary", summary);
         data.put("layers", layers);
+        Map<String, Object> execution = layers.stream()
+                .filter(layer -> Integer.valueOf(3).equals(layer.get("layer")))
+                .findFirst()
+                .orElse(Map.of());
+        copyIfPresent(execution, data, "run_id");
+        copyIfPresent(execution, data, "diagnosis_report_id");
+        copyIfPresent(execution, data, "extraction_status");
+        copyIfPresent(execution, data, "data_freshness");
+        copyIfPresent(execution, data, "comparison_status");
+        List<String> confirmedFindings = layers.stream()
+                .flatMap(layer -> listOfMaps(layer.get("checks")).stream())
+                .filter(check -> "pass".equals(text(check.get("status"))))
+                .map(check -> text(check.get("message")))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+        if (!confirmedFindings.isEmpty()) {
+            data.put("confirmed_findings", String.join("；", confirmedFindings));
+        }
+        if (!problems.isEmpty()) {
+            data.put("evidence_limit", String.join("；", problems));
+        }
         if (input.statPeriod() != null) data.put("stat_period", input.statPeriod());
         return ToolResult.success("INDICATOR_DIAGNOSED", "指标诊断已完成。", data);
+    }
+
+    private static void copyIfPresent(
+            Map<String, Object> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value != null && !text(value).isBlank()) {
+            target.put(key, value);
+        }
     }
 
     private static Map<String, Object> structureLayer(ToolResult implementation) {
@@ -145,8 +296,14 @@ public class IndicatorDiagnosisTools {
         String mainTable = text(mapping.get("main_table"));
         String dialect = text(mapping.get("dialect"));
         String schema = text(mapping.get("schema"));
+        if (mainTable.isBlank()) {
+            return layer(4, "数据质量校验", true,
+                    List.of(check("main_table", "warn",
+                            "当前 Profile 未配置可独立检查的业务主表，字段空值率、重复记录和时间逻辑检查受限。",
+                            "后续补齐该 Profile 的抽取与主表映射后再执行扩展数据质量检查。")));
+        }
         if (!safeIdentifier(mainTable) || (!schema.isBlank() && !safeIdentifier(schema))) {
-            return layer(3, "数据质量校验", false,
+            return layer(4, "数据质量校验", false,
                     List.of(check("main_table", "fail", "主表标识无效。", "修正医院字段映射。")));
         }
         String qualified = qualify(schema, mainTable, dialect);
@@ -159,7 +316,7 @@ public class IndicatorDiagnosisTools {
                     ? check("table_rows", "warn", "业务主表样本量较小：" + total + " 行。", "确认是否为测试库或数据尚未同步。")
                     : check("table_rows", "pass", "业务主表可访问，共 " + total + " 行。", ""));
         } catch (RuntimeException exception) {
-            return layer(3, "数据质量校验", false,
+            return layer(4, "数据质量校验", false,
                     List.of(check("main_table_access", "fail", "无法通过 DBHub 访问业务主表。", "检查 DBHub、只读权限和数据源配置。")));
         }
 
@@ -192,7 +349,24 @@ public class IndicatorDiagnosisTools {
             }
         }
         boolean ok = checks.stream().noneMatch(value -> "fail".equals(value.get("status")));
-        return layer(3, "数据质量校验", ok, checks);
+        return layer(4, "数据质量校验", ok, checks);
+    }
+
+    private static LocalDateTime[] parsePeriod(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String[] parts = value.strip().split("\\s*(?:~|至|到)\\s*", 2);
+        if (parts.length != 2) {
+            return null;
+        }
+        try {
+            LocalDateTime start = LocalDateTime.parse(parts[0]);
+            LocalDateTime end = LocalDateTime.parse(parts[1]);
+            return start.isBefore(end) ? new LocalDateTime[] { start, end } : null;
+        } catch (DateTimeParseException exception) {
+            return null;
+        }
     }
 
     private static void addIssueChecks(
@@ -279,14 +453,29 @@ public class IndicatorDiagnosisTools {
         return value == null ? "" : value.toString();
     }
 
-    public record Input(String ruleId, String issueDescription, String statPeriod) {
+    private static String first(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return "";
+    }
+
+    public record Input(
+            String ruleId, String issueDescription, String statPeriod, String profileId) {
         public Input {
             ruleId = ruleId == null ? "" : ruleId.strip();
             issueDescription = issueDescription == null ? "" : issueDescription.strip();
             statPeriod = statPeriod == null || statPeriod.isBlank() ? null : statPeriod.strip();
+            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
             if (ruleId.isEmpty() || issueDescription.isEmpty() || issueDescription.length() > 1000) {
                 throw new IllegalArgumentException("诊断参数无效");
             }
+        }
+
+        public Input(String ruleId, String issueDescription, String statPeriod) {
+            this(ruleId, issueDescription, statPeriod, null);
         }
     }
 }

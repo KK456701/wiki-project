@@ -1,0 +1,276 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-012-001",
+  "rule_name": "四级手术与三级手术并发症发生率比",
+  "category": "手术分级管理制度",
+  "definition": "四级手术并发症发生率与三级手术并发症发生率的比。",
+  "formula": "分子：四级手术并发症发生率\n分母：三级手术并发症发生率\n公式：四级手术并发症发生率 : 三级手术并发症发生率",
+  "note": "1.本指标中三、四级手术是指医疗机构根据实际情况制定的本机构手术分级管理目录中的手术级别，下同。\n2.本指标中手术并发症是指并发于手术或手术后的疾病或情况，包括：手术后肺栓塞、深静脉血栓、脓毒症、出血或血肿、伤口裂开、呼吸衰竭、生理/代谢紊乱、与手术/操作相关感染、手术过程中异物遗留、手术患者麻醉并发症、肺部感染与肺机能不全、手术意外穿刺伤或撕裂伤、手术后急性肾衰竭等。",
+  "significance": "反映手术分级管理的合理性。",
+  "default_profile": "HXZD-012-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-012-001-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "四级手术并发症发生率",
+      "numerator_caliber": "1、单位时间内四级手术并发症患者数/四级手术患者数\n2、四级手术相关数据来源为【医生站】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "denominator_rule": "三级手术并发症发生率",
+      "denominator_caliber": "1、单位时间内三级手术并发症患者数/三级手术患者数\n2、三级手术相关数据来源为【医生站】（一个患者多次三级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "isnull",
+            "left",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "72e90e7eecbf5e18b2051dd16e6f86ebf261f25c3d820be60661bba033f6eb99"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "aeefa9436ffa171a14d0b7de62edd91987b8aacf02439c6224d72e2d3e592c81"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "a518e983576d1b13b47b7451c56b39a501df9b5cf22d6b35fe1539db72029dbd"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7777cf05134320cee24213bfcef60dc51c6c717fc082fe48fd9d0d1d4486c525"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-012-001-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "四级手术并发症发生率",
+      "numerator_caliber": "单位时间内出区的患者中，四级手术并发症患者数/四级手术患者数\n2、四级手术相关数据来源为【病案首页】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "denominator_rule": "三级手术并发症发生率",
+      "denominator_caliber": "1、单位时间内出区的患者中，三级手术并发症患者数/三级手术患者数\n2、四级手术相关数据来源为【病案首页】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "19b1935d85bbc050442e214eacdc6c5080b8dc547c549c6119398acfbe8871ef"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "aeefa9436ffa171a14d0b7de62edd91987b8aacf02439c6224d72e2d3e592c81"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "a518e983576d1b13b47b7451c56b39a501df9b5cf22d6b35fe1539db72029dbd"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7777cf05134320cee24213bfcef60dc51c6c717fc082fe48fd9d0d1d4486c525"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

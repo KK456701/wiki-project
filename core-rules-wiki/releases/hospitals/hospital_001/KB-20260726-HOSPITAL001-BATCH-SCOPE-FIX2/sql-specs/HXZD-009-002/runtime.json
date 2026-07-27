@@ -1,0 +1,391 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-009-002",
+  "rule_name": "医务部门组织讨论的死亡病例与发生纠纷的死亡病例比值",
+  "category": "死亡病例讨论制度",
+  "definition": "医务部门组织进行死亡病例讨论的病例数量与同期发生医疗纠纷的死亡病例数量的比值。",
+  "formula": "分子：医务部门组织进行死亡病例讨论的病例数量\n分母：同期发生医疗纠纷的死亡病例数量\n公式：医务部门组织进行死亡病例讨论的病例数量 ： 同期发生医疗纠纷的死亡病例数量",
+  "note": "——",
+  "significance": "反映死亡病例讨论制度落实和管理情况。",
+  "default_profile": "HXZD-009-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-009-002-company-default",
+      "profile_name": "推荐方案：纠纷数据来源：医务管理系统（需上线医务系统投诉纠纷管理功能）",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "医务部门组织进行死亡病例讨论的病例数量",
+      "numerator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者，死亡病例讨论记录的主持人为医务科人员\n2、医务科人员定义：员工隶属科室名称为“医务科”或“医务部”",
+      "denominator_rule": "同期发生医疗纠纷的死亡病例数量",
+      "denominator_caliber": "1、单位时间内死亡的患者，且本次在院期间发生投诉纠纷的数量\n2、患者投诉纠纷数据来源为医务管理系统投诉纠纷管理\n3、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子死亡病例讨论主持人为医务科人员的数量",
+        "denominator_count": "分母同期死亡发生投诉纠纷的数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "cast",
+            "dateadd",
+            "datepart",
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b3b71a9952ec2a53e9779c98c862a01d1ee8929c366cf7f115836984978d5c6c"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "04eacd9793d640c4a456dce491dc2c462bf64765fc4ccb1ceaf414a1849feed4"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "33f1577c3520160d9dcb656f761a66e650fe15d3d7783b7ba8c8d752e960eb59"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519",
+            "overview": "b3b71a9952ec2a53e9779c98c862a01d1ee8929c366cf7f115836984978d5c6c",
+            "department_detail": "04eacd9793d640c4a456dce491dc2c462bf64765fc4ccb1ceaf414a1849feed4",
+            "patient_detail": "33f1577c3520160d9dcb656f761a66e650fe15d3d7783b7ba8c8d752e960eb59"
+          },
+          "real": {
+            "source_extract": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519",
+            "overview": "b3b71a9952ec2a53e9779c98c862a01d1ee8929c366cf7f115836984978d5c6c",
+            "department_detail": "04eacd9793d640c4a456dce491dc2c462bf64765fc4ccb1ceaf414a1849feed4",
+            "patient_detail": "33f1577c3520160d9dcb656f761a66e650fe15d3d7783b7ba8c8d752e960eb59"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子死亡病例讨论主持人为医务科人员的数量",
+          "denominator_count": "分母同期死亡发生投诉纠纷的数量"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    },
+    {
+      "profile_id": "HXZD-009-002-company-candidate-01",
+      "profile_name": "可选方案（未实现）：纠纷数据来源：HIS患者标签",
+      "governance_status": "draft",
+      "execution_status": "draft",
+      "execution_blockers": [
+        "方案标记为未实现"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "医务部门组织进行死亡病例讨论的病例数量",
+      "numerator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者，死亡病例讨论记录的主持人为医务科人员\n2、医务科人员定义：员工隶属科室名称为“医务科”或“医务部”",
+      "denominator_rule": "同期发生医疗纠纷的死亡病例数量",
+      "denominator_caliber": "1、单位时间内死亡且本次在院期间发生投诉纠纷的患者数量\n3、患者投诉纠纷数据来源为HIS的患者标签\n4、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-candidate-01/etl_source.sql",
+        "overview": null,
+        "department": null,
+        "patient_detail": null
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": null,
+        "denominator_count": null,
+        "index_value": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_char、trunc"
+          ],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "row_number",
+            "to_char",
+            "trunc"
+          ],
+          "unknown_functions": [
+            "to_char",
+            "trunc"
+          ],
+          "normalized_sha256": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d"
+          },
+          "real": {
+            "source_extract": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "",
+          "denominator_count": ""
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

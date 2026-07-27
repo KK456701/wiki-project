@@ -56,7 +56,8 @@ class ClarificationPromptFactoryTest {
         assertThat(result.options()).extracting(value -> value.label()).containsExactly(
                 "急会诊及时到位率", "患者入院 48 小时内转科的比例");
         assertThat(result.options().get(0).group()).isEqualTo("推荐匹配");
-        assertThat(result.resumePrefix()).isEqualTo("我选择的指标是：");
+        assertThat(result.resumePrefix())
+                .contains("这两个指标的 SQL 怎么写", "我选择的指标是：");
     }
 
     @Test
@@ -97,6 +98,49 @@ class ClarificationPromptFactoryTest {
     }
 
     @Test
+    void offersDeterministicPromptsForBareIndicatorAndBareTime() {
+        ClarificationPromptFactory factory = new ClarificationPromptFactory(
+                mock(RuleReadRepository.class), CLOCK);
+
+        var indicator = factory.intentForIndicator(
+                "急会诊及时到位率", "急会诊及时到位率");
+        var timeOnly = factory.missingOperationAndIndicator("从二月份开始");
+
+        assertThat(indicator.kind()).isEqualTo("intent_selection");
+        assertThat(indicator.helpText()).contains("急会诊及时到位率");
+        assertThat(timeOnly.code()).isEqualTo("REQUEST_CONTEXT_MISSING");
+        assertThat(timeOnly.question()).contains("统计时间", "哪个指标", "什么操作");
+        assertThat(timeOnly.resumePrefix()).contains("从二月份开始", "补充操作和指标");
+    }
+
+    @Test
+    void fuzzyResolutionShowsAtMostThreeRecommendedCandidatesOnly() {
+        ClarificationPromptFactory factory = new ClarificationPromptFactory(
+                mock(RuleReadRepository.class), CLOCK);
+        var resolution = new HybridIndicatorResolver.Resolution(
+                List.of(),
+                List.of(new HybridIndicatorResolver.Ambiguity(
+                        "急会诊及时率",
+                        List.of(
+                                candidate("R1", "急会诊及时到位率", 0.8),
+                                candidate("R2", "急会诊有效率", 0.7),
+                                candidate("R3", "普通会诊及时完成率", 0.6),
+                                candidate("R4", "普通会诊有效率", 0.5)))),
+                false,
+                "test");
+
+        var result = factory.fromResolution(
+                resolution, "hospital_001", "计算本月急会诊及时率");
+
+        assertThat(result.options()).hasSize(3);
+        assertThat(result.options()).extracting(value -> value.label())
+                .containsExactly(
+                        "急会诊及时到位率",
+                        "急会诊有效率",
+                        "普通会诊及时完成率");
+    }
+
+    @Test
     void doesNotTurnSystemOrImplementationFailuresIntoUserQuestions() {
         ClarificationPromptFactory factory = new ClarificationPromptFactory(
                 mock(RuleReadRepository.class), CLOCK);
@@ -126,6 +170,12 @@ class ClarificationPromptFactoryTest {
                 message,
                 FallbackCategory.USER_CLARIFICATION,
                 FailureClass.classify(code));
+    }
+
+    private static HybridIndicatorResolver.Candidate candidate(
+            String id, String name, double score) {
+        return new HybridIndicatorResolver.Candidate(
+                id, name, "RULE:" + id, score);
     }
 
     private static RequestPlan plan(PlanIntent intent) {

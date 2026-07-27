@@ -1,0 +1,32 @@
+select t.* from (
+SELECT
+event.ENCOUNTER_ID ,
+event.CURRENT_DEPT_ID AS 当前科室编码,
+event.CURRENT_DEPT_NAME AS 当前科室,
+event.PERSON_NAME AS 患者姓名,
+event.IMRN AS 住院号,
+event.CURRENT_ADMITTER_NAME AS 责任医师,
+  team.ORG_NAME as "TEAM_NAME",
+team.ORG_ID as "TEAM_ID",
+team.ORG_NO as "TEAM_NO",
+team.ORG_NAME as "当前医疗组",
+event.ADMITTED_TO_WARD_AT AS 入区时间,
+event.DISCHARGED_FROM_WARD_AT AS 出区时间,
+event.SURG_NAME AS 手术名称,
+event.SURG_LEVEL_NAME AS 手术等级,
+CASE WHEN event.DEATH_FLAG = 98175 THEN '是' ELSE '否' END AS 患者是否死亡,
+  CASE WHEN event.DEATH_FLAG = 98175 THEN 98175 ELSE 98176 END AS "standFlag",
+event.DEATH_AT AS 患者死亡时间,
+ROW_NUMBER() OVER (PARTITION BY event.ENCOUNTER_ID ORDER BY event.SURG_LEVEL_CODE, event.SURGERY_START_AT desc) AS rn
+FROM
+MRAS_BUSINESS_SUR_GRADE event WITH (NOLOCK)
+LEFT JOIN INPATIENT_ENCOUNTER inp WITH (NOLOCK)  ON event.ENCOUNTER_ID = inp.ENCOUNTER_ID
+LEFT JOIN MRAS_ORGANIZATION team WITH (NOLOCK)  ON team.ORG_ID = inp.CURRENT_MEDICAL_GROUP_ID
+WHERE
+--布局组件设置提升效率
+AND event.VERSION = 'V2.0'
+AND event.IS_DEL = 0
+    AND event.EVENT_AT BETWEEN :start_time and :end_time
+AND event.SURG_LEVEL_CODE in (136619, 136618)
+) t WHERE
+t.rn = 1

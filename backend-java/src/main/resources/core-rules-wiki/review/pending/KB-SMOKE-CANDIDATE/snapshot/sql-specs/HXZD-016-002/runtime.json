@@ -1,0 +1,134 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-016-002",
+  "rule_name": "术中自体血回输率",
+  "category": "临床用血审核制度",
+  "definition": "术中使用自体血回输的患者数量占同期术中进行输血患者总数量的比例。",
+  "formula": "分子：术中使用自体血回输的患者数量\n分母：同期术中进行输血患者总数量\n公式：术中使用自体血回输的患者数量 / 同期术中进行输血患者总数量 * 100%",
+  "note": "——",
+  "significance": "反映临床用血管理情况。",
+  "default_profile": "HXZD-016-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-016-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "术中使用自体血回输的患者数量",
+      "numerator_caliber": "1、单位时间内完成手术，且术中使用自体血回输的患者数\n2、自体血数据来源为手麻记录中的“自体血”标识，走数据平台抽取。",
+      "denominator_rule": "同期术中进行输血患者总数量",
+      "denominator_caliber": "1、单位时间内完成手术，且术中进行过输血的患者数\n2、术中输血数据来源为手麻记录单中的输血信息，走数据平台抽取。",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": null,
+        "overview": "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "3a9564ad76ecde19314697572534ea1ddbdd34b635fae5f182f6544ef51f8003"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7a16f9ab6d48f8e75d31cccea18afdf7b20a0b6c8b65c253eea664d473f98e5b"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "62b66ffa6f81faa42012613b740c95bbff81e3d722e2ace92c218d9f6bfeb80d"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

@@ -1,0 +1,364 @@
+---
+page_type: sql_original
+rule_id: HXZD-010-001
+source_status: raw_imported
+executable: false
+contains_unresolved_tokens: true
+updated_at: 2026-07-27
+---
+
+# 原始 SQL 存档：长期医嘱当日终止率
+
+> ⚠️ 本文件为 Excel 导出的原始 SQL，包含未解析标记（#EQUALS、#ETC、#{NOLOCK}、#NAME?），不可直接执行。
+
+## 源表 / 事件抽取 SQL
+
+```sql
+WITH DeathCases AS (
+    SELECT
+a.ENCOUNTER_ID,
+a.HOSPITAL_SOID,
+t1.DISCHARGED_FROM_WARD_AT AS DEATH_DATE
+    FROM MAHP_DMTS_MAIN a
+    INNER JOIN INPATIENT_ENCOUNTER t1 ON a.ENCOUNTER_ID = t1.ENCOUNTER_ID
+    WHERE a.DISCHARGE_TYPE_CODE = 136924
+AND a.IS_DEL = 0
+),
+DateSequence AS (
+    -- 生成1-30的数字序列（死亡后第1天到第30天）
+    SELECT LEVEL AS day_offset
+    FROM DUAL
+    CONNECT BY LEVEL <= 30
+),
+WorkdayCalc AS (
+    SELECT
+dc.ENCOUNTER_ID,
+dc.DEATH_DATE,
+dc.HOSPITAL_SOID,
+-- 计算第5个工作日
+(
+-- 先找到所有工作日，然后取第5个
+SELECT future_date
+FROM (
+SELECT
+dc.DEATH_DATE + ds.day_offset AS future_date,
+ds.day_offset,
+ROW_NUMBER() OVER (ORDER BY ds.day_offset) AS workday_rank
+FROM DateSequence ds
+WHERE
+-- 排除周末（Oracle默认：周日=1，周六=7）
+TO_CHAR(dc.DEATH_DATE + ds.day_offset, 'D') NOT IN ('1', '7')
+-- 排除节假日
+AND NOT EXISTS (
+SELECT 1
+FROM HOLIDAY h
+WHERE h.IS_DEL = 0
+AND h.HOSPITAL_SOID = dc.HOSPITAL_SOID
+AND TRUNC(dc.DEATH_DATE + ds.day_offset)
+BETWEEN TRUNC(h.START_AT) AND TRUNC(h.END_AT)
+)
+) workdays
+WHERE workdays.workday_rank = 5  -- 第5个工作日
+) AS FIFTH_WORKDAY
+    FROM DeathCases dc
+)
+SELECT
+    t1.ENCOUNTER_ID AS bizId,  --用来更新数据
+    'CORE_DEATH' as eventNo,
+    '死亡病例' as eventName,
+    t1.ADMITTED_TO_WARD_AT AS eventAt, -- 预留
+    SYSDATE AS extractAt,
+    '1' AS mrasBusinessIndexId,
+    '1' AS mrasTargetDefinitionId,
+    'V2.0' as version,
+    t1.ENCOUNTER_ID as encounterId,--就诊标识
+    t1.FULL_NAME AS personName,--姓名
+    t1.IMRN as imrn,--住院号
+    emp.EMPLOYEE_NAME as currentAdmitterName,--责任医师
+    t1.CURRENT_DEPT_ID AS currentDeptId,--科室
+    o1.ORG_NAME AS currentDeptName, --科室名称
+    t1.CURRENT_WARD_ID AS currentWardId,--病区
+    o2.ORG_NAME AS currentWardName,--病区名称
+    t1.ADMITTED_TO_WARD_AT AS admittedToWardAt, --入区时间
+    t1.DISCHARGED_FROM_WARD_AT AS wardDischargedAt, --出区时间
+    t1.DISCHARGED_FROM_WARD_AT as deathAt,--死亡时间
+    t2.INP_EMR_SET_CREATED_AT as FINISH_AT,-- 死亡病例讨论完成时间
+    t3.hostEmployeeId as hostEmployeeId,--主持人标识
+    -- ============ 核心修改：改为按工作日计算 ============
+CASE
+-- 有讨论记录且在5个工作日内完成
+WHEN t2.INP_EMR_SET_CREATED_AT IS NOT NULL
+AND t2.INP_EMR_SET_CREATED_AT <= wc.FIFTH_WORKDAY
+THEN 98175
+-- 其他情况（无讨论记录或超过5个工作日）
+ELSE 98176
+END as deathDiscussedInDays,--符合死亡病例讨论5日完成
+CASE WHEN EXISTS (
+SELECT 1 from ORGANIZATION_X_EMPLOYEE A
+INNER JOIN ORGANIZATION B on A.ORG_ID = B.ORG_ID and B.IS_DEL = 0
+WHERE A.IS_DEL = 0
+and A.ORGANIZATION_X_EMPLOYEE_TYPE =399566319
+and (B.ORG_NAME = '医务部' OR B.ORG_NAME = '医务科')
+AND A.EMPLOYEE_ID = t3.hostEmployeeId
+) THEN 98175 ELSE 98176 END as medicalDeptOrganized,--符合医务部门组织进行死亡病例讨论
+case when EXISTS (
+SELECT 1 from MRAS_MANAGE_COMPLAIN mc
+WHERE mc.ENCOUNTER_NO = t1.IMRN
+and mc.IS_DEL = 0
+) THEN 98175 ELSE 98176 END as medicalDisputeCase,--符合发生医疗纠纷的死亡病例
+CASE WHEN EXISTS (
+SELECT 1
+FROM ORGANIZATION_X_EMPLOYEE E
+WHERE E.IS_DEL = 0
+AND E.ORGANIZATION_X_EMPLOYEE_TYPE IS NULL
+AND E.ADMIN_POSITION_CODE = '256530'  -- 科主任职位代码
+AND E.EMPLOYEE_ID = t3.hostEmployeeId
+AND E.ORG_ID = t1.CURRENT_DEPT_ID
+) THEN 98175 ELSE 98176 END as chiefPhysicianChaired,--符合死亡病例讨论由科主任主持
+null as requiredUploadRecord,--符合要求完整上传本机构死亡患者病案-
+null as shouldUploadRecord, --符合要求完整上传本机构死亡患者病案
+a.HOSPITAL_SOID AS hospitalSoid,
+t1.SOURCE_HOSPITAL_AREA_ID AS hospitalAreaId,
+CASE WHEN a.IS_DEL = '1'  THEN 1 ELSE 0 END AS isDel
+FROM MAHP_DMTS_MAIN a
+LEFT JOIN INPATIENT_ENCOUNTER t1 on a.ENCOUNTER_ID = t1.ENCOUNTER_ID
+LEFT JOIN ORGANIZATION o1 ON t1.CURRENT_DEPT_ID = o1.ORG_ID
+LEFT JOIN ORGANIZATION o2 ON t1.CURRENT_WARD_ID = o2.ORG_ID
+LEFT JOIN INPATIENT_PARTICIPANT pr ON pr.ENCOUNTER_ID = a.ENCOUNTER_ID
+    AND pr.IS_DEL = 0
+    AND pr.INPAT_PARTICIPANT_TYPE_CODE = 1000098
+LEFT JOIN EMPLOYEE_INFO emp on pr.EMPLOYEE_ID = emp.EMPLOYEE_ID
+    AND emp.IS_DEL = 0
+LEFT JOIN (
+    SELECT
+D.ENCOUNTER_ID,
+D.INP_EMR_SET_CREATED_AT
+    FROM INP_EMR_SECTION_DATA_ELEMENT A
+    LEFT JOIN INPATIENT_EMR_SECTION B ON A.INP_EMR_SECTION_ID = B.INP_EMR_SECTION_ID
+AND B.IS_DEL = 0
+    LEFT JOIN INPATIENT_EMR_CONTENT C ON C.INP_EMR_CONTENT_ID = B.INP_EMR_CONTENT_ID
+AND C.IS_DEL = 0
+    LEFT JOIN INPATIENT_EMR_SET D ON D.INP_EMR_RECORD_ID = C.INP_EMR_RECORD_ID
+AND D.IS_DEL = 0
+    WHERE A.IS_DEL = 0
+AND D.INP_EMR_SET_TITLE = '死亡病例讨论记录'
+AND A.INP_EMR_DATA_ELEMENT_WIN_ID = '399301329' -- 讨论日期
+) t2 on t2.ENCOUNTER_ID = t1.ENCOUNTER_ID
+LEFT JOIN (
+    SELECT
+D.ENCOUNTER_ID,
+CASE
+WHEN A.INP_EMR_DATA_ELEMENT_VALUE IS NOT NULL
+THEN A.CREATED_BY
+ELSE NULL
+END AS hostEmployeeId
+    FROM INP_EMR_SECTION_DATA_ELEMENT A
+    LEFT JOIN INPATIENT_EMR_SECTION B ON A.INP_EMR_SECTION_ID = B.INP_EMR_SECTION_ID
+    LEFT JOIN INPATIENT_EMR_CONTENT C ON C.INP_EMR_CONTENT_ID = B.INP_EMR_CONTENT_ID
+    LEFT JOIN INPATIENT_EMR_SET D ON D.INP_EMR_RECORD_ID = C.INP_EMR_RECORD_ID
+    WHERE D.INP_EMR_SET_TITLE = '死亡病例讨论记录'
+AND A.INP_EMR_DATA_ELEMENT_WIN_ID = '399336516' -- 病例讨论主持人姓名
+) t3 on t3.ENCOUNTER_ID = t1.ENCOUNTER_ID
+-- 关联工作日计算结果
+LEFT JOIN WorkdayCalc wc ON a.ENCOUNTER_ID = wc.ENCOUNTER_ID
+WHERE a.DISCHARGE_TYPE_CODE = 136924 AND a.IS_DEL = 0
+AND a.ENCOUNTER_ID in (select ENCOUNTER_ID from INPATIENT_ENCOUNTER where DISCHARGED_FROM_WARD_AT BETWEEN :startTime and :endTime)
+```
+
+## 目标表－概览 SQL
+
+```sql
+--查询出目标值，各个指标编码是固定的
+WITH TargetValue AS (
+    SELECT
+TARGET_COMP_VAL/100.0 AS target_value
+    FROM
+MRAS_TARGET_DEFINITION #{NOLOCK}
+    WHERE
+TARGET_NO = 'HXZD-010-001'
+),
+-- 按照科室来进行分组查询，用来查询哪个科室不达标
+DeptOrderStats AS (
+    SELECT
+o1.ORG_ID,
+o1.ORG_NAME AS "科室名称",
+COUNT(CASE WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN 1 ELSE NULL END) AS "当日终止数量",
+COUNT(1) AS "长期医嘱总数",
+CASE
+WHEN COUNT(1) = 0 THEN 0
+ELSE COUNT(CASE WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN 1 ELSE NULL END) * 1.0 / COUNT(1)
+END AS "监测情况"
+    FROM
+INP_CLI_ORDER t1  #{NOLOCK}
+LEFT JOIN INPATIENT_ENCOUNTER e  #{NOLOCK} ON t1.ENCOUNTER_ID = e.ENCOUNTER_ID
+LEFT JOIN ORGANIZATION o1  #{NOLOCK} ON e.CURRENT_DEPT_ID = o1.ORG_ID
+    WHERE
+--布局组件设置提升效率
+AND t1.START_AT BETWEEN :marptBeginAt and :marptEndAt
+    AND t1.IS_DEL = '0'
+   AND e.INPAT_ENC_BIZ_TYPE_CODE <> 399552157
+-- 长期医嘱
+    AND t1.ORDER_PERIOD_CODE = '138128'
+-- 排除已作废状态
+    AND t1.CLI_ORDER_STATUS NOT IN ('98440','98441')
+  --去除24小时出入院
+AND (e.DISCHARGED_FROM_WARD_AT IS NULL OR DATEDIFF(HOUR, e.FIRST_ADMITTED_TO_WARD_AT, e.DISCHARGED_FROM_WARD_AT) > 24)
+    GROUP BY
+o1.ORG_ID, o1.ORG_NAME
+),
+-- 用来处理总数
+TotalStats AS (
+    SELECT
+SUM(当日终止数量) AS "分子开具长期医嘱后当日终止执行的医嘱数量",
+SUM(长期医嘱总数) AS "分母同期开具长期医嘱总数量",
+CASE
+WHEN SUM(长期医嘱总数) = 0 THEN null
+ELSE SUM(当日终止数量) * 1.0 / SUM(长期医嘱总数)
+END AS "监测情况",
+(SELECT target_value FROM TargetValue) AS "目标值"
+    FROM DeptOrderStats
+)
+-- 进行数据输出
+SELECT
+    t.*,
+CASE WHEN t.监测情况 >= t.目标值 THEN '否' ELSE '是' END AS "是否达标",
+    STUFF((
+SELECT ', ' + 科室名称
+FROM DeptOrderStats
+WHERE 长期医嘱总数 > 0
+AND 监测情况 >= (SELECT target_value FROM TargetValue)
+FOR XML PATH('')
+    ), 1, 2, '') AS "未达标科室列表"
+FROM TotalStats t;
+```
+
+## 目标表－科室统计 SQL
+
+```sql
+--目标值的数据
+WITH TargetValue AS (
+    SELECT
+TARGET_COMP_VAL/100.0 AS target_value
+    FROM
+MRAS_TARGET_DEFINITION #{NOLOCK}
+    WHERE
+TARGET_NO = 'HXZD-010-001'
+),
+-- 按照科室来进行处理
+DeptStats AS (
+    SELECT
+e.CURRENT_DEPT_ID AS "当前科室编码",
+o1.ORG_NAME AS "当前科室名称",
+COUNT(CASE WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN 1 ELSE NULL END) AS "分子开具长期医嘱后当日终止执行的医嘱数量",
+COUNT(1) AS "分母同期开具长期医嘱总数量",
+CASE WHEN COUNT(1) = 0 THEN 0
+ELSE COUNT(CASE WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN 1 ELSE NULL END) * 1.0 / COUNT(1)
+END AS "监测情况",
+max(e.SOURCE_HOSPITAL_AREA_ID) as HOSPITAL_AREA_ID
+    FROM
+INP_CLI_ORDER t1 #{NOLOCK}
+LEFT JOIN INPATIENT_ENCOUNTER e #{NOLOCK} ON t1.ENCOUNTER_ID = e.ENCOUNTER_ID
+LEFT JOIN ORGANIZATION o1 #{NOLOCK} ON e.CURRENT_DEPT_ID = o1.ORG_ID
+    WHERE
+--布局组件设置提升效率
+AND t1.START_AT BETWEEN :marptBeginAt AND :marptEndAt
+AND t1.IS_DEL = '0'
+AND e.INPAT_ENC_BIZ_TYPE_CODE <> 399552157
+-- 长期医嘱
+AND t1.ORDER_PERIOD_CODE = '138128'
+-- 排除已作废，已失效
+AND t1.CLI_ORDER_STATUS NOT IN ('98440','98441')
+  --去除24小时出入院
+AND (e.DISCHARGED_FROM_WARD_AT IS NULL OR DATEDIFF(HOUR, e.FIRST_ADMITTED_TO_WARD_AT, e.DISCHARGED_FROM_WARD_AT) > 24)
+    GROUP BY
+e.CURRENT_DEPT_ID, o1.ORG_NAME
+),
+-- 条件进一步筛选
+TempResults AS (
+    SELECT
+d.当前科室编码,
+d.当前科室名称,
+d.分子开具长期医嘱后当日终止执行的医嘱数量,
+d.分母同期开具长期医嘱总数量,
+d.监测情况,
+(SELECT target_value FROM TargetValue) AS "目标值",
+CASE
+WHEN (SELECT target_value FROM TargetValue) IS NULL THEN NULL
+WHEN d.分母同期开具长期医嘱总数量 = 0 THEN '无数据'
+WHEN d.监测情况 < (SELECT target_value FROM TargetValue) THEN '达标'
+ELSE '未达标'
+END AS "对比结果",
+CASE
+WHEN (SELECT target_value FROM TargetValue) IS NULL THEN 98176
+WHEN d.分母同期开具长期医嘱总数量 = 0 THEN 98176
+WHEN d.监测情况 < (SELECT target_value FROM TargetValue) THEN 98175
+ELSE 98176
+END AS "standFlag",
+d.监测情况 as "resultVal",
+d.当前科室编码 as "deptId",
+d.当前科室名称 as "deptName",
+d.分子开具长期医嘱后当日终止执行的医嘱数量 as "numerator",
+d.分母同期开具长期医嘱总数量 as "denominator",
+d.HOSPITAL_AREA_ID as "hospitalAreaId"
+    FROM
+DeptStats d
+WHERE 1 = 1
+-- 达标
+-- 未达标
+)
+-- 最终查询结果
+SELECT * FROM TempResults
+```
+
+## 目标表－患者明细 SQL
+
+```sql
+SELECT DISTINCT
+t1.ENCOUNTER_ID,
+e.CURRENT_DEPT_ID AS "当前科室编码",
+o1.ORG_NAME AS "当前科室",
+e.FULL_NAME AS "患者姓名",
+e.IMRN AS "住院号",
+t4.EMPLOYEE_NAME AS "责任医师",
+team.ORG_NAME as "TEAM_NAME",
+team.ORG_ID as "TEAM_ID",
+team.ORG_NO as "TEAM_NO",
+team.ORG_NAME as "当前医疗组",
+e.ADMITTED_TO_WARD_AT AS "入区时间",
+e.DISCHARGED_FROM_WARD_AT AS "出区时间",
+t1.CLI_ORDER_TYPE_CODE AS "医嘱类型代码",
+t1.ORDER_PERIOD_CODE AS "长期临时医嘱代码",
+t1.CLI_ORDER_STATUS AS "医嘱状态",
+t1.START_AT AS "长期医嘱开立时间",
+t1.TERMINATED_AT AS "长期医嘱终止时间",
+CASE
+WHEN t1.TERMINATED_AT IS NULL THEN '否'
+WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN '是'
+ELSE '否'
+END AS "是否当日终止",
+CASE
+WHEN t1.TERMINATED_AT IS NULL THEN 98176
+WHEN DATEDIFF(HOUR, t1.START_AT, t1.TERMINATED_AT) < 24 THEN 98175
+ELSE 98176
+END AS "standFlag"
+FROM
+INP_CLI_ORDER t1 #{NOLOCK}
+LEFT JOIN INPATIENT_ENCOUNTER e #{NOLOCK} ON t1.ENCOUNTER_ID = e.ENCOUNTER_ID
+LEFT JOIN ORGANIZATION o1 #{NOLOCK}   ON e.CURRENT_DEPT_ID = o1.ORG_ID
+-- 责任医生
+ LEFT JOIN INPATIENT_PARTICIPANT t3 #{NOLOCK} ON t1.ENCOUNTER_ID = t3.ENCOUNTER_ID AND  t3.IS_DEL = 0 AND  t3.INPAT_PARTICIPANT_TYPE_CODE = 1000098
+ LEFT JOIN EMPLOYEE_INFO t4 #{NOLOCK} ON t3.EMPLOYEE_ID = t4.EMPLOYEE_ID
+LEFT JOIN MRAS_ORGANIZATION team #{NOLOCK}  ON team.ORG_ID = e.CURRENT_MEDICAL_GROUP_ID
+WHERE
+--布局组件设置提升效率
+  AND t1.START_AT BETWEEN :marptBeginAt and :marptEndAt
+AND t1.IS_DEL = '0'
+--长期医嘱
+AND t1.ORDER_PERIOD_CODE = '138128'
+--去掉婴儿类型
+AND e.INPAT_ENC_BIZ_TYPE_CODE <> 399552157
+--产品规划只去除 已作废，已失效 状态
+AND t1.CLI_ORDER_STATUS NOT IN  ('98440','98441')
+--去除24小时出入院
+AND (e.DISCHARGED_FROM_WARD_AT IS NULL OR DATEDIFF(HOUR, e.FIRST_ADMITTED_TO_WARD_AT, e.DISCHARGED_FROM_WARD_AT) > 24)
+```

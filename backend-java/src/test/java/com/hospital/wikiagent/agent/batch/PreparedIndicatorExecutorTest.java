@@ -94,7 +94,7 @@ class PreparedIndicatorExecutorTest {
         assertThat(result.resultValue()).isEqualTo(92.5);
         assertThat(result.numerator()).isEqualTo(185L);
         assertThat(result.denominator()).isEqualTo(200L);
-        assertThat(result.targetValue()).isEqualTo(95);
+        assertThat(result.targetValue()).isEqualTo(95.0);
         assertThat(result.targetDirection()).isEqualTo(">=");
         assertThat(result.unit()).isEqualTo("percent");
         assertThat(result.runId()).isEqualTo("RUN_1");
@@ -145,6 +145,65 @@ class PreparedIndicatorExecutorTest {
     }
 
     @Test
+    void noSampleMedianUsesZeroSampleComposition() {
+        effectiveResult = effectiveRule(
+                RULE_ID, RULE_NAME, 5, "<=", "minutes", "median_duration");
+        trialResult = ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "无样本。", Map.of(
+                        "run_id", "RUN_EMPTY",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-02-01 00:00:00",
+                        "no_sample", true));
+
+        IndicatorExecutionResult result =
+                executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
+
+        assertThat(result.status()).isEqualTo(IndicatorExecutionResult.Status.NO_SAMPLE);
+        assertThat(result.sampleCount()).isZero();
+        assertThat(result.calculationDisplay()).isEqualTo("中位数，n=0");
+    }
+
+    @Test
+    void zeroDynamicMedianTargetFallsBackToApprovedStaticTarget() {
+        effectiveResult = effectiveRule(
+                RULE_ID, RULE_NAME, 5, "<=", "minutes", "median_duration");
+        trialResult = ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
+                        "run_id", "RUN_MEDIAN",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-02-01 00:00:00",
+                        "result_value", 4.5,
+                        "sample_count", 12,
+                        "target_value", 0));
+
+        IndicatorExecutionResult result =
+                executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
+
+        assertThat(result.targetValue()).isEqualTo(5);
+    }
+
+    @Test
+    void percentageTargetsUseSamePercentPointScaleAsCalculatedResult() {
+        effectiveResult = effectiveRule(
+                RULE_ID, RULE_NAME, 0.95, ">=", "percent", "percentage");
+        trialResult = ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
+                        "run_id", "RUN_PERCENT",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-02-01 00:00:00",
+                        "result_value", 96.0,
+                        "numerator_count", 96,
+                        "denominator_count", 100,
+                        "target_value", 0.95));
+
+        IndicatorExecutionResult result =
+                executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
+
+        assertThat(result.resultValue()).isEqualTo(96.0);
+        assertThat(result.targetValue()).isEqualTo(95.0);
+    }
+
+    @Test
     void unresolvableTimeFailsValidationWithoutAnyToolCall() {
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", "某个模糊的时间", context);
@@ -152,6 +211,17 @@ class PreparedIndicatorExecutorTest {
         assertThat(result.status()).isEqualTo(IndicatorExecutionResult.Status.FAILED);
         assertThat(result.errorCode()).isEqualTo("TIME_RANGE_AMBIGUOUS");
         assertThat(toolCalls).isEmpty();
+    }
+
+    @Test
+    void fixedBatchPeriodOverridesRelativeRawTimeForEveryWorker() {
+        IndicatorExecutionResult result = executor.execute(
+                RULE_ID, RULE_NAME, "SUB_1", "时间改成从25年2月份开始",
+                "2025-02-01 00:00:00", "2026-07-26 23:30:00", context);
+
+        assertThat(result.status()).isEqualTo(IndicatorExecutionResult.Status.SUCCESS);
+        assertThat(toolCalls).containsExactly(
+                "get_effective_rule", "prepare_indicator_sql", "trial_run_indicator_sql");
     }
 
     private void stubGateway() {
@@ -180,6 +250,17 @@ class PreparedIndicatorExecutorTest {
 
     private static ToolResult effectiveRule(
             String ruleId, String ruleName, Object targetValue, String direction, String unit) {
+        return effectiveRule(
+                ruleId, ruleName, targetValue, direction, unit, null);
+    }
+
+    private static ToolResult effectiveRule(
+            String ruleId,
+            String ruleName,
+            Object targetValue,
+            String direction,
+            String unit,
+            String valueType) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("target_value", targetValue);
         params.put("target_direction", direction);
@@ -188,6 +269,9 @@ class PreparedIndicatorExecutorTest {
         data.put("rule_name", ruleName);
         data.put("effective_params", params);
         data.put("result_unit", unit);
+        if (valueType != null) {
+            data.put("result_contract", Map.of("value_type", valueType));
+        }
         return ToolResult.success("EFFECTIVE_RULE_FOUND", "已找到生效规则。", data);
     }
 

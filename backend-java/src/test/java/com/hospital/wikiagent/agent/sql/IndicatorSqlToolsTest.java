@@ -1,9 +1,12 @@
 package com.hospital.wikiagent.agent.sql;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
@@ -38,6 +41,8 @@ class IndicatorSqlToolsTest {
     private ObjectMapper objectMapper;
     private IndicatorSqlTools tools;
     private RuleReadRepository rules;
+    private IndicatorBusinessQueryClient businessQuery;
+    private DualDatabaseIndicatorExecutionWorkflow controlledWorkflow;
     private AgentRunState state;
     private AgentRuntimeContext runtimeContext;
 
@@ -59,14 +64,29 @@ class IndicatorSqlToolsTest {
         when(rules.fieldMapping(anyString(), anyString())).thenReturn(confirmedMapping());
         when(rules.fieldMapping(anyString(), anyString(), isNull())).thenReturn(confirmedMapping());
         when(rules.fieldMapping(anyString(), anyString(), anyString())).thenReturn(confirmedMapping());
+        businessQuery = mock(IndicatorBusinessQueryClient.class);
+        when(businessQuery.sourceId()).thenReturn("business_test");
+        controlledWorkflow = mock(DualDatabaseIndicatorExecutionWorkflow.class);
+        when(controlledWorkflow.enabled()).thenReturn(true);
+        when(controlledWorkflow.execute(any(), any(), anyString(), any(), any()))
+                .thenReturn(ToolResult.success(
+                        "TRIAL_RUN_COMPLETED",
+                        "真实库概览计算完成",
+                        Map.of(
+                                "numerator_count", 1L,
+                                "denominator_count", 4L,
+                                "result_value", 25.0,
+                                "source_role", "real",
+                                "source_id", "winex_aima")));
         tools = new IndicatorSqlTools(
                 rules,
                 new SqlObjectRepository(jdbc, objectMapper),
                 new SqlTemplateRenderer(),
                 new ReadOnlySqlValidator(),
                 new SqlParameterBinder(),
-                new StubBusinessQuery(),
+                businessQuery,
                 objectMapper);
+        tools.setDualDatabaseWorkflow(controlledWorkflow);
         state = new AgentRunState();
         state.currentRuleId("HXZD-003-001");
         runtimeContext = new AgentRuntimeContext(
@@ -101,15 +121,17 @@ class IndicatorSqlToolsTest {
                 .containsEntry("numerator_count", 1L)
                 .containsEntry("denominator_count", 4L)
                 .containsEntry("result_value", 25.0)
-                .containsEntry("source_role", "business")
-                .containsEntry("source", "business_test");
+                .containsEntry("source_role", "real")
+                .containsEntry("source_id", "winex_aima");
+        verify(controlledWorkflow).execute(any(), any(), anyString(), any(), any());
+        verify(businessQuery, never()).execute(anyString());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_sql_run_log", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_sql_run_log", Integer.class)).isZero();
     }
 
     @Test
-    void rejectsPeriodLongerThanOneCalendarMonthBeforeCreatingSqlObject() {
+    void rejectsPeriodLongerThanOneMonthForActualExecution() {
         ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
                 "HXZD-003-001",
                 "2026-01-01T00:00:00",
@@ -117,9 +139,24 @@ class IndicatorSqlToolsTest {
 
         assertThat(result.ok()).isFalse();
         assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
-        assertThat(result.summary()).contains("2026-02-01T00:00");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isZero();
+    }
+
+    @Test
+    void allowsLongPeriodWhenOnlyPreparingSqlForDisplay() {
+        state.lastIntent(PlanIntent.INDICATOR_SQL_PREPARE.value());
+
+        ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
+                "HXZD-003-001",
+                "2025-06-01T00:00:00",
+                "2026-07-27T00:00:00"), executionContext(runtimeContext, state));
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
+        assertThat(result.data())
+                .containsEntry("stat_start", "2025-06-01 00:00:00")
+                .containsEntry("stat_end", "2026-07-27 00:00:00");
     }
 
     @Test
@@ -159,14 +196,15 @@ class IndicatorSqlToolsTest {
     }
 
     @Test
-    void acceptsPublishedDualDatabaseVerificationWhenLocalMetadataCacheIsEmpty() {
+    void acceptsPublishedRealDatabaseVerificationWhenLocalMetadataCacheIsEmpty() {
         Map<String, Object> verifiedRule = new LinkedHashMap<>(executableRule());
         verifiedRule.put("dual_database_contract", Map.of(
-                "schema_compatible", true,
+                "schema_compatible", false,
+                "verified_source_roles", List.of("real"),
                 "source_verification", Map.of(
                         "business", Map.of(
-                                "metadata_status", "validated",
-                                "compile_status", "validated"),
+                                "metadata_status", "unverified",
+                                "compile_status", "unverified"),
                         "real", Map.of(
                                 "metadata_status", "validated",
                                 "compile_status", "validated"))));
@@ -187,10 +225,14 @@ class IndicatorSqlToolsTest {
         when(rules.fieldMapping(anyString(), anyString(), isNull()))
                 .thenReturn(mappingWithoutCachedMetadata);
 
+        ToolResult inspected = tools.inspect(
+                new IndicatorSqlTools.InspectInput("HXZD-003-001"),
+                executionContext(runtimeContext, state));
         ToolResult result = tools.prepare(new IndicatorSqlTools.PrepareInput(
                 "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
 
+        assertThat(inspected.data().get("missing_columns")).asList().isEmpty();
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
     }
@@ -254,7 +296,8 @@ class IndicatorSqlToolsTest {
     @Test
     void allThirtyFivePublishedOverviewSqlTemplatesPassRuntimePreparation() {
         WikiRuleKnowledgeSource knowledge = new WikiRuleKnowledgeSource(
-                Path.of("..", "core-rules-wiki").toString(), objectMapper);
+                Path.of("src", "main", "resources", "core-rules-wiki").toString(),
+                objectMapper);
         RuleReadRepository repository = new RuleReadRepository(jdbc, knowledge);
         IndicatorSqlTools runtimeTools = new IndicatorSqlTools(
                 repository,

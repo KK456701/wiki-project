@@ -106,11 +106,47 @@ class AgentConversationMemoryTest {
         assertThat(restored.statEnd()).isEqualTo("2026-07-22 00:00:00");
         assertThat(restored.lastRunId()).isEqualTo("RUN_001");
         assertThat(restored.uploadFileKey()).isEqualTo("hospital_001_file.xlsx");
-        assertThat(restored.recentHistory()).contains("用户：计算这个指标", "助手：结果为2.83%");
+        assertThat(restored.recentHistory()).contains(
+                "用户：计算这个指标", "助手：[摘要] 结果为2.83%");
         assertThat(restored.structuredSummary()).contains(
                 "MQSI2025_001", "RUN_001", "hospital_001_ward_entry_anchor");
         assertThat(otherHospital.recentHistory()).isEmpty();
         assertThat(otherHospital.ruleId()).isNull();
+    }
+
+    @Test
+    void persistsStructuredBatchScopeAcrossMemoryInstances() {
+        DataSource source = new EmbeddedDatabaseBuilder()
+                .setType(EmbeddedDatabaseType.H2)
+                .setName("memory_scope_" + System.nanoTime())
+                .build();
+        JdbcTemplate jdbc = new JdbcTemplate(source);
+        ObjectMapper mapper = new ObjectMapper();
+        AgentConversationMemory firstMemory =
+                new AgentConversationMemory(jdbc, mapper);
+        firstMemory.initialize();
+        HospitalPrincipal principal = principal("hospital_001", "user_001");
+        var conversation = firstMemory.open(principal, "session_scope");
+        firstMemory.rememberQueryScope(conversation, new AgentConversationMemory.QueryScopeState(
+                "indicator_trial_run",
+                "SUBSET",
+                List.of(
+                        new AgentConversationMemory.QueryTarget("R1", "指标一"),
+                        new AgentConversationMemory.QueryTarget("R2", "指标二")),
+                "2026-06-01 00:00:00",
+                "2026-07-01 00:00:00"));
+
+        AgentConversationMemory restarted =
+                new AgentConversationMemory(jdbc, mapper);
+        restarted.initialize();
+        var restored = restarted.open(principal, "session_scope");
+
+        assertThat(restored.queryScope()).isNotNull();
+        assertThat(restored.queryScope().targetMode()).isEqualTo("SUBSET");
+        assertThat(restored.queryScope().targets())
+                .extracting("ruleId").containsExactly("R1", "R2");
+        assertThat(restored.queryScope().statStart())
+                .isEqualTo("2026-06-01 00:00:00");
     }
 
     @Test
@@ -136,7 +172,8 @@ class AgentConversationMemoryTest {
 
         var restored = memory.open(principal, "session_fallback");
 
-        assertThat(restored.recentHistory()).contains("用户：从一月到现在", "助手：结果为2.81%");
+        assertThat(restored.recentHistory()).contains(
+                "用户：从一月到现在", "助手：[摘要] 结果为2.81%");
         assertThat(restored.ruleId()).isEqualTo("MQSI2025_001");
         assertThat(restored.statStart()).isEqualTo("2026-01-01 00:00:00");
         assertThat(restored.statEnd()).isEqualTo("2026-07-22 00:00:00");
@@ -183,8 +220,8 @@ class AgentConversationMemoryTest {
         var restored = memory.open(principal, "session_digest");
         // 第一轮助手回答应被压缩为 digest 摘要
         assertThat(restored.recentHistory()).contains("[摘要] 已计算急会诊及时到位率的结果（2026-01-01 至 2026-07-01）");
-        // 最近轮次应保持完整
-        assertThat(restored.recentHistory()).contains("助手：回答四");
+        // 最近助手轮次也只进入摘要，不回灌完整回答
+        assertThat(restored.recentHistory()).contains("助手：[摘要] 回答四");
     }
 
     @Test
@@ -209,10 +246,10 @@ class AgentConversationMemoryTest {
         }
         var restored = memory.open(principal, "session_trunc");
         String history = restored.recentHistory();
-        // 最近 3 轮（6 条）应完整
-        assertThat(history).contains("回答8：");
-        assertThat(history).contains("回答7：");
-        assertThat(history).contains("回答6：");
+        // 最近用户表达保持完整，助手始终只保留结构化摘要
+        assertThat(history).contains("用户：问题8：");
+        assertThat(history).contains("[摘要] 已为指标8生成并校验 SQL");
+        assertThat(history).doesNotContain("A".repeat(100));
         // 更早轮次应用 digest
         assertThat(history).contains("[摘要] 已为指标1生成并校验 SQL");
         assertThat(history).contains("[摘要] 已为指标2生成并校验 SQL");

@@ -1,0 +1,217 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-009-004",
+  "rule_name": "死亡患者病案上传率",
+  "category": "死亡病例讨论制度",
+  "definition": "按要求完整上传本机构死亡患者病案的数量占同期应上传死亡患者病案总数量的比例。",
+  "formula": "分子：按要求完整上传本机构死亡患者病案的数量\n分母：同期应上传死亡患者病案总数量\n公式：按要求完整上传本机构死亡患者病案的数量 / 同期应上传死亡患者病案总数量 * 100%",
+  "note": "应上传死亡患者病案是指根据医院质量监测系统(HQMS)每月反馈各医疗机构须上传的死亡患者病案清单中的所有病案信息。",
+  "significance": "反映开展死亡病案上报工作的落实和管理情况。",
+  "default_profile": null,
+  "profiles": [
+    {
+      "profile_id": "HXZD-009-004-company-default",
+      "profile_name": "推荐方案：未实现",
+      "governance_status": "draft",
+      "execution_status": "draft",
+      "execution_blockers": [
+        "方案标记为未实现"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "按要求完整上传本机构死亡患者病案的数量",
+      "numerator_caliber": "—",
+      "denominator_rule": "同期应上传死亡患者病案总数量",
+      "denominator_caliber": "—",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/overview.sql",
+        "department": "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子按要求完整上传本机构死亡患者病案得数量",
+        "denominator_count": "分母同期死亡病例总数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "cast",
+            "dateadd",
+            "datepart",
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "02eb7575c4b57f9fe1e3eeef66b89943462ab9778220c60ff5d602d904be6e65"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "95e414316f0240ede679b8eaacf0c4f7ce5f446e6873956dd78fefe768adcc4a"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "b886b1c18ed2b562b270497428917219a28f89254a1f04e7d87733843b146a3a"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519",
+            "overview": "02eb7575c4b57f9fe1e3eeef66b89943462ab9778220c60ff5d602d904be6e65",
+            "department_detail": "95e414316f0240ede679b8eaacf0c4f7ce5f446e6873956dd78fefe768adcc4a",
+            "patient_detail": "b886b1c18ed2b562b270497428917219a28f89254a1f04e7d87733843b146a3a"
+          },
+          "real": {
+            "source_extract": "5d47aebec79fb890806fd2a996e1e8c9c8b20a71a6afe83f382dfedda9f70519",
+            "overview": "02eb7575c4b57f9fe1e3eeef66b89943462ab9778220c60ff5d602d904be6e65",
+            "department_detail": "95e414316f0240ede679b8eaacf0c4f7ce5f446e6873956dd78fefe768adcc4a",
+            "patient_detail": "b886b1c18ed2b562b270497428917219a28f89254a1f04e7d87733843b146a3a"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子按要求完整上传本机构死亡患者病案得数量",
+          "denominator_count": "分母同期死亡病例总数量",
+          "target_value": "target_value"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

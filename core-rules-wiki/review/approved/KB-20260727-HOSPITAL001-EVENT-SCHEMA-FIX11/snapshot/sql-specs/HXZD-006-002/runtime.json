@@ -1,0 +1,335 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-006-002",
+  "rule_name": "非计划再次住院/手术患者疑难病例讨论记录完整率",
+  "category": "疑难病例讨论制度",
+  "definition": "对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量占同期对非计划再次住院/手术患者进行疑难病例讨论的数量的比例。",
+  "formula": "分子：对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量\n分母：同期对非计划再次住院/手术患者进行疑难病例讨论的数量\n公式：对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量 / 同期对非计划再次住院/手术患者进行疑难病例讨论的数量 * 100%",
+  "note": "——",
+  "significance": "反映疑难病例讨论制度落实和管理情况。",
+  "unit": "percentage",
+  "default_profile": "HXZD-006-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-006-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_DIFFI_EMR",
+        "event_table": "MRAS_BUSINESS_DIFFI_EMR",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_DIFFI_EMR",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_DIFFI_EMR": [
+            "MRAS_BUSINESS_DIFFI_EMR_ID",
+            "MRAS_TARGET_DEFINITION_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ATTENDER_NAME",
+            "CHIEF_DOCTOR_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "ADMITTED_AT",
+            "DISCHARGED_AT",
+            "ADMITTED_TO_WARD_AT",
+            "WARD_DISCHARGED_AT",
+            "TRIGGER_AT",
+            "ACTUAL_FINISH_AT",
+            "TIMEOUT_AT",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "DIFFICULT_FLAG",
+            "FINISH_STATUS",
+            "HOSPITAL_AREA_ID",
+            "MRAS_EVENT_DEFINE_ID",
+            "IMRN",
+            "CURRENT_ADMITTER_ID",
+            "EVENT_NO",
+            "UN_PLANED_ADMITTED",
+            "EVENT_AT",
+            "UN_PLANNED_SURGERY_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "EMR_SET_SUBMIT_AT",
+            "SURGERY_LEVEL_CODE",
+            "VERSION",
+            "UNPLANNED_DIFFICULT_DISCUSSION",
+            "EMR_CREATED_AT",
+            "CURRENT_WARD_NAME",
+            "CURRENT_WARD_ID"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_DIFFI_EMR": "2aa0387840bbf03096599941a61fda192aa1c2e259e1fc6f681b7890137fbef4",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "dcf7ad4f8faf69e8241c1becd85da2c723d3580d0a0986b2da1fd055b9a63d18",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 95,
+        "target_direction": ">="
+      },
+      "numerator_rule": "对非计划再次住院/手术患者进行疑难病例讨论并将讨论结论记入病历的数量",
+      "numerator_caliber": "1、单位时间内出区的非计划再入院/手术患者患者中，疑难病例讨论记录（病历）已提交状态病历的数量\n2、非计划再次入院定义：患者31天内再次住院，并且上次住院的病案首页“31天内再住院计划=无”，且患者本次入院主诊断和上次出院主诊断的诊断编码前5个字符相同（（例如诊断编码为Z51.003，则前5个字符为Z51.0））。\n4、非计划再次手术定义：取手术医嘱“非计划二次手术”标记\n5、说明：手术患者判断时，只需要统计手术类型为手术、介入治疗，排除诊断性操作、治疗性操作的数据",
+      "denominator_rule": "同期对非计划再次住院/手术患者进行疑难病例讨论的数量",
+      "denominator_caliber": "单位时间内出区的非计划再入院/手术患者患者中，疑难病例讨论记录（病历）的数量（包含所有状态的病历文书）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子对非计划再次住院手术患者进行疑难病例讨论并将讨论结论记入病历的数量",
+        "denominator_count": "分母同期对非计划再次住院手术患者进行疑难病例讨论的数量",
+        "index_value": "监测情况",
+        "component_left": "分子对非计划再次住院手术患者进行疑难病例讨论并将讨论结论记入病历的数量",
+        "component_right": "分母同期对非计划再次住院手术患者进行疑难病例讨论的数量",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b4351aed75ca06b6434f604821ead5983dad7d5a4694924262d6f6a6843dcfca"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6a7ffe99f72859d7ba4a4e133d89eb5bed82ba74a0bf4512aa8776f747eb4bdf"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6745e52b570db1898a8e3f85318b369998cdcc13a7041aeba761f3ef1e24f29d"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "681cc07c8e106601dc3e01f2c68a458eeff03a3876bd885fac706351055500d2"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "b4351aed75ca06b6434f604821ead5983dad7d5a4694924262d6f6a6843dcfca",
+            "overview": "6a7ffe99f72859d7ba4a4e133d89eb5bed82ba74a0bf4512aa8776f747eb4bdf",
+            "department_detail": "6745e52b570db1898a8e3f85318b369998cdcc13a7041aeba761f3ef1e24f29d",
+            "patient_detail": "681cc07c8e106601dc3e01f2c68a458eeff03a3876bd885fac706351055500d2"
+          },
+          "real": {
+            "source_extract": "b4351aed75ca06b6434f604821ead5983dad7d5a4694924262d6f6a6843dcfca",
+            "overview": "6a7ffe99f72859d7ba4a4e133d89eb5bed82ba74a0bf4512aa8776f747eb4bdf",
+            "department_detail": "6745e52b570db1898a8e3f85318b369998cdcc13a7041aeba761f3ef1e24f29d",
+            "patient_detail": "681cc07c8e106601dc3e01f2c68a458eeff03a3876bd885fac706351055500d2"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子对非计划再次住院手术患者进行疑难病例讨论并将讨论结论记入病历的数量",
+          "denominator_count": "分母同期对非计划再次住院手术患者进行疑难病例讨论的数量",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_DIFFI_EMR",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

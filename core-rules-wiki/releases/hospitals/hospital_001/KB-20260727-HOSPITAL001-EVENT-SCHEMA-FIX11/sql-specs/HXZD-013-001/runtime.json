@@ -1,0 +1,372 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-013-001",
+  "rule_name": "新技术新项目留存转化率",
+  "category": "新技术和新项目准入制度",
+  "definition": "在四年的评估周期内，医院新增的技术项目在第四年继续开展的比例。",
+  "formula": "分子：(A + C + E)\n分母：(A + B + C + D + E + F) \n公式：(A + C + E) / (A + B + C + D + E + F) * 100%\nA: 第二年新增并在第三和第四年继续开展的技术项目种类数。\nB: 第二年新增并只在第三年继续开展的技术项目种类数。\nC: 第二年新增并只在第四年继续开展的技术项目种类数。\nD: 第二年新增并未在第三和第四年继续开展的技术项目种类数。\nE: 第三年新增并在第四年继续开展的技术项目种类数。\nF: 第三年新增并未在第四年开展的技术项目种类数。\n分子说明(A+C+E)：\nA: 第二年新增并在第三和第四年继续开展的技术项目\nC: 第二年新增并只在第四年继续开展的技术项目\nE: 第三年新增并在第四年继续开展的技术项目\n分母说明(A + B + C + D + E + F) ：\n1）A + B + C + D=第二年新增的所有技术项目\n2）E + F=第三年新增的所有技术项目",
+  "note": "在四年周期内，将以第一年技术项目种类数为基数，定义年度新增的技术、项目种类数为年度技术项目种类数减去第一年技术项目种类数。考核第二年和第三年新技术新项目种类数在第四年的继续开展情况。",
+  "significance": "反映新技术新项目应用的持续性。",
+  "unit": "percentage",
+  "default_profile": "HXZD-013-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-013-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "TABLE_DOMAIN",
+        "event_no": "",
+        "event_table": "",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION",
+          "MRAS_MEDTECH_PRO",
+          "MRAS_MEDTECH_PROC"
+        ],
+        "target_tables": [
+          "MRAS_TARGET_DEFINITION",
+          "MRAS_MEDTECH_PRO",
+          "MRAS_MEDTECH_PROC"
+        ],
+        "allowed_result_fields": {
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ],
+          "MRAS_MEDTECH_PRO": [
+            "MRAS_MEDTECH_PRO_ID",
+            "MEDTECH_PRO_NO",
+            "MEDTECH_PRO_NAME",
+            "UNIT_CODE",
+            "UNIT_NAME",
+            "LEAD_BY",
+            "MANAGE_START_AT",
+            "MANAGE_END_AT",
+            "PROMOTE_STATE_CODE",
+            "PROMOTE_CASES",
+            "APPLY_BY",
+            "EDITOR_TYPE_CODE",
+            "MRAS_FORM_CASE_ID",
+            "APPLY_AT",
+            "REVIEW_AT",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "DURATION"
+          ],
+          "MRAS_MEDTECH_PROC": [
+            "MRAS_MEDTECH_PROC_ID",
+            "MRAS_MEDTECH_PRO_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_TYPE_CODE",
+            "ENCOUNTER_TYPE",
+            "ENCOUNTER_NO",
+            "ENCOUNTER_ID",
+            "ENCOUNTER_CAUSE",
+            "ENCOUNTER_BY",
+            "MEDTECH_STATUS",
+            "BIZ_ROLE_ID",
+            "BED_NO",
+            "BEDROOM_NO",
+            "BUSINESS_AT",
+            "CURRENT_WARD_ID",
+            "CURRENT_WARD_NAME",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_DEPT_ID",
+            "AGE",
+            "IN_DIAGNOSIS",
+            "REVIEW_STATUS",
+            "REVIEW_MEMO",
+            "DISCHARGE_CODE",
+            "DOCTOR_CODE",
+            "IS_AE",
+            "AE_RESUME",
+            "IS_CC",
+            "CC_RESUME",
+            "HOSPITAL_SOID",
+            "IS_DEL",
+            "CREATED_BY",
+            "CREATED_AT",
+            "MODIFIED_BY",
+            "MODIFIED_AT",
+            "GENDER_CODE",
+            "REPORT_TYPE",
+            "APPROVAL_DOC_COMP_FLAG",
+            "INFORMED_CONSENT_FLAG",
+            "DAILY_EVALUATION_BY",
+            "INDICATION_MASTERY_FLAG",
+            "CHIEF_PHYSICIAN_ID",
+            "TOTAL_COST",
+            "SURGEON_ID",
+            "SURGEON_NAME",
+            "DISCHARGED_AT",
+            "TECH_OR_HUMAN_FACTOR_FLAG",
+            "EFFECT",
+            "ACTUAL_INPAT_DAYS",
+            "DAILY_EVALUATION_AT",
+            "CHIEF_PHYSICIAN_NO",
+            "SUBMIT_BY",
+            "OPERATION_GRADE_NO",
+            "ADV_EVENT_TIMELINESS_FLAG",
+            "UNPLAN_SURGERY_NONIATRO_FLAG",
+            "OPERATION_GRADE_NAME",
+            "OPERATION_PERFORMED_AT",
+            "OPERATION_NAME",
+            "ADMITTED_AT",
+            "SUBMIT_AT",
+            "OPERATION_ID",
+            "UNPLAN_SURGERY_IATRO_FLAG",
+            "AUTH_STATUS",
+            "OPERATION_GRADE_ID",
+            "SURGEON_NO",
+            "OPERATION_START_AT",
+            "OPERATION_NO",
+            "CHIEF_PHYSICIAN_NAME",
+            "MAIN_MEDICAL_ADVICE",
+            "RELATED_SURGERY_FLAG"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578",
+          "MRAS_MEDTECH_PRO": "24fd14006f7a90502af5a35f17512564536f7e3609157b230a474b2c4fb7420b",
+          "MRAS_MEDTECH_PROC": "1dcdea1cdb183a52c0637a09dafe3d58ca08f2602df3892d26e86fafdbb154de"
+        },
+        "target_structure_fingerprint": "4bee164ca15f9fe286220b96b475d75d1c093f59eb49baa66f79041876d4ee76",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 90,
+        "target_direction": ">="
+      },
+      "numerator_rule": "(A + C + E)<br>A: 第二年新增并在第三和第四年继续开展的技术项目<br>C: 第二年新增并只在第四年继续开展的技术项目<br>E: 第三年新增并在第四年继续开展的技术项目",
+      "numerator_caliber": "1、统计单位时间内开展的新技术新项目属于前两年新增的项目数量\n2、“开展”定义：医务系统（新技术新项目统计）中的新技术开展数据。",
+      "denominator_rule": "(A + B + C + D + E + F) <br>A: 第二年新增并在第三和第四年继续开展的技术项目种类数。<br>B: 第二年新增并只在第三年继续开展的技术项目种类数。<br>C: 第二年新增并只在第四年继续开展的技术项目种类数。<br>D: 第二年新增并未在第三和第四年继续开展的技术项目种类数。<br>E: 第三年新增并在第四年继续开展的技术项目种类数。<br>F: 第三年新增并未在第四年开展的技术项目种类数。",
+      "denominator_caliber": "1、统计单位时间内，前两年新增的新技术新项目数量\n2、“新增”定义：医务系统新增且审批通过的新技术/项目。",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "marptBeginAt",
+        "marptEndAt"
+      ],
+      "parameter_contract": {
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": null,
+        "overview": "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子",
+        "denominator_count": "分母",
+        "index_value": "监测情况",
+        "component_left": "分子",
+        "component_right": "分母",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "dateadd",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d6cea069350d5e22217313089e59c7a7135918e9568ca2ff9f1e7c6952a548fb"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "dateadd"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "206c5d28d6e54ea97f3af10e0ab39b4563e3674b45d5586de6dd9a8ed1687b94"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "dateadd"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "cb3c0c07d13469390b6100112d870be1f7f46a940e4e51d7233c7454ae265beb"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "overview": "d6cea069350d5e22217313089e59c7a7135918e9568ca2ff9f1e7c6952a548fb",
+            "department_detail": "206c5d28d6e54ea97f3af10e0ab39b4563e3674b45d5586de6dd9a8ed1687b94",
+            "patient_detail": "cb3c0c07d13469390b6100112d870be1f7f46a940e4e51d7233c7454ae265beb"
+          },
+          "real": {
+            "overview": "d6cea069350d5e22217313089e59c7a7135918e9568ca2ff9f1e7c6952a548fb",
+            "department_detail": "206c5d28d6e54ea97f3af10e0ab39b4563e3674b45d5586de6dd9a8ed1687b94",
+            "patient_detail": "cb3c0c07d13469390b6100112d870be1f7f46a940e4e51d7233c7454ae265beb"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子",
+          "denominator_count": "分母",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

@@ -1,0 +1,449 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-012-001",
+  "rule_name": "四级手术与三级手术并发症发生率比",
+  "category": "手术分级管理制度",
+  "definition": "四级手术并发症发生率与三级手术并发症发生率的比。",
+  "formula": "四级手术并发症发生率 = 四级手术并发症患者数 ÷ 四级手术患者数\n三级手术并发症发生率 = 三级手术并发症患者数 ÷ 三级手术患者数\n最终结果 = 四级手术并发症发生率 ÷ 三级手术并发症发生率\n三级手术并发症发生率为0时结果为无样本；同一患者三级、四级手术均发生并发症时按审批口径归入四级",
+  "note": "1.本指标中三、四级手术是指医疗机构根据实际情况制定的本机构手术分级管理目录中的手术级别，下同。\n2.本指标中手术并发症是指并发于手术或手术后的疾病或情况，包括：手术后肺栓塞、深静脉血栓、脓毒症、出血或血肿、伤口裂开、呼吸衰竭、生理/代谢紊乱、与手术/操作相关感染、手术过程中异物遗留、手术患者麻醉并发症、肺部感染与肺机能不全、手术意外穿刺伤或撕裂伤、手术后急性肾衰竭等。",
+  "significance": "反映手术分级管理的合理性。",
+  "unit": "ratio",
+  "default_profile": "HXZD-012-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-012-001-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "result_contract": {
+        "value_type": "rate_ratio",
+        "unit": "ratio",
+        "target_value": null,
+        "target_direction": "<="
+      },
+      "numerator_rule": "四级手术并发症发生率",
+      "numerator_caliber": "1、单位时间内四级手术并发症患者数/四级手术患者数\n2、四级手术相关数据来源为【医生站】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "denominator_rule": "三级手术并发症发生率",
+      "denominator_caliber": "1、单位时间内三级手术并发症患者数/三级手术患者数\n2、三级手术相关数据来源为【医生站】（一个患者多次三级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子-四级手术并发症发生率",
+        "denominator_count": "分母-三级手术并发症发生率",
+        "index_value": "监测情况",
+        "component_left": "分子-四级手术并发症发生率",
+        "component_right": "分母-三级手术并发症发生率",
+        "sample_count": null,
+        "target_value": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "isnull",
+            "left",
+            "max",
+            "stuff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59",
+            "overview": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8",
+            "department_detail": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa",
+            "patient_detail": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+          },
+          "real": {
+            "source_extract": "1bff5237ccd4cb4bf8108f40e5685b738c1d832e9f236c09c2ed414efdc82a59",
+            "overview": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8",
+            "department_detail": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa",
+            "patient_detail": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "index_value": "监测情况",
+          "component_left": "分子-四级手术并发症发生率",
+          "component_right": "分母-三级手术并发症发生率"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    },
+    {
+      "profile_id": "HXZD-012-001-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "result_contract": {
+        "value_type": "rate_ratio",
+        "unit": "ratio",
+        "target_value": null,
+        "target_direction": "<="
+      },
+      "numerator_rule": "四级手术并发症发生率",
+      "numerator_caliber": "单位时间内出区的患者中，四级手术并发症患者数/四级手术患者数\n2、四级手术相关数据来源为【病案首页】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "denominator_rule": "三级手术并发症发生率",
+      "denominator_caliber": "1、单位时间内出区的患者中，三级手术并发症患者数/三级手术患者数\n2、四级手术相关数据来源为【病案首页】（一个患者多次四级手术，统一为1）\n3、一个患者如果在院区间做了三级和四级手术，且发生了并发症，按高等级手术归属\n4、并发症取值逻辑：病案首页中患者“出院诊断”包含并发症诊断编码（例如：肺栓塞为I26.9），且该诊断的“入院病情=无”\n5、并发症定义参照sheet页<并发症定义>）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子-四级手术并发症发生率",
+        "denominator_count": "分母-三级手术并发症发生率",
+        "index_value": "监测情况",
+        "component_left": "分子-四级手术并发症发生率",
+        "component_right": "分母-三级手术并发症发生率",
+        "sample_count": null,
+        "target_value": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "concat",
+            "convert",
+            "count",
+            "max",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7",
+            "overview": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8",
+            "department_detail": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa",
+            "patient_detail": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+          },
+          "real": {
+            "source_extract": "6cce37378fd5dbcd0ace8b3d3b33209688c77aa46524156aac4b4fbf68bef3e7",
+            "overview": "e02cda929145bbbaa6e08c0500f5440931608842506d10df77d7d4a034471cc8",
+            "department_detail": "97cbfcd1b972979eb5c2740f304090c9f16e45457e50cdfd916eac9bf850e9aa",
+            "patient_detail": "50cfc0029fecf358c28298321f583b6a297bb1dde0960d7ea3c0e0743d696649"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "index_value": "监测情况",
+          "component_left": "分子-四级手术并发症发生率",
+          "component_right": "分母-三级手术并发症发生率"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SUR_GRADE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

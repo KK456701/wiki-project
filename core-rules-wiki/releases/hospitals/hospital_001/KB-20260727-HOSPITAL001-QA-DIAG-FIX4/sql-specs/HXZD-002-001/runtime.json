@@ -1,0 +1,221 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-002-001",
+  "rule_name": "患者入院8小时内查房率",
+  "category": "三级查房制度",
+  "definition": "入院8小时内开具检查或治疗医嘱的患者人次数占同期入院患者总人次数的比例。",
+  "formula": "分子：入院8小时内开具检查或治疗医嘱的患者人次数\n分母：同期入院患者总人次数\n公式：入院8小时内开具检查或治疗医嘱的患者人次数 / 同期入院患者总人次数 * 100%",
+  "note": "——",
+  "significance": "反映查房的及时性。",
+  "default_profile": "HXZD-002-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-002-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "入院8小时内开具检查或治疗医嘱的患者人次数",
+      "numerator_caliber": "1、单位时间入区的患者，在入院8小时内开立过检查或治疗相关医嘱的患者数（一个患者8小时内开立多次相关医嘱，统计为1）\n2、说明：检查或治疗相关的医嘱类型：西药、中草药、检验、检查、治疗、手术、用血、病理、膳食医嘱。不包括：患者流转、嘱托、卫材医嘱等。（取值的类型要求可配置）（概念域：医嘱类型代码）\n3、医嘱都按照有效医嘱取值（不包含已作废和已失效的医嘱状态）",
+      "denominator_rule": "同期入院患者总人次数",
+      "denominator_caliber": "单位时间内入区的患者人次",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 5 | 下拉多选 | 医嘱类型概念域（256192） |",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子入院8小时内开具检查或治疗医嘱的患者人次数",
+        "denominator_count": "分母同期入院患者总人次数",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "getdate",
+            "max",
+            "row_number",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "724baae86323c0e64b1d79a9c1771a60530242ed412d33d1ac9c1a77e702cb95"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d421a1f59bb8cff254ae711c69a19c2f3f782dc209cf1eb88b930331a58b8a7b"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf",
+            "overview": "724baae86323c0e64b1d79a9c1771a60530242ed412d33d1ac9c1a77e702cb95",
+            "department_detail": "d421a1f59bb8cff254ae711c69a19c2f3f782dc209cf1eb88b930331a58b8a7b",
+            "patient_detail": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+          },
+          "real": {
+            "source_extract": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf",
+            "overview": "724baae86323c0e64b1d79a9c1771a60530242ed412d33d1ac9c1a77e702cb95",
+            "department_detail": "d421a1f59bb8cff254ae711c69a19c2f3f782dc209cf1eb88b930331a58b8a7b",
+            "patient_detail": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子入院8小时内开具检查或治疗医嘱的患者人次数",
+          "denominator_count": "分母同期入院患者总人次数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_WARDROUND",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

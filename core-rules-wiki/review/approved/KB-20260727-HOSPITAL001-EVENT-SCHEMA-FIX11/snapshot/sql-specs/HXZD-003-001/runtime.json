@@ -1,0 +1,362 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-003-001",
+  "rule_name": "急会诊及时到位率",
+  "category": "会诊制度",
+  "definition": "急会诊请求发出后，10分钟内到达现场的急会诊次数占同期急会诊总次数的比例。",
+  "formula": "分子：急会诊记录中10分钟内到位的急会诊次数\n分母：同期急会诊总次数\n公式：急会诊记录中10分钟内到位的急会诊次数 / 同期急会诊总次数 * 100%",
+  "note": "急会诊范围包括当患者罹患疾病超出本科室诊疗范围和处置能力，且经评估可能随时危及生命，需要院内其他科室医师立刻协助诊疗、参与抢救所发出的会诊申请。",
+  "significance": "反映急会诊制度执行的规范性。",
+  "unit": "percentage",
+  "default_profile": "HXZD-003-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-003-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_CONSUL_OUT",
+        "event_table": "MRAS_BUSINESS_CONSULTATION",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_CONSULTATION",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_CONSULTATION": [
+            "MRAS_BUSINESS_CONSULTATION_ID",
+            "MRAS_TARGET_DEFINITION_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "ENCOUNTER_CAUSE",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ATTENDER_NAME",
+            "CHIEF_DOCTOR_NAME",
+            "BIZ_ROLE_ID",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "CURRENT_WARD_ID",
+            "CURRENT_WARD_NAME",
+            "ADMITTED_AT",
+            "DISCHARGED_AT",
+            "ADMITTED_TO_WARD_AT",
+            "WARD_DISCHARGED_AT",
+            "APPLY_NUM",
+            "FINISH_NUM",
+            "COURSE_NUM",
+            "AVG_FINISH_TIME",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "FINISH_AT",
+            "TIMEOUT_HOURS",
+            "HOSPITAL_AREA_ID",
+            "APPLY_AT",
+            "MAHP_NO",
+            "COURSE_STATUS",
+            "COURSE_LEVEL_CODE",
+            "INVITATION_DEPT_NAME",
+            "COURSE_DOCTOR",
+            "COURSE_TYPE_CODE",
+            "APPLY_DEPT_NAME",
+            "STAND_FLAG",
+            "INTERVAL_HOUR",
+            "EVENT_NO",
+            "EVENT_AT",
+            "BIZ_ID",
+            "APPLY_CONSULT_EMPLOYEE_NAME",
+            "INVITATION_DEPT_ID",
+            "EMERGENCY_CONSULT_EFFECTIVE",
+            "MRAS_EVENT_DEFINE_ID",
+            "FIRST_EMR_SET_SUBMIT_AT",
+            "IMRN",
+            "ORDER_NAME",
+            "REGULAR_CONSULT_EFFECTIVE",
+            "INVITATION_DEPT_NO",
+            "CURRENT_ADMITTER_ID",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "PRESCRIBING_DOCTOR_NAME",
+            "SIGNED_AT",
+            "REGULAR_CONSULT_TIMELY",
+            "FIRST_ORDER_AT",
+            "VERSION",
+            "EMERGENCY_CONSULT_TIMELY",
+            "APPLY_CONSULT_AT",
+            "ENCOUNTER_TYPE_CODE"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_CONSULTATION": "a5f0a527115f8ead3953a258c0a4ecc7fdb51ea1289e667de65b713880a7a3df",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "dbe61e8e5ae6ada1eb8ed8d161c2c19eeab097b27b034a786137ee50cf2f7e3d",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 0.95,
+        "target_direction": ">="
+      },
+      "numerator_rule": "急会诊记录中10分钟内到位的急会诊次数",
+      "numerator_caliber": "1、单位时间内完成的急会诊，在10分钟到位的数量（会诊到位时间-会诊发起时间）。\n2、会诊到位时间：优先取会诊签到时间（需要开启会诊签到功能（同一个会诊有多个到位时间，取第一个签到的时间），若无签到时间，则取“会诊计划到场时间”。\n3、说明：该指标包含门急诊住院的数据，不包含院外会诊",
+      "denominator_rule": "同期急会诊总次数",
+      "denominator_caliber": "单位时间内完成急会诊的数量",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子急会诊记录中10分钟内到位的急会诊次数",
+        "denominator_count": "分母同期急会诊总次数",
+        "index_value": "监测情况",
+        "component_left": "分子急会诊记录中10分钟内到位的急会诊次数",
+        "component_right": "分母同期急会诊总次数",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "max",
+            "min",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "80b3dd834c03309db6d6e8ee91f9b054bd559894757efb9c1587f763d16e25b3"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "0d5a679c54dafa39d35e8c4b7d43cf718080f11ddb6de14ff4a522e683eae717"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "9562c76f18d0753e3fa0a99426b3dbd747abea2a438992e65299653045ebe4e1"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "cast",
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "2fc5cf924f2db647237ac0fd7e6209c1c8173a03d394d541112544f58284cbf2"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "80b3dd834c03309db6d6e8ee91f9b054bd559894757efb9c1587f763d16e25b3",
+            "overview": "0d5a679c54dafa39d35e8c4b7d43cf718080f11ddb6de14ff4a522e683eae717",
+            "department_detail": "9562c76f18d0753e3fa0a99426b3dbd747abea2a438992e65299653045ebe4e1",
+            "patient_detail": "2fc5cf924f2db647237ac0fd7e6209c1c8173a03d394d541112544f58284cbf2"
+          },
+          "real": {
+            "source_extract": "80b3dd834c03309db6d6e8ee91f9b054bd559894757efb9c1587f763d16e25b3",
+            "overview": "0d5a679c54dafa39d35e8c4b7d43cf718080f11ddb6de14ff4a522e683eae717",
+            "department_detail": "9562c76f18d0753e3fa0a99426b3dbd747abea2a438992e65299653045ebe4e1",
+            "patient_detail": "2fc5cf924f2db647237ac0fd7e6209c1c8173a03d394d541112544f58284cbf2"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子急会诊记录中10分钟内到位的急会诊次数",
+          "denominator_count": "分母同期急会诊总次数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_CONSULTATION",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

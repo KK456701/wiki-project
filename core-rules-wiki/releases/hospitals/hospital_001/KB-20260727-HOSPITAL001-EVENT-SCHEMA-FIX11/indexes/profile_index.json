@@ -1,0 +1,342 @@
+{
+  "HXZD-001-001": [
+    {
+      "profile_id": "HXZD-001-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-002-001": [
+    {
+      "profile_id": "HXZD-002-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-002-002": [
+    {
+      "profile_id": "HXZD-002-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-002-003": [
+    {
+      "profile_id": "HXZD-002-003-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-003-001": [
+    {
+      "profile_id": "HXZD-003-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-003-002": [
+    {
+      "profile_id": "HXZD-003-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-003-003": [
+    {
+      "profile_id": "HXZD-003-003-company-default",
+      "profile_name": "推荐方案：按会诊申请科室数统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-003-003-company-candidate-01",
+      "profile_name": "可选方案：按会诊受邀科室数统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-003-004": [
+    {
+      "profile_id": "HXZD-003-004-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-004-001": [
+    {
+      "profile_id": "HXZD-004-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-005-001": [
+    {
+      "profile_id": "HXZD-005-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-006-001": [
+    {
+      "profile_id": "HXZD-006-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-006-002": [
+    {
+      "profile_id": "HXZD-006-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-006-003": [
+    {
+      "profile_id": "HXZD-006-003-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-006-003-company-candidate-01",
+      "profile_name": "可选方案（未实现）：公版",
+      "governance_status": "draft",
+      "execution_status": "draft"
+    }
+  ],
+  "HXZD-007-001": [
+    {
+      "profile_id": "HXZD-007-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-008-001": [
+    {
+      "profile_id": "HXZD-008-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-008-002": [
+    {
+      "profile_id": "HXZD-008-002-company-default",
+      "profile_name": "推荐方案：按病历完成时间统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-008-002-company-candidate-01",
+      "profile_name": "可选方案：按患者出区时间统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-008-003": [
+    {
+      "profile_id": "HXZD-008-003-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-008-004": [
+    {
+      "profile_id": "HXZD-008-004-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-009-001": [
+    {
+      "profile_id": "HXZD-009-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-009-002": [
+    {
+      "profile_id": "HXZD-009-002-company-default",
+      "profile_name": "推荐方案：纠纷数据来源：医务管理系统（需上线医务系统投诉纠纷管理功能）",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-009-002-company-candidate-01",
+      "profile_name": "可选方案（未实现）：纠纷数据来源：HIS患者标签",
+      "governance_status": "draft",
+      "execution_status": "draft"
+    }
+  ],
+  "HXZD-009-003": [
+    {
+      "profile_id": "HXZD-009-003-company-default",
+      "profile_name": "推荐方案：科主任数据来源：死亡讨论记录病历模板限制主持人只能选科主任（需现场调整病历模板）",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-009-003-company-candidate-01",
+      "profile_name": "可选方案：科主任数据来源：统一配置行政职务包含“主任”",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-009-004": [
+    {
+      "profile_id": "HXZD-009-004-company-default",
+      "profile_name": "推荐方案：未实现",
+      "governance_status": "draft",
+      "execution_status": "draft"
+    }
+  ],
+  "HXZD-010-001": [
+    {
+      "profile_id": "HXZD-010-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-011-001": [
+    {
+      "profile_id": "HXZD-011-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-011-002": [
+    {
+      "profile_id": "HXZD-011-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-012-001": [
+    {
+      "profile_id": "HXZD-012-001-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-012-001-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-012-002": [
+    {
+      "profile_id": "HXZD-012-002-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-012-002-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-012-003": [
+    {
+      "profile_id": "HXZD-012-003-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-012-003-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-012-004": [
+    {
+      "profile_id": "HXZD-012-004-company-default",
+      "profile_name": "推荐方案：手术数据来源：医嘱",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-012-004-company-candidate-01",
+      "profile_name": "可选方案：手术数据来源：病案首页",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-013-001": [
+    {
+      "profile_id": "HXZD-013-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-014-001": [
+    {
+      "profile_id": "HXZD-014-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-014-002": [
+    {
+      "profile_id": "HXZD-014-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-015-001": [
+    {
+      "profile_id": "HXZD-015-001-company-default",
+      "profile_name": "推荐方案：特殊级抗菌药物走医务报批",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    },
+    {
+      "profile_id": "HXZD-015-001-company-candidate-01",
+      "profile_name": "可选方案：特殊级抗菌药物走会诊管理系统",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-016-001": [
+    {
+      "profile_id": "HXZD-016-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ],
+  "HXZD-016-002": [
+    {
+      "profile_id": "HXZD-016-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only"
+    }
+  ]
+}

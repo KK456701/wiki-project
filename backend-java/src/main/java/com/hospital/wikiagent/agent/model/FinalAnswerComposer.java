@@ -70,8 +70,14 @@ public class FinalAnswerComposer {
         AnswerTemplate template = templates.resolve(
                 input.intent(), input.requestedOutputs(), input.explanationFocuses());
         String userPrompt = buildUserPrompt(input, template);
-        String raw = models.complete(
-                modelId, prompts.finalAnswer(), userPrompt, properties.getFinalAnswerTimeout()).content();
+        String raw;
+        try {
+            raw = models.complete(
+                    modelId, prompts.finalAnswer(), userPrompt,
+                    properties.getFinalAnswerTimeout()).content();
+        } catch (RuntimeException exception) {
+            return fallbackOrRethrow(input, template, modelId, false, exception);
+        }
         String error = contractValidator.validate(raw, template, input.evidence());
         if (error == null) {
             return new FinalAnswerResult(
@@ -81,9 +87,14 @@ public class FinalAnswerComposer {
         String correction = prompts.finalAnswerCorrection()
                 .replace("{{validation_error}}", error)
                 .replace("{{raw_output}}", raw == null ? "" : raw);
-        String repaired = models.complete(
-                modelId, prompts.finalAnswer(), userPrompt + "\n\n" + correction,
-                properties.getFinalAnswerTimeout()).content();
+        String repaired;
+        try {
+            repaired = models.complete(
+                    modelId, prompts.finalAnswer(), userPrompt + "\n\n" + correction,
+                    properties.getFinalAnswerTimeout()).content();
+        } catch (RuntimeException exception) {
+            return fallbackOrRethrow(input, template, modelId, true, exception);
+        }
         String repairedError = contractValidator.validate(repaired, template, input.evidence());
         if (repairedError != null) {
             String fallback = deterministicFallback(input.evidence(), template);
@@ -97,6 +108,39 @@ public class FinalAnswerComposer {
         }
         return new FinalAnswerResult(
                 repaired.strip(), modelId, true, false,
+                template.id(), template.version(), true);
+    }
+
+    /**
+     * 已由确定性会话续接计划触发时，直接用 VerifiedEvidence 渲染，不先等待文案模型。
+     */
+    public FinalAnswerResult composeDeterministic(FinalAnswerInput input) {
+        String modelId = input.modelId() == null || input.modelId().isBlank()
+                ? registry.defaultModelId() : input.modelId();
+        AnswerTemplate template = templates.resolve(
+                input.intent(), input.requestedOutputs(), input.explanationFocuses());
+        String fallback = deterministicFallback(input.evidence(), template);
+        if (fallback.isBlank()) {
+            throw new AgentModelUnavailableException(
+                    "FINAL_ANSWER_EVIDENCE_MISSING", "已验证证据不足，无法生成确定性回答。");
+        }
+        return new FinalAnswerResult(
+                fallback, modelId, false, true,
+                template.id(), template.version(), true);
+    }
+
+    private static FinalAnswerResult fallbackOrRethrow(
+            FinalAnswerInput input,
+            AnswerTemplate template,
+            String modelId,
+            boolean corrected,
+            RuntimeException failure) {
+        String fallback = deterministicFallback(input.evidence(), template);
+        if (fallback.isBlank()) {
+            throw failure;
+        }
+        return new FinalAnswerResult(
+                fallback, modelId, corrected, true,
                 template.id(), template.version(), true);
     }
 
@@ -205,13 +249,54 @@ public class FinalAnswerComposer {
             return value.toString().strip();
         }
         if (!diagnosis.isEmpty()) {
+            List<Map<String, Object>> profileReports =
+                    listOfMaps(diagnosis.get("profile_reports"));
+            if (!profileReports.isEmpty()) {
+                StringBuilder value = new StringBuilder("# 指标多口径异常诊断\n\n")
+                        .append("已逐一诊断 ")
+                        .append(profileReports.size())
+                        .append(" 个已审批 Profile；每个 Profile 都独立经过数据准备、")
+                        .append("双库概览和可用明细检查。\n");
+                for (Map<String, Object> profile : profileReports) {
+                    Map<String, Object> report = objectMap(profile.get("report"));
+                    value.append("\n## ")
+                            .append(firstText(
+                                    profile.get("profile_name"),
+                                    profile.get("profile_id")))
+                            .append("\n\n");
+                    append(value, "Profile 编号", profile.get("profile_id"));
+                    append(value, "执行状态", profile.get("code"));
+                    append(value, "结论", firstText(
+                            report.get("user_summary"),
+                            report.get("summary"),
+                            profile.get("summary")));
+                    append(value, "抽取状态", report.get("extraction_status"));
+                    append(value, "数据新鲜度", report.get("data_freshness"));
+                    append(value, "运行号", report.get("run_id"));
+                    append(value, "诊断报告号", firstText(
+                            report.get("diagnosis_report_id"),
+                            report.get("report_id")));
+                }
+                return value.toString().strip();
+            }
             StringBuilder value = new StringBuilder("# 指标异常诊断\n\n")
-                    .append("## 诊断结论\n\n");
+                    .append("## 当前计算和口径\n\n");
+            append(value, "统计区间", diagnosis.get("stat_period"));
+            append(value, "抽取状态", diagnosis.get("extraction_status"));
+            append(value, "数据新鲜度", diagnosis.get("data_freshness"));
+            value.append("\n## 已确认发现\n\n");
             append(value, "诊断状态", diagnosis.get("diagnose_status"));
-            append(value, "结论", diagnosis.get("user_summary"));
-            value.append("\n## 已确认事实\n\n");
             append(value, "已确认发现", diagnosis.get("confirmed_findings"));
-            value.append("\n## 建议处理\n\n请根据上述已确认事实继续核对。\n");
+            value.append("\n## 可能原因及置信度\n\n")
+                    .append("当前确定性证据不足以给出额外原因推断。\n")
+                    .append("\n## 尚不能确认的事项\n\n");
+            append(value, "证据边界", diagnosis.get("evidence_limit"));
+            value.append("\n## 建议的下一步核对方式\n\n")
+                    .append("请根据上述证据缺口补充对应明细或外部预期结果。\n")
+                    .append("\n## 证据与对象编号\n\n");
+            append(value, "运行号", diagnosis.get("run_id"));
+            append(value, "诊断报告号", firstText(
+                    diagnosis.get("diagnosis_report_id"), diagnosis.get("report_id")));
             return value.toString().strip();
         }
         if (!difference.isEmpty()) {
@@ -396,6 +481,16 @@ public class FinalAnswerComposer {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         source.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
+    }
+
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .map(FinalAnswerComposer::objectMap)
+                .filter(item -> !item.isEmpty())
+                .toList();
     }
 
     private static String period(Map<String, Object> value) {

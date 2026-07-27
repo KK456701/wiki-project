@@ -1,0 +1,676 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-008-002",
+  "rule_name": "术者参加术前讨论率",
+  "category": "术前讨论制度",
+  "definition": "术者参加术前讨论的手术例数占同期进行术前讨论手术总例数的比例。",
+  "formula": "分子：术者参加术前讨论的手术例数\n分母：同期进行术前讨论手术总例数\n公式：术者参加术前讨论的手术例数 / 同期进行术前讨论手术总例数 * 100%",
+  "note": "本指标中术者是指手术的主要完成人。",
+  "significance": "反映术前讨论规范性。",
+  "unit": "percentage",
+  "default_profile": "HXZD-008-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-008-002-company-default",
+      "profile_name": "推荐方案：按病历完成时间统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_OP_DISC",
+        "event_table": "MRAS_BUSINESS_OP_DISC",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_OP_DISC",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_OP_DISC": [
+            "MRAS_BUSINESS_OP_DISC_ID",
+            "MRAS_TARGET_DEFINITION_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ATTENDER_NAME",
+            "CHIEF_DOCTOR_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "ADMITTED_TO_WARD_AT",
+            "OP_NAME",
+            "OPERATION_AT",
+            "PRE_OP_DISC_AT",
+            "TIMEOUT_HOURS",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "HOSPITAL_AREA_ID",
+            "SURGERY_LEVEL_NAME",
+            "SURGERY_CLASS_NAME",
+            "MRAS_EVENT_DEFINE_ID",
+            "PREOP_DISC_COMPLETE",
+            "IMRN",
+            "PRE_OP_NAME",
+            "DISCHARGED_FROM_WARD_AT",
+            "PREOP_DISC_ATTENDED",
+            "PREOP_PLAN_CONSISTENT",
+            "PLAN_SURGERY_SURGEON",
+            "EVENT_NO",
+            "SURGERY_SURGEON",
+            "SURGERY_CLASS_CODE",
+            "EVENT_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "SURGERY_END_AT",
+            "VERSION",
+            "SURGEON_CONSISTENT",
+            "EMR_OP_NAME",
+            "CURRENT_ATTENDER_ID",
+            "CURRENT_ADMITTER_NO",
+            "CHIEF_DOCTOR_ID",
+            "CURRENT_ADMITTER_ID",
+            "CHIEF_DOCTOR_NO",
+            "PROPOSE_SURGERY_LEVEL_CODE",
+            "CURRENT_ATTENDER_NO"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_OP_DISC": "248aae569b65948706374c5308b58ba2191da62decf573ad9277a4f896b86e41",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "7379d64fa31ddea65beac29a0aea5e4ee57de4ca4847eaa9ed5c02b7a487b1f9",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 100,
+        "target_direction": ">="
+      },
+      "numerator_rule": "术者参加术前讨论的手术例数",
+      "numerator_caliber": "单位时间内完成的术前讨论记录（病历）中，讨论人或主持人包含手术记录（病历）中手术医师的数量\n说明：EMR的术前讨论记录跟手术记录没有关联关系，本指标通过手术记录创建前48h内书写的最近一份术前讨论记录来做对比",
+      "denominator_rule": "同期进行术前讨论手术总例数",
+      "denominator_caliber": "单位时间内完成术前讨论记录的数量",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子术者参加术前讨论的手术例数",
+        "denominator_count": "分母同期进行术前讨论手术总例数",
+        "index_value": "监测情况",
+        "component_left": "分子术者参加术前讨论的手术例数",
+        "component_right": "分母同期进行术前讨论手术总例数",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "charindex",
+            "convert",
+            "count",
+            "datediff",
+            "getdate",
+            "replace"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "0ba3c780e1a246ef24fd65eadc9cb4eacdbf5f5280b52a0b8f4912c29a41b414"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "0ba3c780e1a246ef24fd65eadc9cb4eacdbf5f5280b52a0b8f4912c29a41b414",
+            "overview": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89",
+            "department_detail": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80",
+            "patient_detail": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+          },
+          "real": {
+            "source_extract": "0ba3c780e1a246ef24fd65eadc9cb4eacdbf5f5280b52a0b8f4912c29a41b414",
+            "overview": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89",
+            "department_detail": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80",
+            "patient_detail": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子术者参加术前讨论的手术例数",
+          "denominator_count": "分母同期进行术前讨论手术总例数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_OP_DISC",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    },
+    {
+      "profile_id": "HXZD-008-002-company-candidate-01",
+      "profile_name": "可选方案：按患者出区时间统计",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "CORE_OP_DISC_V2",
+        "event_table": "MRAS_BUSINESS_OP_DISC",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_OP_DISC",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_OP_DISC": [
+            "MRAS_BUSINESS_OP_DISC_ID",
+            "MRAS_TARGET_DEFINITION_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ATTENDER_NAME",
+            "CHIEF_DOCTOR_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "ADMITTED_TO_WARD_AT",
+            "OP_NAME",
+            "OPERATION_AT",
+            "PRE_OP_DISC_AT",
+            "TIMEOUT_HOURS",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "HOSPITAL_AREA_ID",
+            "SURGERY_LEVEL_NAME",
+            "SURGERY_CLASS_NAME",
+            "MRAS_EVENT_DEFINE_ID",
+            "PREOP_DISC_COMPLETE",
+            "IMRN",
+            "PRE_OP_NAME",
+            "DISCHARGED_FROM_WARD_AT",
+            "PREOP_DISC_ATTENDED",
+            "PREOP_PLAN_CONSISTENT",
+            "PLAN_SURGERY_SURGEON",
+            "EVENT_NO",
+            "SURGERY_SURGEON",
+            "SURGERY_CLASS_CODE",
+            "EVENT_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "SURGERY_END_AT",
+            "VERSION",
+            "SURGEON_CONSISTENT",
+            "EMR_OP_NAME",
+            "CURRENT_ATTENDER_ID",
+            "CURRENT_ADMITTER_NO",
+            "CHIEF_DOCTOR_ID",
+            "CURRENT_ADMITTER_ID",
+            "CHIEF_DOCTOR_NO",
+            "PROPOSE_SURGERY_LEVEL_CODE",
+            "CURRENT_ATTENDER_NO"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_OP_DISC": "248aae569b65948706374c5308b58ba2191da62decf573ad9277a4f896b86e41",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "7379d64fa31ddea65beac29a0aea5e4ee57de4ca4847eaa9ed5c02b7a487b1f9",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 100,
+        "target_direction": ">="
+      },
+      "numerator_rule": "术者参加术前讨论的手术例数",
+      "numerator_caliber": "单位时间内出区的患者，术前讨论记录（病历）中，讨论人或主持人包含手术记录（病历）中手术医师的数量\n说明：EMR的术前讨论记录跟手术记录没有关联关系，本指标通过手术记录创建前48h内书写的最近一份术前讨论记录来做对比",
+      "denominator_rule": "同期进行术前讨论手术总例数",
+      "denominator_caliber": "单位时间内出区的患者，完成术前讨论记录的数量",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子术者参加术前讨论的手术例数",
+        "denominator_count": "分母同期进行术前讨论手术总例数",
+        "index_value": "监测情况",
+        "component_left": "分子术者参加术前讨论的手术例数",
+        "component_right": "分母同期进行术前讨论手术总例数",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "charindex",
+            "convert",
+            "count",
+            "datediff",
+            "getdate",
+            "replace"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "fa522ecd23ea539051a8a3a0efd737b318894c459155f31c316e913ac8e360a5"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "fa522ecd23ea539051a8a3a0efd737b318894c459155f31c316e913ac8e360a5",
+            "overview": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89",
+            "department_detail": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80",
+            "patient_detail": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+          },
+          "real": {
+            "source_extract": "fa522ecd23ea539051a8a3a0efd737b318894c459155f31c316e913ac8e360a5",
+            "overview": "a3db8d5830b7376a98bfbfa84005711c370223f911e81da8ac08265c4aee9a89",
+            "department_detail": "372e9427219305a83d0275b377cfb76098c892ecb19513fc143ce817efac8c80",
+            "patient_detail": "98c46da27254067f8730a6f8fe9713eb0babdbf9c84971aa0c3594352239039f"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子术者参加术前讨论的手术例数",
+          "denominator_count": "分母同期进行术前讨论手术总例数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_OP_DISC",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

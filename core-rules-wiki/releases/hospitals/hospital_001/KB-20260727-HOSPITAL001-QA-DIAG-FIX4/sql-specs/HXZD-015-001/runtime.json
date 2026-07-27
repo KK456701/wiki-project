@@ -1,0 +1,419 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-015-001",
+  "rule_name": "特殊使用级抗菌药物使用会诊率",
+  "category": "抗菌药物分级管理制度",
+  "definition": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量占同期特殊使用级抗菌药物使用医嘱总数量的比例。",
+  "formula": "分子：特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量\n分母：同期特殊使用级抗菌药物使用医嘱总数量\n公式： 特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量 / 同期特殊使用级抗菌药物使用医嘱总数量 * 100%",
+  "note": "1.特殊使用级抗菌药物包括如第三、四代头孢菌素、碳青霉烯类、万古霉素等。\n2.使用医嘱与会诊记录相对应是指特殊使用级抗菌药物使用时经抗菌药物管理工作机构指定的专业技术人员会诊同意后，按程序合理使用抗菌药物。",
+  "significance": "反映特殊使用级抗菌药物使用的规范性。",
+  "default_profile": "HXZD-015-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-015-001-company-default",
+      "profile_name": "推荐方案：特殊级抗菌药物走医务报批",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的特殊级抗菌药物中，药品跟特殊级抗菌药会诊审批的药品一致的数量。\n2、取医务特殊级抗菌药报批单的医嘱和药品医嘱一致的数量\n3、不包含已失效和已作废的医嘱",
+      "denominator_rule": "同期特殊使用级抗菌药物使用医嘱总数量",
+      "denominator_caliber": "单位时间内特殊级抗菌药物医嘱总次数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+        "denominator_count": "分母同期特殊使用级抗菌药物使用医嘱总数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_nchar"
+          ],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "getdate",
+            "to_nchar"
+          ],
+          "unknown_functions": [
+            "to_nchar"
+          ],
+          "normalized_sha256": "ee36c79af4e2801ceabbc9d8eb0e5e11b8875f09137855984b709e59ded9255c"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "ee36c79af4e2801ceabbc9d8eb0e5e11b8875f09137855984b709e59ded9255c",
+            "overview": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7",
+            "department_detail": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79",
+            "patient_detail": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+          },
+          "real": {
+            "source_extract": "ee36c79af4e2801ceabbc9d8eb0e5e11b8875f09137855984b709e59ded9255c",
+            "overview": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7",
+            "department_detail": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79",
+            "patient_detail": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+          "denominator_count": "分母同期特殊使用级抗菌药物使用医嘱总数量",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_ANTI",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    },
+    {
+      "profile_id": "HXZD-015-001-company-candidate-01",
+      "profile_name": "可选方案：特殊级抗菌药物走会诊管理系统",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的特殊级抗菌药物，跟特殊级抗菌药物会诊的药品一致的数量\n2、数据来源为会诊管理系统，通过会诊和医嘱关联关系判断一致性。",
+      "denominator_rule": "同期特殊使用级抗菌药物使用医嘱总数量",
+      "denominator_caliber": "单位时间内特殊级抗菌药物医嘱总次数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+        "denominator_count": "分母同期特殊使用级抗菌药物使用医嘱总数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "7660f843107a15a368d0348926e378bf15fee629fae704f3a7ebd266f45acc0b"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "7660f843107a15a368d0348926e378bf15fee629fae704f3a7ebd266f45acc0b",
+            "overview": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7",
+            "department_detail": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79",
+            "patient_detail": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+          },
+          "real": {
+            "source_extract": "7660f843107a15a368d0348926e378bf15fee629fae704f3a7ebd266f45acc0b",
+            "overview": "20331ccd2438ea47a25e8a767ddecf4afc1a93a7f2e3aba85e03e5531dd123b7",
+            "department_detail": "fc7534f1df3fb61bebef4e678d3849c4420de5c8a049c88fa80a3f2d07f8cc79",
+            "patient_detail": "d1e72c7c887d79d355191439f21510915d0d3b59b9ed2079c82e475fb5f683b6"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子特殊使用级抗菌药物使用医嘱与会诊记录相对应的医嘱数量",
+          "denominator_count": "分母同期特殊使用级抗菌药物使用医嘱总数量",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_ANTI",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

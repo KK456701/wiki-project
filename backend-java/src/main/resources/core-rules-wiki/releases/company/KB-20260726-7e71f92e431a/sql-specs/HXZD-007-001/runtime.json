@@ -1,0 +1,134 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-007-001",
+  "rule_name": "急危重症患者抢救成功率",
+  "category": "急危重患者抢救制度",
+  "definition": "急危重症患者抢救成功的例次数占同期急危重症患者抢救的总例次数的比例。",
+  "formula": "分子：急危重症患者抢救成功的例次数\n分母：同期急危重症患者抢救的总例次数\n公式：急危重症患者抢救成功的例次数 / 同期急危重症患者抢救的总例次数 * 100%",
+  "note": "本指标中抢救成功指急危重患者经抢救后存活超过24小时或存活至下一次抢救开始。",
+  "significance": "反映急危重症患者救治质量。",
+  "default_profile": "HXZD-007-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-007-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "急危重症患者抢救成功的例次数",
+      "numerator_caliber": "单位时间内抢救成功的患者人次（取病案中的抢救成功次数）",
+      "denominator_rule": "同期急危重症患者抢救的总例次数",
+      "denominator_caliber": "单位时间内出区且发生抢救的患者次数（取病案中的抢救次数，一个患者多次抢救，算多次）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [],
+          "functions": [
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "edeb0b837086d18bb1c1620cc893d4cc97f9c261a1808c3b58e433aae45fe8e4"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e53ab89c79d295ba2a4501a2200d32d2cc0c9cee3beaf6b9b9226be49403c829"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "max",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "4099bfae2688dc0578fcdc4d91fb875e6af824a9e03a6fa77602e6b2953d779c"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "bea77d6b9042db6c84b7bcacb703ec6041ab423b89568f735e5a3c21d506ddab"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_PATRESCUE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

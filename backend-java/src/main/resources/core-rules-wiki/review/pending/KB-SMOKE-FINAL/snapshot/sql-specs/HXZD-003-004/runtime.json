@@ -1,0 +1,145 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-003-004",
+  "rule_name": "普通会诊有效率",
+  "category": "会诊制度",
+  "definition": "普通会诊结束后开具相关医嘱的次数占同期普通会诊总次数的比例。",
+  "formula": "分子：普通会诊结束后开具相关医嘱的次数\n分母：同期普通会诊患者总次数\n公式：普通会诊结束后开具相关医嘱的次数 / 同期普通会诊患者总次数 * 100%",
+  "note": "本指标中普通会诊结束后开具相关医嘱情况统计方法为在申请普通会诊后24小时内开具相关医嘱。",
+  "significance": "反映普通会诊意见的有效性和普通会诊申请的合理性。",
+  "default_profile": "HXZD-003-004-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-003-004-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "普通会诊结束后开具相关医嘱的次数",
+      "numerator_caliber": "1、普通会诊后，由任意会诊医师开立的首条有效医嘱在会诊完成时间后24小时内的患者例次数。\n2、说明：目前无法判定医嘱是否为会诊相关医嘱，先按照24小时内有医嘱即表示合格，并在明细中显示医嘱名称）\n3、说明：该指标包含门急诊住院的数据，不包含院外会诊",
+      "denominator_rule": "同期普通会诊患者总次数",
+      "denominator_caliber": "单位时间内完成普通会诊的次数（多次会诊统计为多次）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/overview.sql",
+        "department": "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff",
+            "getdate",
+            "max",
+            "min",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "325d6f235e463780166d002f4f13fe542ed5159d87487ce854a5902c2510a1e4"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "eece14bd1c6c4486cbdee244578dd98e694bc9b89fc941ba22424810f29e1e1b"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "e0219cf625fbbe4db8de9dae627de62b0198752062a32de9985248395001e693"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "cast",
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b9eaf65e8d7d208a3d53c626a314958070a93167a3a97c823bf42a5b3aed59db"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_CONSULTATION",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

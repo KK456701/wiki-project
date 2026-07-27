@@ -1,0 +1,52 @@
+SELECT
+    t1.ENCOUNTER_ID AS encounterId,
+    '1' AS mrasTargetDefinitionId,
+    '1' AS mrasBusinessIndexId,
+    'V2.0' as version,
+    t1.PERSON_ID AS personId,
+    t1.FULL_NAME AS personName,
+    t1.IMRN AS imrn,
+    c.PRESCRIBED_AT AS eventAt,  --医嘱开立时间
+    a.CLI_ORDER_ITEM_ID AS bizId,  --医嘱项标识
+    GETDATE() AS extractAt,
+    t3.EMPLOYEE_ID AS employeeId,
+    t4.EMPLOYEE_NAME AS employeeName,
+    ie.CURRENT_DEPT_ID AS deptId,
+    o1.ORG_NAME AS deptName,
+    ie.CURRENT_WARD_ID AS wardId,
+    o2.ORG_NAME AS wardName,
+    ie.ADMITTED_TO_WARD_AT AS admittedToWardAt,
+    ie.DISCHARGED_FROM_WARD_AT AS dischargedFromWardAt,
+    b.MEDICINE_ID AS antiMedicineId,
+    m.COMMODITY_NAME_CHINESE AS antiMedicineName,
+    c.PRESCRIBED_AT AS prescribedAt,
+    wi.FINISH_AT AS registerFinishAt,
+    CASE WHEN r.MRAS_WF_APPREGISTER_ID IS NOT NULL
+THEN m.COMMODITY_NAME_CHINESE
+ELSE TO_NCHAR('')
+-- 转换为 NVARCHAR2 的空字符串
+    END AS registerAntiMedicineName,
+    CASE WHEN r.MRAS_WF_APPREGISTER_ID IS NOT NULL THEN 98175 ELSE 98176 END AS approvalAnti,
+    a.CLI_ORDER_ITEM_ID AS orderItemId,
+    a.CLI_ORDER_ID AS orderId,
+    c.HOSPITAL_SOID AS hospitalSoid,
+    c.HOSPITAL_AREA_ID AS hospitalAreaId,
+    CASE WHEN (a.IS_DEL = '1' or b.IS_DEL = '1' OR c.IS_DEL = '1')  THEN 1 ELSE 0 END AS isDel
+    FROM INP_CLI_ORDER_ITEM a
+    inner join INPATIENT_ENCOUNTER ie on a.ENCOUNTER_ID = ie.ENCOUNTER_ID and ie.IS_DEL = 0
+    inner join INP_CLI_ORDER c on a.CLI_ORDER_ID = c.CLI_ORDER_ID
+    -- 特殊级抗菌药物
+    inner join MEDICINE_DETAIL b on a.GOODS_ID = b.MEDICINE_ID and b.ANTIBACTRL_LEVEL_CODE = 138401
+    LEFT JOIN MEDICINE m on b.MEDICINE_ID = m.MEDICINE_ID
+    LEFT JOIN MRAS_WF_REGISTER r ON c.CLI_ORDER_ID = r.ORDERID AND r.IS_DEL = 0
+    LEFT JOIN WORKFLOW_INSTANCE wi ON r.WF_INSTANCE_ID = wi.WF_INSTANCE_ID and wi.IS_DEL = 0
+    LEFT JOIN INPATIENT_ENCOUNTER t1 ON  a.ENCOUNTER_ID =t1.ENCOUNTER_ID
+    LEFT JOIN ORGANIZATION o1 ON ie.CURRENT_DEPT_ID = o1.ORG_ID
+    LEFT JOIN ORGANIZATION o2 ON ie.CURRENT_WARD_ID = o2.ORG_ID
+-- 责任医生
+    LEFT JOIN INPATIENT_PARTICIPANT t3 ON ie.ENCOUNTER_ID = t3.ENCOUNTER_ID AND  t3.IS_DEL = 0 AND  t3.INPAT_PARTICIPANT_TYPE_CODE = 1000098
+    LEFT JOIN EMPLOYEE_INFO t4 ON t3.EMPLOYEE_ID = t4.EMPLOYEE_ID
+    WHERE 1 = 1
+    -- 排除已失效，已作废医嘱
+    AND c.CLI_ORDER_STATUS NOT IN ('98203','98203')
+ AND a.ENCOUNTER_ID in (select ENCOUNTER_ID from INPATIENT_ENCOUNTER where DISCHARGED_FROM_WARD_AT BETWEEN :start_time and :end_time)

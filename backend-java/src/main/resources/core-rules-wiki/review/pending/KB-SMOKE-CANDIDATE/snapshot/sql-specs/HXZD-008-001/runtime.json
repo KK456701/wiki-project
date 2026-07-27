@@ -1,0 +1,143 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-008-001",
+  "rule_name": "术前讨论完成率",
+  "category": "术前讨论制度",
+  "definition": "完成术前讨论的手术例数占同期手术总例数的比例。",
+  "formula": "分子：完成术前讨论的手术例数\n分母：同期手术总例数\n公式：完成术前讨论的手术例数 / 同期手术总例数 * 100%",
+  "note": "除以抢救生命为目的的急诊手术外，术前讨论完成时间晚于手术医嘱开具时间和手术同意书签署时间的病例视为未完成术前讨论。",
+  "significance": "反映术前讨论完成情况。",
+  "default_profile": "HXZD-008-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-008-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "完成术前讨论的手术例数",
+      "numerator_caliber": "1、单位时间完成手术的患者中，术前讨论记录（病历）完成数\n2、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据\n4、一个患者多次手术，统计为多次。\n5、术前讨论记录完成定义：由于手术医嘱跟术前讨论记录没有关联关系，按医嘱开立时间往前48小时内是否有术前讨论记录判断。",
+      "denominator_rule": "同期手术总例数",
+      "denominator_caliber": "单位时间内完成的手术总例数（手术结束时间取医生站，排除急诊手术）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "charindex",
+            "convert",
+            "count",
+            "datediff",
+            "getdate",
+            "replace"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "0f7e6e9a5c95c0ad343d968c302484df4ce7706ce59ad0b4e2c1e8ed9f7b2d45"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b7373c43a9e2759828b253da2bde920a2d38d3833f685b7faf973805ac4f64da"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "9c3c033e16dd83dfc7c1a439473108a4b17c21314c5c6c599e1534e57e414514"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "8a5b72e07e6ab669b7b5f35e434d92eb932e0045d7d64ace926d17c3cc539e57"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_OP_DISC",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

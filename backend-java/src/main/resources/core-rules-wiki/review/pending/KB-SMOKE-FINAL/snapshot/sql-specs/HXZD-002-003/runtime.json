@@ -1,0 +1,143 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-002-003",
+  "rule_name": "住院患者非计划手术率",
+  "category": "三级查房制度",
+  "definition": "行非计划手术的住院患者人次数占同期住院患者总人次数的比例。",
+  "formula": "分子：行非计划手术的住院患者人次数\n分母：同期住院患者总人次数\n公式：行非计划手术的住院患者人次数 / 同期住院患者总人次数 * 100%",
+  "note": "——",
+  "significance": "反映查房的质量。",
+  "default_profile": "HXZD-002-003-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-002-003-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "行非计划手术的住院患者人次数",
+      "numerator_caliber": "1、取手术医嘱中“非计划再次手术”标识（一个人多次非计划再次手术，统计为1）\n2、说明：手术患者判断时，只需要统计手术类型为手术、介入治疗，排除诊断性操作、治疗性操作的数据。",
+      "denominator_rule": "同期住院患者总人次数",
+      "denominator_caliber": "单位时间内出区患者总人次",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/overview.sql",
+        "department": "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "getdate",
+            "max",
+            "row_number",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "88d38f5bd4808257bbc6afa47e785e0da39e7fc918fa3c7257872696d4e3e4fe"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "3dd0b24b97f1539b706a77e35d8a6f3dfd0d7a1ac82f5ee11a6faa4cbbb5ce65"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "676e8c82272641c8f49662d0c98f061a3672e70a2cbbd7ea923fc972a08bdbf4"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "ec153d426689386409caf68d9fdb9bc4f2d3b33f746160f15e45147576193244"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_WARDROUND",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

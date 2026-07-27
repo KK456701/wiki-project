@@ -96,7 +96,8 @@ public class ToolRegistry {
                     Map<String, Object> data;
                     try {
                         data = rules.effectiveRule(
-                                arguments.ruleId(), context.agentContext().hospitalId());
+                                arguments.ruleId(), context.agentContext().hospitalId(),
+                                arguments.profileId());
                     } catch (RuleNotFoundException exception) {
                         // 该指标在本医院没有可读取的生效规则（或规则未入库）。
                         // 返回结构化失败而非抛异常，避免复合请求中单个指标失败拖垮整体回答。
@@ -325,12 +326,17 @@ public class ToolRegistry {
         }
     }
 
-    public record RuleReferenceInput(String ruleId) {
+    public record RuleReferenceInput(String ruleId, String profileId) {
         public RuleReferenceInput {
             ruleId = ruleId == null ? "" : ruleId.strip();
+            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
             if (ruleId.isEmpty()) {
                 throw new IllegalArgumentException("规则编号不能为空");
             }
+        }
+
+        public RuleReferenceInput(String ruleId) {
+            this(ruleId, null);
         }
     }
 

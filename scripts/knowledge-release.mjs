@@ -117,6 +117,136 @@ function refreshReleaseHashes(snapshot) {
   writeJson(manifestPath, manifest);
 }
 
+function validationRank(status) {
+  return {
+    missing: 0,
+    verification_required: 1,
+    static_validated: 2,
+    metadata_validated: 3,
+    compile_validated: 4,
+    trial_validated: 5,
+    executable: 6,
+  }[String(status || '')] || 0;
+}
+
+function sameCapabilitySql(current, previous, capability) {
+  const currentHash = current.sql_capabilities?.[capability]?.normalized_sha256;
+  const previousHash = previous.sql_capabilities?.[capability]?.normalized_sha256;
+  return Boolean(currentHash && previousHash && currentHash === previousHash);
+}
+
+function profileValidationScore(profile) {
+  const capabilities = Object.values(profile.sql_capabilities || {});
+  return (profile.execution_status === 'executable' ? 1000 : 0)
+    + (profile.dual_database_contract?.schema_compatible === true ? 500 : 0)
+    + capabilities.reduce((sum, item) => sum + validationRank(item.status), 0);
+}
+
+/**
+ * 医院候选每次都从公司原始来源确定性重建。若不继承同一医院旧不可变发布包中
+ * 对“完全相同 SQL 哈希”的验证状态，修一个指标会把其他已验收指标降回
+ * documentation_only。这里按 Profile 和能力逐项比对哈希，只继承验证元数据，
+ * SQL 正文、引用与哈希仍以本次候选为准；发生变更的能力不会继承旧结论。
+ */
+function inheritHospitalValidation(snapshot, hospitalId) {
+  const releasesRoot = join(WIKI_ROOT, 'releases', 'hospitals', hospitalId);
+  if (!existsSync(releasesRoot)) return [];
+  const releaseIds = readdirSync(releasesRoot)
+    .filter(name => existsSync(join(releasesRoot, name, 'release-manifest.json')))
+    .sort();
+  if (releaseIds.length === 0) return [];
+
+  const priorProfiles = new Map();
+  for (const releaseId of releaseIds) {
+    const specsRoot = join(releasesRoot, releaseId, 'sql-specs');
+    if (!existsSync(specsRoot)) continue;
+    for (const ruleId of readdirSync(specsRoot)) {
+      const runtimePath = join(specsRoot, ruleId, 'runtime.json');
+      if (!existsSync(runtimePath)) continue;
+      const runtime = json(runtimePath);
+      for (const profile of runtime.profiles || []) {
+        const values = priorProfiles.get(profile.profile_id) || [];
+        values.push({ releaseId, profile });
+        priorProfiles.set(profile.profile_id, values);
+      }
+    }
+  }
+
+  const inherited = [];
+  const candidateSpecs = join(snapshot, 'sql-specs');
+  for (const ruleId of readdirSync(candidateSpecs)) {
+    const runtimePath = join(candidateSpecs, ruleId, 'runtime.json');
+    if (!existsSync(runtimePath)) continue;
+    const runtime = json(runtimePath);
+    let changed = false;
+    for (const current of runtime.profiles || []) {
+      const matches = (priorProfiles.get(current.profile_id) || [])
+        .filter(item => Object.keys(current.sql_capabilities || {})
+          .some(capability => sameCapabilitySql(current, item.profile, capability)))
+        .sort((left, right) => (
+          profileValidationScore(right.profile) - profileValidationScore(left.profile)
+          || right.releaseId.localeCompare(left.releaseId)
+        ));
+      const selected = matches[0];
+      if (!selected) continue;
+      const previous = selected.profile;
+      const matchedCapabilities = [];
+      for (const capability of Object.keys(current.sql_capabilities || {})) {
+        if (!sameCapabilitySql(current, previous, capability)) continue;
+        const priorGate = previous.sql_capabilities?.[capability];
+        const currentGate = current.sql_capabilities?.[capability];
+        if (validationRank(priorGate?.status) > validationRank(currentGate?.status)) {
+          current.sql_capabilities[capability] = {
+            ...currentGate,
+            status: priorGate.status,
+            blockers: priorGate.blockers || [],
+            ...(priorGate.verification ? { verification: priorGate.verification } : {}),
+          };
+          changed = true;
+        }
+        matchedCapabilities.push(capability);
+      }
+
+      if (sameCapabilitySql(current, previous, 'source_extract')) {
+        current.field_contract = previous.field_contract || current.field_contract;
+        current.field_mapping = previous.field_mapping || current.field_mapping;
+        changed = true;
+      }
+      if (sameCapabilitySql(current, previous, 'overview')
+          && Object.keys(previous.result_mapping || {}).length > 0) {
+        current.result_mapping = previous.result_mapping;
+        changed = true;
+      }
+      const sameDualSql = ['overview', 'department_detail', 'patient_detail']
+        .every(capability => sameCapabilitySql(current, previous, capability));
+      if (sameDualSql
+          && previous.dual_database_contract?.schema_compatible === true) {
+        current.dual_database_contract = {
+          ...previous.dual_database_contract,
+          sql_hashes: current.dual_database_contract?.sql_hashes || {},
+        };
+        changed = true;
+      }
+      const sameAllSql = Object.keys(current.sql_capabilities || {})
+        .every(capability => sameCapabilitySql(current, previous, capability));
+      if (sameAllSql && previous.execution_status === 'executable') {
+        current.execution_status = 'executable';
+        current.execution_blockers = [];
+        changed = true;
+      }
+      if (matchedCapabilities.length > 0) {
+        inherited.push({
+          profile_id: current.profile_id,
+          from_release_id: selected.releaseId,
+          capabilities: matchedCapabilities,
+        });
+      }
+    }
+    if (changed) writeJson(runtimePath, runtime);
+  }
+  return inherited;
+}
+
 function validateSnapshot(snapshot) {
   const manifestPath = join(snapshot, 'release-manifest.json');
   if (!existsSync(manifestPath)) throw new Error('候选缺少release-manifest.json');
@@ -175,6 +305,8 @@ function prepare(args) {
     rmSync(candidate, { recursive: true, force: true });
     throw new Error(`知识候选构建失败：\n${built.stderr || built.stdout}`);
   }
+  const inheritedValidation = scope === 'hospital'
+    ? inheritHospitalValidation(snapshot, hospitalId) : [];
   const releaseManifest = json(join(snapshot, 'release-manifest.json'));
   const promptPath = join(WIKI_ROOT, 'prompts', 'knowledge-release-normalizer.md');
   const promptSha256 = existsSync(promptPath) ? sha256(readFileSync(promptPath)) : null;
@@ -187,7 +319,9 @@ function prepare(args) {
   releaseManifest.model_id = args['model-id'] || 'deterministic-adapter';
   releaseManifest.prompt_version = 'knowledge-release-normalizer-v1';
   releaseManifest.prompt_sha256 = promptSha256;
+  releaseManifest.inherited_hospital_validation = inheritedValidation;
   writeJson(join(snapshot, 'release-manifest.json'), releaseManifest);
+  refreshReleaseHashes(snapshot);
   writeJson(join(candidate, 'candidate.json'), {
     schema_version: 'knowledge-candidate-v2',
     candidate_id: id,
@@ -367,6 +501,7 @@ function applyDualDatabaseVerification(profile, proof, hospitalId) {
     throw new Error(`${profile.profile_id}的双库明细比较键或允许字段不完整`);
   }
   const current = profile.dual_database_contract || {};
+  const currentOverviewMapping = current.overview_result_mapping || {};
   profile.dual_database_contract = {
     ...current,
     schema_compatible: true,
@@ -384,6 +519,7 @@ function applyDualDatabaseVerification(profile, proof, hospitalId) {
       },
     },
     overview_result_mapping: {
+      ...currentOverviewMapping,
       numerator_count: String(result.numerator_count),
       denominator_count: String(result.denominator_count),
     },

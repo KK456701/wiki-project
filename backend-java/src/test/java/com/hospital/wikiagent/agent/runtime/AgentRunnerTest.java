@@ -1,6 +1,7 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -49,6 +50,7 @@ import com.hospital.wikiagent.agent.tools.PolicyDecisionService;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 import com.hospital.wikiagent.agent.tools.ToolRegistry;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
+import com.hospital.wikiagent.agent.sql.DualDatabaseIndicatorExecutionWorkflow;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
@@ -173,19 +175,29 @@ class AgentRunnerTest {
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
                 .containsExactly("get_effective_rule");
-        Map<String, Object> plannerNode = events.stream()
-                .filter(event -> "trace_node".equals(event.get("event")))
-                .filter(event -> "planner_llm".equals(event.get("node_name")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(String.valueOf(plannerNode.get("output")))
-                .contains("raw_content", "request_plan", "schema_version", "goal", "target_indicator",
-                        "time_expression", "requested_outputs", "constraints",
-                        "semantic_ambiguities");
+        assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
+                .extracting(event -> event.get("node_name"))
+                .contains("followup_plan_resolve", "rule_explanation_answer")
+                .doesNotContain("planner_llm", "final_answer_llm");
         assertThat(store.evidence).hasSize(3);
         assertThat(store.verifications.values())
                 .allMatch(value -> "verified".equals(value.status()));
-        assertThat(models.calls).isEqualTo(2);
+        assertThat(models.calls).isZero();
+
+        AgentRunResult definition = runner.run(new AgentRunRequest(
+                "急会诊及时到位率是什么？", "session_definition", "ollama-test", null,
+                "request_definition", "trace_definition", null, "{}", "",
+                new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001",
+                        Set.of(), false, "auth_session_definition")),
+                AgentRunObserver.noop(),
+                new HybridIndicatorResolver.ResolvedIndicator(
+                        "急会诊及时到位率", "急会诊及时到位率", "HXZD-003-001",
+                        "RULE:HXZD-003-001", "rule", 1.0, 0, 9));
+
+        assertThat(definition.stopReason()).isEqualTo("final_answer");
+        assertThat(definition.answer()).contains("指标定义", "急会诊及时到位率");
+        assertThat(models.calls).isZero();
     }
 
     @Test
@@ -261,12 +273,13 @@ class AgentRunnerTest {
                 .containsExactly("get_effective_rule");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
-                .contains("followup_plan_resolve", "plan_goal_alignment")
+                .contains("followup_plan_resolve", "plan_goal_alignment",
+                        "rule_explanation_answer")
                 .doesNotContain(
-                        "planner_llm", "plan_replan",
+                        "planner_llm", "final_answer_llm", "plan_replan",
                         "plan_alignment_deterministic_fallback",
                         "plan_alignment_review_llm");
-        assertThat(models.calls).isEqualTo(1);
+        assertThat(models.calls).isZero();
     }
 
     @Test
@@ -323,7 +336,7 @@ class AgentRunnerTest {
         List<Map<String, Object>> events = new ArrayList<>();
 
         AgentRunResult result = runner.run(new AgentRunRequest(
-                "急会诊及时到位率怎么算？", "session_001", "ollama-test", null,
+                "请介绍急会诊及时到位率", "session_001", "ollama-test", null,
                 "request_001", "trace_001", null, "{}", "",
                 new HospitalPrincipal(
                         "user_001", "doctor", "hospital_001", Set.of(), false, "auth_session_001")),
@@ -337,7 +350,7 @@ class AgentRunnerTest {
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
                 .extracting(event -> event.get("tool_name"))
                 .containsExactly("get_effective_rule");
-        assertThat(models.calls).isEqualTo(3);
+        assertThat(models.calls).isEqualTo(2);
     }
 
     @Test
@@ -365,6 +378,7 @@ class AgentRunnerTest {
                     }
                 },
                 objectMapper);
+        enableRealCalculation(sqlTools);
         ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -456,6 +470,7 @@ class AgentRunnerTest {
                     }
                 },
                 objectMapper);
+        enableRealCalculation(sqlTools);
         ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -778,9 +793,9 @@ class AgentRunnerTest {
                 .doesNotContain("## 分母口径", "## 口径摘要");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
                 .extracting(event -> event.get("node_name"))
-                .contains("followup_plan_resolve", "final_answer_llm")
-                .doesNotContain("planner_llm");
-        assertThat(models.calls).isEqualTo(1);
+                .contains("followup_plan_resolve", "rule_explanation_answer")
+                .doesNotContain("planner_llm", "final_answer_llm");
+        assertThat(models.calls).isZero();
     }
 
     @Test
@@ -939,6 +954,29 @@ class AgentRunnerTest {
                 "mapping_data_type", dataType,
                 "metadata_data_type", dataType,
                 "status", "confirmed");
+    }
+
+    private static void enableRealCalculation(IndicatorSqlTools sqlTools) {
+        DualDatabaseIndicatorExecutionWorkflow workflow =
+                mock(DualDatabaseIndicatorExecutionWorkflow.class);
+        when(workflow.enabled()).thenReturn(true);
+        when(workflow.execute(any(), any(), anyString(), any(), any()))
+                .thenReturn(ToolResult.success(
+                        "TRIAL_RUN_COMPLETED",
+                        "真实库概览计算完成",
+                        Map.of(
+                                "run_id", "RUN_REAL_TEST",
+                                "canonical_run_id", "RUN_REAL_TEST",
+                                "numerator_count", 1L,
+                                "denominator_count", 4L,
+                                "result_value", 25.0,
+                                "no_sample", false,
+                                "source_role", "real",
+                                "source_id", "winex_aima",
+                                "extraction_status", "SUCCESS",
+                                "workflow_version",
+                                "profile-extract-real-overview-v1")));
+        sqlTools.setDualDatabaseWorkflow(workflow);
     }
 
     private static AgentModelProperties modelProperties() {

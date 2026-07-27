@@ -11,7 +11,16 @@ public record AgentRuntimeContext(
         HospitalPrincipal principal,
         String requestId,
         String traceId,
-        String dbSourceId) {
+        String dbSourceId,
+        boolean batchMode) {
+
+    public AgentRuntimeContext(
+            HospitalPrincipal principal,
+            String requestId,
+            String traceId,
+            String dbSourceId) {
+        this(principal, requestId, traceId, dbSourceId, false);
+    }
 
     public AgentRuntimeContext {
         if (principal == null) {

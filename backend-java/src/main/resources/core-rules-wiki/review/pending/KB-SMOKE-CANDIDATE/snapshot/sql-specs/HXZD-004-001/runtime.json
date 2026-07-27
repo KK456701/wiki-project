@@ -1,0 +1,133 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-004-001",
+  "rule_name": "手术患者特级护理/一级护理出院率",
+  "category": "分级护理制度",
+  "definition": "手术患者出院时为特级护理/一级护理级别的患者数量占同期手术患者总数量的比例。",
+  "formula": "分子：手术患者出院时为特级护理/一级护理级别的患者数量\n分母：同期手术患者总数量\n公式：手术患者出院时为特级护理/一级护理级别的患者数量 / 同期手术患者总数量 * 100%",
+  "note": "——",
+  "significance": "反映对住院患者进行分级护理动态调整的情况。",
+  "default_profile": "HXZD-004-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-004-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "手术患者出院时为特级护理/一级护理级别的患者数量",
+      "numerator_caliber": "1、单位时间内出区的手术患者中，最后一条护理医嘱为特级或一级护理的患者数\n2、说明：手术患者判断时，只需要统计手术类型为手术、介入治疗，排除诊断性操作、治疗性操作的数据以及日间手术。",
+      "denominator_rule": "同期手术患者总数量",
+      "denominator_caliber": "1、单位时间内出区的手术患者人数\n2、手术数据来源：取病案首页中有手术数据的患者数，一个患者多条手术统计1）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": null,
+        "overview": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "2728090a6673e170933cc393d1f5b8fe1045b20fd8b93b439959f33cf3297c88"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b3fe518dcd603e1b1959ee5368379e6584a64c06f07b8ee3a8b957de6776425e"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "19fd2cd600aaa1dd38a58427f749e3c78a4a822976528a2a846e25d692f0c5cc"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_GRADED_CARE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

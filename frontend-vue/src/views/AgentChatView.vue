@@ -46,9 +46,10 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   return list
 })
 const suggestions = [
-  '急会诊及时到位率怎么算？',
-  '患者入院 48 小时内转科的比例从一月份到现在是多少？',
-  '这两个指标的 SQL 怎么写？',
+  '急会诊及时到位率的定义、分子和分母口径是什么？',
+  '计算本月患者入院48小时内转科的比例。',
+  '生成本月术中自体血回输率的概览 SQL，不执行数据库。',
+  '排查本月急会诊及时到位率结果异常的原因。',
 ]
 
 onMounted(async () => {
@@ -202,8 +203,8 @@ async function exportDiagnosis(reportId?: string) {
       <div ref="conversation" class="conversation-panel">
         <section v-if="!store.messages.length" class="welcome-panel">
           <p class="eyebrow">核心制度 · 当前生效口径</p>
-          <h1>把问题说完整，<br>系统把<em>证据链</em>留完整。</h1>
-          <p>可查询指标定义、实际结果、受控 SQL、异常原因，也可以上传 Excel 与本院结果核对。</p>
+          <h1>问清指标，算清结果，<br>也说清<em>原因</em>。</h1>
+          <p>可查询指标定义、分子分母口径和受控 SQL，计算指定周期的本院结果，或基于双库与明细证据排查异常；也可上传 Excel 与本院结果核对。每次运行都保留可核验的证据链。</p>
           <div class="suggestions">
             <button v-for="item in suggestions" :key="item" type="button" @click="send(item)">{{ item }}</button>
           </div>

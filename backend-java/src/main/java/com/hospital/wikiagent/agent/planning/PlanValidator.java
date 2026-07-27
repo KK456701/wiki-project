@@ -25,6 +25,18 @@ public class PlanValidator {
     }
 
     public PlanValidation validate(RequestPlan plan) {
+        return validate(plan, false);
+    }
+
+    /**
+     * 单项和批量入口都由只读校验、数据库并发和查询超时限制资源使用，因此允许用户明确
+     * 指定跨月汇总周期。不能按月相加，否则会破坏跨月患者去重语义。
+     */
+    public PlanValidation validateBatch(RequestPlan plan) {
+        return validate(plan, false);
+    }
+
+    private PlanValidation validate(RequestPlan plan, boolean enforceOneMonthLimit) {
         Set<String> constraints = new HashSet<>();
         plan.constraints().forEach(value -> constraints.add(value.strip().toLowerCase(Locale.ROOT)));
         if (constraints.contains("alignment_blocked")) {
@@ -113,7 +125,8 @@ public class PlanValidator {
         }
         boolean needsDatabase = outputs.contains(RequestedOutput.TRIAL_RESULT)
                 || outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT)
-                || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT);
+                || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)
+                || plan.intent() == PlanIntent.INDICATOR_DIAGNOSIS;
         boolean needsTime = outputs.contains(RequestedOutput.PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.CALIBER_PREPARED_SQL_HANDLE)
                 || outputs.contains(RequestedOutput.TRIAL_RESULT)
@@ -121,6 +134,7 @@ public class PlanValidator {
                 || outputs.contains(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT)
                 || plan.intent() == PlanIntent.INDICATOR_SQL_PREPARE
                 || plan.intent() == PlanIntent.INDICATOR_TRIAL_RUN
+                || plan.intent() == PlanIntent.INDICATOR_DIAGNOSIS
                 || (plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION
                         && outputs.contains(RequestedOutput.CALIBER_TRIAL_RESULT))
                 || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS;
@@ -155,7 +169,7 @@ public class PlanValidator {
                         FallbackCategory.USER_CLARIFICATION);
             }
         }
-        if (needsDatabase && resolved != null) {
+        if (needsDatabase && resolved != null && enforceOneMonthLimit) {
             StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(
                     resolved.startTime(), resolved.endTime());
             if (!period.ok()) {

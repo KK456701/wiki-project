@@ -53,17 +53,30 @@ public class WikiRuleKnowledgeSource {
     }
 
     /**
-     * 同一份配置既要支持从仓库根目录启动，也要支持开发人员在 {@code backend-java}
-     * 子目录直接执行 Maven。仅当配置使用默认相对路径且当前目录不存在时，才回退到
-     * 相邻目录；显式绝对路径或实际存在的相对路径绝不会被改写。
+     * 同一份配置既要支持外置知识库，也要支持知识库随应用放在
+     * {@code src/main/resources} 中。仅当相对路径不存在时才依次检查相邻目录、
+     * 项目资源目录和 Maven 编译资源目录；显式绝对路径绝不会被改写。
      */
     private static Path resolveConfiguredRoot(String root) {
-        Path requested = Path.of(root).toAbsolutePath().normalize();
-        if (Files.isDirectory(requested) || Path.of(root).isAbsolute()) {
+        Path raw = Path.of(root);
+        Path requested = raw.toAbsolutePath().normalize();
+        if (Files.isDirectory(requested) || raw.isAbsolute()) {
             return requested;
         }
-        Path sibling = Path.of("..").resolve(root).toAbsolutePath().normalize();
-        return Files.isDirectory(sibling) ? sibling : requested;
+        String directoryName = raw.getFileName() == null ? root : raw.getFileName().toString();
+        List<Path> fallbacks = List.of(
+                Path.of("..").resolve(root).toAbsolutePath().normalize(),
+                Path.of("src", "main", "resources", directoryName).toAbsolutePath().normalize(),
+                Path.of("target", "classes", directoryName).toAbsolutePath().normalize());
+        Path fallback = fallbacks.stream()
+                .filter(Files::isDirectory)
+                .findFirst()
+                .orElse(null);
+        if (fallback != null) {
+            return fallback;
+        }
+        Path materialized = ClasspathKnowledgeMaterializer.materialize();
+        return materialized == null ? requested : materialized;
     }
 
     public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
@@ -139,6 +152,7 @@ public class WikiRuleKnowledgeSource {
                 resolved.root(), sqlRefs, sqlCapabilities, "patient_detail", "patient_detail");
         Map<String, Object> resultMapping = resultMapping(profile);
         Map<String, Object> dualDatabaseContract = dualDatabaseContract(profile, resultMapping);
+        Map<String, Object> resultContract = map(profile.get("result_contract"));
         boolean overviewRuntimeEligible = overviewRuntimeEligible(
                 overviewSql, sqlCapabilities, resultMapping);
         Map<String, Object> mapping = mergedFieldMapping(profile, ruleId, hospitalId);
@@ -163,22 +177,30 @@ public class WikiRuleKnowledgeSource {
         result.put("effective_level", "company");
         result.put("profile_id", selectedProfileId);
         result.put("profile_name", profile.get("profile_name"));
+        result.put("governance_status", profile.get("governance_status"));
         result.put("execution_status", executionStatus);
         result.put("execution_blockers", blockers);
         result.put("definition", definition);
         result.put("formula", formula);
         result.put("numerator_rule", text(profile.get("numerator_rule")));
         result.put("denominator_rule", text(profile.get("denominator_rule")));
-        result.put("filter_rule", text(profile.get("denominator_caliber")));
-        result.put("exclude_rule", text(profile.get("numerator_caliber")));
+        result.put("filter_rule", first(
+                text(profile.get("filter_rule")),
+                text(profile.get("filter_caliber"))));
+        result.put("exclude_rule", first(
+                text(profile.get("exclude_rule")),
+                text(profile.get("exclusion_rule")),
+                text(profile.get("exclusions"))));
         result.put("implementation_status", overviewSql);
         result.put("standard_sql", overviewSql);
         result.put("source_extract_sql", sourceExtractSql);
+        result.put("extraction_contract", map(profile.get("extraction_contract")));
         result.put("department_detail_sql", departmentDetailSql);
         result.put("patient_detail_sql", patientDetailSql);
         result.put("sql_capabilities", sqlCapabilities);
         result.put("dual_database_contract", dualDatabaseContract);
         result.put("result_mapping", resultMapping);
+        result.put("result_contract", resultContract);
         result.put("overview_runtime_eligible", overviewRuntimeEligible);
         result.put("calculation_definition", calculation(profile));
         result.put("national_calculation_definition", calculation(profile));
@@ -195,7 +217,10 @@ public class WikiRuleKnowledgeSource {
         result.put("national_rule", nationalRule);
         result.put("national_params", Map.of());
         result.put("effective_params", params);
-        result.put("result_unit", "percentage");
+        result.put("result_unit", first(
+                text(resultContract.get("unit")),
+                text(manifest.get("unit")),
+                "percentage"));
         result.put("national_version", "2025");
         result.put("hospital_version", null);
         result.put("overridden_fields", List.of());
@@ -247,11 +272,19 @@ public class WikiRuleKnowledgeSource {
             Map<String, Object> resultMapping) {
         Map<String, Object> result =
                 new LinkedHashMap<>(map(profile.get("dual_database_contract")));
+        result.put("result_contract", map(profile.get("result_contract")));
         Map<String, Object> overview =
                 new LinkedHashMap<>(map(result.get("overview_result_mapping")));
-        for (String key : List.of("index_value", "numerator_count", "denominator_count")) {
-            if (text(overview.get(key)).isBlank() && !text(resultMapping.get(key)).isBlank()) {
-                overview.put(key, resultMapping.get(key));
+        boolean explicitMapping = List.of(
+                        "index_value", "numerator_count", "denominator_count")
+                .stream()
+                .anyMatch(key -> !text(overview.get(key)).isBlank());
+        if (!explicitMapping) {
+            for (String key : List.of(
+                    "index_value", "numerator_count", "denominator_count")) {
+                if (!text(resultMapping.get(key)).isBlank()) {
+                    overview.put(key, resultMapping.get(key));
+                }
             }
         }
         result.put("overview_result_mapping", overview);
@@ -431,6 +464,10 @@ public class WikiRuleKnowledgeSource {
         result.put("denominator_caliber", profile.get("denominator_caliber"));
         result.put("time_dimension", profile.get("time_dimension"));
         result.put("dedup_key", profile.get("dedup_key"));
+        result.put("exclusions", first(
+                text(profile.get("exclude_rule")),
+                text(profile.get("exclusion_rule")),
+                text(profile.get("exclusions"))));
         return result;
     }
 

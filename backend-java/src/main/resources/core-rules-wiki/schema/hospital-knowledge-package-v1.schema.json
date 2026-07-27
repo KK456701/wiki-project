@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hospital-knowledge-package-v1",
+  "type": "object",
+  "required": [
+    "schema_version", "hospital_id", "base_release_id", "exported_at",
+    "contains_patient_data", "files"
+  ],
+  "properties": {
+    "schema_version": {"const": "hospital-knowledge-package-v1"},
+    "hospital_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "base_release_id": {"type": "string"},
+    "hospital_release_id": {"type": ["string", "null"]},
+    "exported_at": {"type": "string", "format": "date-time"},
+    "contains_patient_data": {"const": false},
+    "files": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+    }
+  },
+  "additionalProperties": false
+}

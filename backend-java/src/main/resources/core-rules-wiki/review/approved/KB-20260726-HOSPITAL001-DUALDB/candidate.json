@@ -1,0 +1,17 @@
+{
+  "schema_version": "knowledge-candidate-v2",
+  "candidate_id": "KB-20260726-HOSPITAL001-DUALDB",
+  "release_id": "KB-20260726-HOSPITAL001-DUALDB",
+  "status": "published",
+  "scope": "hospital",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "model_id": "deepseek-v4-flash",
+  "prompt_version": "knowledge-release-normalizer-v1",
+  "prompt_sha256": "52a0288fc1c5af8b3cf50bfa029dba1da0424ca72679fcb916b65bd69c1c16ce",
+  "created_at": "2026-07-26T08:50:45.859Z",
+  "unresolved_questions": [],
+  "verification_sha256": "614a07adb9f607c7aeec4e4b654a3be7262db22cd53c30f424f6096110411257",
+  "verification_applied_at": "2026-07-26T08:52:07.030Z",
+  "published_at": "2026-07-26T08:52:25.016Z"
+}

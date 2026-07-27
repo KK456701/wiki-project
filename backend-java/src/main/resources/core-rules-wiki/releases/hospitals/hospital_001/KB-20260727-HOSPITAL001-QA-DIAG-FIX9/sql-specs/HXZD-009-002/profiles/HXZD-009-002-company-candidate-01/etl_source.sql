@@ -1,0 +1,149 @@
+WITH DeathCases AS (
+    SELECT
+a.ENCOUNTER_ID,
+a.HOSPITAL_SOID,
+t1.DISCHARGED_FROM_WARD_AT AS DEATH_DATE
+    FROM MAHP_DMTS_MAIN a
+    INNER JOIN INPATIENT_ENCOUNTER t1 ON a.ENCOUNTER_ID = t1.ENCOUNTER_ID
+    WHERE a.DISCHARGE_TYPE_CODE = 136924
+AND a.IS_DEL = 0
+),
+DateSequence AS (
+    -- 生成1-30的数字序列（死亡后第1天到第30天）
+    SELECT LEVEL AS day_offset
+    FROM DUAL
+    CONNECT BY LEVEL <= 30
+),
+WorkdayCalc AS (
+    SELECT
+dc.ENCOUNTER_ID,
+dc.DEATH_DATE,
+dc.HOSPITAL_SOID,
+-- 计算第5个工作日
+(
+-- 先找到所有工作日，然后取第5个
+SELECT future_date
+FROM (
+SELECT
+dc.DEATH_DATE + ds.day_offset AS future_date,
+ds.day_offset,
+ROW_NUMBER() OVER (ORDER BY ds.day_offset) AS workday_rank
+FROM DateSequence ds
+WHERE
+-- 排除周末（Oracle默认：周日=1，周六=7）
+TO_CHAR(dc.DEATH_DATE + ds.day_offset, 'D') NOT IN ('1', '7')
+-- 排除节假日
+AND NOT EXISTS (
+SELECT 1
+FROM HOLIDAY h
+WHERE h.IS_DEL = 0
+AND h.HOSPITAL_SOID = dc.HOSPITAL_SOID
+AND TRUNC(dc.DEATH_DATE + ds.day_offset)
+BETWEEN TRUNC(h.START_AT) AND TRUNC(h.END_AT)
+)
+) workdays
+WHERE workdays.workday_rank = 5  -- 第5个工作日
+) AS FIFTH_WORKDAY
+    FROM DeathCases dc
+)
+SELECT
+    t1.ENCOUNTER_ID AS bizId,  --用来更新数据
+    'CORE_DEATH' as eventNo,
+    '死亡病例' as eventName,
+    t1.ADMITTED_TO_WARD_AT AS eventAt, -- 预留
+    SYSDATE AS extractAt,
+    '1' AS mrasBusinessIndexId,
+    '1' AS mrasTargetDefinitionId,
+    'V2.0' as version,
+    t1.ENCOUNTER_ID as encounterId,--就诊标识
+    t1.FULL_NAME AS personName,--姓名
+    t1.IMRN as imrn,--住院号
+    emp.EMPLOYEE_NAME as currentAdmitterName,--责任医师
+    t1.CURRENT_DEPT_ID AS currentDeptId,--科室
+    o1.ORG_NAME AS currentDeptName, --科室名称
+    t1.CURRENT_WARD_ID AS currentWardId,--病区
+    o2.ORG_NAME AS currentWardName,--病区名称
+    t1.ADMITTED_TO_WARD_AT AS admittedToWardAt, --入区时间
+    t1.DISCHARGED_FROM_WARD_AT AS wardDischargedAt, --出区时间
+    t1.DISCHARGED_FROM_WARD_AT as deathAt,--死亡时间
+    t2.INP_EMR_SET_CREATED_AT as FINISH_AT,-- 死亡病例讨论完成时间
+    t3.hostEmployeeId as hostEmployeeId,--主持人标识
+    -- ============ 核心修改：改为按工作日计算 ============
+CASE
+-- 有讨论记录且在5个工作日内完成
+WHEN t2.INP_EMR_SET_CREATED_AT IS NOT NULL
+AND t2.INP_EMR_SET_CREATED_AT <= wc.FIFTH_WORKDAY
+THEN 98175
+-- 其他情况（无讨论记录或超过5个工作日）
+ELSE 98176
+END as deathDiscussedInDays,--符合死亡病例讨论5日完成
+CASE WHEN EXISTS (
+SELECT 1 from ORGANIZATION_X_EMPLOYEE A
+INNER JOIN ORGANIZATION B on A.ORG_ID = B.ORG_ID and B.IS_DEL = 0
+WHERE A.IS_DEL = 0
+and A.ORGANIZATION_X_EMPLOYEE_TYPE =399566319
+and (B.ORG_NAME = '医务部' OR B.ORG_NAME = '医务科')
+AND A.EMPLOYEE_ID = t3.hostEmployeeId
+) THEN 98175 ELSE 98176 END as medicalDeptOrganized,--符合医务部门组织进行死亡病例讨论
+case when EXISTS (
+SELECT 1 from MRAS_MANAGE_COMPLAIN mc
+WHERE mc.ENCOUNTER_NO = t1.IMRN
+and mc.IS_DEL = 0
+) THEN 98175 ELSE 98176 END as medicalDisputeCase,--符合发生医疗纠纷的死亡病例
+CASE WHEN EXISTS (
+SELECT 1
+FROM ORGANIZATION_X_EMPLOYEE E
+WHERE E.IS_DEL = 0
+AND E.ORGANIZATION_X_EMPLOYEE_TYPE IS NULL
+AND E.ADMIN_POSITION_CODE = '256530'  -- 科主任职位代码
+AND E.EMPLOYEE_ID = t3.hostEmployeeId
+AND E.ORG_ID = t1.CURRENT_DEPT_ID
+) THEN 98175 ELSE 98176 END as chiefPhysicianChaired,--符合死亡病例讨论由科主任主持
+null as requiredUploadRecord,--符合要求完整上传本机构死亡患者病案-
+null as shouldUploadRecord, --符合要求完整上传本机构死亡患者病案
+a.HOSPITAL_SOID AS hospitalSoid,
+t1.SOURCE_HOSPITAL_AREA_ID AS hospitalAreaId,
+CASE WHEN a.IS_DEL = '1'  THEN 1 ELSE 0 END AS isDel
+FROM MAHP_DMTS_MAIN a
+LEFT JOIN INPATIENT_ENCOUNTER t1 on a.ENCOUNTER_ID = t1.ENCOUNTER_ID
+LEFT JOIN ORGANIZATION o1 ON t1.CURRENT_DEPT_ID = o1.ORG_ID
+LEFT JOIN ORGANIZATION o2 ON t1.CURRENT_WARD_ID = o2.ORG_ID
+LEFT JOIN INPATIENT_PARTICIPANT pr ON pr.ENCOUNTER_ID = a.ENCOUNTER_ID
+    AND pr.IS_DEL = 0
+    AND pr.INPAT_PARTICIPANT_TYPE_CODE = 1000098
+LEFT JOIN EMPLOYEE_INFO emp on pr.EMPLOYEE_ID = emp.EMPLOYEE_ID
+    AND emp.IS_DEL = 0
+LEFT JOIN (
+    SELECT
+D.ENCOUNTER_ID,
+D.INP_EMR_SET_CREATED_AT
+    FROM INP_EMR_SECTION_DATA_ELEMENT A
+    LEFT JOIN INPATIENT_EMR_SECTION B ON A.INP_EMR_SECTION_ID = B.INP_EMR_SECTION_ID
+AND B.IS_DEL = 0
+    LEFT JOIN INPATIENT_EMR_CONTENT C ON C.INP_EMR_CONTENT_ID = B.INP_EMR_CONTENT_ID
+AND C.IS_DEL = 0
+    LEFT JOIN INPATIENT_EMR_SET D ON D.INP_EMR_RECORD_ID = C.INP_EMR_RECORD_ID
+AND D.IS_DEL = 0
+    WHERE A.IS_DEL = 0
+AND D.INP_EMR_SET_TITLE = '死亡病例讨论记录'
+AND A.INP_EMR_DATA_ELEMENT_WIN_ID = '399301329' -- 讨论日期
+) t2 on t2.ENCOUNTER_ID = t1.ENCOUNTER_ID
+LEFT JOIN (
+    SELECT
+D.ENCOUNTER_ID,
+CASE
+WHEN A.INP_EMR_DATA_ELEMENT_VALUE IS NOT NULL
+THEN A.CREATED_BY
+ELSE NULL
+END AS hostEmployeeId
+    FROM INP_EMR_SECTION_DATA_ELEMENT A
+    LEFT JOIN INPATIENT_EMR_SECTION B ON A.INP_EMR_SECTION_ID = B.INP_EMR_SECTION_ID
+    LEFT JOIN INPATIENT_EMR_CONTENT C ON C.INP_EMR_CONTENT_ID = B.INP_EMR_CONTENT_ID
+    LEFT JOIN INPATIENT_EMR_SET D ON D.INP_EMR_RECORD_ID = C.INP_EMR_RECORD_ID
+    WHERE D.INP_EMR_SET_TITLE = '死亡病例讨论记录'
+AND A.INP_EMR_DATA_ELEMENT_WIN_ID = '399336516' -- 病例讨论主持人姓名
+) t3 on t3.ENCOUNTER_ID = t1.ENCOUNTER_ID
+-- 关联工作日计算结果
+LEFT JOIN WorkdayCalc wc ON a.ENCOUNTER_ID = wc.ENCOUNTER_ID
+WHERE a.DISCHARGE_TYPE_CODE = 136924 AND a.IS_DEL = 0
+AND a.ENCOUNTER_ID in (select ENCOUNTER_ID from INPATIENT_ENCOUNTER where DISCHARGED_FROM_WARD_AT BETWEEN :startTime and :endTime)

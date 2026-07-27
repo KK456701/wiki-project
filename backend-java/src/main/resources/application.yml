@@ -22,6 +22,10 @@ spring:
       continue-on-error: false
   jackson:
     property-naming-strategy: SNAKE_CASE
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
     deserialization:
       fail-on-unknown-properties: true
 
@@ -33,7 +37,7 @@ management:
 
 wiki:
   knowledge:
-    root: ${WIKI_KNOWLEDGE_ROOT:core-rules-wiki}
+    root: ${WIKI_KNOWLEDGE_ROOT:src/main/resources/core-rules-wiki}
   admin:
     password: ${WIKI_ADMIN_PASSWORD:CHANGE_ME}
   auth:
@@ -54,8 +58,10 @@ wiki:
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     extraction:
-      # disabled 只跳过抽取，普通计算仍执行双库；required 模式绝不允许伪造抽取成功。
+      # 普通计算必须为 required：先抽取到真实库，再只查真实库。disabled 会拒绝计算，
+      # 不允许拿旧快照生成看似成功的结果。
       mode: ${AGENT_EXTRACTION_MODE:disabled}
+      hospital-soid: ${WIKI_EXTRACTION_HOSPITAL_SOID:}
     upload:
       root: runtime/uploads
       max-bytes: 10485760
@@ -115,16 +121,32 @@ wiki:
         base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
         api-key: ${DEEPSEEK_API_KEY:}
         thinking: true
+  sqlserver:
+    # 默认关闭，避免启动时强制连接医院 SQL Server。
+    # 启用后只创建独立的 JDBC DataSource / JdbcTemplate / TransactionManager。
+    # 运行时主库仍使用上方 spring.datasource（SQLite）；业务只读默认仍走 DBHub。
+    enabled: ${WIKI_SQLSERVER_ENABLED:false}
+    url: ${WIKI_SQLSERVER_URL:}
+    username: ${WIKI_SQLSERVER_USERNAME:}
+    password: ${WIKI_SQLSERVER_PASSWORD:}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    schema: ${WIKI_SQLSERVER_SCHEMA:dbo}
+    expected-database: winex_aima
+    hikari:
+      maximum-pool-size: ${WIKI_SQLSERVER_MAX_POOL_SIZE:2}
+      minimum-idle: ${WIKI_SQLSERVER_MIN_IDLE:1}
+      connection-timeout: ${WIKI_SQLSERVER_CONNECTION_TIMEOUT:5000}
   dbhub:
     api-url: ${DBHUB_API_URL:http://127.0.0.1:8080}
     mcp-url: ${DBHUB_MCP_URL:http://127.0.0.1:8080/mcp}
+    biz-mcp-url: ${DBHUB_BIZ_MCP_URL:http://127.0.0.1:5420/http/mcp}
     timeout-seconds: 10
     sources:
       business:
         source-id: ${DBHUB_BUSINESS_SOURCE_ID:winex_all_dev}
         execute-tool: ${DBHUB_BUSINESS_EXECUTE_TOOL:execute_sql_winex_all_dev}
         database-name: ${DBHUB_BUSINESS_DATABASE:WiNEX_All_DEV}
-        schema-name: ${DBHUB_BUSINESS_SCHEMA:dbo}
+        schema-name: ${DBHUB_BUSINESS_SCHEMA:WINDBA_GN}
       real:
         source-id: ${DBHUB_REAL_SOURCE_ID:winex_aima}
         execute-tool: ${DBHUB_REAL_EXECUTE_TOOL:execute_sql_winex_aima}

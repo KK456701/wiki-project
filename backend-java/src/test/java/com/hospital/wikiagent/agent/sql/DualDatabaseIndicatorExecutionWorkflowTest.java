@@ -30,6 +30,7 @@ import com.hospital.wikiagent.agent.tools.PolicyDecision;
 import com.hospital.wikiagent.agent.tools.PolicyDecision.Decision;
 import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.dbhub.DbHubMcpException;
 
 class DualDatabaseIndicatorExecutionWorkflowTest {
     private JdbcTemplate jdbc;
@@ -63,26 +64,8 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     }
 
     @Test
-    void matchingOverviewStopsBeforeDetailQueriesAndExtractsOnce() {
-        database.businessOverview = overview(11, 394);
-        database.realOverview = overview(11, 394);
-
-        ToolResult result = workflow.execute(
-                preparedSql(), rule(true), executable("overview"), parameters(), context());
-
-        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
-        assertThat(result.data()).containsEntry("comparison_status", "matched");
-        assertThat(extraction.calls).isEqualTo(1);
-        assertThat(database.calls).containsExactly("business:overview", "real:overview");
-        assertThat(jdbc.queryForObject(
-                "SELECT comparison_status FROM med_dual_indicator_run", String.class))
-                .isEqualTo("matched");
-    }
-
-    @Test
-    void disabledExtractionStillRunsBothDatabasesWithoutCallingGateway() {
-        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
-        database.businessOverview = overview(11, 394);
+    void ordinaryCalculationExtractsThenQueriesOnlyRealOverview() {
+        database.businessOverview = overview(99, 100);
         database.realOverview = overview(11, 394);
 
         ToolResult result = workflow.execute(
@@ -90,16 +73,73 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_status", "matched")
-                .containsEntry("extraction_id", "");
+                .containsEntry("source_role", "real")
+                .containsEntry("source_id", "winex_aima")
+                .containsEntry("workflow_version", "profile-extract-real-overview-v1")
+                .containsEntry("numerator_count", 11L)
+                .containsEntry("denominator_count", 394L)
+                .doesNotContainKeys(
+                        "business_result",
+                        "comparison_status",
+                        "dual_difference_diagnosis");
+        assertThat(extraction.calls).isEqualTo(1);
+        assertThat(database.calls).containsExactly("real:overview");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM med_dual_indicator_run", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void disabledExtractionStopsBeforeAnyDatabaseQuery() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        database.businessOverview = overview(11, 394);
+        database.realOverview = overview(11, 394);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("SOURCE_EXTRACTION_DISABLED");
         assertThat(extraction.calls).isZero();
-        assertThat(database.calls).containsExactly("business:overview", "real:overview");
+        assertThat(database.calls).isEmpty();
+    }
+
+    @Test
+    void requiredExtractionWithMissingContractStopsBeforeGatewayAndDatabases() {
+        Map<String, Object> missingSource = rule(true);
+        missingSource.put("extraction_contract", Map.of());
+
+        ToolResult result = workflow.execute(
+                preparedSql(), missingSource, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("EXTRACTION_CONTRACT_INVALID");
+        assertThat(extraction.calls).isZero();
+        assertThat(database.calls).isEmpty();
+    }
+
+    @Test
+    void requiredExtractionFailureDoesNotFallBackToExistingSnapshot() {
+        extraction.result = new ExtractionResult(
+                "",
+                ExtractionResult.Status.FAILED,
+                0, 0, 0, 0,
+                Instant.now(),
+                "", "",
+                "SOURCE_EXTRACTION_FAILED",
+                "failed");
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("SOURCE_EXTRACTION_FAILED");
+        assertThat(extraction.calls).isEqualTo(1);
+        assertThat(database.calls).isEmpty();
     }
 
     @Test
     void aggregateNullsAreTreatedAsEmptyStatisticsWhenColumnsExist() {
-        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
-        database.businessOverview = emptyOverview();
         database.realOverview = emptyOverview();
 
         ToolResult result = workflow.execute(
@@ -107,14 +147,57 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_status", "matched")
                 .containsEntry("numerator_count", 0L)
-                .containsEntry("denominator_count", 0L);
-        assertThat(database.calls).containsExactly("business:overview", "real:overview");
+                .containsEntry("denominator_count", 0L)
+                .containsEntry("no_sample", true);
+        assertThat(database.calls).containsExactly("real:overview");
     }
 
     @Test
-    void equalRateWithDifferentCountsStillRunsBothDetailLevels() {
+    void retriesRealReadOnlyOverviewOnceAfterDbHubFailure() {
+        database.realOverviewFailures = 1;
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(database.calls).containsExactly(
+                "real:overview", "real:overview");
+    }
+
+    @Test
+    void stopsAfterSecondRealOverviewFailure() {
+        database.realOverviewFailures = 2;
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("REAL_DATABASE_OVERVIEW_FAILED");
+        assertThat(database.calls).containsExactly(
+                "real:overview", "real:overview");
+    }
+
+    @Test
+    void reportsPublishedOverviewMappingErrorsWithoutRetryingDatabase() {
+        Map<String, Object> invalidRule = rule(true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(invalidRule.get("dual_database_contract")));
+        contract.put("overview_result_mapping", Map.of(
+                "numerator_count", "missing_numerator",
+                "denominator_count", "missing_denominator"));
+        invalidRule.put("dual_database_contract", contract);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), invalidRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("OVERVIEW_RESULT_CONTRACT_INVALID");
+        assertThat(database.calls).containsExactly("real:overview");
+    }
+
+    @Test
+    void ordinaryCalculationNeverComparesBusinessOrRunsDetails() {
         database.businessOverview = overview(1, 2);
         database.realOverview = overview(2, 4);
         database.department.put(DatabaseRole.BUSINESS, List.of(
@@ -134,42 +217,65 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
                 preparedSql(), rule(true), executable("overview"), parameters(), context());
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
-        assertThat(result.data()).containsEntry("comparison_status", "mismatched");
-        assertThat(String.valueOf(result.data().get("diagnosis_report_id")))
-                .startsWith("DDR_");
+        assertThat(result.data())
+                .containsEntry("numerator_count", 2L)
+                .containsEntry("denominator_count", 4L)
+                .doesNotContainKeys(
+                        "comparison_status",
+                        "diagnosis_report_id",
+                        "dual_difference_diagnosis");
+        assertThat(result.data().get("result_value").toString()).isEqualTo("50.00");
         assertThat(extraction.calls).isEqualTo(1);
-        assertThat(database.calls).containsExactly(
-                "business:overview", "real:overview",
-                "business:department", "real:department",
-                "business:patient", "real:patient");
-        Map<String, Object> diagnosis = map(result.data().get("dual_difference_diagnosis"));
-        assertThat(diagnosis).containsEntry("status", "completed");
-        assertThat(map(diagnosis.get("patient_comparison")))
-                .containsEntry("business_only_count", 1L)
-                .containsEntry("real_only_count", 1L)
-                .containsEntry("different_count", 1L);
+        assertThat(database.calls).containsExactly("real:overview");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_index_diagnose_report", Integer.class))
-                .isEqualTo(1);
+                .isZero();
     }
 
     @Test
-    void unverifiedDualSchemaStopsBeforeExtractionAndDatabase() {
+    void unverifiedRealOverviewSchemaStopsBeforeExtractionAndDatabase() {
         ToolResult result = workflow.execute(
                 preparedSql(), rule(false), executable("overview"), parameters(), context());
 
         assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("DUAL_DATABASE_SCHEMA_INCOMPATIBLE");
+        assertThat(result.code()).isEqualTo("REAL_OVERVIEW_RUNTIME_UNAVAILABLE");
         assertThat(extraction.calls).isZero();
         assertThat(database.calls).isEmpty();
     }
 
     @Test
-    void staticValidatedOverviewUsesActualDualExecutionAsCompatibilityCheck() {
-        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+    void ordinaryCalculationDoesNotRequireBusinessOverviewVerification() {
+        Map<String, Object> realOnlyRule = rule(true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(realOnlyRule.get("dual_database_contract")));
+        contract.put("schema_compatible", false);
+        contract.put("verified_source_roles", List.of("real"));
+        contract.put("source_verification", Map.of(
+                "business", Map.of(
+                        "metadata_status", "unverified",
+                        "compile_status", "unverified"),
+                "real", Map.of(
+                        "metadata_status", "validated",
+                        "compile_status", "validated")));
+        realOnlyRule.put("dual_database_contract", contract);
+        database.businessOverview = overview(99, 100);
+        database.realOverview = overview(3, 8);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), realOnlyRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("numerator_count", 3L)
+                .containsEntry("denominator_count", 8L)
+                .containsEntry("source_role", "real");
+        assertThat(database.calls).containsExactly("real:overview");
+    }
+
+    @Test
+    void staticValidatedOverviewUsesRealDatabaseExecution() {
         Map<String, Object> staticRule = rule(false);
         staticRule.put("overview_runtime_eligible", true);
-        database.businessOverview = overview(3, 68);
         database.realOverview = overview(3, 68);
 
         ToolResult result = workflow.execute(
@@ -177,16 +283,14 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_status", "matched")
                 .containsEntry("numerator_count", 3L)
-                .containsEntry("denominator_count", 68L);
-        assertThat(database.calls).containsExactly(
-                "business:overview", "real:overview");
+                .containsEntry("denominator_count", 68L)
+                .containsEntry("source_role", "real");
+        assertThat(database.calls).containsExactly("real:overview");
     }
 
     @Test
-    void scalarMetricCanBeComparedWithoutInventingNumeratorAndDenominator() {
-        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+    void scalarMetricCanBeCalculatedWithoutInventingNumeratorAndDenominator() {
         Map<String, Object> scalarRule = rule(false);
         scalarRule.put("overview_runtime_eligible", true);
         Map<String, Object> contract =
@@ -194,7 +298,6 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         contract.put("overview_result_mapping", Map.of(
                 "index_value", "median_minutes"));
         scalarRule.put("dual_database_contract", contract);
-        database.businessOverview = List.of(Map.of("median_minutes", 18.5));
         database.realOverview = List.of(Map.of("median_minutes", 18.50));
 
         ToolResult result = workflow.execute(
@@ -202,13 +305,98 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_status", "matched")
                 .containsEntry("result_value", 18.50)
+                .containsEntry("source_role", "real")
                 .doesNotContainKeys("numerator_count", "denominator_count");
     }
 
     @Test
-    void reusesSuccessfulExtractionWithinSameIndicatorSubtask() {
+    void scalarMetricWithNullValuesIsReportedAsNoSample() {
+        Map<String, Object> scalarRule = rule(false);
+        scalarRule.put("overview_runtime_eligible", true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+        contract.put("overview_result_mapping", Map.of(
+                "index_value", "median_minutes"));
+        scalarRule.put("dual_database_contract", contract);
+        Map<String, Object> emptyScalar = new LinkedHashMap<>();
+        emptyScalar.put("median_minutes", null);
+        database.realOverview = List.of(emptyScalar);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), scalarRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("no_sample", true)
+                .containsEntry("result_value", null)
+                .doesNotContainKeys("numerator_count", "denominator_count");
+    }
+
+    @Test
+    void scalarResultContractCarriesComponentsSampleAndTarget() {
+        Map<String, Object> scalarRule = rule(false);
+        scalarRule.put("overview_runtime_eligible", true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+        contract.put("overview_result_mapping", Map.of(
+                "index_value", "index_value",
+                "component_left", "left_rate",
+                "component_right", "right_rate",
+                "sample_count", "sample_count",
+                "target_value", "target_value"));
+        scalarRule.put("dual_database_contract", contract);
+        Map<String, Object> row = Map.of(
+                "index_value", 2.0,
+                "left_rate", "2.00%",
+                "right_rate", "1.00%",
+                "sample_count", 12,
+                "target_value", 5);
+        database.realOverview = List.of(row);
+
+        ToolResult result = workflow.execute(
+                preparedSql(), scalarRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("result_value", 2.0)
+                .containsEntry("component_left", "2.00%")
+                .containsEntry("component_right", "1.00%")
+                .containsEntry("sample_count", 12L)
+                .containsEntry("target_value", 5);
+    }
+
+    @Test
+    void ordinaryCalculationUsesRealTargetWithoutComparingBusinessTarget() {
+        Map<String, Object> scalarRule = rule(true);
+        Map<String, Object> contract =
+                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+        contract.put("overview_result_mapping", Map.of(
+                "numerator_count", "numerator_count",
+                "denominator_count", "denominator_count",
+                "target_value", "target_value"));
+        scalarRule.put("dual_database_contract", contract);
+        database.businessOverview = List.of(Map.of(
+                "numerator_count", 95, "denominator_count", 100, "target_value", 90));
+        database.realOverview = List.of(Map.of(
+                "numerator_count", 95, "denominator_count", 100, "target_value", 92));
+
+        ToolResult result = workflow.execute(
+                preparedSql(), scalarRule, executable("overview"), parameters(), context());
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.data())
+                .containsEntry("target_value", 92)
+                .containsEntry("target_source", "real")
+                .doesNotContainKeys(
+                        "comparison_status",
+                        "target_comparison_status",
+                        "target_conflict");
+        assertThat(database.calls).containsExactly("real:overview");
+    }
+
+    @Test
+    void refreshesSnapshotForEveryProfileExecution() {
         ToolExecutionContext context = context();
 
         ToolResult first = workflow.execute(
@@ -218,14 +406,56 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(first.ok()).withFailMessage(first.toString()).isTrue();
         assertThat(second.ok()).isTrue();
-        assertThat(extraction.calls).isEqualTo(1);
-        assertThat(database.calls).hasSize(4);
+        assertThat(extraction.calls).isEqualTo(2);
+        assertThat(database.calls).containsExactly("real:overview", "real:overview");
+    }
+
+    @Test
+    void explicitDiagnosisRunsExtractionStageAndDetailsEvenWhenOverviewMatches() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        ToolExecutionContext context = context();
+        context.runState().lastIntent("indicator_diagnosis");
+
+        ToolResult result = workflow.execute(
+                preparedSql(), rule(true), executable("overview"), parameters(), context);
+
+        assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
+        assertThat(result.summary()).contains("已按用户要求继续完成明细诊断");
+        assertThat(result.data())
+                .containsEntry("comparison_status", "matched")
+                .containsEntry("extraction_status", "SKIPPED_DISABLED")
+                .containsEntry("data_freshness", "existing_snapshot_not_refreshed")
+                .containsKey("diagnosis_report_id");
+        assertThat(database.calls).containsExactly(
+                "business:overview", "real:overview",
+                "business:department", "real:department",
+                "business:patient", "real:patient");
+    }
+
+    @Test
+    void explicitDiagnosisRejectsPeriodLongerThanOneMonth() {
+        extractionProperties.setMode(ExtractionProperties.Mode.DISABLED);
+        ToolExecutionContext context = context();
+        context.runState().lastIntent("indicator_diagnosis");
+        PreparedSqlObject longPeriod = preparedSql(
+                "2025-02-01T00:00:00", "2026-07-27T00:00:00");
+
+        ToolResult result = workflow.execute(
+                longPeriod, rule(true), executable("overview"), parameters(), context);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("STAT_PERIOD_EXCEEDS_ONE_MONTH");
+        assertThat(database.calls).isEmpty();
     }
 
     private static PreparedSqlObject preparedSql() {
+        return preparedSql("2026-01-01T00:00:00", "2026-02-01T00:00:00");
+    }
+
+    private static PreparedSqlObject preparedSql(String start, String end) {
         return new PreparedSqlObject(
                 "SQL_test", "h1", "u1", "session1", "HXZD-001-001", "sqlserver",
-                sql("overview"), Map.of(), "2026-01-01T00:00:00", "2026-02-01T00:00:00",
+                sql("overview"), Map.of(), start, end,
                 Map.of(), "digest", "validated", "ok",
                 Instant.now(), Instant.now().plusSeconds(60), "legacy");
     }
@@ -256,6 +486,13 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         rule.put("profile_id", "PROFILE-1");
         rule.put("knowledge_release_id", "KB-test");
         rule.put("source_extract_sql", sql("source"));
+        rule.put("extraction_contract", Map.of(
+                "database_name", "winex_aima",
+                "schema_name", "dbo",
+                "route", "EVENT",
+                "event_no", "CORE_FDR",
+                "event_table", "MRAS_BUSINESS_FIRSTVISIT",
+                "dependency_tables", List.of("MRAS_TARGET_DEFINITION")));
         rule.put("department_detail_sql", sql("department"));
         rule.put("patient_detail_sql", sql("patient"));
         rule.put("dual_database_contract", contract);
@@ -314,19 +551,20 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
     private static final class CountingExtractionGateway implements SourceExtractionGateway {
         private int calls;
+        private ExtractionResult result = new ExtractionResult(
+                "EXT-1",
+                ExtractionResult.Status.SUCCESS,
+                10, 10, 0, 0,
+                Instant.now(),
+                "business-snapshot",
+                "real-snapshot",
+                "",
+                "ok");
 
         @Override
         public ExtractionResult extract(ExtractionRequest request) {
             calls++;
-            return new ExtractionResult(
-                    "EXT-1",
-                    ExtractionResult.Status.SUCCESS,
-                    10, 10, 0, 0,
-                    Instant.now(),
-                    "business-snapshot",
-                    "real-snapshot",
-                    "",
-                    "ok");
+            return result;
         }
     }
 
@@ -338,12 +576,26 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         private final Map<DatabaseRole, List<Map<String, Object>>> patient =
                 new LinkedHashMap<>();
         private final List<String> calls = new ArrayList<>();
+        private int businessOverviewFailures;
+        private int realOverviewFailures;
 
         @Override
         public List<Map<String, Object>> execute(DatabaseRole role, String sql) {
             String kind = sql.contains("'department'") ? "department"
                     : sql.contains("'patient'") ? "patient" : "overview";
             calls.add(role.value() + ":" + kind);
+            if ("overview".equals(kind)
+                    && role == DatabaseRole.BUSINESS
+                    && businessOverviewFailures > 0) {
+                businessOverviewFailures--;
+                throw new DbHubMcpException("temporary business DBHub failure");
+            }
+            if ("overview".equals(kind)
+                    && role == DatabaseRole.REAL
+                    && realOverviewFailures > 0) {
+                realOverviewFailures--;
+                throw new DbHubMcpException("temporary real DBHub failure");
+            }
             return switch (kind) {
                 case "department" -> department.getOrDefault(role, List.of());
                 case "patient" -> patient.getOrDefault(role, List.of());

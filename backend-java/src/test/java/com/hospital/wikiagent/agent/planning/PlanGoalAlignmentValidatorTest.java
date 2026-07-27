@@ -55,7 +55,7 @@ class PlanGoalAlignmentValidatorTest {
                 mock(JdbcTemplate.class),
                 objectMapper,
                 new WikiRuleKnowledgeSource(
-                        Path.of("..", "core-rules-wiki").toString(),
+                        Path.of("src", "main", "resources", "core-rules-wiki").toString(),
                         objectMapper));
         assertThat(rules.diagnosticProfiles(
                 "HXZD-001-001", "hospital_without_release"))

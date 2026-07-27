@@ -1,0 +1,233 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-006-003",
+  "rule_name": "高额异常费用患者进行疑难病例讨论的占比",
+  "category": "疑难病例讨论制度",
+  "definition": "对产生高额异常费用患者进行疑难病例讨论的数量占同期高额异常费用患者数量的比例。",
+  "formula": "分子：对产生高额异常费用患者进行疑难病例讨论的数量\n分母：同期高额异常费用患者数量\n公式：对产生高额异常费用患者进行疑难病例讨论的数量 / 同期高额异常费用患者数量 * 100%",
+  "note": "高额异常费用患者是指一个住院周期内产生的医疗费用在20万元以上的患者（各地可根据本辖区实际情况划定高额异常费用患者的费用额度）。",
+  "significance": "反映疑难病例讨论制度落实和管理情况。",
+  "default_profile": "HXZD-006-003-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-006-003-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "对产生高额异常费用患者进行疑难病例讨论的数量",
+      "numerator_caliber": "1、单位时间出区患者中，属于高额费用患者，且完成了疑难病历讨论记录的患者数\n2、由于各地区对高额异常费用定义会有不同，这个数值可配置\n3、一个患者单次住院最多统计为1",
+      "denominator_rule": "同期高额异常费用患者数量",
+      "denominator_caliber": "单位时间出区患者中，住院总费用>=20万的患者数（费用取病案）",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 30 | 数值框 | 200000 |",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/overview.sql",
+        "department": "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "97f47bed03a4f6e8c6db47b979b33fc729d6bb4a75669099dc6f16ea8b561d62"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d0db8342f59e21f2a6aca2aae0413f6d33b25eb3349372c71c534ec597c7b614"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "ed2a084c5d9d9d5dc6d7232556ef74581c38012db904ad4ff293884834a2f47b"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "cfebc90051136c40dd344fd39052ff0779fbb198d9d943d3cb93275c8d90ba8c"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_DIFFI_EMR_SECOND",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-006-003-company-candidate-01",
+      "profile_name": "可选方案（未实现）：公版",
+      "governance_status": "draft",
+      "execution_status": "draft",
+      "execution_blockers": [
+        "方案标记为未实现"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "对产生高额异常费用患者进行疑难病例讨论的数量",
+      "numerator_caliber": "1、单位时间入区患者中，属于高额费用患者，且完成了疑难病历讨论记录的患者数\n2、由于各地区对高额异常费用定义会有不同，这个数值可配置\n3、一个患者单次住院最多统计为1",
+      "denominator_rule": "同期高额异常费用患者数量",
+      "denominator_caliber": "单位时间入区患者中，住院总费用>=20万的患者数（费用取HIS）",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 32 | 数值框 | 200000 |",
+      "declared_parameters": [],
+      "parameter_contract": {},
+      "sql_refs": {
+        "etl_source": null,
+        "overview": null,
+        "department": null,
+        "patient_detail": null
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

@@ -33,10 +33,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Component
 public class HybridIndicatorResolver {
-    public static final String VERSION = "hybrid-indicator-resolver-java-v2";
+    public static final String VERSION = "hybrid-indicator-resolver-java-v3";
     private static final double SEMANTIC_THRESHOLD = 0.68;
     private static final double SEMANTIC_MARGIN = 0.12;
-    private static final int MAX_INDICATORS = 3;
+    private static final int MAX_INDICATORS = 35;
     private static final Pattern SEGMENT_SPLIT = Pattern.compile(
             "[,，、;；]|(?:还有|以及|另外(?:再|还|也)?|同时(?:还|也)?)");
     private static final Pattern ACTION_PREFIX = Pattern.compile(
@@ -148,15 +148,9 @@ public class HybridIndicatorResolver {
                         "threshold", SEMANTIC_THRESHOLD,
                         "margin", SEMANTIC_MARGIN));
 
-        // 第三层：LLM 只能在最多三个候选中消歧，不能创造目录外的指标或 ruleId。
+        // 低置信度候选必须交给用户确认。此处不再调用模型二次猜测，避免离线模型
+        // 超时后才返回同一组候选，也保证“信心不足时主动给候选”行为可复现。
         boolean usedLlm = false;
-        if (!ambiguities.isEmpty()) {
-            usedLlm = true;
-            Disambiguation disambiguation = disambiguate(
-                    input, ambiguities, modelId, traceId, subtaskId, sink);
-            resolved.addAll(disambiguation.resolved());
-            ambiguities = new ArrayList<>(disambiguation.remaining());
-        }
         resolved = new ArrayList<>(deduplicate(resolved));
         if (resolved.size() > MAX_INDICATORS) {
             ambiguities = new ArrayList<>(List.of(new Ambiguity(input, resolved.stream()

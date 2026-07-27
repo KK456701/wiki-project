@@ -24,6 +24,12 @@ import { createHash } from 'node:crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '..');
 const WIKI_ROOT = join(PROJECT_ROOT, 'core-rules-wiki');
+const REAL_SCHEMA_CONTRACT_PATH = join(
+  WIKI_ROOT, 'contracts', 'winex_aima-dbo-schema.json',
+);
+const REAL_SCHEMA_CONTRACT = existsSync(REAL_SCHEMA_CONTRACT_PATH)
+  ? JSON.parse(readFileSync(REAL_SCHEMA_CONTRACT_PATH, 'utf8'))
+  : null;
 
 // ─── 参数解析 ───────────────────────────────────────────────────────────────────
 function parseArgs() {
@@ -507,10 +513,25 @@ function resultMappingCandidates(sql) {
     /\bAS\s+(?:\[([^\]]+)\]|"([^"]+)"|'([^']+)'|([^\s,()]+))/gi,
   )].map(match => match[1] || match[2] || match[3] || match[4]).filter(Boolean);
   const pick = pattern => aliases.find(alias => pattern.test(alias)) || null;
+  const pickExact = names => aliases.find(alias => (
+    names.some(name => alias.toLowerCase() === name.toLowerCase())
+  )) || null;
+  // SQL 常在 CTE 中使用 target_value，最终 SELECT 再输出为“目标值”。
+  // 运行契约必须绑定数据库最终结果列，不能被更早出现的内部列名抢先匹配。
+  const targetAlias = aliases.find(alias => /目标值/i.test(alias))
+    || aliases.find(alias => /^target_value$/i.test(alias))
+    || null;
   return {
     numerator_count: pick(/(?:^|_)numerator(?:_count)?$|分子/i),
     denominator_count: pick(/(?:^|_)denominator(?:_count)?$|sample_count|分母/i),
-    index_value: pick(/^(?:index_value|result_value)$|指标值|监测情况|比率|比例|率$/i),
+    // 正式机器列优先于前面 CTE 中的“监测情况”等展示列，避免标量契约
+    // 被较早出现的宽泛候选污染。
+    index_value: pickExact(['index_value', 'result_value'])
+      || pick(/指标值|监测情况|比率|比例|率$/i),
+    component_left: pick(/分子/i),
+    component_right: pick(/分母/i),
+    sample_count: pickExact(['sample_count']) || pick(/样本数/i),
+    target_value: targetAlias,
   };
 }
 
@@ -587,6 +608,89 @@ function declaredParameters(profile) {
   return sqlParameters(values);
 }
 
+const EXTRACTION_EVENT_TABLES = new Map([
+  ['CORE_FDR', 'MRAS_BUSINESS_FIRSTVISIT'],
+  ['CORE_WARDROUND', 'MRAS_BUSINESS_WARDROUND'],
+  ['CORE_CONSUL', 'MRAS_BUSINESS_CONSULTATION'],
+  ['CORE_CONSUL_OUT', 'MRAS_BUSINESS_CONSULTATION'],
+  ['GRADE_CARE_V2', 'MRAS_BUSINESS_GRADED_CARE'],
+  ['CORE_SHIFTHANDOVER', 'MRAS_BUSINESS_SHIFTHANDOVER'],
+  ['CORE_DIFFI_EMR', 'MRAS_BUSINESS_DIFFI_EMR'],
+  ['CORE_DIFFI_EMR_SECOND', 'MRAS_BUSINESS_DIFFI_EMR_SECOND'],
+  ['CORE_RESCUE', 'MRAS_BUSINESS_PATRESCUE'],
+  ['CORE_OP_DISC', 'MRAS_BUSINESS_OP_DISC'],
+  ['CORE_OP_DISC_V2', 'MRAS_BUSINESS_OP_DISC'],
+  ['CORE_DEATH', 'MRAS_BUSINESS_DEATH'],
+  ['CORE_DEATH_EXT', 'MRAS_BUSINESS_DEATH'],
+  ['CORE_SURGERY', 'MRAS_BUSINESS_SURGERY'],
+  ['CORE_SUR_GRADE', 'MRAS_BUSINESS_SUR_GRADE'],
+  ['CORE_SUR_GRADE_V2', 'MRAS_BUSINESS_SUR_GRADE'],
+  ['CORE_CV_RPT', 'MRAS_BUSINESS_CRITICAL_RPT'],
+  ['CORE_SPECIAL_ANTI', 'MRAS_BUSINESS_ANTI'],
+  ['CORE_SPECIAL_ANTI_EXT', 'MRAS_BUSINESS_ANTI'],
+  ['CORE_BLOOD_RECORD', 'MRAS_BUSINESS_BLOOD_AUDIT'],
+  ['CORE_BLOOD_SURG', 'MRAS_PATIENT_EVENT'],
+]);
+
+const EXTRACTION_RULE_DEPENDENCIES = new Map([
+  ['HXZD-010-001', ['INP_CLI_ORDER', 'INPATIENT_ENCOUNTER', 'ORGANIZATION']],
+  ['HXZD-012-001', ['CLIBASIC_SURGERY', 'MRAS_PATIENT_EVENT']],
+  ['HXZD-012-002', ['CLIBASIC_SURGERY', 'MRAS_PATIENT_EVENT']],
+  ['HXZD-012-003', ['CLIBASIC_SURGERY', 'MRAS_PATIENT_EVENT']],
+  ['HXZD-012-004', ['CLIBASIC_SURGERY', 'MRAS_PATIENT_EVENT']],
+  ['HXZD-013-001', ['MRAS_MEDTECH_PRO', 'MRAS_MEDTECH_PROC']],
+  ['HXZD-016-002', ['MRAS_INDEX_SURGREC', 'MRAS_PATIENT_EVENT']],
+]);
+
+function extractionContract(indicator, profile) {
+  const rawEvent = String(profile.meta['关联事件'] || '').trim();
+  const eventNo = rawEvent && rawEvent !== '无' && rawEvent !== '—' ? rawEvent : '';
+  const eventTable = eventNo ? EXTRACTION_EVENT_TABLES.get(eventNo) || '' : '';
+  const dependencies = [
+    'MRAS_TARGET_DEFINITION',
+    ...(EXTRACTION_RULE_DEPENDENCIES.get(indicator.ruleId) || []),
+  ].filter((value, index, values) => value && value !== eventTable && values.indexOf(value) === index);
+  const targetTables = [eventTable, ...dependencies].filter(Boolean);
+  if (!REAL_SCHEMA_CONTRACT
+      || REAL_SCHEMA_CONTRACT.database_name !== 'winex_aima'
+      || REAL_SCHEMA_CONTRACT.schema_name !== 'dbo') {
+    throw new Error('缺少 winex_aima.dbo 只读结构契约，请先运行 capture-real-schema-contract.mjs');
+  }
+  const tableContracts = Object.fromEntries(targetTables.map(table => {
+    const contract = REAL_SCHEMA_CONTRACT.tables?.[table];
+    if (!contract || !Array.isArray(contract.columns)
+        || !/^[a-f0-9]{64}$/.test(String(contract.fingerprint_sha256 || ''))) {
+      throw new Error(`真实库结构契约缺少目标表：${table}`);
+    }
+    return [table, contract];
+  }));
+  const fingerprints = Object.fromEntries(
+    Object.entries(tableContracts).map(([table, contract]) => [
+      table, contract.fingerprint_sha256,
+    ]),
+  );
+  return {
+    schema_version: 'profile-extraction-contract-v1',
+    route: eventNo ? 'EVENT' : 'TABLE_DOMAIN',
+    event_no: eventNo,
+    event_table: eventTable,
+    dependency_tables: dependencies,
+    target_tables: targetTables,
+    allowed_result_fields: Object.fromEntries(
+      Object.entries(tableContracts).map(([table, contract]) => [
+        table, contract.columns.map(column => column.name),
+      ]),
+    ),
+    target_schema_fingerprints: fingerprints,
+    target_structure_fingerprint: sha256(JSON.stringify(fingerprints)),
+    start_parameter: 'startTime',
+    end_parameter: 'endTime',
+    hospital_parameter: 'hospitalSOID',
+    schema_name: 'dbo',
+    database_name: 'winex_aima',
+  };
+}
+
 function runtimeProfile(indicator, profile) {
   const profileId = getProfileId(indicator.ruleId, profile);
   const state = profileState(profile);
@@ -606,6 +710,14 @@ function runtimeProfile(indicator, profile) {
     patient_detail: validateSqlCapability('patient_detail', profile.sqlPatientDetail),
   };
   const overviewMappingCandidates = resultMappingCandidates(profile.sqlOverview || '');
+  const unit = mapUnit(profile.meta['计量单位'], indicator);
+  const valueType = unit === 'ratio'
+    ? 'rate_ratio'
+    : /中位数/.test(indicator.formula || '') ? 'median_duration' : 'percentage';
+  const targetMatch = String(profile.meta['目标值'] || '').match(/-?\d+(?:\.\d+)?/);
+  const targetValue = targetMatch ? Number(targetMatch[0]) : null;
+  const targetDirection = mapDirection(profile.meta['指标导向']) === 'lower_is_better'
+    ? '<=' : '>=';
   return {
     profile_id: profileId,
     profile_name: profile.title,
@@ -620,6 +732,13 @@ function runtimeProfile(indicator, profile) {
     patient_scope: mapPatientScope(profile.meta['患者范围']),
     dedup_key: 'encounter_id',
     direction: mapDirection(profile.meta['指标导向']),
+    extraction_contract: extractionContract(indicator, profile),
+    result_contract: {
+      value_type: valueType,
+      unit,
+      target_value: targetValue,
+      target_direction: targetDirection,
+    },
     numerator_rule: numeratorRule,
     numerator_caliber: profile.numeratorCaliber,
     denominator_rule: denominatorRule,
@@ -672,8 +791,21 @@ function runtimeProfile(indicator, profile) {
         real: { metadata_status: 'unverified', compile_status: 'unverified' },
       },
       overview_result_mapping: {
-        numerator_count: overviewMappingCandidates.numerator_count || '',
-        denominator_count: overviewMappingCandidates.denominator_count || '',
+        ...(valueType === 'rate_ratio' ? {
+          index_value: overviewMappingCandidates.index_value || '',
+          component_left: overviewMappingCandidates.component_left || '',
+          component_right: overviewMappingCandidates.component_right || '',
+        } : valueType === 'median_duration' ? {
+          index_value: overviewMappingCandidates.index_value || '',
+          sample_count: overviewMappingCandidates.sample_count || '',
+          target_value: overviewMappingCandidates.target_value || '',
+        } : {
+          numerator_count: overviewMappingCandidates.numerator_count || '',
+          denominator_count: overviewMappingCandidates.denominator_count || '',
+        }),
+        ...(overviewMappingCandidates.target_value ? {
+          target_value: overviewMappingCandidates.target_value,
+        } : {}),
       },
       department_comparison_key: '',
       patient_comparison_key: '',
@@ -716,15 +848,31 @@ function runtimeProfile(indicator, profile) {
 function runtimeManifest(indicator) {
   const profiles = indicator.profiles.map(profile => runtimeProfile(indicator, profile));
   const defaultProfile = profiles.find(profile => profile.execution_status !== 'draft');
+  const formula = indicator.ruleId === 'HXZD-012-001'
+    ? [
+      '四级手术并发症发生率 = 四级手术并发症患者数 ÷ 四级手术患者数',
+      '三级手术并发症发生率 = 三级手术并发症患者数 ÷ 三级手术患者数',
+      '最终结果 = 四级手术并发症发生率 ÷ 三级手术并发症发生率',
+      '三级手术并发症发生率为0时结果为无样本；同一患者三级、四级手术均发生并发症时按审批口径归入四级',
+    ].join('\n')
+    : indicator.ruleId === 'HXZD-012-002'
+      ? [
+        '四级手术患者死亡率 = 四级手术死亡患者数 ÷ 四级手术患者数',
+        '三级手术患者死亡率 = 三级手术死亡患者数 ÷ 三级手术患者数',
+        '最终结果 = 四级手术患者死亡率 ÷ 三级手术患者死亡率',
+        '三级手术患者死亡率为0时结果为无样本',
+      ].join('\n')
+      : indicator.formula;
   return {
     schema_version: 'hxzd-runtime-v2',
     rule_id: indicator.ruleId,
     rule_name: indicator.title,
     category: indicator.systemName,
     definition: indicator.definition,
-    formula: indicator.formula,
+    formula,
     note: indicator.note,
     significance: indicator.significance,
+    unit: mapUnit(indicator.profiles[0]?.meta['计量单位'], indicator),
     // 草稿方案只保留为知识来源，不能被运行时当成当前生效口径。
     default_profile: defaultProfile?.profile_id || null,
     profiles,
@@ -780,7 +928,7 @@ function generateIndicatorPage(indicator) {
 
   const keywords = extractKeywords(indicator);
   const direction = mapDirection(indicator.profiles[0]?.meta['指标导向']);
-  const unit = mapUnit(indicator.profiles[0]?.meta['计量单位']);
+  const unit = mapUnit(indicator.profiles[0]?.meta['计量单位'], indicator);
 
   const fm = [
     '---',
@@ -1075,9 +1223,14 @@ function mapDirection(raw) {
   return 'lower_is_better';
 }
 
-function mapUnit(raw) {
+function mapUnit(raw, indicator = null) {
   if (!raw) return 'percentage';
   if (raw.includes('百分比') || raw.includes('%')) return 'percentage';
+  const target = String(indicator?.profiles?.[0]?.meta?.['目标值'] || '');
+  if (raw.includes('分钟') || target.includes('分钟')
+      || (raw.includes('数值') && /报告时间|中位数/.test(indicator?.formula || ''))) {
+    return 'minutes';
+  }
   if (raw.includes('天') || raw.includes('日') || raw.includes('时间')) return 'days';
   if (raw.includes('次') || raw.includes('人')) return 'count';
   if (raw.includes('比')) return 'ratio';

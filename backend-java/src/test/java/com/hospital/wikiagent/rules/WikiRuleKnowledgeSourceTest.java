@@ -18,7 +18,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 class WikiRuleKnowledgeSourceTest {
     private final WikiRuleKnowledgeSource source = new WikiRuleKnowledgeSource(
-            Path.of("..", "core-rules-wiki").toString(), new ObjectMapper());
+            Path.of("src", "main", "resources", "core-rules-wiki").toString(),
+            new ObjectMapper());
 
     @Test
     void readsStaticOverviewReferenceWithoutPretendingProductionContractIsComplete() {
@@ -35,6 +36,10 @@ class WikiRuleKnowledgeSourceTest {
         assertThat(rule.get("overview_runtime_eligible")).isEqualTo(false);
         assertThat(rule.get("numerator_rule")).isEqualTo("入院48小时内转科患者人次数");
         assertThat(rule.get("denominator_rule")).isEqualTo("同期入院患者总人次数");
+        assertThat(rule.get("filter_rule")).asString().isBlank();
+        assertThat(rule.get("exclude_rule")).asString().isBlank();
+        assertThat(((Map<?, ?>) rule.get("calculation_definition")).get("exclusions"))
+                .asString().isBlank();
     }
 
     @Test
@@ -66,18 +71,84 @@ class WikiRuleKnowledgeSourceTest {
     }
 
     @Test
-    void hospitalReleaseOverridesCompanyDocumentationProfile() {
+    void hospitalReleaseOverridesCompanyDocumentationProfile() throws IOException {
         Map<String, Object> rule = source.effectiveRule(
                 "患者入院 48 小时内转科的比例", "hospital_001");
+        Map<?, ?> pointer = new ObjectMapper().readValue(
+                Path.of("src", "main", "resources", "core-rules-wiki",
+                        "pointers", "hospitals",
+                        "hospital_001-current.json").toFile(),
+                Map.class);
 
         assertThat(rule)
                 .containsEntry("execution_status", "executable")
                 .containsEntry("sql_status", "available")
-                .containsEntry("knowledge_release_id",
-                        "KB-20260726-HOSPITAL001-DUALDB");
+                .containsEntry("knowledge_release_id", pointer.get("release_id"));
         assertThat(rule.get("standard_sql")).asString().contains("MRAS_BUSINESS_FIRSTVISIT");
         assertThat(source.fieldMapping("HXZD-001-001", "hospital_001"))
                 .containsEntry("status", "confirmed");
+    }
+
+    @Test
+    void currentHospitalReleasePublishesFortyTwoApprovedExtractionContracts() {
+        var indicators = source.activeIndicatorNames("hospital_001", 100);
+        var profiles = indicators.stream()
+                .flatMap(indicator -> source.caliberProfiles(
+                        indicator.get("rule_id"), "hospital_001").stream())
+                .toList();
+
+        assertThat(indicators).hasSize(35);
+        assertThat(profiles).hasSize(42);
+        assertThat(profiles).allSatisfy(profile -> {
+            Map<?, ?> contract = (Map<?, ?>) profile.get("extraction_contract");
+            assertThat(contract.get("route")).isIn("EVENT", "TABLE_DOMAIN");
+            assertThat(contract.get("database_name")).isEqualTo("winex_aima");
+            assertThat(contract.get("schema_name")).isEqualTo("dbo");
+            assertThat(contract.get("target_tables")).asList().isNotEmpty();
+            assertThat(contract.get("allowed_result_fields")).isInstanceOf(Map.class);
+            assertThat(contract.get("target_schema_fingerprints")).isInstanceOf(Map.class);
+        });
+        assertThat(profiles.stream()
+                .map(profile -> (Map<?, ?>) profile.get("extraction_contract"))
+                .filter(contract -> "EVENT".equals(contract.get("route"))))
+                .hasSize(40);
+        assertThat(profiles.stream()
+                .map(profile -> (Map<?, ?>) profile.get("extraction_contract"))
+                .filter(contract -> "TABLE_DOMAIN".equals(contract.get("route"))))
+                .hasSize(2);
+    }
+
+    @Test
+    void explicitScalarOverviewMappingIsNotPollutedByGeneratedCandidates() {
+        Map<String, Object> rule = source.effectiveRule(
+                "HXZD-012-001", "hospital_001");
+        Map<?, ?> contract = (Map<?, ?>) rule.get("dual_database_contract");
+        Map<?, ?> mapping = (Map<?, ?>) contract.get("overview_result_mapping");
+
+        assertThat(mapping.get("index_value")).isEqualTo("index_value");
+        assertThat(mapping.get("component_left"))
+                .isEqualTo("分子-四级手术并发症发生率");
+        assertThat(mapping.get("component_right"))
+                .isEqualTo("分母-三级手术并发症发生率");
+        assertThat(mapping.containsKey("numerator_count")).isFalse();
+        assertThat(mapping.containsKey("denominator_count")).isFalse();
+        assertThat(rule.get("result_unit")).isEqualTo("ratio");
+    }
+
+    @Test
+    void medianMetricPublishesMinuteResultContractAndTargetMapping() {
+        Map<String, Object> rule = source.effectiveRule(
+                "HXZD-014-001", "hospital_001");
+        Map<?, ?> resultContract = (Map<?, ?>) rule.get("result_contract");
+        Map<?, ?> dual = (Map<?, ?>) rule.get("dual_database_contract");
+        Map<?, ?> mapping = (Map<?, ?>) dual.get("overview_result_mapping");
+
+        assertThat(rule.get("result_unit")).isEqualTo("minutes");
+        assertThat(resultContract.get("value_type")).isEqualTo("median_duration");
+        assertThat(resultContract.get("target_value")).isEqualTo(5);
+        assertThat(mapping.get("index_value")).isEqualTo("监测情况");
+        assertThat(mapping.get("sample_count")).isEqualTo("sample_count");
+        assertThat(mapping.get("target_value")).isEqualTo("目标值");
     }
 
     @Test

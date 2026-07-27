@@ -44,9 +44,14 @@ function choose(option: AgentClarificationOption) {
     emit('submit', [option.value])
     return
   }
-  selected.value = selected.value.includes(option.id)
-    ? selected.value.filter((id) => id !== option.id)
-    : [...selected.value, option.id]
+  if (option.id === 'indicator:all') {
+    selected.value = selected.value.includes(option.id) ? [] : [option.id]
+    return
+  }
+  const withoutAll = selected.value.filter((id) => id !== 'indicator:all')
+  selected.value = withoutAll.includes(option.id)
+    ? withoutAll.filter((id) => id !== option.id)
+    : [...withoutAll, option.id]
 }
 
 function submitMultiple() {

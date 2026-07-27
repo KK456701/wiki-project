@@ -6,7 +6,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -105,12 +104,8 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
-    void llmMayOnlyChooseAnAllowlistedCandidate() {
+    void lowConfidenceCandidatesRequireUserChoiceWithoutCallingLlm() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
-        when(models.complete(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(Duration.class)))
-                .thenReturn(new AgentModelInvoker.ModelCompletion(
-                        "ollama-test",
-                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"RULE_1\"}]}"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -119,18 +114,16 @@ class HybridIndicatorResolverTest {
                 "急会诊及时率怎么算", "hospital_001", "ollama-test",
                 "trace-4", "root", AgentRunObserver.noop());
 
-        assertThat(result.usedLlm()).isTrue();
-        assertThat(result.indicators()).extracting("ruleId").containsExactly("RULE_1");
-        assertThat(result.indicators().get(0).source()).isEqualTo("llm_disambiguation");
+        assertThat(result.usedLlm()).isFalse();
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
+        assertThat(result.ambiguities().get(0).candidates()).hasSize(2);
+        verifyNoInteractions(models);
     }
 
     @Test
     void inventedRuleIdIsRejectedAndLeavesClarification() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
-        when(models.complete(anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(Duration.class)))
-                .thenReturn(new AgentModelInvoker.ModelCompletion(
-                        "ollama-test",
-                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"INVENTED\"}]}"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -141,6 +134,7 @@ class HybridIndicatorResolverTest {
 
         assertThat(result.indicators()).isEmpty();
         assertThat(result.needsClarification()).isTrue();
+        verifyNoInteractions(models);
     }
 
     private static Fixture fixture(

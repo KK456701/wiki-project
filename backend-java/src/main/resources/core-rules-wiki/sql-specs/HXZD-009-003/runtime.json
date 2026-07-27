@@ -1,0 +1,271 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-009-003",
+  "rule_name": "科主任主持死亡病例讨论率",
+  "category": "死亡病例讨论制度",
+  "definition": "死亡病例讨论由科主任主持的病例数量占同期死亡病例总数量的比例。",
+  "formula": "分子：死亡病例讨论由科主任主持的病例数量\n分母：同期死亡病例总数量\n公式：死亡病例讨论由科主任主持的病例数量 / 同期死亡病例总数量 * 100%",
+  "note": "——",
+  "significance": "反映死亡病例讨论制度落实和管理情况。",
+  "default_profile": "HXZD-009-003-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-009-003-company-default",
+      "profile_name": "推荐方案：科主任数据来源：死亡讨论记录病历模板限制主持人只能选科主任（需现场调整病历模板）",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "死亡病例讨论由科主任主持的病例数量",
+      "numerator_caliber": "单位时间内死亡的患者数，完成死亡病例讨论记录数量（需要病历模板中“主持人”下拉限定只能选择科主任）。",
+      "denominator_rule": "同期死亡病例总数量",
+      "denominator_caliber": "1、单位时间内死亡的患者数\n2、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/overview.sql",
+        "department": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "cast",
+            "dateadd",
+            "datepart",
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "733c4cc405d85de5ba4015b8175f9d4e6a64d0bb79a605cd69a01b427eb4d9d7"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "096a28dd0fa671bec906255e364abc7eb59282f54788bb75da7ea50b6d3b013e"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "cb37b73e77a7317e3839d6483155d17444091cb284c050e54e404a91ded229d1"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "6acc02ec01667260e97fbe332e1e8383a920abaee55a4d2535283f6336fe1909"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    },
+    {
+      "profile_id": "HXZD-009-003-company-candidate-01",
+      "profile_name": "可选方案：科主任数据来源：统一配置行政职务包含“主任”",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "death_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "死亡病例讨论由科主任主持的病例数量",
+      "numerator_caliber": "单位时间内死亡的患者数，死亡病例讨论记录主持人为科主任的数量。（根据医师工号查询其业务单元是否有对应科室的“主任”职务）",
+      "denominator_rule": "同期死亡病例总数量",
+      "denominator_caliber": "1、单位时间内死亡的患者数\n2、取病案首页中转归情况=死亡，死亡时间取病案中的出院时间",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/etl_source.sql",
+        "overview": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/overview.sql",
+        "department": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/department.sql",
+        "patient_detail": "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_char、trunc"
+          ],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "row_number",
+            "to_char",
+            "trunc"
+          ],
+          "unknown_functions": [
+            "to_char",
+            "trunc"
+          ],
+          "normalized_sha256": "5cd27dc7e898eee8cf1a96aee10e147ffe99f6d8921a08a9611e2f1cb6641553"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "096a28dd0fa671bec906255e364abc7eb59282f54788bb75da7ea50b6d3b013e"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "cb37b73e77a7317e3839d6483155d17444091cb284c050e54e404a91ded229d1"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "6acc02ec01667260e97fbe332e1e8383a920abaee55a4d2535283f6336fe1909"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_DEATH",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

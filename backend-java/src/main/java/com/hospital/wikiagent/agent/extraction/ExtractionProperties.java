@@ -13,6 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "wiki.agent.extraction")
 public class ExtractionProperties {
     private Mode mode = Mode.DISABLED;
+    private Long hospitalSoid;
 
     public Mode getMode() {
         return mode;
@@ -24,6 +25,14 @@ public class ExtractionProperties {
 
     public boolean required() {
         return mode == Mode.REQUIRED;
+    }
+
+    public Long getHospitalSoid() {
+        return hospitalSoid;
+    }
+
+    public void setHospitalSoid(Long hospitalSoid) {
+        this.hospitalSoid = hospitalSoid;
     }
 
     public enum Mode {

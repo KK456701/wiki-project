@@ -226,7 +226,8 @@ public class CapabilitySpecRegistry {
                         Set.of("caliber_sql_validation"), Set.of("caliber_trial_result"),
                         "trial_run_indicator_caliber_sql",
                         CapabilitySpecRegistry::caliberTrialArguments, "caliber_trial_result"),
-                spec(PlanCapability.DIAGNOSE_INDICATOR, Set.of("effective_rule", "implementation_status"),
+                spec(PlanCapability.DIAGNOSE_INDICATOR,
+                        Set.of("effective_rule", "implementation_status", "stat_period"),
                         Set.of("diagnosis"), "diagnose_indicator_issue",
                         CapabilitySpecRegistry::diagnosisArguments, "diagnosis"),
                 spec(PlanCapability.DIAGNOSE_INDICATOR_DIFFERENCE,
@@ -293,7 +294,13 @@ public class CapabilitySpecRegistry {
 
     private static Map<String, Object> ruleReference(
             PlanningExecution execution, AgentRunState state, String userMessage) {
-        return Map.of("rule_id", resolveRuleId(execution, state));
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", resolveRuleId(execution, state));
+        String profileId = execution.requestPlan().targetCaliber().profileId();
+        if (profileId != null && !profileId.isBlank()) {
+            values.put("profile_id", profileId);
+        }
+        return values;
     }
 
     private static Map<String, Object> sqlArguments(
@@ -303,10 +310,15 @@ public class CapabilitySpecRegistry {
             throw new CapabilityDispatchException(
                     "STAT_PERIOD_MISSING", "请明确需要统计的开始时间和结束时间。", true);
         }
-        return Map.of(
-                "rule_id", resolveRuleId(execution, state),
-                "stat_start_time", period.startTime().toString(),
-                "stat_end_time", period.endTime().toString());
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", resolveRuleId(execution, state));
+        values.put("stat_start_time", period.startTime().toString());
+        values.put("stat_end_time", period.endTime().toString());
+        String profileId = execution.requestPlan().targetCaliber().profileId();
+        if (profileId != null && !profileId.isBlank()) {
+            values.put("profile_id", profileId);
+        }
+        return values;
     }
 
     private static Map<String, Object> trialArguments(
@@ -371,6 +383,10 @@ public class CapabilitySpecRegistry {
         values.put("issue_description", userMessage == null || userMessage.isBlank()
                 ? "请排查当前指标异常。"
                 : userMessage.strip());
+        String profileId = execution.requestPlan().targetCaliber().profileId();
+        if (profileId != null && !profileId.isBlank()) {
+            values.put("profile_id", profileId);
+        }
         if (execution.validation().resolvedTime() != null) {
             values.put("stat_period",
                     execution.validation().resolvedTime().startTime() + "~"

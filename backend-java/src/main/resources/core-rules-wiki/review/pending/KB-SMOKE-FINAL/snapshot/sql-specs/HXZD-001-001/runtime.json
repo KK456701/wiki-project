@@ -1,0 +1,143 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-001-001",
+  "rule_name": "患者入院48小时内转科的比例",
+  "category": "首诊负责制度",
+  "definition": "入院48小时内转科患者人次数占同期入院患者总人次数的比例。",
+  "formula": "分子：入院48小时内转科患者人次数\n分母：同期入院患者总人次数\n公式：入院48小时内转科患者人次数/同期入院患者总人次数 * 100%",
+  "note": "本指标不包括患者转入/转出ICU的情况。",
+  "significance": "反映首诊医师和首诊科室对患者病情评估的充分性。",
+  "default_profile": "HXZD-001-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-001-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "入院48小时内转科患者人次数",
+      "numerator_caliber": "1、统计患者入区时间在48小时内发生转科的患者人数，按人数统计，一个人48小时多次转科，算1次（不包括患者转入/转出ICU的情况）\n2、转科数据：取护士住院转科表转出数据，不包含转区数据。（该表数据为护士操作确认转科/转区后生成的）\n3、转科定义：患者流转类型=转科，或流转类型=转区（转入科室≠转出科室），即转科前后科室不相同。",
+      "denominator_rule": "同期入院患者总人次数",
+      "denominator_caliber": "单位时间内入区的患者总人次",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "coalesce",
+            "datediff",
+            "getdate",
+            "row_number"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "b5e5e4eedb8da63212a9ea331e95e2c8c2e1bde8f66f44c81553c975a4c78cf4"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "74b17c9029fb052c3ad69207f8fc384bf6196721aeb104b23a9a8a308ac99a3d"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "99031c22225d4d9da42c9e501fb915433d204e8a8efdd6c6126c05bbfc978083"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6099c3d94862f47aeb01e6c7bf84e6bcd5e17fecdecfb06fd81ad21ba5c07cdf"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_FIRSTVISIT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

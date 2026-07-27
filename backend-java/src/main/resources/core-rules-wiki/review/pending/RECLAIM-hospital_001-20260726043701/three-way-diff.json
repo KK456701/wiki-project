@@ -1,0 +1,8 @@
+{
+  "schema_version": "hospital-knowledge-three-way-diff-v1",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "current_company_release_id": "KB-20260726-7e71f92e431a",
+  "base_version_conflict": false,
+  "differences": []
+}

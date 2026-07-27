@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 /**
- * 服务端确定性拆分 2～3 个并列指标；不让 Planner 决定子任务数量。
+ * 服务端确定性拆分 2～35 个并列指标；不让 Planner 决定子任务数量。
  *
  * <p>该类型在所属包边界内完成单一领域职责，并通过构造器显式接收依赖。涉及外部 I/O、权限或患者数据时，必须复用现有网关和安全对象，不能在此处建立旁路。</p>
  */
@@ -77,14 +77,23 @@ public class CompoundRequestSplitter {
             RequestKind kind = classify(input, recentHistory);
             String time = extractTime(input);
             List<SubtaskSpec> tasks = new ArrayList<>();
-            for (int index = 0; index < Math.min(3, resolvedIndicators.size()); index++) {
+            for (int index = 0; index < Math.min(35, resolvedIndicators.size()); index++) {
                 var resolved = resolvedIndicators.get(index);
                 tasks.add(new SubtaskSpec(
                         index + 1, resolved.canonicalName(),
-                        childQuery(resolved.canonicalName(), kind, time), resolved));
+                        childQuery(resolved.canonicalName(), kind, time, input), resolved));
             }
             boolean serial = SERIAL_TERMS.stream().anyMatch(input::contains);
             return new SplitResult(List.copyOf(tasks), kind, time, serial, false);
+        }
+        /*
+         * 正式指标名可能天然包含“和/与”，例如
+         * “四级手术与三级手术并发症发生率比”。Resolver 已经把完整正式名称
+         * 识别为唯一指标时，不能再次用通用连接词拆分器破坏这个结论。
+         */
+        if (resolvedIndicators != null && resolvedIndicators.size() == 1
+                && containsCanonicalName(input, resolvedIndicators.get(0).canonicalName())) {
+            return SplitResult.none();
         }
         List<String> clauses = explicitClauses(input);
         boolean followup = false;
@@ -121,7 +130,8 @@ public class CompoundRequestSplitter {
         List<SubtaskSpec> tasks = new ArrayList<>();
         for (int index = 0; index < clauses.size(); index++) {
             String target = followup ? clauses.get(index) : target(clauses.get(index));
-            tasks.add(new SubtaskSpec(index + 1, target, childQuery(target, kind, time), null));
+            tasks.add(new SubtaskSpec(
+                    index + 1, target, childQuery(target, kind, time, input), null));
         }
         boolean serial = SERIAL_TERMS.stream().anyMatch(input::contains);
         return new SplitResult(List.copyOf(tasks), kind, time, serial, followup);
@@ -137,7 +147,7 @@ public class CompoundRequestSplitter {
                     .filter(name -> name != null && !name.isBlank() && query.contains(name))
                     .distinct()
                     .sorted(java.util.Comparator.comparingInt(query::indexOf))
-                    .limit(3)
+                    .limit(35)
                     .toList();
         } catch (RuntimeException exception) {
             return List.of();
@@ -153,7 +163,7 @@ public class CompoundRequestSplitter {
                 clauses.add(clause);
             }
         }
-        if (clauses.size() < 2 || clauses.size() > 3
+        if (clauses.size() < 2 || clauses.size() > 35
                 || clauses.stream().anyMatch(value -> !looksLikeIndicator(value))) {
             return List.of();
         }
@@ -173,12 +183,20 @@ public class CompoundRequestSplitter {
             return List.of();
         }
         List<String> result = new ArrayList<>(values);
-        return List.copyOf(result.subList(Math.max(0, result.size() - 3), result.size()));
+        return List.copyOf(result.subList(Math.max(0, result.size() - 35), result.size()));
     }
 
     private static boolean looksLikeIndicator(String value) {
         String compact = value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
         return INDICATOR_HINTS.stream().anyMatch(compact::contains);
+    }
+
+    private static boolean containsCanonicalName(String query, String canonicalName) {
+        if (query == null || canonicalName == null || canonicalName.isBlank()) {
+            return false;
+        }
+        return query.replaceAll("\\s+", "")
+                .contains(canonicalName.replaceAll("\\s+", ""));
     }
 
     /**
@@ -191,7 +209,9 @@ public class CompoundRequestSplitter {
         }
         LinkedHashSet<String> valid = new LinkedHashSet<>();
         for (String value : rememberedTargets) {
-            if (value != null && !value.isBlank() && looksLikeIndicator(value)) {
+            // rememberedTargets 只由已解析的正式指标目录写入，不再用“率/比例”等
+            // 文本启发式二次过滤，否则“危急值报告时间”这类标量指标会在续问中丢失。
+            if (value != null && !value.isBlank()) {
                 valid.add(value.strip());
             }
         }
@@ -199,7 +219,7 @@ public class CompoundRequestSplitter {
             return List.of();
         }
         List<String> result = new ArrayList<>(valid);
-        return List.copyOf(result.subList(0, Math.min(3, result.size())));
+        return List.copyOf(result.subList(0, Math.min(35, result.size())));
     }
 
     /**
@@ -235,6 +255,13 @@ public class CompoundRequestSplitter {
         // 也应试运行而非仅生成 SQL；但“怎么写/如何写/生成”仍属于 SQL 准备。
         if (List.of("执行", "运行", "跑").stream().anyMatch(context::contains)
                 && List.of("怎么写", "如何写", "生成").stream().noneMatch(context::contains)) {
+            return RequestKind.TRIAL_RUN;
+        }
+        // 当前句明确要求“计算”时必须覆盖上一轮的 SQL 意图。只有“怎么算/如何计算”
+        // 这类口径问法仍按解释处理。
+        if (compact.contains("计算")
+                && !compact.contains("怎么计算")
+                && !compact.contains("如何计算")) {
             return RequestKind.TRIAL_RUN;
         }
         if (context.contains("sql")) {
@@ -276,14 +303,41 @@ public class CompoundRequestSplitter {
         return matcher.find() ? matcher.group().strip() : null;
     }
 
-    private static String childQuery(String target, RequestKind kind, String time) {
+    private static String childQuery(
+            String target, RequestKind kind, String time, String originalQuery) {
         String period = time == null ? "" : "，统计周期" + time;
         return switch (kind) {
             case SQL_PREPARE -> "生成“" + target + "”的受控 SQL" + period;
             case DIAGNOSIS -> "诊断“" + target + "”的异常或差异原因" + period;
             case TRIAL_RUN -> "计算“" + target + "”的具体结果" + period;
-            case RULE_EXPLANATION -> "解释“" + target + "”的定义、公式和本院口径";
+            case RULE_EXPLANATION -> explanationChildQuery(target, originalQuery);
         };
+    }
+
+    private static String explanationChildQuery(String target, String originalQuery) {
+        String compact = originalQuery == null
+                ? "" : originalQuery.replaceAll("\\s+", "");
+        if (compact.contains("口径")
+                && List.of("分子", "分母", "排除", "剔除", "去重", "时间字段", "统计时间")
+                        .stream().noneMatch(compact::contains)) {
+            return "解释“" + target + "”的当前口径";
+        }
+        List<String> focuses = new ArrayList<>();
+        if (compact.contains("定义") || compact.contains("含义")) focuses.add("定义");
+        if (compact.contains("公式") || compact.contains("怎么算")
+                || compact.contains("如何计算")) focuses.add("公式");
+        if (compact.contains("分子")) focuses.add("分子");
+        if (compact.contains("分母")) focuses.add("分母");
+        if (compact.contains("排除") || compact.contains("剔除")) focuses.add("排除条件");
+        if (compact.contains("去重")) focuses.add("去重规则");
+        if (compact.contains("时间字段") || compact.contains("统计时间")) {
+            focuses.add("统计时间字段");
+        }
+        if (compact.contains("版本") || compact.contains("适用范围")) focuses.add("版本和适用范围");
+        if (focuses.isEmpty()) {
+            return "解释“" + target + "”的当前口径";
+        }
+        return "解释“" + target + "”的" + String.join("、", focuses);
     }
 
     public enum RequestKind {

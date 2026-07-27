@@ -1,0 +1,209 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-007-001",
+  "rule_name": "急危重症患者抢救成功率",
+  "category": "急危重患者抢救制度",
+  "definition": "急危重症患者抢救成功的例次数占同期急危重症患者抢救的总例次数的比例。",
+  "formula": "分子：急危重症患者抢救成功的例次数\n分母：同期急危重症患者抢救的总例次数\n公式：急危重症患者抢救成功的例次数 / 同期急危重症患者抢救的总例次数 * 100%",
+  "note": "本指标中抢救成功指急危重患者经抢救后存活超过24小时或存活至下一次抢救开始。",
+  "significance": "反映急危重症患者救治质量。",
+  "unit": "percentage",
+  "default_profile": "HXZD-007-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-007-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 95,
+        "target_direction": ">="
+      },
+      "numerator_rule": "急危重症患者抢救成功的例次数",
+      "numerator_caliber": "单位时间内抢救成功的患者人次（取病案中的抢救成功次数）",
+      "denominator_rule": "同期急危重症患者抢救的总例次数",
+      "denominator_caliber": "单位时间内出区且发生抢救的患者次数（取病案中的抢救次数，一个患者多次抢救，算多次）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "marptBeginAt",
+        "marptEndAt"
+      ],
+      "parameter_contract": {
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子急危重症患者抢救成功的例次数",
+        "denominator_count": "分母同期急危重症患者抢救的总例次数",
+        "index_value": "监测情况",
+        "component_left": "分子急危重症患者抢救成功的例次数",
+        "component_right": "分母同期急危重症患者抢救的总例次数",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [],
+          "functions": [
+            "getdate"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "edeb0b837086d18bb1c1620cc893d4cc97f9c261a1808c3b58e433aae45fe8e4"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "393813b947200ac8bb9bf137a7659f5b8ab42ae66851037d76b28eca5d30bcc4"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "max",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "51756eafd40bc1dce36f04f4945b43985e93a5b12bba547ab91bb8077feed95a"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "cdcee1e2ce4c17358f51a7e439ed2ef069931ff61d88cdb9f08c8f10c148da4f"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "edeb0b837086d18bb1c1620cc893d4cc97f9c261a1808c3b58e433aae45fe8e4",
+            "overview": "393813b947200ac8bb9bf137a7659f5b8ab42ae66851037d76b28eca5d30bcc4",
+            "department_detail": "51756eafd40bc1dce36f04f4945b43985e93a5b12bba547ab91bb8077feed95a",
+            "patient_detail": "cdcee1e2ce4c17358f51a7e439ed2ef069931ff61d88cdb9f08c8f10c148da4f"
+          },
+          "real": {
+            "source_extract": "edeb0b837086d18bb1c1620cc893d4cc97f9c261a1808c3b58e433aae45fe8e4",
+            "overview": "393813b947200ac8bb9bf137a7659f5b8ab42ae66851037d76b28eca5d30bcc4",
+            "department_detail": "51756eafd40bc1dce36f04f4945b43985e93a5b12bba547ab91bb8077feed95a",
+            "patient_detail": "cdcee1e2ce4c17358f51a7e439ed2ef069931ff61d88cdb9f08c8f10c148da4f"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子急危重症患者抢救成功的例次数",
+          "denominator_count": "分母同期急危重症患者抢救的总例次数",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_PATRESCUE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

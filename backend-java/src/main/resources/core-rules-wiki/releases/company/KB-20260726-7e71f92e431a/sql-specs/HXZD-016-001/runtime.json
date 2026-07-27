@@ -1,0 +1,139 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-016-001",
+  "rule_name": "临床用血后评估记录率",
+  "category": "临床用血审核制度",
+  "definition": "输血治疗后规范书写评估输血记录例次数占同期临床输血治疗病例总例次数的比例。",
+  "formula": "分子：输血治疗后规范书写评估输血记录例次数\n分母：同期临床输血治疗病例总例次数\n公式：输血治疗后规范书写评估输血记录例次数 / 同期临床输血治疗病例总例次数 * 100%",
+  "note": "——",
+  "significance": "反映临床用血治疗的规范性。",
+  "default_profile": "HXZD-016-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-016-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "输血治疗后规范书写评估输血记录例次数",
+      "numerator_caliber": "1、单位时间内用血的患者中，完成用血记录的数量\n2、取病历文书中监控类型=输血病程记录的数据",
+      "denominator_rule": "同期临床输血治疗病例总例次数",
+      "denominator_caliber": "1、单位时间内用血医嘱总数\n2、说明：备血和用血都是属于用血医嘱，需要通过关联关系去重\n3、不包含已失效和已作废的医嘱",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "end_time",
+        "start_time"
+      ],
+      "parameter_contract": {
+        "end_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "start_time": {
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "getdate",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "4b5444aee2cd8c04d5d5f8be44b1f1c786edc3452d944e5dc196a0a8d61206c7"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "486ccda525732a10ec0862723b70b62f878d4eeed1d52456ada01f3948bb09bc"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "18f9f9f8067714ec85730b3338261306f321a79683732c39a7eb5c87ef9618b7"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "end_time",
+            "start_time"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "8b4437d211c31ed444e0f6e384985e95a26c86ba7021e1b04b013ed8bb5b5c4b"
+        }
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "db_name": "winex_aima",
+        "main_table": "MRAS_BUSINESS_BLOOD_AUDIT",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": ""
+      }
+    }
+  ],
+  "quality_checks": []
+}

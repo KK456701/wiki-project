@@ -44,6 +44,7 @@ public class AgentConversationMemory {
     // 上一轮复合澄清确认的整批指标名，按存储键记住。历史 ## 小节被长 SQL 挤掉时，
     // 供拆分器在纯时间补充/指代追问下重新展开为复合，避免退化成单指标。
     private final Map<String, List<String>> compoundTargets = new ConcurrentHashMap<>();
+    private final Map<String, QueryScopeState> queryScopes = new ConcurrentHashMap<>();
 
     @Autowired
     public AgentConversationMemory(JdbcTemplate jdbc, ObjectMapper objectMapper,
@@ -110,6 +111,13 @@ public class AgentConversationMemory {
                       target_name VARCHAR(255) NOT NULL,
                       created_at VARCHAR(40) NOT NULL,
                       PRIMARY KEY (session_key, position)
+                    )
+                    """);
+            jdbc.execute("""
+                    CREATE TABLE IF NOT EXISTS med_agent_query_scope (
+                      session_key VARCHAR(512) PRIMARY KEY,
+                      scope_json TEXT NOT NULL,
+                      updated_at VARCHAR(40) NOT NULL
                     )
                     """);
         } catch (Exception exception) {
@@ -179,6 +187,7 @@ public class AgentConversationMemory {
                 ruleId, ruleName, caliberProfileId, caliberLabel,
                 statStart, statEnd, runId, uploadFileKey,
                 loadCompoundTargets(key),
+                loadQueryScope(key),
                 buildEvidenceContext(principal.hospitalId(), ruleId));
     }
 
@@ -216,7 +225,7 @@ public class AgentConversationMemory {
      * 记住本轮复合澄清确认的整批指标名，供后续纯时间补充/指代追问重新展开为复合。
      *
      * <p>只保存指标名文本（安全字段），不保存 SQL 或患者数据；少于 2 个指标不记录，
-     * 单指标会话不会被误判为复合。最多保留 3 个，与拆分器硬上限一致。</p>
+     * 单指标会话不会被误判为复合。最多保留 35 个，与当前医院活跃指标上限一致。</p>
      */
     public void rememberCompoundTargets(ConversationSnapshot conversation, List<String> targets) {
         if (conversation == null || targets == null) {
@@ -227,7 +236,7 @@ public class AgentConversationMemory {
             if (target != null && !target.isBlank()) {
                 cleaned.add(target.strip());
             }
-            if (cleaned.size() >= 3) {
+            if (cleaned.size() >= 35) {
                 break;
             }
         }
@@ -235,6 +244,58 @@ public class AgentConversationMemory {
             compoundTargets.put(conversation.storageKey(), List.copyOf(cleaned));
             persistCompoundTargets(conversation.storageKey(), cleaned);
         }
+    }
+
+    /**
+     * 保存最近一次确定执行的操作、指标范围和统计区间。批量续问只消费这份结构态，
+     * 不从自然语言历史猜测“全部指标”或若干指标。
+     */
+    public void rememberQueryScope(
+            ConversationSnapshot conversation, QueryScopeState scope) {
+        if (conversation == null || scope == null || !scope.valid()) {
+            return;
+        }
+        QueryScopeState normalized = scope.normalized();
+        queryScopes.put(conversation.storageKey(), normalized);
+        if (jdbc == null || objectMapper == null) {
+            return;
+        }
+        try {
+            String json = objectMapper.writeValueAsString(normalized);
+            jdbc.update("DELETE FROM med_agent_query_scope WHERE session_key = ?",
+                    conversation.storageKey());
+            jdbc.update("""
+                    INSERT INTO med_agent_query_scope (session_key, scope_json, updated_at)
+                    VALUES (?, ?, ?)
+                    """, conversation.storageKey(), json, Instant.now().toString());
+        } catch (Exception exception) {
+            LOGGER.warn("Unable to persist query scope for session key hash={}: {}",
+                    Integer.toHexString(conversation.storageKey().hashCode()),
+                    exception.getMessage());
+        }
+    }
+
+    private QueryScopeState loadQueryScope(String key) {
+        if (jdbc != null && objectMapper != null) {
+            try {
+                List<String> rows = jdbc.query(
+                        "SELECT scope_json FROM med_agent_query_scope WHERE session_key = ?",
+                        (result, row) -> result.getString("scope_json"), key);
+                if (!rows.isEmpty()) {
+                    QueryScopeState value =
+                            objectMapper.readValue(rows.get(0), QueryScopeState.class);
+                    if (value != null && value.valid()) {
+                        QueryScopeState normalized = value.normalized();
+                        queryScopes.put(key, normalized);
+                        return normalized;
+                    }
+                }
+            } catch (Exception exception) {
+                LOGGER.warn("Unable to load query scope for session key hash={}: {}",
+                        Integer.toHexString(key.hashCode()), exception.getMessage());
+            }
+        }
+        return queryScopes.get(key);
     }
 
     /**
@@ -467,8 +528,8 @@ public class AgentConversationMemory {
         if (messages.isEmpty()) {
             return "";
         }
-        // 最近 6 条（约 3 轮）为完整区，每条限 800 字符；
-        // 更早的消息为摘要区：user 保留前 150 字符，assistant 用 digest 替代。
+        // 用户最近 3 轮保留较完整表达；助手消息始终只注入结构化 digest。
+        // 完整助手回答仍保存在消息表供页面回看，但批量表格和 SQL 不再回灌 Planner。
         int recentCount = Math.min(6, messages.size());
         int summaryEnd = messages.size() - recentCount;
         StringBuilder value = new StringBuilder();
@@ -487,11 +548,16 @@ public class AgentConversationMemory {
             }
             value.append(role).append("：").append(body).append("\n");
         }
-        // 完整区
+        // 最近用户表达区；助手仍使用摘要
         for (int i = summaryEnd; i < messages.size(); i++) {
             Message message = messages.get(i);
             String role = "assistant".equals(message.role()) ? "助手" : "用户";
-            value.append(role).append("：").append(limited(message.content(), 800)).append("\n");
+            String body = "assistant".equals(message.role())
+                    ? "[摘要] " + (message.digest() != null && !message.digest().isBlank()
+                            ? message.digest()
+                            : firstSentence(message.content(), 100))
+                    : limited(message.content(), 800);
+            value.append(role).append("：").append(body).append("\n");
         }
         // 总量上限
         if (value.length() > MAX_HISTORY_CHARS) {
@@ -744,9 +810,11 @@ public class AgentConversationMemory {
         try {
             jdbc.update("DELETE FROM med_agent_java_message WHERE session_key = ?", key);
             jdbc.update("DELETE FROM med_agent_compound_target WHERE session_key = ?", key);
+            jdbc.update("DELETE FROM med_agent_query_scope WHERE session_key = ?", key);
             fallback.remove(key);
             fallbackContext.remove(key);
             compoundTargets.remove(key);
+            queryScopes.remove(key);
         } catch (RuntimeException exception) {
             LOGGER.warn("Unable to delete session: {}", exception.getMessage());
         }
@@ -791,11 +859,77 @@ public class AgentConversationMemory {
             String lastRunId,
             String uploadFileKey,
             List<String> compoundTargets,
+            QueryScopeState queryScope,
             String evidenceContext) {
         public ConversationSnapshot {
             compoundTargets = compoundTargets == null ? List.of() : List.copyOf(compoundTargets);
             evidenceContext = evidenceContext == null ? "" : evidenceContext;
         }
+
+        public ConversationSnapshot(
+                String storageKey,
+                String sessionId,
+                String recentHistory,
+                String structuredSummary,
+                String ruleId,
+                String ruleName,
+                String caliberProfileId,
+                String caliberLabel,
+                String statStart,
+                String statEnd,
+                String lastRunId,
+                String uploadFileKey,
+                List<String> compoundTargets,
+                String evidenceContext) {
+            this(storageKey, sessionId, recentHistory, structuredSummary,
+                    ruleId, ruleName, caliberProfileId, caliberLabel,
+                    statStart, statEnd, lastRunId, uploadFileKey,
+                    compoundTargets, null, evidenceContext);
+        }
+    }
+
+    public record QueryScopeState(
+            String operation,
+            String targetMode,
+            List<QueryTarget> targets,
+            String statStart,
+            String statEnd) {
+        public QueryScopeState {
+            targets = targets == null ? List.of() : List.copyOf(targets);
+        }
+
+        public boolean valid() {
+            if (!List.of(
+                    "rule_explanation",
+                    "indicator_sql_prepare",
+                    "indicator_trial_run",
+                    "indicator_diagnosis").contains(operation)) {
+                return false;
+            }
+            return "ALL".equals(targetMode)
+                    || (List.of("SINGLE", "SUBSET").contains(targetMode) && !targets.isEmpty());
+        }
+
+        QueryScopeState normalized() {
+            List<QueryTarget> cleaned = targets.stream()
+                    .filter(value -> value != null
+                            && value.ruleId() != null && !value.ruleId().isBlank()
+                            && value.ruleName() != null && !value.ruleName().isBlank())
+                    .map(value -> new QueryTarget(
+                            value.ruleId().strip(), value.ruleName().strip()))
+                    .distinct()
+                    .limit(35)
+                    .toList();
+            return new QueryScopeState(
+                    operation == null ? "" : operation.strip(),
+                    targetMode == null ? "" : targetMode.strip().toUpperCase(),
+                    cleaned,
+                    statStart == null || statStart.isBlank() ? null : statStart.strip(),
+                    statEnd == null || statEnd.isBlank() ? null : statEnd.strip());
+        }
+    }
+
+    public record QueryTarget(String ruleId, String ruleName) {
     }
 
     private record ContextValues(

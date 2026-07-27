@@ -1,0 +1,219 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-002-002",
+  "rule_name": "上级医师查房记录规范率",
+  "category": "三级查房制度",
+  "definition": "住院患者病历中上级医师查房记录规范、完整的病例数量占同期住院患者病例总数量的比例。",
+  "formula": "分子：住院患者病历中上级医师查房记录规范、完整的病例数量\n分母：同期住院患者病例总数量\n公式：住院患者病历中上级医师查房记录规范、完整的病例数量 / 同期住院患者病例总数量 * 100%",
+  "note": "——",
+  "significance": "反映三级查房制度落实情况、查房记录的规范性和查房质量。",
+  "default_profile": "HXZD-002-002-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-002-002-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "住院患者病历中上级医师查房记录规范、完整的病例数量",
+      "numerator_caliber": "1、单位时间内出区患者中，按时完成了所有查房记录的患者数（一个患者一次住院最多统计为1）\n1.1）病历监控类型（支持配置）：上级医师首次查房记录、主治医师首次查房记录、主任医师首次查房记录、副主任医师首次查房记录、上级医师查房记录、主治医师查房记录、主任医师查房记录、副主任医师查房记录。\n1.2）监测病历状态：已提交\n2、病历时限数据取EMR的病历时限完成状态=按时完成",
+      "denominator_rule": "同期住院患者病例总数量",
+      "denominator_caliber": "单位时间内出区的患者总数",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 7 | 下拉多选 | 病历文书监控类型 |",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/overview.sql",
+        "department": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子住院患者病历中上级医师查房记录规范完整的病例数量",
+        "denominator_count": "分母同期入院患者总人次数",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "getdate",
+            "max",
+            "row_number",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "dcdfbea432ade9e1a3f19aeb2512f99f5be2917e6a686e60ace06338b47d9c37"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "997c1ce55eb424a57a69f3fdd23e595cfef0e5f8268f5d36de046774d8d3e3dc"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf",
+            "overview": "dcdfbea432ade9e1a3f19aeb2512f99f5be2917e6a686e60ace06338b47d9c37",
+            "department_detail": "997c1ce55eb424a57a69f3fdd23e595cfef0e5f8268f5d36de046774d8d3e3dc",
+            "patient_detail": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+          },
+          "real": {
+            "source_extract": "3d5db3d75311fab5eb099554ee6dd1326818513719638fb1cb56bbd3f48d93bf",
+            "overview": "dcdfbea432ade9e1a3f19aeb2512f99f5be2917e6a686e60ace06338b47d9c37",
+            "department_detail": "997c1ce55eb424a57a69f3fdd23e595cfef0e5f8268f5d36de046774d8d3e3dc",
+            "patient_detail": "d26b4d1cbc21e6d0f0155acb8c6acac3160416764da0665b75db65f3a3012ff3"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子住院患者病历中上级医师查房记录规范完整的病例数量",
+          "denominator_count": "分母同期入院患者总人次数"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_WARDROUND",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

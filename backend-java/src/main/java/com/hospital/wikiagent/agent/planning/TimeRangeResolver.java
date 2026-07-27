@@ -38,13 +38,19 @@ public class TimeRangeResolver {
     private static final Pattern MONTH_RANGE = Pattern.compile(
             "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:到|至)"
                     + "(?:(\\d{2}|\\d{4})年)?(1[0-2]|[1-9])月");
+    private static final Pattern SINGLE_MONTH = Pattern.compile(
+            "(?:(\\d{2}|\\d{4})年|(今年))(1[0-2]|[1-9])月(?!\\d|日|号)");
     private static final Pattern DATE_TO_NOW = Pattern.compile(
-            "从(\\d{2}|\\d{4})年(1[0-2]|[1-9])月(3[01]|[12]\\d|[1-9])(?:日|号)(?:到现在|至今|开始)");
+            "(?:从|自)?(\\d{2}|\\d{4})年(1[0-2]|[1-9])月"
+                    + "(3[01]|[12]\\d|[1-9])(?:日|号)(?:到现在|至今|开始)");
     private static final Pattern CHINESE_DATE_RANGE = Pattern.compile(
             "(\\d{2}|\\d{4})年(1[0-2]|[1-9])月(3[01]|[12]\\d|[1-9])(?:日|号)?(?:到|至)"
                     + "(\\d{2}|\\d{4})年(1[0-2]|[1-9])月(3[01]|[12]\\d|[1-9])(?:日|号)?");
     private static final Pattern ISO_DATE_RANGE = Pattern.compile(
             "(\\d{4}-\\d{1,2}-\\d{1,2})(?:到|至|-)(\\d{4}-\\d{1,2}-\\d{1,2})");
+    private static final Pattern ISO_DATE_TIME_RANGE = Pattern.compile(
+            "(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:到|至|~)"
+                    + "(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})");
 
     private final Clock clock;
 
@@ -97,6 +103,16 @@ public class TimeRangeResolver {
                     expression.rawText());
         }
 
+        Matcher singleMonth = SINGLE_MONTH.matcher(raw);
+        if (singleMonth.find()) {
+            int selectedYear = singleMonth.group(2) == null
+                    ? year(singleMonth.group(1), now.getYear())
+                    : now.getYear();
+            LocalDateTime start = monthStart(
+                    selectedYear, Integer.parseInt(singleMonth.group(3)));
+            return valid(start, start == null ? null : start.plusMonths(1), expression.rawText());
+        }
+
         Matcher dateToNow = DATE_TO_NOW.matcher(raw);
         if (dateToNow.find()) {
             LocalDateTime start = date(
@@ -119,6 +135,18 @@ public class TimeRangeResolver {
             // 统计接口统一采用左闭右开区间。用户写出的结束日期就是排他边界，
             // 例如“1月1日至2月1日”精确表示完整一月，不能再额外加一天。
             return valid(start, end, expression.rawText());
+        }
+
+        Matcher dateTimeRange = ISO_DATE_TIME_RANGE.matcher(raw);
+        if (dateTimeRange.find()) {
+            try {
+                return valid(
+                        LocalDateTime.parse(dateTimeRange.group(1)),
+                        LocalDateTime.parse(dateTimeRange.group(2)),
+                        expression.rawText());
+            } catch (DateTimeParseException exception) {
+                return null;
+            }
         }
 
         Matcher isoRange = ISO_DATE_RANGE.matcher(raw);
@@ -165,6 +193,7 @@ public class TimeRangeResolver {
     private static String normalize(String value) {
         String raw = value == null ? "" : value.replaceAll("\\s+", "");
         raw = raw.replaceFirst("(?:的)?(?:结果|数据|指标值)$", "");
+        raw = raw.replaceAll("(1[0-2]|[1-9])月份", "$1月");
         if (raw.endsWith("的")) {
             raw = raw.substring(0, raw.length() - 1);
         }

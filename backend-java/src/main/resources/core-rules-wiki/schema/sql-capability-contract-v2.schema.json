@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sql-capability-contract-v2",
+  "type": "object",
+  "required": ["capability", "status", "blockers", "parameters", "functions"],
+  "properties": {
+    "capability": {
+      "enum": ["source_extract", "overview", "department_detail", "patient_detail"]
+    },
+    "status": {
+      "enum": [
+        "missing", "raw", "normalized", "static_validated", "verification_required",
+        "metadata_validated", "compile_validated", "trial_validated", "executable"
+      ]
+    },
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "parameters": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "functions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "unknown_functions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "normalized_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "verification": {
+      "type": "object",
+      "properties": {
+        "hospital_id": {"type": "string"},
+        "verified_at": {"type": "string"},
+        "object_hash": {"type": ["string", "null"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

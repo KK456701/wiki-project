@@ -27,6 +27,8 @@ import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationSnapshot;
+import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeState;
+import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer.FinalAnswerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
@@ -82,6 +84,8 @@ public class AgentRunner {
     /** 检测查询原文中是否存在两个以上显式日期（如 2025.01.01、2025-01-01、2025/01/01）。 */
     private static final Pattern EXPLICIT_DATE_RANGE = Pattern.compile(
             "20\\d{2}[.\\-/年]\\d{1,2}[.\\-/月]\\d{1,2}");
+    private static final Pattern CLARIFICATION_ORIGINAL = Pattern.compile(
+            "继续处理上一条请求“([^”]{1,200})”");
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -260,20 +264,37 @@ public class AgentRunner {
                     0, unsupportedPlan, null);
         }
         PlannerResult modelPlan;
+        String deterministicQuery = clarificationOriginal(
+                request.query(), request.recentHistory());
         RequestPlan followupPlan = deterministicSqlFollowup(
-                request.query(), conversation, request.recentHistory(), resolvedIndicator);
+                deterministicQuery, conversation, request.recentHistory(), resolvedIndicator);
         if (followupPlan == null) {
             followupPlan = deterministicRuleExplanationFollowup(
-                    request.query(), conversation, resolvedIndicator);
+                    deterministicQuery, conversation, resolvedIndicator);
+        }
+        if (followupPlan == null) {
+            followupPlan = deterministicTrialRunFollowup(
+                    deterministicQuery, conversation, resolvedIndicator);
+        }
+        if (followupPlan == null) {
+            followupPlan = deterministicDiagnosisFollowup(
+                    deterministicQuery, conversation, resolvedIndicator);
         }
         if (followupPlan != null) {
             // 明确的 SQL 或规则分项追问可由结构化会话唯一确定，无需再次让小模型猜测。
             long followupStarted = TraceEvents.started();
             modelPlan = new PlannerResult(
                     followupPlan, "deterministic-followup", request.modelId(), false);
-            String skipReason = followupPlan.intent() == PlanIntent.RULE_EXPLANATION
-                    ? "指标和规则解释关注点可由结构化会话状态唯一确定"
-                    : "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定";
+            String skipReason = switch (followupPlan.intent()) {
+                case RULE_EXPLANATION ->
+                    "指标和规则解释关注点可由结构化会话状态唯一确定";
+                case INDICATOR_TRIAL_RUN ->
+                    "上一轮计算意图、当前明确指标和统计周期可由结构化会话状态唯一确定";
+                case INDICATOR_DIAGNOSIS ->
+                    "当前异常描述、指标和统计周期可由确定性规则唯一确定";
+                default ->
+                    "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定";
+            };
             TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
                     followupStarted, subtaskId, eventValues(
                             "query", request.query(),
@@ -311,21 +332,27 @@ public class AgentRunner {
         PlanningContext fileContext = resolveUploadPlanningContext(request);
         RequestPlan enrichedPlan = removeInternalImplementationOutput(
                 downgradeUnsupportedDifferenceDiagnosis(
-                request.query(), request.fileKey(),
-                normalizeExplicitDifferenceDiagnosis(
-                request.query(), upgradeToTrialRun(
-                        request.query(), enrichFromResolvedIndicator(
-                                enrichFromConversation(
-                                        enrichFromUploadedFile(modelPlan.plan(), fileContext),
-                                        conversation),
-                                resolvedIndicator)))));
+                        request.query(), request.fileKey(),
+                        normalizeExplicitIssueDiagnosis(
+                                request.query(),
+                                normalizeExplicitDifferenceDiagnosis(
+                                        request.query(), upgradeToTrialRun(
+                                                request.query(), enrichFromResolvedIndicator(
+                                                        enrichFromConversation(
+                                                                enrichFromUploadedFile(
+                                                                        modelPlan.plan(), fileContext),
+                                                                conversation),
+                                                        resolvedIndicator))))));
         // 低置信度意图澄清：在编译前检查 Planner 的置信度
         double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
         // “还有哪些口径”属于服务端可以高置信识别的业务动作。即使小模型给出较低
         // confidence，也应先交给目标—计划一致性校验纠正为口径列表查询，不能在这里
         // 提前反问并中断。这样 8B 与 API 大模型会得到一致的确定性行为。
         boolean deterministicCaliberOptionsQuery = isCaliberOptionsQuery(request.query());
-        if (enrichedPlan.confidence() < threshold && !deterministicCaliberOptionsQuery) {
+        boolean deterministicIssueDiagnosis = isExplicitIssueDiagnosis(request.query());
+        if (enrichedPlan.confidence() < threshold
+                && !deterministicCaliberOptionsQuery
+                && !deterministicIssueDiagnosis) {
             long clarificationStarted = TraceEvents.started();
             // 如果 Planner 给出了具体指标名但解析不出 ruleId，真正模糊的是指标而非意图，
             // 应请用户从目录重选指标，避免静默回退到上一轮指标算错对象。
@@ -434,7 +461,11 @@ public class AgentRunner {
                         "capabilities", compiled.nodes().stream()
                                 .map(node -> node.capability().value()).toList()));
         long validationStarted = TraceEvents.started();
-        PlanValidation validation = validator.validate(planned.plan());
+        boolean deterministicTrialFollowup =
+                planned.plan().constraints().contains("deterministic_trial_followup");
+        PlanValidation validation = deterministicTrialFollowup
+                ? validator.validateBatch(planned.plan())
+                : validator.validate(planned.plan());
         TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
                 subtaskId, Map.of("plan_id", compiled.planId()), Map.of(
                         "valid", validation.ok(),
@@ -446,7 +477,8 @@ public class AgentRunner {
                 planned.plan().targetIndicator().ruleId(), state.currentRuleId()));
         applyResolvedTime(state, validation);
         AgentRuntimeContext context = new AgentRuntimeContext(
-                request.principal(), requestId, traceId, request.dbSourceId());
+                request.principal(), requestId, traceId, request.dbSourceId(),
+                deterministicTrialFollowup);
 
         // 计划校验失败也必须先进入统一失败路由。方向性错误可以在调用任何工具前纠正一次；
         // 缺时间、权限和数据库冲突等不可重规划问题仍按原校验结果直接兜底。
@@ -784,15 +816,17 @@ public class AgentRunner {
                     failedPlanId));
             RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
                     request.query(), request.fileKey(),
-                    normalizeExplicitDifferenceDiagnosis(
-                    request.query(), upgradeToTrialRun(
-                            request.query(), enrichFromResolvedIndicator(
-                                    enrichFromConversation(
-                                            enrichFromUploadedFile(
-                                                    raw.plan(),
-                                                    resolveUploadPlanningContext(request)),
-                                            conversation),
-                                    resolvedIndicator))));
+                    normalizeExplicitIssueDiagnosis(
+                            request.query(),
+                            normalizeExplicitDifferenceDiagnosis(
+                                    request.query(), upgradeToTrialRun(
+                                            request.query(), enrichFromResolvedIndicator(
+                                                    enrichFromConversation(
+                                                            enrichFromUploadedFile(
+                                                                    raw.plan(),
+                                                                    resolveUploadPlanningContext(request)),
+                                                            conversation),
+                                                    resolvedIndicator)))));
             String alternativeId = precompilePlanId(plan);
             if (!failureRouter.acceptsAlternative(state, alternativeId)) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
@@ -863,15 +897,17 @@ public class AgentRunner {
                     compiled.planId()));
             RequestPlan plan = downgradeUnsupportedDifferenceDiagnosis(
                     request.query(), request.fileKey(),
-                    normalizeExplicitDifferenceDiagnosis(
-                    request.query(), upgradeToTrialRun(
-                            request.query(), enrichFromResolvedIndicator(
-                                    enrichFromConversation(
-                                            enrichFromUploadedFile(
-                                                    raw.plan(),
-                                                    resolveUploadPlanningContext(request)),
-                                            conversation),
-                                    resolvedIndicator))));
+                    normalizeExplicitIssueDiagnosis(
+                            request.query(),
+                            normalizeExplicitDifferenceDiagnosis(
+                                    request.query(), upgradeToTrialRun(
+                                            request.query(), enrichFromResolvedIndicator(
+                                                    enrichFromConversation(
+                                                            enrichFromUploadedFile(
+                                                                    raw.plan(),
+                                                                    resolveUploadPlanningContext(request)),
+                                                            conversation),
+                                                    resolvedIndicator)))));
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             CompiledPlanIR alternative = compiler.compile(plan);
@@ -973,6 +1009,26 @@ public class AgentRunner {
             deterministicAnswer = composePreparedSqlAnswer(plan, state);
             deterministicNode = "prepared_sql_answer";
         }
+        if (deterministicAnswer == null
+                && plan.intent() == PlanIntent.RULE_EXPLANATION) {
+            deterministicAnswer = finalAnswer.composeDeterministic(new FinalAnswerInput(
+                    request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(),
+                    plan.explanationFocuses(), modelId,
+                    LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                    "", evidence)).content();
+            deterministicNode = "rule_explanation_answer";
+        }
+        if (deterministicAnswer == null
+                && plan.constraints().contains("deterministic_trial_followup")) {
+            String answerHistory = plan.intent() == PlanIntent.INDICATOR_DIAGNOSIS
+                    ? "" : request.recentHistory();
+            deterministicAnswer = finalAnswer.composeDeterministic(new FinalAnswerInput(
+                    request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(),
+                    plan.explanationFocuses(), modelId,
+                    LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                    answerHistory, evidence)).content();
+            deterministicNode = "trial_result_answer";
+        }
         if (deterministicAnswer != null) {
             long answerStarted = TraceEvents.started();
             TraceEvents.completed(observer, traceId, deterministicNode, "code",
@@ -984,6 +1040,7 @@ public class AgentRunner {
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
                         case "caliber_options_answer" -> "caliber-options-answer-v1";
                         case "caliber_simulation_answer" -> "caliber-simulation-answer-v1";
+                        case "rule_explanation_answer" -> "rule-explanation-answer-v1";
                         default -> "deterministic-answer-v1";
                     },
                     "answer_template_id", selectedTemplate.id(),
@@ -1006,10 +1063,14 @@ public class AgentRunner {
         }
         emit(observer, "model_start", traceId, state.stepCount(), Map.of("message", "生成最终回答"));
         long finalStarted = TraceEvents.started();
+        // 诊断分析只使用本轮已核验的证据和结构化诊断状态，不把历史表格、SQL 或其他
+        // 指标回答交给诊断模型，避免无关上下文污染归因。
+        String answerHistory = plan.intent() == PlanIntent.INDICATOR_DIAGNOSIS
+                ? "" : request.recentHistory();
         var answer = finalAnswer.compose(new FinalAnswerInput(
                 request.query(), plan.goal(), plan.intent(), plan.requestedOutputs(),
                 plan.explanationFocuses(), modelId,
-                LocalDate.now(ZoneId.of("Asia/Shanghai")), request.recentHistory(), evidence));
+                LocalDate.now(ZoneId.of("Asia/Shanghai")), answerHistory, evidence));
         TraceEvents.completed(observer, traceId, "final_answer_llm", "llm", finalStarted,
                 state.subtaskId(), Map.of(
                         "query", request.query(),
@@ -1136,6 +1197,30 @@ public class AgentRunner {
             AgentRunState state) {
         long started = TraceEvents.started();
         conversations.appendAssistant(conversation, principal, answer, state);
+        if (state.lastIntent() != null
+                && List.of(
+                    "rule_explanation",
+                    "indicator_sql_prepare",
+                    "indicator_trial_run",
+                    "indicator_diagnosis").contains(state.lastIntent())
+                && state.currentRuleId() != null
+                && !state.currentRuleId().isBlank()) {
+            String ruleName = first(
+                    state.lastRuleName(), conversation.ruleName(), state.currentRuleId());
+            QueryScopeState previous = conversation.queryScope();
+            conversations.rememberQueryScope(conversation, new QueryScopeState(
+                    state.lastIntent(),
+                    "SINGLE",
+                    List.of(new QueryTarget(state.currentRuleId(), ruleName)),
+                    first(
+                            state.statStart(),
+                            previous == null ? null : previous.statStart(),
+                            conversation.statStart()),
+                    first(
+                            state.statEnd(),
+                            previous == null ? null : previous.statEnd(),
+                            conversation.statEnd())));
+        }
         TraceEvents.completed(observer, traceId, "memory_save", "storage", started,
                 subtaskId, Map.of("session_id", conversation.sessionId()), Map.of(
                         "answer_length", answer == null ? 0 : answer.length(),
@@ -1355,12 +1440,30 @@ public class AgentRunner {
                 || hasAlternativeCaliberCue(compact)) {
             return null;
         }
+        if ((compact.contains("计算")
+                    && !compact.contains("怎么计算")
+                    && !compact.contains("如何计算")
+                    && !compact.contains("计算方式"))
+                || compact.contains("算一下")
+                || compact.contains("跑一下")
+                || compact.contains("具体结果")
+                || compact.contains("指标值")) {
+            return null;
+        }
 
         List<ExplanationFocus> focuses = new ArrayList<>();
-        if (compact.contains("定义") || compact.contains("含义") || compact.contains("什么意思")) {
+        if (compact.contains("定义")
+                || compact.contains("含义")
+                || compact.contains("什么意思")
+                || compact.matches(".*(?:是什么|是啥)[？?]?$")) {
             focuses.add(ExplanationFocus.DEFINITION);
         }
-        if (compact.contains("公式")) focuses.add(ExplanationFocus.FORMULA);
+        if (compact.contains("公式")
+                || compact.contains("怎么算")
+                || compact.contains("如何计算")
+                || compact.contains("计算方式")) {
+            focuses.add(ExplanationFocus.FORMULA);
+        }
         if (compact.contains("分子")) focuses.add(ExplanationFocus.NUMERATOR);
         if (compact.contains("分母")) focuses.add(ExplanationFocus.DENOMINATOR);
         if (compact.contains("统计时间")
@@ -1420,6 +1523,106 @@ public class AgentRunner {
                 1.0);
     }
 
+    /**
+     * 用户在已有计算上下文中明确改选一个指标时，复用单指标状态机，但不再调用模型重新
+     * 猜测已经确定的操作和时间。SQL、口径解释或当前消息带新时间时由各自分支处理。
+     */
+    private static RequestPlan deterministicTrialRunFollowup(
+            String query,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        QueryScopeState scope = conversation.queryScope();
+        String compact = query == null
+                ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (compact.isBlank()
+                || compact.contains("sql")
+                || compact.contains("脚本")
+                || compact.contains("定义")
+                || compact.contains("口径")
+                || compact.contains("公式")
+                || compact.contains("怎么算")
+                || compact.contains("如何计算")
+                || compact.contains("解释")
+                || compact.contains("什么意思")) {
+            return null;
+        }
+        String ruleId = first(
+                resolvedIndicator == null ? null : resolvedIndicator.ruleId(),
+                conversation.ruleId());
+        String ruleName = first(
+                resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
+                conversation.ruleName(), ruleId);
+        if (ruleId == null) return null;
+
+        boolean explicitTrial = List.of(
+                "计算", "算一下", "统计", "结果", "数值", "跑一下")
+                .stream().anyMatch(compact::contains);
+        boolean hasCurrentTime = CURRENT_QUERY_TIME.matcher(compact).find();
+        boolean inheritedTrial = scope != null
+                && scope.valid()
+                && "indicator_trial_run".equals(scope.operation());
+        boolean explicitIndicatorReplacement =
+                resolvedIndicator != null && inheritedTrial;
+        boolean hasInheritedPeriod = scope != null
+                && scope.valid()
+                && scope.statStart() != null
+                && scope.statEnd() != null;
+        if (!explicitTrial
+                && !(hasCurrentTime && inheritedTrial)
+                && !explicitIndicatorReplacement) {
+            return null;
+        }
+        String statStart = !hasCurrentTime && hasInheritedPeriod
+                ? scope.statStart() : null;
+        String statEnd = !hasCurrentTime && hasInheritedPeriod
+                ? scope.statEnd() : null;
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_TRIAL_RUN,
+                "计算指标“" + ruleName + "”的结果",
+                new RequestPlan.TargetIndicator(ruleName, ruleId),
+                new RequestPlan.TargetCaliber("", null),
+                new RequestPlan.TimeExpression(
+                        hasCurrentTime ? query : "沿用上一轮统计区间",
+                        statStart, statEnd),
+                List.of(RequestedOutput.TRIAL_RESULT),
+                List.of("deterministic_trial_followup"),
+                List.of(),
+                1.0);
+    }
+
+    private static RequestPlan deterministicDiagnosisFollowup(
+            String query,
+            ConversationSnapshot conversation,
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+        String compact = query == null
+                ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (List.of("排查", "诊断", "异常", "不可信", "算不对", "结果不对", "有问题")
+                .stream().noneMatch(compact::contains)) {
+            return null;
+        }
+        String ruleId = first(
+                resolvedIndicator == null ? null : resolvedIndicator.ruleId(),
+                conversation.ruleId());
+        if (ruleId == null) {
+            return null;
+        }
+        String ruleName = first(
+                resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
+                conversation.ruleName(), ruleId);
+        return new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_DIAGNOSIS,
+                "排查指标“" + ruleName + "”的异常或口径问题",
+                new RequestPlan.TargetIndicator(ruleName, ruleId),
+                new RequestPlan.TargetCaliber("", null),
+                new RequestPlan.TimeExpression(query, null, null),
+                List.of(RequestedOutput.DIAGNOSIS),
+                List.of(),
+                List.of(),
+                1.0);
+    }
+
     private static boolean hasAlternativeCaliberCue(String compact) {
         return compact.contains("如果")
                 || compact.contains("假设")
@@ -1452,6 +1655,27 @@ public class AgentRunner {
         return values;
     }
 
+    private static String clarificationOriginal(String query, String recentHistory) {
+        String current = safe(query);
+        if (!current.contains("我选择的指标是")) {
+            return current;
+        }
+        Matcher embedded = CLARIFICATION_ORIGINAL.matcher(current);
+        if (embedded.find()) {
+            return embedded.group(1).strip();
+        }
+        String latestUser = "";
+        for (String line : safe(recentHistory).split("\\R")) {
+            String value = line.strip();
+            if (value.startsWith("用户：")) {
+                latestUser = value.substring("用户：".length()).strip();
+            } else if (value.startsWith("用户:")) {
+                latestUser = value.substring("用户:".length()).strip();
+            }
+        }
+        return latestUser.isBlank() ? current : latestUser;
+    }
+
     /**
      * 差异诊断降级：如果意图是 INDICATOR_DIFFERENCE_DIAGNOSIS 但没有上传文件、
      * 也没有明确比较对象文本，自动降级为 INDICATOR_DIAGNOSIS。
@@ -1481,7 +1705,7 @@ public class AgentRunner {
         return plan.withIntent(PlanIntent.INDICATOR_DIAGNOSIS)
                 .withRequestedOutputs(List.of(RequestedOutput.DIAGNOSIS));
     }
-    
+
     /**
      * 对明确的“双方结果不一致”表达做服务端兖底路由。
      *
@@ -1521,6 +1745,43 @@ public class AgentRunner {
                 .withTargetIndicator(target)
                 .withTimeExpression(time)
                 .withRequestedOutputs(List.of(RequestedOutput.DIFFERENCE_DIAGNOSIS_REPORT));
+    }
+
+    /**
+     * “口径/分子/SQL/结果有问题”是明确的异常诊断动作，不要求用户先运行一次指标。
+     * 外部双方差异仍由更专门的差异诊断意图处理，不能被本兜底覆盖。
+     */
+    private static RequestPlan normalizeExplicitIssueDiagnosis(
+            String query, RequestPlan plan) {
+        if (!isExplicitIssueDiagnosis(query)
+                || plan.intent() == PlanIntent.INDICATOR_DIFFERENCE_DIAGNOSIS) {
+            return plan;
+        }
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        if (target.rawName().isBlank() && target.ruleId() == null && query != null) {
+            target = new RequestPlan.TargetIndicator(query, null);
+        }
+        RequestPlan.TimeExpression time = plan.timeExpression();
+        if (time.rawText().isBlank() && time.startTime() == null
+                && time.endTime() == null && query != null) {
+            time = new RequestPlan.TimeExpression(query, null, null);
+        }
+        return plan.withIntent(PlanIntent.INDICATOR_DIAGNOSIS)
+                .withTargetIndicator(target)
+                .withTimeExpression(time)
+                .withRequestedOutputs(List.of(RequestedOutput.DIAGNOSIS));
+    }
+
+    private static boolean isExplicitIssueDiagnosis(String query) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        boolean issue = List.of(
+                "有问题", "不对", "异常", "不可信", "算错", "错了",
+                "排查", "诊断", "查原因")
+                .stream().anyMatch(compact::contains);
+        boolean subject = List.of(
+                "口径", "分子", "分母", "SQL", "sql", "结果", "指标", "数据")
+                .stream().anyMatch(compact::contains);
+        return issue && subject;
     }
 
     /**

@@ -81,20 +81,66 @@ public class PreparedIndicatorExecutor {
             String subtaskId,
             String rawTimeText,
             AgentRuntimeContext context) {
+        return execute(
+                ruleId, ruleName, null, null, null,
+                subtaskId, rawTimeText, null, null, context);
+    }
+
+    /**
+     * 批量编排器已统一解析时间时，所有 worker 必须复用完全相同的边界，不能分别把“现在”
+     * 解析为不同秒数。
+     */
+    public IndicatorExecutionResult execute(
+            String ruleId,
+            String ruleName,
+            String subtaskId,
+            String rawTimeText,
+            String fixedStatStart,
+            String fixedStatEnd,
+            AgentRuntimeContext context) {
+        return execute(
+                ruleId, ruleName, null, null, null,
+                subtaskId, rawTimeText, fixedStatStart, fixedStatEnd, context);
+    }
+
+    /**
+     * 计算一个明确的已审批 Profile。Profile 身份沿规则读取、SQL 准备和执行全链路传递，
+     * 不能退回默认口径。
+     */
+    public IndicatorExecutionResult execute(
+            String ruleId,
+            String ruleName,
+            String profileId,
+            String profileName,
+            String eventNo,
+            String subtaskId,
+            String rawTimeText,
+            String fixedStatStart,
+            String fixedStatEnd,
+            AgentRuntimeContext context) {
         long started = System.nanoTime();
         try {
-            return doExecute(ruleId, ruleName, subtaskId, rawTimeText, context, started);
+            return doExecute(
+                    ruleId, ruleName, profileId, profileName, eventNo,
+                    subtaskId, rawTimeText, fixedStatStart, fixedStatEnd,
+                    context, started);
         } catch (RuntimeException exception) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, "BATCH_INDICATOR_ERROR", exception.getMessage());
+                    ruleId, ruleName, profileId, profileName, eventNo,
+                    "BATCH_INDICATOR_ERROR", exception.getMessage());
         }
     }
 
     private IndicatorExecutionResult doExecute(
             String ruleId,
             String ruleName,
+            String profileId,
+            String profileName,
+            String eventNo,
             String subtaskId,
             String rawTimeText,
+            String fixedStatStart,
+            String fixedStatEnd,
             AgentRuntimeContext context,
             long started) {
         AgentRunState state = new AgentRunState();
@@ -103,24 +149,34 @@ public class PreparedIndicatorExecutor {
         state.currentRuleId(ruleId);
         state.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
         state.lastRuleName(ruleName);
+        if (profileId != null && !profileId.isBlank()) {
+            state.currentCaliber(profileId, profileName);
+        }
 
+        boolean fixedPeriod = fixedStatStart != null && !fixedStatStart.isBlank()
+                && fixedStatEnd != null && !fixedStatEnd.isBlank();
         RequestPlan plan = new RequestPlan(
                 RequestPlan.VERSION,
                 PlanIntent.INDICATOR_TRIAL_RUN,
                 "批量计算指标「" + ruleName + "」的试运行结果",
                 new RequestPlan.TargetIndicator(ruleName, ruleId),
-                null,
-                new RequestPlan.TimeExpression(rawTimeText, null, null),
+                new RequestPlan.TargetCaliber(
+                        profileName == null ? "" : profileName, profileId),
+                fixedPeriod
+                        ? new RequestPlan.TimeExpression(
+                                "批量固定统计周期", fixedStatStart, fixedStatEnd)
+                        : new RequestPlan.TimeExpression(rawTimeText, null, null),
                 List.of(RequestedOutput.TRIAL_RESULT),
                 List.of(),
                 List.of(),
                 1.0);
 
         CompiledPlanIR compiled = compiler.compile(plan);
-        PlanValidation validation = validator.validate(plan);
+        PlanValidation validation = validator.validateBatch(plan);
         if (!validation.ok()) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, validation.code(), validation.message());
+                    ruleId, ruleName, profileId, profileName, eventNo,
+                    validation.code(), validation.message());
         }
         applyResolvedTime(state, validation);
         PlanningExecution execution = new PlanningExecution(plan, compiled, validation, capabilities);
@@ -129,7 +185,8 @@ public class PreparedIndicatorExecutor {
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
             if (decision.action() == ControllerAction.FALLBACK) {
                 return IndicatorExecutionResult.failed(
-                        ruleId, ruleName, decision.code(), decision.message());
+                        ruleId, ruleName, profileId, profileName, eventNo,
+                        decision.code(), decision.message());
             }
             if (decision.action() == ControllerAction.COMPOSE_ANSWER) {
                 break;
@@ -141,18 +198,22 @@ public class PreparedIndicatorExecutor {
             updateState(state, result);
             if (!result.ok()) {
                 return IndicatorExecutionResult.failed(
-                        ruleId, ruleName, result.code(), result.summary());
+                        ruleId, ruleName, profileId, profileName, eventNo,
+                        result.code(), result.summary());
             }
         }
 
         IndicatorExecutionResult verificationFailure =
-                verifyEvidence(ruleId, ruleName, subtaskId, state, validation, context);
+                verifyEvidence(
+                        ruleId, ruleName, profileId, profileName, eventNo,
+                        subtaskId, state, validation, context);
         if (verificationFailure != null) {
             return verificationFailure;
         }
 
         long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
-        return extract(ruleId, ruleName, state, durationMs);
+        return extract(
+                ruleId, ruleName, profileId, profileName, eventNo, state, durationMs);
     }
 
     /**
@@ -162,6 +223,9 @@ public class PreparedIndicatorExecutor {
     private IndicatorExecutionResult verifyEvidence(
             String ruleId,
             String ruleName,
+            String profileId,
+            String profileName,
+            String eventNo,
             String subtaskId,
             AgentRunState state,
             PlanValidation validation,
@@ -184,7 +248,8 @@ public class PreparedIndicatorExecutor {
             return null;
         } catch (EvidenceAccessException exception) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, exception.code(), exception.getMessage());
+                    ruleId, ruleName, profileId, profileName, eventNo,
+                    exception.code(), exception.getMessage());
         }
     }
 
@@ -192,23 +257,46 @@ public class PreparedIndicatorExecutor {
      * 从试运行与生效规则工具结果中提取结构化数值与目标值约定字段。
      */
     private IndicatorExecutionResult extract(
-            String ruleId, String ruleName, AgentRunState state, long durationMs) {
+            String ruleId,
+            String ruleName,
+            String requestedProfileId,
+            String requestedProfileName,
+            String requestedEventNo,
+            AgentRunState state,
+            long durationMs) {
         ToolResult trial = latestSuccessful(state, "TRIAL_RUN_COMPLETED");
         if (trial == null) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, "TRIAL_RESULT_MISSING", "未取得试运行结果。");
+                    ruleId, ruleName, requestedProfileId, requestedProfileName,
+                    requestedEventNo, "TRIAL_RESULT_MISSING", "未取得试运行结果。");
         }
         Map<String, Object> data = trial.data();
         ToolResult effective = latestSuccessful(state, "EFFECTIVE_RULE_FOUND");
         Object targetValue = null;
+        Object contractTargetValue = null;
         String targetDirection = null;
+        String valueType = null;
         String unit = null;
         String displayName = ruleName;
+        String profileId = requestedProfileId;
+        String profileName = requestedProfileName;
+        String eventNo = requestedEventNo;
         if (effective != null) {
             Map<String, Object> params = objectMap(effective.data().get("effective_params"));
             targetValue = params.get("target_value");
             targetDirection = text(params.get("target_direction"));
+            Map<String, Object> resultContract =
+                    objectMap(effective.data().get("result_contract"));
+            contractTargetValue = resultContract.get("target_value");
+            targetDirection = first(
+                    targetDirection, text(resultContract.get("target_direction")));
+            valueType = text(resultContract.get("value_type"));
             unit = text(effective.data().get("result_unit"));
+            profileId = first(text(effective.data().get("profile_id")), profileId);
+            profileName = first(text(effective.data().get("profile_name")), profileName);
+            eventNo = first(
+                    text(objectMap(effective.data().get("extraction_contract")).get("event_no")),
+                    eventNo);
             String effectiveName = text(effective.data().get("rule_name"));
             if (effectiveName != null) {
                 displayName = effectiveName;
@@ -217,15 +305,100 @@ public class PreparedIndicatorExecutor {
         Double resultValue = number(data.get("result_value"));
         Long numerator = longValue(data.get("numerator_count"));
         Long denominator = longValue(data.get("denominator_count"));
+        Long sampleCount = longValue(data.get("sample_count"));
         boolean noSample = Boolean.TRUE.equals(data.get("no_sample")) || resultValue == null;
+        if (noSample && "median_duration".equals(valueType) && sampleCount == null) {
+            sampleCount = 0L;
+        }
+        String calculationDisplay = calculationDisplay(
+                valueType,
+                text(data.get("component_left")),
+                text(data.get("component_right")),
+                sampleCount);
+        Object configuredTarget = contractTargetValue != null
+                ? contractTargetValue : targetValue;
+        configuredTarget = normalizeConfiguredTarget(
+                configuredTarget, valueType, unit);
+        if (Boolean.TRUE.equals(data.get("target_conflict"))) {
+            targetValue = "目标配置不一致";
+        } else if (data.get("target_value") != null) {
+            Double dynamicTarget = number(data.get("target_value"));
+            // 耗时类 SQL 的 TargetValue CTE 在没有配置行时可能返回 0；0 分钟不是
+            // 有效运行目标，应视为缺失并回退审批 Profile 的静态目标（当前为 5 分钟）。
+            targetValue = "median_duration".equals(valueType)
+                    && dynamicTarget != null
+                    && dynamicTarget <= 0
+                    && configuredTarget != null
+                    ? configuredTarget
+                    : normalizeDynamicTarget(
+                            data.get("target_value"), valueType, unit);
+        } else if (targetValue == null) {
+            targetValue = configuredTarget;
+        } else {
+            targetValue = normalizeConfiguredTarget(
+                    targetValue, valueType, unit);
+        }
         IndicatorExecutionResult.Status status = noSample
                 ? IndicatorExecutionResult.Status.NO_SAMPLE
                 : IndicatorExecutionResult.Status.SUCCESS;
         return new IndicatorExecutionResult(
-                ruleId, displayName, status, resultValue, numerator, denominator, unit,
-                targetValue, targetDirection,
+                ruleId, displayName, status, resultValue, numerator, denominator,
+                valueType, unit, calculationDisplay, sampleCount, targetValue, targetDirection,
                 text(data.get("stat_start")), text(data.get("stat_end")),
-                text(data.get("run_id")), null, null, durationMs);
+                text(data.get("run_id")), null, null, durationMs,
+                text(data.get("data_freshness")),
+                profileId, profileName, eventNo,
+                text(data.get("extraction_id")), text(data.get("extraction_status")));
+    }
+
+    /**
+     * 概览 SQL 的百分比目标统一来自 {@code TARGET_COMP_VAL / 100.0}，
+     * 而 Java 为了展示分子/分母计算结果时使用百分数值（例如 95.00）。
+     * 因此动态目标必须转换为同一量纲后再展示和判定。
+     */
+    private static Object normalizeDynamicTarget(
+            Object target, String valueType, String unit) {
+        Double numeric = number(target);
+        if (numeric == null || !isPercentage(valueType, unit)) {
+            return target;
+        }
+        return numeric * 100;
+    }
+
+    /**
+     * 历史审批 Profile 的静态目标同时存在 0.95 与 95 两种写法；不大于 1
+     * 的百分比按比例小数解释，其余按百分数值解释。
+     */
+    private static Object normalizeConfiguredTarget(
+            Object target, String valueType, String unit) {
+        Double numeric = number(target);
+        if (numeric == null || !isPercentage(valueType, unit)) {
+            return target;
+        }
+        return Math.abs(numeric) <= 1 ? numeric * 100 : numeric;
+    }
+
+    private static boolean isPercentage(String valueType, String unit) {
+        String normalizedType = text(valueType);
+        String normalizedUnit = text(unit);
+        return "percentage".equalsIgnoreCase(normalizedType)
+                || "percentage".equalsIgnoreCase(normalizedUnit)
+                || "percent".equalsIgnoreCase(normalizedUnit)
+                || "%".equals(normalizedUnit);
+    }
+
+    private static String calculationDisplay(
+            String valueType, String left, String right, Long sampleCount) {
+        if ("rate_ratio".equals(valueType)) {
+            if (left == null && right == null) {
+                return null;
+            }
+            return first(left, "无数据") + " : " + first(right, "无数据");
+        }
+        if ("median_duration".equals(valueType)) {
+            return sampleCount == null ? "中位数" : "中位数，n=" + sampleCount;
+        }
+        return null;
     }
 
     private static void updateState(AgentRunState state, ToolResult result) {
@@ -273,6 +446,10 @@ public class PreparedIndicatorExecutor {
 
     private static String text(Object value) {
         return value == null || String.valueOf(value).isBlank() ? null : String.valueOf(value).strip();
+    }
+
+    private static String first(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private static Double number(Object value) {

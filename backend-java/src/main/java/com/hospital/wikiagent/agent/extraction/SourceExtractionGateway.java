@@ -10,6 +10,13 @@ public interface SourceExtractionGateway {
     ExtractionResult extract(ExtractionRequest request);
 
     /**
+     * 准备真实库快照并把跨实例写锁保持到双库查询结束。
+     */
+    default SourceExtractionLease prepare(ExtractionRequest request) {
+        return SourceExtractionLease.completed(extract(request));
+    }
+
+    /**
      * 默认占位网关返回 {@code false}，强制模式据此在执行前快速失败。
      */
     default boolean available() {

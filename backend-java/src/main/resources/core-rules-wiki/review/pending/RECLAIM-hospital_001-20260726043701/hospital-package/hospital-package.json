@@ -1,0 +1,9 @@
+{
+  "schema_version": "hospital-knowledge-package-v1",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "hospital_release_id": null,
+  "exported_at": "2026-07-26T04:37:00.840Z",
+  "contains_patient_data": false,
+  "files": {}
+}

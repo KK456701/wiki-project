@@ -1,138 +1,45 @@
 # 复制本文件为 config.yaml，并按本地环境修改。
+# 本文件只保留 scripts/start-java-runtime.ps1 实际读取的顶层配置。
 
 # 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
 runtime_db_url: "jdbc:sqlite:runtime/wiki_agent_runtime.db"
 
-# 规则正文、医院口径、字段映射和 SQL 规格直接从 core-rules-wiki 读取。
-# 991827是医院业务范围值，不是数据库名称；患者数据只通过下方两个DBHub数据源访问。
-business_db_hospital_scope_value: 991827
-business_db_urgent_consult_level_code: 977578
-business_db_transfer_department_code: 399549991
-business_db_transfer_ward_code: 399549990
-business_db_icu_org_ids: ""
-
-# 医院业务库统一经下方 DBHub MCP 访问；不要把真实密码提交到 Git。
-
-# DBHub MCP sidecar：仅用于访问医院 SQL Server 业务库。
+# 医院业务库统一经 DBHub MCP 访问；连接串和密码只保存在 DBHub。
 dbhub_api_url: "http://127.0.0.1:8080"
-dbhub_http_url: "http://127.0.0.1:8080"
 dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
-dbhub_timeout_seconds: 10
+# 业务事件抽取 MCP，必须与只读 DBHub MCP 分开配置。
+dbhub_biz_mcp_url: "http://127.0.0.1:5420/http/mcp"
 
-# 双库指标计算。业务库与真实库的连接串和密码仍只保存在 DBHub。
+# 真实库指标计算；业务库 DBHub 配置暂供既有诊断能力使用，普通计算不查询业务库。
 dbhub_business_source_id: "winex_all_dev"
 dbhub_business_execute_tool: "execute_sql_winex_all_dev"
 dbhub_business_database: "WiNEX_All_DEV"
-dbhub_business_schema: "dbo"
+dbhub_business_schema: "WINDBA_GN"
 dbhub_real_source_id: "winex_aima"
 dbhub_real_execute_tool: "execute_sql_winex_aima"
 dbhub_real_database: "winex_aima"
 dbhub_real_schema: "dbo"
 
-# 同事的真实抽取接口适配器合并前保持 disabled；required 不会伪造抽取成功。
+# 安全默认关闭；普通计算必须切换为 required，否则返回 SOURCE_EXTRACTION_DISABLED。
+# required 会先经业务事件 MCP 抽取并原子替换真实库，失败时不会读取旧快照。
 agent_extraction_mode: "disabled"
+extraction_hospital_soid: ""
 
-# 元数据缓存最大有效时间。
-metadata_max_age_hours: 24
-
-# SQL 试运行安全控制。
-allow_sql_trial_run: true
-sql_run_timeout_seconds: 10
-
-# 医院账号与指标明细访问控制。
-hospital_auth_session_hours: 8
-indicator_detail_export_root: "runtime/exports"
-indicator_detail_expire_hours: 24
-indicator_detail_max_rows: 20000
-# 只能设置为 20、50 或 100；无效值会回退为 50。
-indicator_detail_default_page_size: 50
-
-# 离线知识包签名。正式部署时，公司与医院分别只保管自己的私钥。
-hospital_package_signing_key_path: "runtime/package-keys/hospital-private.pem"
-hospital_package_signing_key_id: "hospital_001"
-trusted_hospital_keys_dir: "runtime/package-keys/trusted-hospitals"
-company_package_signing_key_path: "runtime/package-keys/company-private.pem"
-company_package_signing_key_id: "company_main"
-trusted_company_keys_dir: "runtime/package-keys/trusted-companies"
-
-# 指标运算调度器。关闭后仍可通过管理接口手动重算。
-monitoring_scheduler_enabled: true
-monitoring_scheduler_timezone: "Asia/Shanghai"
-monitoring_scheduler_lease_seconds: 600
+# 真实库写入默认关闭。启用时只通过进程环境变量提供：
+# WIKI_SQLSERVER_ENABLED、WIKI_SQLSERVER_URL、WIKI_SQLSERVER_USERNAME、
+# WIKI_SQLSERVER_PASSWORD。不要把真实地址或凭据写入本文件。
 
 # 本地 MVP 审批页管理员密码。正式部署前必须修改。
 admin_password: "CHANGE_ME"
 
-# Ollama 本地模型。
+# 默认模型与本地 Ollama。
+default_model: "ollama-qwen3"
 ollama_model: "qwen3:4B-instruct"
 ollama_base_url: "http://127.0.0.1:11434"
+
 # Java/Spring AI 访问外部模型 API 时的可选 HTTP 代理；本地部署不需要时留空。
 java_http_proxy_url: ""
-ollama_timeout_seconds: 60
-ollama_num_ctx: 16384
-ollama_history_turns: 8
-ollama_prompt_budget_tokens: 12000
-ollama_output_reserve_tokens: 1200
 
-# 工具调用型 Agent。关闭时对话入口明确不可用，不会回退到其他流程。
-agent_enabled: false
-agent_planning_enabled: true
-agent_model: "qwen3:4B-instruct"
-default_model: "ollama-qwen3"
-agent_max_steps: 8
-agent_request_timeout_seconds: 120
-agent_default_tool_timeout_seconds: 30
-agent_max_tool_result_chars: 12000
-agent_sql_ttl_minutes: 30
-
-# Agent Trace 保留、慢请求和轻量性能提示阈值。
-agent_trace_retention_days: 30
-agent_trace_slow_request_ms: 120000
-agent_trace_slow_llm_ms: 60000
-agent_trace_tool_failure_warning_rate: 0.05
-agent_trace_timeout_warning_rate: 0.05
-
-# 复合指标子任务并发。Ollama 默认串行，API 与只读 DB 查询最多并发 2。
-compound_api_concurrency: 2
-compound_ollama_concurrency: 1
-compound_db_concurrency: 2
-
-# 工具调用型 Agent 可用模型列表。不配置 models 时会自动回退到上方 Ollama 配置。
-models:
-  - id: "ollama-qwen3"
-    name: "Qwen3 4B（本地 Ollama）"
-    provider: "ollama"
-    model: "qwen3:4B-instruct"
-    base_url: "http://127.0.0.1:11434"
-  - id: "ollama-qwen3-8b-thinking"
-    name: "Qwen3 8B 思考模式（本地 Ollama）"
-    provider: "ollama"
-    model: "qwen3:8b"
-    base_url: "http://127.0.0.1:11434"
-    thinking: true
-    planner_thinking: false
-    call_timeout_seconds: 120
-    request_timeout_seconds: 300
-  # Java 运行时从环境变量读取百炼密钥，不要在本文件或 Git 中保存明文 API Key。
-  # 默认地址适用于北京公共按量调用；专属 Workspace 或其他地域请覆盖 DASHSCOPE_BASE_URL。
-  - id: "aliyun-qwen3-14b"
-    name: "Qwen3 14B（阿里云百炼 API）"
-    provider: "openai-compatible"
-    model: "${DASHSCOPE_QWEN3_14B_MODEL:qwen3-14b}"
-    base_url: "${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}"
-    completions_path: "/chat/completions"
-    api_key: "${DASHSCOPE_API_KEY}"
-    thinking: false
-    enable_thinking: false
-  - id: "deepseek-v4-flash"
-    name: "DeepSeek V4 Flash（API）"
-    provider: "openai"
-    model: "deepseek-v4-flash"
-    base_url: "https://api.deepseek.com"
-    api_key: "${DEEPSEEK_API_KEY}"
-  - id: "deepseek-v4-pro"
-    name: "DeepSeek V4 Pro（API）"
-    provider: "openai"
-    model: "deepseek-v4-pro"
-    base_url: "https://api.deepseek.com"
-    api_key: "${DEEPSEEK_API_KEY}"
+# API 模型、超时和其他 Spring 配置由 backend-java/src/main/resources/application.yml
+# 及环境变量控制。API Key 请使用 DASHSCOPE_API_KEY、DEEPSEEK_API_KEY 等环境变量，
+# 不要写入 config.yaml 或提交到 Git。

@@ -1,0 +1,316 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-004-001",
+  "rule_name": "手术患者特级护理/一级护理出院率",
+  "category": "分级护理制度",
+  "definition": "手术患者出院时为特级护理/一级护理级别的患者数量占同期手术患者总数量的比例。",
+  "formula": "分子：手术患者出院时为特级护理/一级护理级别的患者数量\n分母：同期手术患者总数量\n公式：手术患者出院时为特级护理/一级护理级别的患者数量 / 同期手术患者总数量 * 100%",
+  "note": "——",
+  "significance": "反映对住院患者进行分级护理动态调整的情况。",
+  "unit": "percentage",
+  "default_profile": "HXZD-004-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-004-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "admitted_to_ward_at",
+      "patient_scope": [
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "extraction_contract": {
+        "schema_version": "profile-extraction-contract-v1",
+        "route": "EVENT",
+        "event_no": "GRADE_CARE_V2",
+        "event_table": "MRAS_BUSINESS_GRADED_CARE",
+        "dependency_tables": [
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "target_tables": [
+          "MRAS_BUSINESS_GRADED_CARE",
+          "MRAS_TARGET_DEFINITION"
+        ],
+        "allowed_result_fields": {
+          "MRAS_BUSINESS_GRADED_CARE": [
+            "MRAS_BUSINESS_GRADED_CARE_ID",
+            "MRAS_TARGET_DEFINITION_ID",
+            "PERSON_NAME",
+            "ENCOUNTER_ID",
+            "CURRENT_ADMITTER_NAME",
+            "CURRENT_ATTENDER_NAME",
+            "CHIEF_DOCTOR_NAME",
+            "CURRENT_DEPT_ID",
+            "CURRENT_DEPT_NAME",
+            "CURRENT_MEDICAL_GROUP_ID",
+            "CURRENT_MEDICAL_GROUP_NAME",
+            "ADMITTED_AT",
+            "DISCHARGED_AT",
+            "ADMITTED_TO_WARD_AT",
+            "WARD_DISCHARGED_AT",
+            "CARE_LEVEL",
+            "NURSING_ROUNDS_NUM",
+            "COMPLETED_NURSING_ROUNDS_NUM",
+            "IS_DEL",
+            "HOSPITAL_SOID",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY",
+            "HOSPITAL_AREA_ID",
+            "MRAS_EVENT_DEFINE_ID",
+            "SURGERY_NAME",
+            "SURGERY_NO",
+            "CURRENT_ADMITTER_ID",
+            "EVENT_NO",
+            "EVENT_AT",
+            "EVENT_NAME",
+            "EXTRACT_AT",
+            "BIZ_ID",
+            "SURGERY_AT",
+            "VERSION",
+            "IMRN",
+            "MAIN_DOCTOR_NO",
+            "CURRENT_ATTENDER_ID",
+            "CHIEF_DOCTOR_NO",
+            "MAIN_DOCTOR_NAME",
+            "MAIN_DOCTOR_ID",
+            "CURRENT_ATTENDER_NO",
+            "CURRENT_ADMITTER_NO",
+            "CHIEF_DOCTOR_ID"
+          ],
+          "MRAS_TARGET_DEFINITION": [
+            "MRAS_TARGET_DEFINITION_ID",
+            "MRAS_TARGET_CLASS_ID",
+            "TARGET_NO",
+            "TARGET_NAME",
+            "TARGET_DEFINITION",
+            "TARGET_TYPE_NO",
+            "TARGET_DEF_FORMULA",
+            "TARGET_DEF_EXPLAIN",
+            "MRAS_TARGET_CALIBRATION_ID",
+            "TARGET_DEF_MEANING",
+            "TARGET_DEF_SOURCE",
+            "TARGET_NATURE_CODE",
+            "TARGET_NATURE_NAME",
+            "TIME_DIMENSIONS",
+            "TARGET_UNIT",
+            "TARGET_DECIMAL",
+            "TARGET_GUIDE_CODE",
+            "TARGET_GUIDE_NAME",
+            "TARGET_SOURCE",
+            "TARGET_EXPLAIN",
+            "TARGET_METHOD",
+            "TARGET_THRESHOLD",
+            "MRAS_OVER_REPORT_ID",
+            "MRAS_DEPT_REPORT_ID",
+            "MRAS_DETAIL_REPORT_ID",
+            "SEQ_NO",
+            "TARGET_SOURCE_NO",
+            "TARGET_COMP_VAL",
+            "HOSPITAL_SOID",
+            "ENABLED_FLAG",
+            "HOSPITAL_AREA_ID",
+            "IS_DEL",
+            "CREATED_AT",
+            "MODIFIED_AT",
+            "CREATED_BY",
+            "MODIFIED_BY"
+          ]
+        },
+        "target_schema_fingerprints": {
+          "MRAS_BUSINESS_GRADED_CARE": "ef33ef51e4a65758291bacc3274ca8bc7031a69e3bee0bab4acf1af507989960",
+          "MRAS_TARGET_DEFINITION": "06eac58c3c10c8fe94d983b30ec7d1fac3874dfbd84e6feab9ef3e6c0bff7578"
+        },
+        "target_structure_fingerprint": "4c553547b2a9334ee3f24050a235372073617caf2f651154f6762dfec03b7633",
+        "start_parameter": "startTime",
+        "end_parameter": "endTime",
+        "hospital_parameter": "hospitalSOID",
+        "schema_name": "dbo",
+        "database_name": "winex_aima"
+      },
+      "result_contract": {
+        "value_type": "percentage",
+        "unit": "percentage",
+        "target_value": 0.05,
+        "target_direction": "<="
+      },
+      "numerator_rule": "手术患者出院时为特级护理/一级护理级别的患者数量",
+      "numerator_caliber": "1、单位时间内出区的手术患者中，最后一条护理医嘱为特级或一级护理的患者数\n2、说明：手术患者判断时，只需要统计手术类型为手术、介入治疗，排除诊断性操作、治疗性操作的数据以及日间手术。",
+      "denominator_rule": "同期手术患者总数量",
+      "denominator_caliber": "1、单位时间内出区的手术患者人数\n2、手术数据来源：取病案首页中有手术数据的患者数，一个患者多条手术统计1）",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "marptBeginAt",
+        "marptEndAt"
+      ],
+      "parameter_contract": {
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": null,
+        "overview": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子手术患者出院时为特级护理一级护理级别的患者数量",
+        "denominator_count": "分母同期手术患者总数量",
+        "index_value": "监测情况",
+        "component_left": "分子手术患者出院时为特级护理一级护理级别的患者数量",
+        "component_right": "分母同期手术患者总数量",
+        "sample_count": null,
+        "target_value": "目标值"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "1fb80c4bcf81be389b824b5ef8c114fd78706e5fc3e6211731bf99b48b0374e9"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "6bce1c3f3382f033de2de3010bdb46125c8f0bbe40bd7d6859846ced00973ed3"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "36d94219a9f5e25f79a05a0c2245fd11c231189da24e8eeaf482baacc86d1e39"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "overview": "1fb80c4bcf81be389b824b5ef8c114fd78706e5fc3e6211731bf99b48b0374e9",
+            "department_detail": "6bce1c3f3382f033de2de3010bdb46125c8f0bbe40bd7d6859846ced00973ed3",
+            "patient_detail": "36d94219a9f5e25f79a05a0c2245fd11c231189da24e8eeaf482baacc86d1e39"
+          },
+          "real": {
+            "overview": "1fb80c4bcf81be389b824b5ef8c114fd78706e5fc3e6211731bf99b48b0374e9",
+            "department_detail": "6bce1c3f3382f033de2de3010bdb46125c8f0bbe40bd7d6859846ced00973ed3",
+            "patient_detail": "36d94219a9f5e25f79a05a0c2245fd11c231189da24e8eeaf482baacc86d1e39"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子手术患者出院时为特级护理一级护理级别的患者数量",
+          "denominator_count": "分母同期手术患者总数量",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_GRADED_CARE",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

@@ -1,0 +1,225 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-010-001",
+  "rule_name": "长期医嘱当日终止率",
+  "category": "查对制度",
+  "definition": "开具长期医嘱后当日终止执行的医嘱数量占同期开具长期医嘱总数量的比例。",
+  "formula": "分子：开具长期医嘱后当日终止执行的医嘱数量\n分母：同期开具长期医嘱总数量\n公式：开具长期医嘱后当日终止执行的医嘱数量 / 同期开具长期医嘱总数量 * 100%",
+  "note": "——",
+  "significance": "反映查对制度的落实和管理情况。",
+  "default_profile": "HXZD-010-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-010-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "order_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "lower_is_better",
+      "numerator_rule": "开具长期医嘱后当日终止执行的医嘱数量",
+      "numerator_caliber": "1、单位时间内开立的长期医嘱中，开立日期=停止医嘱日期的数量（只判断日期）（排除当日停止医嘱后，24小时内开立了转科、出院、死亡医嘱的医嘱）\n2、“当日”定义：24小时内停止的医嘱，都算作当日停止\n3、不包含24小时出入院患者的医嘱，以及已失效和已作废的医嘱；",
+      "denominator_rule": "同期开具长期医嘱总数量",
+      "denominator_caliber": "单位时间内医生站开立长期医嘱的数量",
+      "configurable_parameters": "| 原始 Excel 行 | 配置类型 | 配置值 |\n|---:|---|---|\n| 57 | 下拉单选 | 当天停止医嘱定义：24小时内停止的医嘱；<br>当天停止医嘱定义：当天凌晨24点前停止的医嘱 |",
+      "declared_parameters": [
+        "endTime",
+        "marptBeginAt",
+        "marptEndAt",
+        "startTime"
+      ],
+      "parameter_contract": {
+        "endTime": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "startTime": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/etl_source.sql",
+        "overview": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子开具长期医嘱后当日终止执行的医嘱数量",
+        "denominator_count": "分母同期开具长期医嘱总数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "verification_required",
+          "blockers": [
+            "函数需要目标数据库验证：to_char、trunc"
+          ],
+          "parameters": [
+            "endTime",
+            "startTime"
+          ],
+          "functions": [
+            "row_number",
+            "to_char",
+            "trunc"
+          ],
+          "unknown_functions": [
+            "to_char",
+            "trunc"
+          ],
+          "normalized_sha256": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d"
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "f6a7c1cb70a894e55920ab9e664953edb4b8eb4b52fb7e8dbe3acb29921ed8f1"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "datediff",
+            "max"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "9dbe3c83b478777473b2d3fc66f853fcd8eb13dfba90b2d4c592ed477299d2de"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "datediff"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "f6ddd0cca06341b1fab3c1815c7669f8383f81bd87724f88618278de53dc82a0"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "source_extract": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d",
+            "overview": "f6a7c1cb70a894e55920ab9e664953edb4b8eb4b52fb7e8dbe3acb29921ed8f1",
+            "department_detail": "9dbe3c83b478777473b2d3fc66f853fcd8eb13dfba90b2d4c592ed477299d2de",
+            "patient_detail": "f6ddd0cca06341b1fab3c1815c7669f8383f81bd87724f88618278de53dc82a0"
+          },
+          "real": {
+            "source_extract": "485e9f76b383c4fe51ac1b0cb313f16ee145d760aff502c1add1c3c80e6fcb9d",
+            "overview": "f6a7c1cb70a894e55920ab9e664953edb4b8eb4b52fb7e8dbe3acb29921ed8f1",
+            "department_detail": "9dbe3c83b478777473b2d3fc66f853fcd8eb13dfba90b2d4c592ed477299d2de",
+            "patient_detail": "f6ddd0cca06341b1fab3c1815c7669f8383f81bd87724f88618278de53dc82a0"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子开具长期医嘱后当日终止执行的医嘱数量",
+          "denominator_count": "分母同期开具长期医嘱总数量",
+          "target_value": "目标值"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}

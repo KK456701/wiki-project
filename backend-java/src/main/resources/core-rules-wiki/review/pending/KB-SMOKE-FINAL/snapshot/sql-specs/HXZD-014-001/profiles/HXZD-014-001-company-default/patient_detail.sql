@@ -1,0 +1,21 @@
+SELECT
+event.ENCOUNTER_ID ,
+event.CURRENT_DEPT_ID AS 当前科室编码,
+event.CURRENT_DEPT_NAME AS 当前科室名称,
+event.IMRN AS 住院号,
+event.PERSON_NAME AS 患者姓名,
+event.CURRENT_ADMITTER_NAME AS 责任医师,
+event.ADMITTED_TO_WARD_AT AS 入区时间,
+event.WARD_DISCHARGED_AT AS 出区时间,
+event.CRITICAL_VAL_DTL as 危急值详情,
+event.PUBLISH_AT as 危急值报告时间,
+event.RECEIVE_TIME as 危急值接收时间,
+emp1.EMPLOYEE_NAME as 危急值接收人,
+  DATEDIFF(MINUTE,PUBLISH_AT,RECEIVE_TIME) AS "危急值接收时间-报告时间(分钟)"
+FROM
+MRAS_BUSINESS_CRITICAL_RPT event  WITH (NOLOCK)
+LEFT JOIN EMPLOYEE_INFO emp1 WITH (NOLOCK)  ON event.RECEIVE_BY = emp1.EMPLOYEE_ID
+WHERE
+--布局组件设置提升效率
+and ENCOUNTER_TYPE_CODE = '145235'
+AND event.ADMITTED_TO_WARD_AT BETWEEN :start_time and :end_time

@@ -1,0 +1,196 @@
+{
+  "schema_version": "hxzd-runtime-v2",
+  "rule_id": "HXZD-005-001",
+  "rule_name": "四级手术患者手术当日床旁交接班占比",
+  "category": "值班和交接班制度",
+  "definition": "四级手术患者手术当日进行床旁交接班的患者数量占同期进行四级手术的患者总数量的比例。",
+  "formula": "分子：四级手术患者手术当日进行床旁交接班的患者数量\n分母：同期进行四级手术的患者总数量\n公式：四级手术患者手术当日进行床旁交接班的患者数量 / 同期进行四级手术的患者总数量 * 100%",
+  "note": "1.本指标中四级手术是指按各医疗机构制定的本机构手术分级管理目录中按四级手术管理的手术/操作。\n2.手术当日进行床旁交接班应当具备相关纸质或影像记录。",
+  "significance": "反映交接班制度落实和管理情况。",
+  "default_profile": "HXZD-005-001-company-default",
+  "profiles": [
+    {
+      "profile_id": "HXZD-005-001-company-default",
+      "profile_name": "推荐方案：公版",
+      "governance_status": "approved",
+      "execution_status": "documentation_only",
+      "execution_blockers": [
+        "缺少经确认的医院字段契约和统一结果列映射"
+      ],
+      "effective_from": "2025-01-01",
+      "effective_to": null,
+      "owner_scope": "company",
+      "hospital_ids": [
+        "*"
+      ],
+      "time_dimension": "surgery_at",
+      "patient_scope": [
+        "inpatient_current",
+        "inpatient_discharged"
+      ],
+      "dedup_key": "encounter_id",
+      "direction": "higher_is_better",
+      "numerator_rule": "四级手术患者手术当日进行床旁交接班的患者数量",
+      "numerator_caliber": "1、当天完成四级手术，且完成床旁交班的患者数量（手术完成时间对比床旁交班时间）\n2、说明：一个患者单次住院期间多次四级手术时，要完成多次床旁交班才算合格。\n3、当天定义：手术完成后后按24小时内计算\n4、说明：手术患者判断时，只需要统计手术类型=手术、介入治疗，排除诊断性操作、治疗性操作的数据\n5、床旁交班数据来源为交接班系统，以下任意一个满足，即表示有做床旁交班：\n5.1）当天有创建床旁交班（班次）\n5.2）当天有创建交班，且手术患者的床旁标记=是\n5.3）当天有创建交班，且手术患者有被添加到床旁交班的类型中（交班患者类型的显示名称包含“床旁”字样）",
+      "denominator_rule": "同期进行四级手术的患者总数量",
+      "denominator_caliber": "单位时间内完成四级手术患者人数",
+      "configurable_parameters": "无。",
+      "declared_parameters": [
+        "marptBeginAt",
+        "marptEndAt"
+      ],
+      "parameter_contract": {
+        "marptBeginAt": {
+          "canonical_name": "start_time",
+          "type": "datetime",
+          "source": "stat_period"
+        },
+        "marptEndAt": {
+          "canonical_name": "end_time",
+          "type": "datetime",
+          "source": "stat_period"
+        }
+      },
+      "sql_refs": {
+        "etl_source": null,
+        "overview": "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/overview.sql",
+        "department": "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/department.sql",
+        "patient_detail": "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/patient_detail.sql"
+      },
+      "result_mapping": {
+        "index_value": null,
+        "numerator_count": null,
+        "denominator_count": null
+      },
+      "result_mapping_candidates": {
+        "numerator_count": "分子四级手术患者手术当日进行床旁交接班的患者数量",
+        "denominator_count": "分母同期进行四级手术的患者总数量",
+        "index_value": "监测情况"
+      },
+      "sql_capabilities": {
+        "source_extract": {
+          "capability": "source_extract",
+          "status": "missing",
+          "blockers": [
+            "来源文件未提供该类 SQL"
+          ],
+          "parameters": [],
+          "functions": [],
+          "unknown_functions": []
+        },
+        "overview": {
+          "capability": "overview",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "stuff",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "a2ddbd5318868b13000902edc987c7b75bb924518683c6628c3eda1d9a1e6bc3"
+        },
+        "department_detail": {
+          "capability": "department_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [
+            "count",
+            "max",
+            "sum"
+          ],
+          "unknown_functions": [],
+          "normalized_sha256": "511f6bf87c1e0d16c72c062ef6ab496d92019ddc6890ea9882294574481943df"
+        },
+        "patient_detail": {
+          "capability": "patient_detail",
+          "status": "static_validated",
+          "blockers": [],
+          "parameters": [
+            "marptBeginAt",
+            "marptEndAt"
+          ],
+          "functions": [],
+          "unknown_functions": [],
+          "normalized_sha256": "d5414306871dbd50ceccfc1730e9bf3688387233674a3cf887ec6463995e666a"
+        }
+      },
+      "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
+        "schema_compatible": false,
+        "verified_source_roles": [],
+        "business_source_role": "business",
+        "real_source_role": "real",
+        "sql_hashes": {
+          "business": {
+            "overview": "a2ddbd5318868b13000902edc987c7b75bb924518683c6628c3eda1d9a1e6bc3",
+            "department_detail": "511f6bf87c1e0d16c72c062ef6ab496d92019ddc6890ea9882294574481943df",
+            "patient_detail": "d5414306871dbd50ceccfc1730e9bf3688387233674a3cf887ec6463995e666a"
+          },
+          "real": {
+            "overview": "a2ddbd5318868b13000902edc987c7b75bb924518683c6628c3eda1d9a1e6bc3",
+            "department_detail": "511f6bf87c1e0d16c72c062ef6ab496d92019ddc6890ea9882294574481943df",
+            "patient_detail": "d5414306871dbd50ceccfc1730e9bf3688387233674a3cf887ec6463995e666a"
+          }
+        },
+        "source_verification": {
+          "business": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          },
+          "real": {
+            "metadata_status": "unverified",
+            "compile_status": "unverified"
+          }
+        },
+        "overview_result_mapping": {
+          "numerator_count": "分子四级手术患者手术当日进行床旁交接班的患者数量",
+          "denominator_count": "分母同期进行四级手术的患者总数量"
+        },
+        "department_comparison_key": "",
+        "patient_comparison_key": "",
+        "numerator_classification_field": "",
+        "department_compare_fields": [],
+        "patient_compare_fields": [],
+        "allowed_compare_fields": [],
+        "verification_blockers": [
+          "business_and_real_schema_not_verified",
+          "comparison_keys_not_verified"
+        ]
+      },
+      "field_contract": {
+        "business_fields": {}
+      },
+      "field_mapping": {
+        "status": "missing",
+        "dialect": "sqlserver",
+        "main_table": "MRAS_BUSINESS_SHIFTHANDOVER",
+        "fields": {},
+        "parameters": {},
+        "relations": [],
+        "query_profile": "",
+        "source_roles": {
+          "business": {
+            "source_id": "winex_all_dev",
+            "database_name": "WiNEX_All_DEV",
+            "status": "unverified"
+          },
+          "real": {
+            "source_id": "winex_aima",
+            "database_name": "winex_aima",
+            "status": "unverified"
+          }
+        }
+      }
+    }
+  ],
+  "quality_checks": []
+}
