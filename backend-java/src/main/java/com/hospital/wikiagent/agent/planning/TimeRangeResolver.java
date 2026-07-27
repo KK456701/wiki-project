@@ -34,7 +34,9 @@ public class TimeRangeResolver {
             Map.entry("十", 10), Map.entry("十一", 11), Map.entry("十二", 12));
     private static final Pattern CHINESE_MONTH = Pattern.compile("(十二|十一|十|[一二三四五六七八九])月份?");
     private static final Pattern MONTH_TO_NOW = Pattern.compile(
-            "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:到现在|至今|开始)");
+            "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:到现在|至今|开始(?![到至]))");
+    private static final Pattern MONTH_TO_ISO_DATE = Pattern.compile(
+            "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:开始)?(?:到|至)(\\d{4}-\\d{1,2}-\\d{1,2})");
     private static final Pattern MONTH_RANGE = Pattern.compile(
             "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:到|至)"
                     + "(?:(\\d{2}|\\d{4})年)?(1[0-2]|[1-9])月");
@@ -79,6 +81,18 @@ public class TimeRangeResolver {
         }
         if (SetValues.CURRENT_YEAR.contains(raw)) {
             return valid(LocalDate.of(now.getYear(), 1, 1).atStartOfDay(), now, expression.rawText());
+        }
+
+        Matcher monthToIso = MONTH_TO_ISO_DATE.matcher(raw);
+        if (monthToIso.find()) {
+            int year = year(monthToIso.group(1), now.getYear());
+            LocalDateTime start = monthStart(year, Integer.parseInt(monthToIso.group(2)));
+            try {
+                LocalDateTime end = LocalDate.parse(monthToIso.group(3)).atStartOfDay();
+                return valid(start, end, expression.rawText());
+            } catch (DateTimeParseException exception) {
+                return null;
+            }
         }
 
         Matcher toNow = MONTH_TO_NOW.matcher(raw);
