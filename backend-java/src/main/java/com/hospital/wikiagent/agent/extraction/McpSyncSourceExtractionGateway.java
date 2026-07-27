@@ -205,9 +205,16 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
         if (rows.isEmpty()) {
             return;
         }
-        // 从第一行推断列名
+        // 从第一行推断列名，再与目标表实际列取交集（避免 MCP 返回目标表不存在的列）
+        Set<String> targetCols = getTargetTableColumns(qualifiedTable);
         List<String> columns = new ArrayList<>(rows.get(0).keySet());
+        if (!targetCols.isEmpty()) {
+            columns = columns.stream()
+                    .filter(c -> targetCols.contains(c.toUpperCase(Locale.ROOT)))
+                    .collect(Collectors.toList());
+        }
         if (columns.isEmpty()) {
+            log.warn("表 {} 无匹配列，跳过插入", qualifiedTable);
             return;
         }
 
@@ -241,6 +248,23 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             sqlServerJdbcTemplate.update(sql, params.toArray());
         }
         log.info("批量插入 {} 行到 {} ({} 列)", rows.size(), qualifiedTable, columns.size());
+    }
+
+    /** 查询目标表的实际列名（大写），用于过滤 MCP 返回的多余列。 */
+    private Set<String> getTargetTableColumns(String qualifiedTable) {
+        try {
+            // qualifiedTable 格式: dbo.TABLE_NAME
+            String[] parts = qualifiedTable.split("\\.");
+            String schema = parts.length > 1 ? parts[0] : "dbo";
+            String table = parts.length > 1 ? parts[1] : parts[0];
+            List<String> cols = sqlServerJdbcTemplate.queryForList(
+                    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=?",
+                    String.class, schema, table);
+            return cols.stream().map(c -> c.toUpperCase(Locale.ROOT)).collect(Collectors.toSet());
+        } catch (Exception e) {
+            log.warn("查询表 {} 列信息失败，将使用全部列: {}", qualifiedTable, e.getMessage());
+            return Set.of();
+        }
     }
 
     // ==================== 辅助方法 ====================
