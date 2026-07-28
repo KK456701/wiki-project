@@ -274,6 +274,7 @@ public class BatchIndicatorRuntime {
                             traceOutput);
                     emitProgress(observer, traceId, completed.incrementAndGet(), total,
                             taskDisplay(target), result.ok());
+                    emitIndicatorResult(observer, traceId, completed.get(), total, result);
                     return result;
                 });
             }
@@ -550,6 +551,39 @@ public class BatchIndicatorRuntime {
                 "node_type", "code",
                 "message", "正在计算指标 (" + done + "/" + total + ")：" + ruleName,
                 "status", ok ? "success" : "failed"));
+    }
+
+    /**
+     * 每完成一个指标立即通过 SSE 推送该指标结果，前端可逐条渲染而不等全部完成。
+     */
+    private static void emitIndicatorResult(
+            AgentRunObserver observer,
+            String traceId,
+            int done,
+            int total,
+            IndicatorExecutionResult result) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("rule_id", result.ruleId());
+        payload.put("rule_name", result.ruleName());
+        payload.put("status", result.status().name());
+        payload.put("done", done);
+        payload.put("total", total);
+        if (result.resultValue() != null) {
+            payload.put("result_value", result.resultValue());
+        }
+        if (result.numerator() != null) {
+            payload.put("numerator_count", result.numerator());
+        }
+        if (result.denominator() != null) {
+            payload.put("denominator_count", result.denominator());
+        }
+        if (result.errorCode() != null) {
+            payload.put("error_code", result.errorCode());
+        }
+        if (result.errorMessage() != null) {
+            payload.put("error_message", result.errorMessage());
+        }
+        emit(observer, "batch_indicator_result", traceId, done, payload);
     }
 
     private static void emitTrace(
