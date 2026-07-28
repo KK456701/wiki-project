@@ -50,6 +50,14 @@ public class TimeRangeResolver {
                     + "(\\d{2}|\\d{4})年(1[0-2]|[1-9])月(3[01]|[12]\\d|[1-9])(?:日|号)?");
     private static final Pattern ISO_DATE_RANGE = Pattern.compile(
             "(\\d{4}-\\d{1,2}-\\d{1,2})(?:到|至|-)(\\d{4}-\\d{1,2}-\\d{1,2})");
+    private static final Pattern DOT_DATE_RANGE = Pattern.compile(
+            "(\\d{4}\\.\\d{1,2}\\.\\d{1,2})(?:到|至|-)(\\d{4}\\.\\d{1,2}\\.\\d{1,2})");
+    private static final Pattern SLASH_DATE_RANGE = Pattern.compile(
+            "(\\d{4}/\\d{1,2}/\\d{1,2})(?:到|至|-)(\\d{4}/\\d{1,2}/\\d{1,2})");
+    private static final Pattern COMPACT_DATE_RANGE = Pattern.compile(
+            "(\\d{8})(?:到|至|-)(\\d{8})");
+    private static final Pattern RELATIVE_PERIOD = Pattern.compile(
+            "最近(\\d+)(天|周|月|年)");
     private static final Pattern ISO_DATE_TIME_RANGE = Pattern.compile(
             "(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:到|至|~)"
                     + "(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})");
@@ -81,6 +89,30 @@ public class TimeRangeResolver {
         }
         if (SetValues.CURRENT_YEAR.contains(raw)) {
             return valid(LocalDate.of(now.getYear(), 1, 1).atStartOfDay(), now, expression.rawText());
+        }
+        if (SetValues.LAST_YEAR.contains(raw)) {
+            LocalDateTime start = LocalDate.of(now.getYear() - 1, 1, 1).atStartOfDay();
+            LocalDateTime end = LocalDate.of(now.getYear(), 1, 1).atStartOfDay();
+            return valid(start, end, expression.rawText());
+        }
+        if (SetValues.YEAR_BEFORE_LAST.contains(raw)) {
+            LocalDateTime start = LocalDate.of(now.getYear() - 2, 1, 1).atStartOfDay();
+            LocalDateTime end = LocalDate.of(now.getYear() - 1, 1, 1).atStartOfDay();
+            return valid(start, end, expression.rawText());
+        }
+
+        Matcher relativePeriod = RELATIVE_PERIOD.matcher(raw);
+        if (relativePeriod.find()) {
+            int amount = Integer.parseInt(relativePeriod.group(1));
+            String unit = relativePeriod.group(2);
+            LocalDateTime start = switch (unit) {
+                case "天" -> now.minusDays(amount);
+                case "周" -> now.minusWeeks(amount);
+                case "月" -> now.minusMonths(amount);
+                case "年" -> now.minusYears(amount);
+                default -> now.minusMonths(amount);
+            };
+            return valid(start, now, expression.rawText());
         }
 
         Matcher monthToIso = MONTH_TO_ISO_DATE.matcher(raw);
@@ -171,6 +203,30 @@ public class TimeRangeResolver {
             } catch (DateTimeParseException exception) {
                 return null;
             }
+        }
+
+        Matcher dotRange = DOT_DATE_RANGE.matcher(raw);
+        if (dotRange.find()) {
+            LocalDateTime start = parseFlexibleDate(dotRange.group(1), '.');
+            LocalDateTime end = parseFlexibleDate(dotRange.group(2), '.');
+            ResolvedTimeRange result = valid(start, end, expression.rawText());
+            if (result != null) return result;
+        }
+
+        Matcher slashRange = SLASH_DATE_RANGE.matcher(raw);
+        if (slashRange.find()) {
+            LocalDateTime start = parseFlexibleDate(slashRange.group(1), '/');
+            LocalDateTime end = parseFlexibleDate(slashRange.group(2), '/');
+            ResolvedTimeRange result = valid(start, end, expression.rawText());
+            if (result != null) return result;
+        }
+
+        Matcher compactRange = COMPACT_DATE_RANGE.matcher(raw);
+        if (compactRange.find()) {
+            LocalDateTime start = parseCompactDate(compactRange.group(1));
+            LocalDateTime end = parseCompactDate(compactRange.group(2));
+            ResolvedTimeRange result = valid(start, end, expression.rawText());
+            if (result != null) return result;
         }
 
         for (String relative : SetValues.ALL) {
@@ -265,12 +321,46 @@ public class TimeRangeResolver {
                 : null;
     }
 
+    /**
+     * 解析点分隔或斜杠分隔的日期（如 2025.01.01 或 2025/1/1）。
+     */
+    private static LocalDateTime parseFlexibleDate(String value, char separator) {
+        try {
+            String[] parts = value.split("\\" + separator);
+            if (parts.length != 3) return null;
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            int day = Integer.parseInt(parts[2]);
+            return LocalDate.of(year, month, day).atStartOfDay();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    /**
+     * 解析纯数字日期（如 20250101）。
+     */
+    private static LocalDateTime parseCompactDate(String value) {
+        try {
+            if (value.length() != 8) return null;
+            int year = Integer.parseInt(value.substring(0, 4));
+            int month = Integer.parseInt(value.substring(4, 6));
+            int day = Integer.parseInt(value.substring(6, 8));
+            return LocalDate.of(year, month, day).atStartOfDay();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
     private static final class SetValues {
         private static final java.util.Set<String> CURRENT_MONTH = java.util.Set.of("本月", "这个月", "当月");
         private static final java.util.Set<String> PREVIOUS_MONTH = java.util.Set.of("上月", "上个月");
         private static final java.util.Set<String> CURRENT_YEAR = java.util.Set.of("今年", "今年至今", "本年至今");
+        private static final java.util.Set<String> LAST_YEAR = java.util.Set.of("去年", "上一年");
+        private static final java.util.Set<String> YEAR_BEFORE_LAST = java.util.Set.of("前年");
         private static final java.util.List<String> ALL = java.util.List.of(
-                "今年至今", "本年至今", "这个月", "上个月", "本月", "当月", "上月", "今年");
+                "今年至今", "本年至今", "这个月", "上个月", "本月", "当月", "上月", "今年",
+                "去年", "前年");
 
         private SetValues() {
         }

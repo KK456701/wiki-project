@@ -75,7 +75,8 @@ class ClarificationPromptFactoryTest {
         assertThat(result.kind()).isEqualTo("time_range");
         assertThat(result.allowFreeText()).isTrue();
         assertThat(result.options()).extracting(value -> value.label()).containsExactly(
-                "今年至今", "本月", "上一个自然月", "最近30天");
+                "今年至今", "最近一年", "最近半年", "最近3个月", "最近1个月",
+                "本月", "上月", "自定义范围");
         assertThat(result.options().get(0).value()).isEqualTo("2026-01-01 至 2026-07-23");
         assertThat(result.freeTextPlaceholder()).contains("2026-01-01");
     }

@@ -25,6 +25,8 @@ public class AgentRunState {
     private boolean statPeriodDefaulted;
     private int stepCount;
     private int replanCount;
+    private int clarificationCount;
+    private String lastClarificationType;
     private final List<String> failedPlanIds = new ArrayList<>();
     private final List<String> validatedSqlIds = new ArrayList<>();
     private final List<EvidenceFact> evidence = new ArrayList<>();
@@ -141,6 +143,34 @@ public class AgentRunState {
 
     public void incrementReplanCount() {
         replanCount++;
+    }
+
+    /**
+     * 记录一次澄清反问，返回当前累计次数。
+     * 同一会话中澄清次数 ≥ 3 时应强制使用默认值继续执行。
+     */
+    public int incrementClarification(String type) {
+        clarificationCount++;
+        lastClarificationType = type == null ? "" : type.strip();
+        return clarificationCount;
+    }
+
+    public int clarificationCount() {
+        return clarificationCount;
+    }
+
+    /**
+     * 检测是否连续两次生成相同类型的澄清（死循环检测）。
+     */
+    public boolean isRepeatedClarification(String type) {
+        return type != null && type.equals(lastClarificationType) && clarificationCount >= 2;
+    }
+
+    /**
+     * 是否应该跳过澄清并使用默认值（计数≥3 或 连续重复）。
+     */
+    public boolean shouldSkipClarification(String type) {
+        return clarificationCount >= 3 || isRepeatedClarification(type);
     }
 
     public List<String> failedPlanIds() {
