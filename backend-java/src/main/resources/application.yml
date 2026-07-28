@@ -2,6 +2,15 @@ server:
   address: 0.0.0.0
   port: 8766
 
+# 日志同时落盘，方便排查抽取/计算链路问题（runtime/ 已在 .gitignore 内）
+logging:
+  file:
+    name: runtime/logs/wiki-agent.log
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 3
+
 spring:
   application:
     name: wiki-agent-java

@@ -11,6 +11,14 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location "$PSScriptRoot\..\backend-java"
 
+# 防止终端残留的进程级 DBHUB_BIZ_MCP_URL 覆盖正确配置
+# （曾出现被覆盖成本地 5420 端口，导致抽取静默失败、指标算的是中间表旧数据）
+$userBizMcp = [Environment]::GetEnvironmentVariable('DBHUB_BIZ_MCP_URL', 'User')
+if ($userBizMcp -and $env:DBHUB_BIZ_MCP_URL -ne $userBizMcp) {
+    "检测到进程级 DBHUB_BIZ_MCP_URL=$($env:DBHUB_BIZ_MCP_URL)，已纠正为用户级配置：$userBizMcp"
+    $env:DBHUB_BIZ_MCP_URL = $userBizMcp
+}
+
 if ($Recompile) {
     # 增量编译：devtools 监听 target/classes 变化，编译完成后服务自动重启
     mvn compile -q -DskipTests
