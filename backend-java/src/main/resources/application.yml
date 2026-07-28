@@ -59,7 +59,7 @@ wiki:
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     extraction:
       # 普通计算必须显式切换为 required：先抽取，再只查询真实库。
-      mode: ${AGENT_EXTRACTION_MODE:disabled}
+      mode: ${AGENT_EXTRACTION_MODE:required}
       # 医院范围只能由服务端环境变量提供，不能接收浏览器或模型覆盖。
       hospital-soid: ${WIKI_EXTRACTION_HOSPITAL_SOID:}
     upload:
@@ -125,7 +125,7 @@ wiki:
     # 默认关闭，避免启动时强制连接医院 SQL Server。
     # 启用后会创建独立的 sqlServerDataSource / JdbcTemplate / TransactionManager。
     # 运行时主库仍使用上方 spring.datasource（SQLite）；业务只读默认仍走 DBHub。
-    enabled: ${WIKI_SQLSERVER_ENABLED:false}
+    enabled: ${WIKI_SQLSERVER_ENABLED:true}
     url: ${WIKI_SQLSERVER_URL:}
     username: ${WIKI_SQLSERVER_USERNAME:}
     password: ${WIKI_SQLSERVER_PASSWORD:}
