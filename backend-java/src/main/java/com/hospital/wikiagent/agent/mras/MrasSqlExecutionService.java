@@ -95,7 +95,7 @@ public class MrasSqlExecutionService {
 
         return executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
-                entity.name(), entity.dimension());
+                entity.name(), entity.dimension(), true);
     }
 
     /**
@@ -122,7 +122,7 @@ public class MrasSqlExecutionService {
 
         return executeSql(
                 entity.deptStatSql(), params, indicatorCode, "dept_stat",
-                entity.name(), entity.dimension());
+                entity.name(), entity.dimension(), true);
     }
 
     /**
@@ -150,7 +150,7 @@ public class MrasSqlExecutionService {
 
         return executeSql(
                 entity.patientDetailSql(), params, indicatorCode, "patient_detail",
-                entity.name(), entity.dimension());
+                entity.name(), entity.dimension(), true);
     }
 
     /**
@@ -184,7 +184,7 @@ public class MrasSqlExecutionService {
                 start, end, null, null);
 
         return executeSql(
-                detailSql, params, indicatorCode, queryType, indicatorName, dimension);
+                detailSql, params, indicatorCode, queryType, indicatorName, dimension, false);
     }
 
     /**
@@ -212,7 +212,8 @@ public class MrasSqlExecutionService {
             String indicatorCode,
             String queryType,
             String indicatorName,
-            String dimension) {
+            String dimension,
+            boolean stripQuotes) {
 
         // 第一步：模板解析（#ETC/#EQUALS + 方言修正），保留命名参数
         String renderedSql;
@@ -228,8 +229,11 @@ public class MrasSqlExecutionService {
             return ToolResult.failure("validation_failed", "MRAS_TEMPLATE_EMPTY",
                     "领导知识库 SQL 模板渲染结果为空。", false);
         }
-        // 知识库部分 SQL 文件有前导双引号（如 "SELECT），需剥离
-        renderedSql = stripLeadingTrailingQuotes(renderedSql);
+        // 知识库部分 SQL 文件有前导双引号（如 "SELECT），需剥离；
+        // 小模型合成的 SQL 已是干净语句（结尾可能是字符串字面量闭合引号），不能剥离。
+        if (stripQuotes) {
+            renderedSql = stripLeadingTrailingQuotes(renderedSql);
+        }
 
         // 第二步：只读安全校验
         ReadOnlySqlValidator.ValidationResult validation =
