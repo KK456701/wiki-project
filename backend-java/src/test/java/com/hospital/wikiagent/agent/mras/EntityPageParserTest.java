@@ -50,11 +50,13 @@ class EntityPageParserTest {
     }
 
     @Test
-    void everyEntityHasOverviewSql() {
+    void everyPrimaryEntityHasOverviewSql() {
         parser.getAllEntities().forEach((code, entity) -> {
-            assertThat(entity.hasOverviewSql())
-                    .as("指标 %s 应有概览 SQL", code)
-                    .isTrue();
+            if (entity.isPrimary()) {
+                assertThat(entity.hasOverviewSql())
+                        .as("主方案指标 %s 应有概览 SQL", code)
+                        .isTrue();
+            }
         });
     }
 

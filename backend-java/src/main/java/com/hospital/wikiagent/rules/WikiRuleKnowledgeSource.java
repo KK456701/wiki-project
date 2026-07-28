@@ -20,7 +20,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.Yaml;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,8 +31,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * {@code rule_index.json} 与每项指标的 {@code runtime.json}，避免Java在请求期间
  * 猜测Markdown结构。Profile未完成生产验收时可以返回通过静态门禁的 SQL 参考稿，
  * 但数据库访问仍由运行时执行门禁控制。</p>
+ *
+ * <p>已被 {@link MrasRuleKnowledgeSource}（领导知识库适配器）替代，
+ * 不再作为 Spring Bean 注册。保留类文件供子类继承和旧测试引用。</p>
  */
-@Component
 public class WikiRuleKnowledgeSource {
     private static final long POINTER_CHECK_INTERVAL_NANOS = 1_000_000_000L;
 
@@ -43,6 +44,16 @@ public class WikiRuleKnowledgeSource {
     private final AtomicReference<KnowledgeSnapshot> snapshot;
     private final AtomicLong lastPointerCheck = new AtomicLong();
     private volatile long pointerModifiedAt = Long.MIN_VALUE;
+
+    /**
+     * 子类覆盖所有公共方法时使用的空壳构造函数，不加载任何知识库文件。
+     */
+    protected WikiRuleKnowledgeSource() {
+        this.configuredRoot = Path.of(".");
+        this.objectMapper = new ObjectMapper();
+        this.snapshot = new AtomicReference<>(
+                new KnowledgeSnapshot(Path.of("."), "unused", new ConcurrentHashMap<>()));
+    }
 
     public WikiRuleKnowledgeSource(
             @Value("${wiki.knowledge.root:core-rules-wiki}") String root,

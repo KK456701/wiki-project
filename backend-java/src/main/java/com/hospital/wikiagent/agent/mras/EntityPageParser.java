@@ -3,8 +3,10 @@ package com.hospital.wikiagent.agent.mras;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,38 +30,69 @@ public class EntityPageParser {
     private static final String ENTITIES_PATTERN =
             "classpath:knowledge-index-mras/entities/*.md";
     private static final Pattern FILENAME_CODE = Pattern.compile(
-            "^(HXZD-\\d{3}-\\d{3})_(.+?)(?:_([^_]+))?\\.md$");
+            "^(HXZD-\\d{3}-\\d{3})(?:_(\\d{3}))?_(.+?)(?:_([^_]+))?\\.md$");
     private static final Pattern SQL_BLOCK = Pattern.compile(
             "```sql\\s*\\n(.*?)```", Pattern.DOTALL);
 
-    private final Map<String, EntityPageData> entitiesByCode;
+    /** 按扩展编码索引（如 HXZD-003-003_001），无变体编号的以基础编码为 key。 */
+    private final Map<String, EntityPageData> entitiesByVariantCode;
+    /** 按基础编码索引（如 HXZD-001-001），指向主方案。 */
+    private final Map<String, EntityPageData> entitiesByBaseCode;
 
     public EntityPageParser() {
-        this.entitiesByCode = loadAll();
+        this.entitiesByVariantCode = loadAll();
+        this.entitiesByBaseCode = buildBaseIndex();
     }
 
     /**
-     * 获取所有已解析的实体页（按指标编码索引）。
+     * 获取所有已解析的实体页（按扩展编码索引）。
      */
     public Map<String, EntityPageData> getAllEntities() {
-        return Collections.unmodifiableMap(entitiesByCode);
+        return Collections.unmodifiableMap(entitiesByVariantCode);
     }
 
     /**
-     * 按指标编码获取实体页数据。
+     * 按基础指标编码获取主方案实体页数据（兼容旧调用）。
      *
      * @param indicatorCode 如 "HXZD-001-001"
-     * @return 实体页数据，不存在时返回 null
+     * @return 主方案实体页数据，不存在时返回 null
      */
     public EntityPageData getEntity(String indicatorCode) {
-        return entitiesByCode.get(indicatorCode);
+        EntityPageData direct = entitiesByVariantCode.get(indicatorCode);
+        if (direct != null) {
+            return direct;
+        }
+        return entitiesByBaseCode.get(indicatorCode);
     }
 
     /**
-     * 已解析的实体页数量。
+     * 获取同一指标的所有变体方案。
+     *
+     * @param baseCode 基础编码，如 "HXZD-003-003"
+     * @return 变体列表（含主方案），无匹配时返回空列表
+     */
+    public List<EntityPageData> getVariants(String baseCode) {
+        List<EntityPageData> result = new ArrayList<>();
+        for (EntityPageData data : entitiesByVariantCode.values()) {
+            if (data.code().equals(baseCode)) {
+                result.add(data);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 已解析的实体页数量（含所有变体）。
      */
     public int size() {
-        return entitiesByCode.size();
+        return entitiesByVariantCode.size();
+    }
+
+    /**
+     * 去重后的基础指标数量。
+     */
+    public int baseIndicatorCount() {
+        return entitiesByBaseCode.size();
     }
 
     private Map<String, EntityPageData> loadAll() {
@@ -76,7 +109,7 @@ public class EntityPageParser {
                     String content = resource.getContentAsString(StandardCharsets.UTF_8);
                     EntityPageData data = parse(filename, content);
                     if (data != null) {
-                        map.merge(data.code(), data, EntityPageParser::preferWithSql);
+                        map.merge(data.variantCode(), data, EntityPageParser::preferWithSql);
                     }
                 } catch (Exception exception) {
                     log.warn("解析实体页失败 {}: {}", filename, exception.getMessage());
@@ -85,8 +118,25 @@ public class EntityPageParser {
         } catch (IOException exception) {
             throw new UncheckedIOException("无法扫描 knowledge-index-mras/entities 目录", exception);
         }
-        log.info("领导知识库实体页加载完成: {} 个指标", map.size());
+        log.info("领导知识库实体页加载完成: {} 个实体（含变体）", map.size());
         return map;
+    }
+
+    private Map<String, EntityPageData> buildBaseIndex() {
+        Map<String, EntityPageData> base = new LinkedHashMap<>();
+        for (EntityPageData data : entitiesByVariantCode.values()) {
+            base.merge(data.code(), data, (existing, incoming) -> {
+                // 优先保留主方案且有 SQL 的
+                if (incoming.isPrimary() && incoming.hasOverviewSql()) {
+                    return incoming;
+                }
+                if (existing.hasOverviewSql() && !incoming.hasOverviewSql()) {
+                    return existing;
+                }
+                return existing;
+            });
+        }
+        return base;
     }
 
     /**
@@ -106,8 +156,13 @@ public class EntityPageParser {
             return null;
         }
         String code = fileMatcher.group(1);
-        String name = fileMatcher.group(2);
-        String dimension = fileMatcher.group(3) == null ? "" : fileMatcher.group(3);
+        String variantNum = fileMatcher.group(2); // 001/002 或 null
+        String name = fileMatcher.group(3);
+        String dimension = fileMatcher.group(4) == null ? "" : fileMatcher.group(4);
+
+        String variantCode = variantNum == null ? code : code + "_" + variantNum;
+        String variantLabel = variantNum == null || "001".equals(variantNum)
+                ? "推荐方案（公版）" : "变体方案";
 
         Map<String, String> sections = splitSections(content);
 
@@ -122,10 +177,45 @@ public class EntityPageParser {
         String deptStatSql = extractSql(sections, "目标表-科室统计");
         String patientDetailSql = extractSql(sections, "目标表-患者明细");
 
+        // 从 frontmatter tags 解析制度和分类
+        String system = extractTag(content, 1); // tags[1] 通常是制度名
+        String category = extractCategory(content);
+
         return new EntityPageData(
-                code, name, dimension,
+                code, name, dimension, variantCode, variantLabel,
                 definition, formula, caliber, dataSource, monitorParams,
+                "", "", system, category,
                 sourceTableSql, overviewSql, deptStatSql, patientDetailSql);
+    }
+
+    /**
+     * 从 frontmatter tags 数组中提取指定位置的标签。
+     */
+    private String extractTag(String content, int index) {
+        Matcher m = Pattern.compile("tags:\\s*\\[([^]]+)]").matcher(content);
+        if (m.find()) {
+            String[] tags = m.group(1).split(",");
+            if (index < tags.length) {
+                return tags[index].strip().replace("\"", "");
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 从 frontmatter tags 中提取四维分类（时限类/逻辑判定类/内容完整性/AI模型调优）。
+     */
+    private String extractCategory(String content) {
+        Matcher m = Pattern.compile("tags:\\s*\\[([^]]+)]").matcher(content);
+        if (m.find()) {
+            String tagsStr = m.group(1);
+            for (String cat : List.of("时限类", "逻辑判定类", "内容完整性", "AI模型调优")) {
+                if (tagsStr.contains(cat)) {
+                    return cat;
+                }
+            }
+        }
+        return "";
     }
 
     /**

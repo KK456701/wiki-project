@@ -27,9 +27,11 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeSta
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.model.AgentModelRegistry;
+import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SplitResult;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SubtaskSpec;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.RequestKind;
+import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.contract.AgentClarification;
 
 import jakarta.annotation.PreDestroy;
@@ -46,6 +48,10 @@ public class CompoundAgentRuntime {
             "第\\s*([一二三四五六七八九十\\d]+)\\s*个.*(?:换成|改成|替换为)");
     private static final Pattern POSITIONAL_REFERENCE = Pattern.compile(
             "第\\s*([一二三四五六七八九十\\d]+)\\s*个");
+    private static final Pattern DETAIL_REQUEST = Pattern.compile(
+            "(分母|分子|患者|病人|明细|详情|名单|列表).*(明细|详情|名单|列表|给我|看看|展示)"
+                    + "|(明细|详情|名单|列表).*(分母|分子|患者|病人)"
+                    + "|^(分母|分子|患者)?(明细|详情|名单|列表)$");
 
     private final AgentRunner runner;
     private final CompoundRequestSplitter splitter;
@@ -56,6 +62,7 @@ public class CompoundAgentRuntime {
     private final ClarificationPromptFactory clarificationPrompts;
     private final BatchRequestDetector batchDetector;
     private final BatchIndicatorRuntime batchRuntime;
+    private final MrasSqlExecutionService mrasExecution;
     private final ExecutorService executor = Executors.newFixedThreadPool(4, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -68,7 +75,7 @@ public class CompoundAgentRuntime {
             AgentModelRegistry models,
             AgentModelProperties properties,
             AgentConversationMemory conversations) {
-        this(runner, splitter, models, properties, conversations, null);
+        this(runner, splitter, models, properties, conversations, null, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -78,7 +85,7 @@ public class CompoundAgentRuntime {
             AgentModelProperties properties,
             AgentConversationMemory conversations,
             HybridIndicatorResolver indicatorResolver) {
-        this(runner, splitter, models, properties, conversations, indicatorResolver, null);
+        this(runner, splitter, models, properties, conversations, indicatorResolver, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -90,7 +97,7 @@ public class CompoundAgentRuntime {
             HybridIndicatorResolver indicatorResolver,
             ClarificationPromptFactory clarificationPrompts) {
         this(runner, splitter, models, properties, conversations, indicatorResolver,
-                clarificationPrompts, null, null);
+                clarificationPrompts, null, null, null);
     }
 
     @Autowired
@@ -103,7 +110,8 @@ public class CompoundAgentRuntime {
             HybridIndicatorResolver indicatorResolver,
             ClarificationPromptFactory clarificationPrompts,
             BatchRequestDetector batchDetector,
-            BatchIndicatorRuntime batchRuntime) {
+            BatchIndicatorRuntime batchRuntime,
+            MrasSqlExecutionService mrasExecution) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
@@ -113,6 +121,7 @@ public class CompoundAgentRuntime {
         this.clarificationPrompts = clarificationPrompts;
         this.batchDetector = batchDetector;
         this.batchRuntime = batchRuntime;
+        this.mrasExecution = mrasExecution;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -141,6 +150,13 @@ public class CompoundAgentRuntime {
                     && batchDetector.isTimeOnlyChange(request.query())) {
                 return missingOperationAndIndicatorClarification(
                         request, observer, conversation);
+            }
+        }
+        // 明细查询拦截：用户请求“分母明细”“患者明细”等，直接走领导知识库 patientDetailSql
+        if (mrasExecution != null && isDetailRequest(request.query())) {
+            AgentRunResult detailResult = tryDetailView(request, observer, conversation);
+            if (detailResult != null) {
+                return detailResult;
             }
         }
         long splitStarted = TraceEvents.started();
@@ -837,6 +853,120 @@ public class CompoundAgentRuntime {
     @PreDestroy
     void close() {
         executor.shutdownNow();
+    }
+
+    private static boolean isDetailRequest(String query) {
+        if (query == null || query.isBlank()) return false;
+        String compact = query.replaceAll("[\\s，,。；;？?!！]+", "");
+        return DETAIL_REQUEST.matcher(compact).find();
+    }
+
+    @SuppressWarnings("unchecked")
+    private AgentRunResult tryDetailView(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            AgentConversationMemory.ConversationSnapshot conversation) {
+        // 从会话上下文取最近指标和时间范围
+        String ruleId = conversation.ruleId();
+        String ruleName = conversation.ruleName();
+        if ((ruleId == null || ruleId.isBlank())
+                && conversation.queryScope() != null
+                && !conversation.queryScope().targets().isEmpty()) {
+            QueryTarget target = conversation.queryScope().targets().get(0);
+            ruleId = target.ruleId();
+            ruleName = target.ruleName();
+        }
+        if (ruleId == null || ruleId.isBlank()) {
+            return null; // 无法确定指标，回退到正常流程
+        }
+        if (!mrasExecution.supports(ruleId)) {
+            return null; // 领导知识库不支持，回退到正常流程
+        }
+        java.time.LocalDateTime start = parseTime(conversation.statStart(),
+                java.time.LocalDate.now().withDayOfYear(1).atStartOfDay());
+        java.time.LocalDateTime end = parseTime(conversation.statEnd(),
+                java.time.LocalDateTime.now());
+        String traceId = first(request.traceId(), id("TRACE_"));
+        emit(observer, "agent_start", traceId, 0, Map.of(
+                "status", "running", "session_id", conversation.sessionId()));
+        long started = TraceEvents.started();
+        ToolResult result = mrasExecution.executePatientDetail(
+                ruleId, start, end, null, null);
+        TraceEvents.completed(observer, traceId, "mras_patient_detail", "database",
+                started, "root", Map.of("rule_id", ruleId),
+                Map.of("ok", result.ok(), "code", result.code()));
+        String answer;
+        if (!result.ok()) {
+            answer = "查询患者明细失败：" + result.summary();
+        } else {
+            Object rowCount = result.data().get("row_count");
+            int rows = rowCount instanceof Number number ? number.intValue() : 0;
+            if (rows == 0) {
+                answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
+                        + " 内，" + (ruleName == null ? ruleId : ruleName)
+                        + " 无样本数据，无法展示患者明细。";
+            } else {
+                answer = formatDetailTable(result.data(), ruleName, rows);
+            }
+        }
+        conversations.appendUser(conversation, request.principal(), request.query(), request.fileKey());
+        AgentRunState state = new AgentRunState();
+        state.lastIntent("indicator_detail_view");
+        state.lastRuleName(ruleName);
+        conversations.appendAssistant(conversation, request.principal(), answer, state);
+        emit(observer, "assistant_message", traceId, 1, Map.of(
+                "message", answer, "status", "completed"));
+        emit(observer, "agent_done", traceId, 1, Map.of(
+                "stop_reason", "final_answer", "status", "completed", "step_count", 1));
+        return new AgentRunResult(answer, "final_answer", traceId,
+                conversation.sessionId(), 1, null, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String formatDetailTable(
+            Map<String, Object> data, String ruleName, int rowCount) {
+        Object rawRows = data.get("rows");
+        if (!(rawRows instanceof List<?> rowList) || rowList.isEmpty()) {
+            return "共 " + rowCount + " 条明细记录。";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("# ").append(ruleName == null ? "患者明细" : ruleName + " 患者明细")
+                .append("\n\n");
+        sb.append("共 ").append(rowCount).append(" 条记录。\n\n");
+        // 取前 20 行展示
+        int show = Math.min(20, rowList.size());
+        if (rowList.get(0) instanceof Map<?, ?> firstRow) {
+            List<String> cols = new ArrayList<>();
+            for (Object key : firstRow.keySet()) {
+                cols.add(String.valueOf(key));
+            }
+            sb.append("| ").append(String.join(" | ", cols)).append(" |\n");
+            sb.append("| ").append(cols.stream().map(c -> "---").reduce((a, b) -> a + " | " + b).orElse("---")).append(" |\n");
+            for (int i = 0; i < show; i++) {
+                Map<?, ?> row = (Map<?, ?>) rowList.get(i);
+                sb.append("| ");
+                for (int c = 0; c < cols.size(); c++) {
+                    Object val = row.get(cols.get(c));
+                    sb.append(val == null ? "" : String.valueOf(val));
+                    if (c < cols.size() - 1) sb.append(" | ");
+                }
+                sb.append(" |\n");
+            }
+            if (rowCount > show) {
+                sb.append("\n> 仅展示前 ").append(show).append(" 条，共 ")
+                        .append(rowCount).append(" 条。\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static java.time.LocalDateTime parseTime(String value, java.time.LocalDateTime fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        try {
+            return java.time.LocalDateTime.parse(value.replace(' ', 'T'));
+        } catch (RuntimeException exception) {
+            return fallback;
+        }
     }
 
     private record SubtaskOutcome(SubtaskSpec task, AgentRunResult result, String answer) {
