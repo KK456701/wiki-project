@@ -162,7 +162,8 @@ wiki:
   dbhub:
     api-url: ${DBHUB_API_URL:http://127.0.0.1:8080}
     mcp-url: ${DBHUB_MCP_URL:http://127.0.0.1:8080/mcp}
-    biz-mcp-url: ${DBHUB_BIZ_MCP_URL:http://172.16.9.73/mras-mcp-mdm/http/mcp}
+    # 业务 MCP 抽取地址改用项目专属变量名，避免终端残留的通用 DBHUB_BIZ_MCP_URL 静默覆盖（曾三次导致抽取失败算旧数据）
+    biz-mcp-url: ${WIKI_DBHUB_BIZ_MCP_URL:http://172.16.9.73/mras-mcp-mdm/http/mcp}
     timeout-seconds: ${DBHUB_TIMEOUT_SECONDS:120}
     sources:
       business:

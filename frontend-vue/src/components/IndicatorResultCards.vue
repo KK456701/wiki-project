@@ -168,6 +168,9 @@ function cellText(row: Record<string, unknown>, column: string): string {
         </p>
         <p v-if="item.calculationDisplay" class="indicator-calc">{{ item.calculationDisplay }}</p>
         <p v-if="statRange(item)" class="indicator-range">统计区间：{{ statRange(item) }}</p>
+        <p v-if="item.dataFreshness === 'extraction_failed_stale'" class="indicator-stale-warning">
+          ⚠️ 数据抽取失败，本结果基于中间表旧数据，仅供参考
+        </p>
         <p v-if="item.errorMessage" class="indicator-error">{{ item.errorMessage }}</p>
       </div>
 

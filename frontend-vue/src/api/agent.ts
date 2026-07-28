@@ -94,6 +94,7 @@ export interface AgentEvent {
   stat_start?: string
   stat_end?: string
   run_id?: string
+  data_freshness?: string
   error_code?: string
   error_message?: string
 }

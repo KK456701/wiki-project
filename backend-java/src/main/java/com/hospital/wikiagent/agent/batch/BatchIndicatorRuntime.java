@@ -383,13 +383,16 @@ public class BatchIndicatorRuntime {
         }
 
         Map<String, Object> data = toolResult.data();
+        // 抽取失败时结果基于中间表旧数据，用 dataFreshness 标记并透传到前端
+        String dataFreshness = data.get("extraction_warning") instanceof String
+                ? "extraction_failed_stale" : null;
         Boolean noSample = (Boolean) data.get("no_sample");
         if (Boolean.TRUE.equals(noSample)) {
             return new IndicatorExecutionResult(
                     ruleId, ruleName, Status.NO_SAMPLE, null, 0L, 0L,
                     null, "percentage", null, 0L, null, null,
                     statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
-                    null, target.profileId(), target.profileLabel(), null, null,
+                    dataFreshness, target.profileId(), target.profileLabel(), null, null,
                     target.eventNo());
         }
 
@@ -407,7 +410,7 @@ public class BatchIndicatorRuntime {
                 null, "percentage", null,
                 denominator, targetValue, null,
                 statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
-                null, target.profileId(), target.profileLabel(), null, null,
+                dataFreshness, target.profileId(), target.profileLabel(), null, null,
                 target.eventNo());
     }
 
@@ -660,6 +663,9 @@ public class BatchIndicatorRuntime {
         }
         if (result.runId() != null) {
             payload.put("run_id", result.runId());
+        }
+        if (result.dataFreshness() != null) {
+            payload.put("data_freshness", result.dataFreshness());
         }
         if (result.errorCode() != null) {
             payload.put("error_code", result.errorCode());

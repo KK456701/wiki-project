@@ -96,6 +96,11 @@ public class BatchResultAggregator {
                 output.append("\n> 数据新鲜度：本轮未刷新真实库数据，"
                         + "结果与比较结论基于当前已有快照。\n");
             }
+            if (values.stream().anyMatch(value ->
+                    "extraction_failed_stale".equals(value.dataFreshness()))) {
+                output.append("\n> ⚠️ 数据抽取失败：本轮未能从源库刷新数据，"
+                        + "以上结果基于中间表旧数据，仅供参考，请排查抽取链路后重新计算。\n");
+            }
         }
 
         List<IndicatorExecutionResult> failures = values.stream()

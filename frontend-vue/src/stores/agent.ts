@@ -81,6 +81,7 @@ export interface BatchIndicatorResult {
   statStart?: string
   statEnd?: string
   runId?: string
+  dataFreshness?: string
   errorCode?: string
   errorMessage?: string
 }
@@ -505,6 +506,7 @@ export const useAgentStore = defineStore('agent', {
           statStart: event.stat_start,
           statEnd: event.stat_end,
           runId: event.run_id,
+          dataFreshness: event.data_freshness,
           errorCode: event.error_code,
           errorMessage: event.error_message,
         })

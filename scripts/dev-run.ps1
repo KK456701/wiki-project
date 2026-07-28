@@ -11,12 +11,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location "$PSScriptRoot\..\backend-java"
 
-# 防止终端残留的进程级 DBHUB_BIZ_MCP_URL 覆盖正确配置
-# （曾出现被覆盖成本地 5420 端口，导致抽取静默失败、指标算的是中间表旧数据）
-$userBizMcp = [Environment]::GetEnvironmentVariable('DBHUB_BIZ_MCP_URL', 'User')
-if ($userBizMcp -and $env:DBHUB_BIZ_MCP_URL -ne $userBizMcp) {
-    "检测到进程级 DBHUB_BIZ_MCP_URL=$($env:DBHUB_BIZ_MCP_URL)，已纠正为用户级配置：$userBizMcp"
-    $env:DBHUB_BIZ_MCP_URL = $userBizMcp
+# 抽取地址已改用项目专属变量 WIKI_DBHUB_BIZ_MCP_URL（application.yml），
+# 终端残留的通用 DBHUB_BIZ_MCP_URL 不再生效；存在覆盖时启动前显式提示，避免静默指向错误地址。
+if ($env:WIKI_DBHUB_BIZ_MCP_URL) {
+    "检测到 WIKI_DBHUB_BIZ_MCP_URL=$($env:WIKI_DBHUB_BIZ_MCP_URL)，将覆盖 yml 默认抽取地址。"
+}
+if ($env:DBHUB_BIZ_MCP_URL) {
+    "提示：终端残留 DBHUB_BIZ_MCP_URL=$($env:DBHUB_BIZ_MCP_URL)，后端已不再读取该变量，可忽略。"
 }
 
 if ($Recompile) {

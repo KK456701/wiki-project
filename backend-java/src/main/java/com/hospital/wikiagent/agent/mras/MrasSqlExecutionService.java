@@ -107,12 +107,12 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
 
-        // 查询前先抽取数据到 winex_aima
-        ensureExtracted(entity, start, end);
+        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        String extractionWarning = ensureExtracted(entity, start, end);
 
         return executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
-                entity.name(), entity.dimension(), true);
+                entity.name(), entity.dimension(), true, extractionWarning);
     }
 
     /**
@@ -137,12 +137,12 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, null);
 
-        // 查询前先抽取数据到 winex_aima
-        ensureExtracted(entity, start, end);
+        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        String extractionWarning = ensureExtracted(entity, start, end);
 
         return executeSql(
                 entity.deptStatSql(), params, indicatorCode, "dept_stat",
-                entity.name(), entity.dimension(), true);
+                entity.name(), entity.dimension(), true, extractionWarning);
     }
 
     /**
@@ -168,12 +168,12 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
 
-        // 查询前先抽取数据到 winex_aima
-        ensureExtracted(entity, start, end);
+        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        String extractionWarning = ensureExtracted(entity, start, end);
 
         return executeSql(
                 entity.patientDetailSql(), params, indicatorCode, "patient_detail",
-                entity.name(), entity.dimension(), true);
+                entity.name(), entity.dimension(), true, extractionWarning);
     }
 
     /**
@@ -207,7 +207,7 @@ public class MrasSqlExecutionService {
                 start, end, null, null);
 
         return executeSql(
-                detailSql, params, indicatorCode, queryType, indicatorName, dimension, false);
+                detailSql, params, indicatorCode, queryType, indicatorName, dimension, false, null);
     }
 
     /**
@@ -236,7 +236,8 @@ public class MrasSqlExecutionService {
             String queryType,
             String indicatorName,
             String dimension,
-            boolean stripQuotes) {
+            boolean stripQuotes,
+            String extractionWarning) {
 
         // 第一步：模板解析（#ETC/#EQUALS + 方言修正），保留命名参数
         String renderedSql;
@@ -308,6 +309,10 @@ public class MrasSqlExecutionService {
         data.put("duration_ms", durationMs);
         data.put("sql_source", "mras");
         data.put("row_count", rows.size());
+        if (extractionWarning != null) {
+            // 抽取失败时结果基于中间表旧数据，必须随结果提醒用户
+            data.put("extraction_warning", extractionWarning);
+        }
 
         if ("overview".equals(queryType)) {
             parseOverviewResult(rows, data);
@@ -329,21 +334,23 @@ public class MrasSqlExecutionService {
      * 查询前确保数据已抽取到 winex_aima：构建 SyncDataDto 并转调 SyncDataService。
      *
      * <p>hospitalSOID 从配置 wiki.sqlserver.hospital-soid 读取（当前写死 991827）。
-     * 抽取失败仅记录警告，不阻断查询（可能数据已存在）。</p>
+     * 抽取失败不阻断查询，但返回失败原因供调用方随结果透传给用户。</p>
+     *
+     * @return null 表示抽取成功或合法跳过；非 null 为失败原因
      */
-    private void ensureExtracted(EntityPageData entity, LocalDateTime start, LocalDateTime end) {
+    private String ensureExtracted(EntityPageData entity, LocalDateTime start, LocalDateTime end) {
         if (syncDataService == null) {
             log.debug("SyncDataService 未启用，跳过 MRAS 抽取");
-            return;
+            return null;
         }
         if (!entity.canExtract()) {
             log.debug("指标 {} 缺少源表 SQL 或目标表，跳过抽取", entity.code());
-            return;
+            return null;
         }
         Long hospitalSoid = sqlServerProperties.getHospitalSoid();
         if (hospitalSoid == null) {
             log.warn("未配置 wiki.sqlserver.hospital-soid，跳过 MRAS 抽取");
-            return;
+            return "未配置医院 SOID，本次未抽取源库数据";
         }
 
         try {
@@ -374,8 +381,11 @@ public class MrasSqlExecutionService {
                     entity.code(), entity.targetTable(), entity.bizTables(), start, end);
             syncDataService.syncEventData(dto);
             log.info("MRAS 指标 {} 抽取完成", entity.code());
+            return null;
         } catch (Exception exception) {
-            log.warn("MRAS 指标 {} 抽取失败（不阻断查询）: {}", entity.code(), exception.getMessage());
+            log.warn("MRAS 指标 {} 抽取失败（不阻断查询，警告随结果透传）: {}",
+                    entity.code(), exception.getMessage());
+            return exception.getMessage();
         }
     }
 

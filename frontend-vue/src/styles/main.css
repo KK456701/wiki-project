@@ -187,6 +187,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .indicator-value { margin: 0; color: var(--ink); font: 800 26px/1.2 Bahnschrift, "Microsoft YaHei UI", sans-serif; }
 .indicator-counts, .indicator-calc, .indicator-range { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .indicator-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+.indicator-stale-warning { margin: 0; padding: 4px 8px; color: var(--amber); background: #fdf6ec; border: 1px solid #e0c297; font-size: 12px; line-height: 1.5; }
 .indicator-loading { margin: 0; color: var(--muted); font-size: 12px; }
 .indicator-card-actions { display: flex; gap: 8px; }
 .indicator-card-actions button { flex: 1; padding: 7px 0; font-size: 12px; color: var(--teal); background: white; border: 1px solid #a9c7c0; transition: background-color .15s ease, border-color .15s ease; }
