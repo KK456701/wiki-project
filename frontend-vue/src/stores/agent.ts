@@ -64,6 +64,20 @@ export interface ChatMessage {
   clarification?: AgentClarification
   awaitingClarification?: boolean
   clarificationResolved?: boolean
+  batchResults?: BatchIndicatorResult[]
+}
+
+export interface BatchIndicatorResult {
+  ruleId: string
+  ruleName: string
+  status: string
+  done: number
+  total: number
+  resultValue?: number
+  numeratorCount?: number
+  denominatorCount?: number
+  errorCode?: string
+  errorMessage?: string
 }
 
 const toolLabels: Record<string, string> = {
@@ -469,6 +483,24 @@ export const useAgentStore = defineStore('agent', {
         const label = event.message || nodeLabels[event.node_name || ''] || '推进业务流程'
         setStage(message, label, stageKind(event.node_type),
           event.status === 'failed' ? 'failed' : 'success', event.duration_ms)
+      }
+      if (event.event === 'batch_indicator_result') {
+        if (!message.batchResults) message.batchResults = []
+        message.batchResults.push({
+          ruleId: event.rule_id || '',
+          ruleName: event.rule_name || '',
+          status: event.status || '',
+          done: event.done || 0,
+          total: event.total || 0,
+          resultValue: event.result_value,
+          numeratorCount: event.numerator_count,
+          denominatorCount: event.denominator_count,
+          errorCode: event.error_code,
+          errorMessage: event.error_message,
+        })
+        setStage(message,
+          `已完成 ${event.done}/${event.total}：${event.rule_name || ''}`,
+          'code', event.status === 'FAILED' ? 'warning' : 'success')
       }
       if (event.event === 'agent_done') {
         if (event.stop_reason === 'clarification' || message.awaitingClarification) {

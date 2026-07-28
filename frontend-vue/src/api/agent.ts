@@ -82,6 +82,15 @@ export interface AgentEvent {
   model_id?: string
   subtask_id?: string
   clarification?: AgentClarificationWire
+  rule_id?: string
+  rule_name?: string
+  done?: number
+  total?: number
+  result_value?: number
+  numerator_count?: number
+  denominator_count?: number
+  error_code?: string
+  error_message?: string
 }
 
 export interface UploadResult {
