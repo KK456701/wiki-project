@@ -286,6 +286,17 @@ export async function loadCapabilities(token: string): Promise<AgentCapabilities
   return readJson<AgentCapabilities>(response)
 }
 
+export interface IndicatorItem {
+  rule_id: string
+  rule_name: string
+}
+
+/** 获取全部活跃指标（供引导面板渲染指标多选列表） */
+export async function listIndicators(token: string): Promise<IndicatorItem[]> {
+  const response = await fetch('/api/kb/rules/list', { headers: authHeaders(token) })
+  return readJson<IndicatorItem[]>(response)
+}
+
 export async function uploadIndicatorFile(token: string, file: File): Promise<UploadResult> {
   const body = new FormData()
   body.append('file', file)

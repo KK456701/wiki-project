@@ -5,6 +5,7 @@ import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import MarkdownMessage from '../components/MarkdownMessage.vue'
 import ClarificationChoices from '../components/ClarificationChoices.vue'
+import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
 import { useAgentStore } from '../stores/agent'
 import {
   createDiagnosisReportExport,
@@ -45,12 +46,6 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   }
   return list
 })
-const suggestions = [
-  '急会诊及时到位率的定义、分子和分母口径是什么？',
-  '计算本月患者入院48小时内转科的比例。',
-  '生成本月术中自体血回输率的概览 SQL，不执行数据库。',
-  '排查本月急会诊及时到位率结果异常的原因。',
-]
 
 onMounted(async () => {
   try {
@@ -203,11 +198,13 @@ async function exportDiagnosis(reportId?: string) {
       <div ref="conversation" class="conversation-panel">
         <section v-if="!store.messages.length" class="welcome-panel">
           <p class="eyebrow">核心制度 · 当前生效口径</p>
-          <h1>问清指标，算清结果，<br>也说清<em>原因</em>。</h1>
-          <p>可查询指标定义、分子分母口径和受控 SQL，计算指定周期的本院结果，或基于双库与明细证据排查异常；也可上传 Excel 与本院结果核对。每次运行都保留可核验的证据链。</p>
-          <div class="suggestions">
-            <button v-for="item in suggestions" :key="item" type="button" @click="send(item)">{{ item }}</button>
-          </div>
+          <h1>选好指标和时间，<br>结果和<em>原因</em>一键算清。</h1>
+          <p>选择下方快捷入口，按引导选好指标和时间范围即可开始；也可直接在底部输入框用自然语言提问。</p>
+          <GuidedTaskPanel
+            :token="store.token"
+            :disabled="store.running"
+            @send="send($event)"
+          />
         </section>
 
         <article v-for="message in store.messages" :key="message.id" class="message" :class="`is-${message.role}`">

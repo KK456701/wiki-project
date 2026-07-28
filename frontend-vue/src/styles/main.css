@@ -143,9 +143,36 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .welcome-panel h1 { max-width: 780px; margin: 18px 0 24px; font-size: clamp(38px, 5vw, 70px); line-height: 1.08; letter-spacing: -.055em; }
 .welcome-panel h1 em { color: var(--teal); }
 .welcome-panel > p:not(.eyebrow) { color: #40534d; font-size: 17px; line-height: 1.75; }
-.suggestions { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 10px; }
-.suggestions button { padding: 11px 16px; border: 1px solid #a9c7c0; border-radius: 28px; background: white; color: #24423c; }
-.suggestions button:hover { border-color: var(--teal); color: var(--teal); transform: translateY(-1px); }
+/* 欢迎页引导面板：算指标 / 排查故障 两个入口，选指标 + 选时间即可一键发送 */
+.guided-panel { margin-top: 30px; display: grid; gap: 14px; }
+.guided-tasks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.guided-task { display: grid; gap: 6px; padding: 18px 20px; text-align: left; color: var(--ink); border: 1px solid #a9c7c0; border-left: 4px solid #a9c7c0; background: white; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.guided-task:hover { border-color: var(--teal); transform: translateY(-1px); }
+.guided-task.is-active { border-color: var(--teal); border-left-color: var(--teal); background: #eef8f5; box-shadow: inset 0 0 0 1px #96c5bb; }
+.guided-task strong { color: var(--teal-dark); font-size: 17px; }
+.guided-task span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+.guided-task:disabled { opacity: .55; cursor: not-allowed; }
+.guided-steps { display: grid; gap: 16px; padding: 18px; border: 1px solid #c8d8d3; border-top: 4px solid var(--teal); background: #f8fbfa; }
+.guided-step h4 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 10px; color: #173b34; font-size: 14px; }
+.guided-step h4 small { color: var(--amber); font-size: 11px; font-weight: 400; }
+.guided-hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.guided-toolbar { display: flex; gap: 8px; margin-bottom: 10px; }
+.guided-toolbar input { flex: 1; min-width: 0; padding: 9px 11px; color: var(--ink); border: 1px solid #b9ccc6; background: white; }
+.guided-select-all { flex: 0 0 auto; padding: 8px 14px; color: var(--teal); border: 1px solid var(--teal); background: white; font-size: 12px; font-weight: 700; }
+.guided-select-all:hover { background: var(--mint); }
+.guided-indicator-grid { max-height: 260px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: auto; scrollbar-color: #9ab8b1 transparent; }
+.guided-indicator { min-width: 0; display: grid; gap: 3px; padding: 10px 12px; text-align: left; color: var(--ink); border: 1px solid #c6d8d2; border-left: 3px solid #72a49a; background: white; transition: border-color .15s ease, background-color .15s ease; }
+.guided-indicator:hover { border-color: var(--teal); background: #eef8f5; }
+.guided-indicator.is-selected { color: #073f39; border-color: var(--teal); border-left-color: var(--teal); background: #dff1ed; box-shadow: inset 0 0 0 1px #96c5bb; }
+.guided-indicator strong { overflow-wrap: anywhere; color: inherit; font-size: 13px; }
+.guided-indicator span { color: #687a75; font: 10px Consolas, monospace; }
+.guided-time-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.guided-time-row select, .guided-time-row input { min-height: 40px; padding: 8px 11px; color: var(--ink); border: 1px solid #b9ccc6; background: white; }
+.guided-time-sep { color: var(--muted); font-size: 12px; }
+.guided-submit { width: max-content; padding: 12px 30px; color: white; border: 0; background: var(--teal); font-size: 14px; font-weight: 800; }
+.guided-submit:hover:not(:disabled) { background: var(--teal-dark); }
+.guided-submit:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 720px) { .guided-tasks, .guided-indicator-grid { grid-template-columns: 1fr; } }
 
 .message { display: flex; gap: 14px; margin: 0 0 30px; }
 .message.is-user { flex-direction: row-reverse; }

@@ -1,5 +1,6 @@
 package com.hospital.wikiagent.api;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
@@ -34,6 +35,13 @@ public class RuleReadController {
     public RuleReadController(HospitalAuthService authService, RuleReadRepository repository) {
         this.authService = authService;
         this.repository = repository;
+    }
+
+    @GetMapping("/list")
+    public List<Map<String, String>> list(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        HospitalPrincipal principal = principal(authorization);
+        return repository.activeIndicatorNames(principal.hospitalId(), 500);
     }
 
     @GetMapping("/search")
