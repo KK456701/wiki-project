@@ -1,7 +1,6 @@
 package com.hospital.wikiagent.agent.diagnosis;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -22,7 +21,6 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
-import com.hospital.wikiagent.agent.sql.DualDatabaseIndicatorExecutionWorkflow;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
@@ -73,24 +71,6 @@ class IndicatorDiagnosisToolsTest {
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 rules, new SqlObjectRepository(jdbc, objectMapper), new SqlTemplateRenderer(),
                 new ReadOnlySqlValidator(), new SqlParameterBinder(), business, objectMapper);
-        DualDatabaseIndicatorExecutionWorkflow controlledWorkflow =
-                mock(DualDatabaseIndicatorExecutionWorkflow.class);
-        when(controlledWorkflow.enabled()).thenReturn(true);
-        when(controlledWorkflow.execute(any(), any(), anyString(), any(), any()))
-                .thenReturn(ToolResult.success(
-                        "TRIAL_RUN_COMPLETED",
-                        "双库诊断执行完成",
-                        Map.of(
-                                "run_id", "RUN_DIAG_TEST",
-                                "diagnosis_report_id", "DDR_TEST",
-                                "extraction_status", "SKIPPED_DISABLED",
-                                "data_freshness", "existing_snapshot_not_refreshed",
-                                "comparison_status", "matched",
-                                "business_result", Map.of("result_value", 25.0),
-                                "real_result", Map.of("result_value", 25.0),
-                                "dual_difference_diagnosis",
-                                Map.of("status", "completed"))));
-        sqlTools.setDualDatabaseWorkflow(controlledWorkflow);
         diagnosis = new IndicatorDiagnosisTools(
                 rules, sqlTools, business, new DiagnosisReportRepository(jdbc, objectMapper));
         state = new AgentRunState();
@@ -108,8 +88,7 @@ class IndicatorDiagnosisToolsTest {
     void persistsThreeLayerHealthyDiagnosisWithAggregateOnlyDbHubChecks() {
         ToolResult result = diagnosis.diagnose(
                 new IndicatorDiagnosisTools.Input(
-                        "HXZD-003-001", "排查这个指标为什么异常",
-                        "2026-01-01T00:00~2026-02-01T00:00", "company-default"),
+                        "HXZD-003-001", "排查这个指标为什么异常", "2026-01-01T00:00~2026-04-01T00:00"),
                 context);
 
         assertThat(result.ok()).isTrue();
@@ -138,12 +117,10 @@ class IndicatorDiagnosisToolsTest {
                         "status", "confirmed")
                 : item);
         mapping.put("metadata_items", metadata);
-        when(rules.fieldMapping(anyString(), anyString(), anyString())).thenReturn(mapping);
+        when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
 
         ToolResult result = diagnosis.diagnose(
-                new IndicatorDiagnosisTools.Input(
-                        "HXZD-003-001", "排查字段问题", null, "company-default"),
-                context);
+                new IndicatorDiagnosisTools.Input("HXZD-003-001", "排查字段问题", null), context);
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry("diagnose_status", "failed");
@@ -159,21 +136,20 @@ class IndicatorDiagnosisToolsTest {
         ToolResult result = diagnosis.diagnose(
                 new IndicatorDiagnosisTools.Input(
                         "HXZD-003-001", "排查业务库访问失败",
-                        "2026-01-01T00:00~2026-02-01T00:00", "company-default"),
-                context);
+                        "2026-01-01T00:00~2026-02-01T00:00"), context);
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry("diagnose_status", "failed");
         assertThat(result.data().get("summary").toString())
-                .contains("无法通过 DBHub 访问业务主表")
+                .contains("只读试运行失败")
                 .doesNotContain("password", "internal");
     }
 
     @Test
-    void blocksDatabaseDiagnosisWhenPublishedMainTableMappingIsMissing() {
+    void treatsMissingOptionalMainTableAsLimitedDiagnosisInsteadOfFailure() {
         Map<String, Object> rule = new LinkedHashMap<>(executableRule());
         rule.put("field_contract", Map.of("business_fields", Map.of()));
-        when(rules.effectiveRule(anyString(), anyString(), anyString())).thenReturn(rule);
+        when(rules.effectiveRule(anyString(), anyString())).thenReturn(rule);
         Map<String, Object> mapping = new LinkedHashMap<>();
         mapping.put("status", "missing");
         mapping.put("dialect", "sqlserver");
@@ -183,18 +159,17 @@ class IndicatorDiagnosisToolsTest {
         mapping.put("items", List.of());
         mapping.put("metadata_items", List.of());
         mapping.put("relations", List.of());
-        when(rules.fieldMapping(anyString(), anyString(), anyString())).thenReturn(mapping);
+        when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
 
         ToolResult result = diagnosis.diagnose(
                 new IndicatorDiagnosisTools.Input(
                         "HXZD-003-001", "直接排查这个指标",
-                        "2026-01-01T00:00~2026-02-01T00:00", "company-default"),
-                context);
+                        "2026-01-01T00:00~2026-02-01T00:00"), context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("diagnose_status", "failed");
+        assertThat(result.data()).containsEntry("diagnose_status", "warning");
         assertThat(result.data().get("summary").toString())
-                .contains("字段映射或元数据预检查未通过")
+                .contains("检查受限")
                 .doesNotContain("主表标识无效");
     }
 

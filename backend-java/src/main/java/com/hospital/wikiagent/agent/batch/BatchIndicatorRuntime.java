@@ -25,7 +25,6 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeSta
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.planning.PlanValidation.ResolvedTimeRange;
-import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
@@ -106,16 +105,6 @@ public class BatchIndicatorRuntime {
                             "error_code", "TIME_RANGE_AMBIGUOUS"));
             return timeClarification(request, observer, conversation, traceId, spec);
         }
-        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(
-                resolved.startTime(), resolved.endTime());
-        if (!period.ok()) {
-            emitTrace(observer, traceId, "batch_time_resolve", "failed", timeStarted,
-                    "root", Map.of("time_text", spec.timeText()), Map.of(
-                            "error_code", period.code(),
-                            "latest_end", String.valueOf(period.latestEnd())));
-            return periodClarification(
-                    request, observer, conversation, traceId, spec, period);
-        }
         String statStart = resolved.startTime().format(TIME_FORMAT);
         String statEnd = resolved.endTime().format(TIME_FORMAT);
         emitTrace(observer, traceId, "batch_time_resolve", "success", timeStarted,
@@ -123,49 +112,46 @@ public class BatchIndicatorRuntime {
                         "stat_start", statStart, "stat_end", statEnd));
 
         long enumerateStarted = System.currentTimeMillis();
-        List<Map<String, String>> indicators = spec.allActive()
+        List<BatchRequestSpec.Target> indicatorTargets = spec.allActive()
                 ? rules.activeIndicatorNames(
-                        request.principal().hospitalId(), properties.getBatchMaxIndicators())
-                : spec.targets().stream()
-                        .map(target -> Map.of(
-                                "rule_id", target.ruleId(),
-                                "rule_name", target.ruleName()))
-                        .toList();
+                        request.principal().hospitalId(), properties.getBatchMaxIndicators()).stream()
+                        .map(value -> new BatchRequestSpec.Target(
+                                value.get("rule_id"), value.get("rule_name")))
+                        .toList()
+                : spec.targets();
+        List<Map<String, String>> indicators = indicatorTargets.stream()
+                .map(target -> Map.of(
+                        "rule_id", target.ruleId(),
+                        "rule_name", target.ruleName()))
+                .toList();
+        List<ProfileExecutionTarget> executionTargets = expandProfiles(
+                indicatorTargets, request.principal().hospitalId());
         emitTrace(observer, traceId, "batch_indicator_enumerate", "success",
                 enumerateStarted, "root", Map.of("scope", spec.scope().name()),
                 Map.of("indicator_count", indicators.size(),
+                        "profile_count", executionTargets.size(),
                         "rule_ids", indicators.stream()
                                 .map(value -> value.get("rule_id")).toList()));
-        if (indicators.isEmpty()) {
+        if (indicators.isEmpty() || executionTargets.isEmpty()) {
             return emptyIndicators(observer, conversation, request, traceId);
         }
-        List<ProfileTarget> profileTargets = enumerateProfiles(
-                indicators, request.principal().hospitalId(), spec);
-        emitTrace(observer, traceId, "batch_profile_enumerate", "success",
-                enumerateStarted, "root", Map.of("indicator_count", indicators.size()),
-                Map.of(
-                        "approved_profile_count", profileTargets.size(),
-                        "profile_ids", profileTargets.stream()
-                                .map(ProfileTarget::profileId).toList()));
 
         AgentRuntimeContext context = new AgentRuntimeContext(
                 request.principal(), requestId, traceId, request.dbSourceId(), true);
         List<IndicatorExecutionResult> results =
                 executeAll(
-                        observer, traceId, requestId, context, profileTargets,
+                        observer, traceId, requestId, context, executionTargets,
                         spec.timeText(), statStart, statEnd);
 
         long mergeStarted = System.currentTimeMillis();
-        String answer = aggregator.aggregateProfiles(
-                results, statStart, statEnd, indicators.size());
+        String answer = aggregator.aggregate(
+                results, indicators.size(), statStart, statEnd);
 
         long succeeded = count(results, Status.SUCCESS);
         long noSample = count(results, Status.NO_SAMPLE);
         long failed = count(results, Status.FAILED);
         emitTrace(observer, traceId, "batch_result_merge", "success", mergeStarted,
-                "root", Map.of(
-                        "indicator_count", indicators.size(),
-                        "profile_count", results.size()), Map.of(
+                "root", Map.of("indicator_count", results.size()), Map.of(
                         "succeeded", succeeded,
                         "no_sample", noSample,
                         "failed", failed));
@@ -178,8 +164,6 @@ public class BatchIndicatorRuntime {
                 "message", answer,
                 "status", anyOk ? "completed" : "failed",
                 "batch", true,
-                "indicator_count", indicators.size(),
-                "profile_count", results.size(),
                 "succeeded", succeeded,
                 "no_sample", noSample,
                 "failed", failed));
@@ -187,7 +171,7 @@ public class BatchIndicatorRuntime {
                 "stop_reason", stopReason,
                 "status", anyOk ? "completed" : "incomplete",
                 "step_count", results.size(),
-                "subtask_count", results.size()));
+                "subtask_count", executionTargets.size()));
 
         AgentRunState memoryState = new AgentRunState();
         memoryState.lastIntent("batch");
@@ -201,7 +185,7 @@ public class BatchIndicatorRuntime {
                 indicators.stream().map(value -> value.get("rule_name")).toList());
         conversations.rememberQueryScope(conversation, new QueryScopeState(
                 "indicator_trial_run",
-                scopeMode(spec, indicators.size()),
+                targetMode(spec),
                 indicators.stream()
                         .map(value -> new QueryTarget(
                                 value.get("rule_id"), value.get("rule_name")))
@@ -223,12 +207,16 @@ public class BatchIndicatorRuntime {
             String traceId,
             String requestId,
             AgentRuntimeContext context,
-            List<ProfileTarget> targets,
+            List<ProfileExecutionTarget> targets,
             String timeText,
             String statStart,
             String statEnd) {
         int total = targets.size();
-        // 真实库是全局共享快照；不同 Profile 必须严格串行完成替换与双库查询。
+        /*
+         * 真实库是全局单快照：每个 Profile 都会清理并替换同一组受控表，然后在持锁
+         * 状态下计算。worker 并发会把后续任务的锁等待计入工具超时，形成假性
+         * TOOL_TIMEOUT；因此 Profile 批次必须从任务入口就串行，而不只依赖数据库锁。
+         */
         int concurrency = 1;
         ExecutorService pool = Executors.newFixedThreadPool(concurrency, runnable -> {
             Thread thread = new Thread(runnable, "batch-indicator-worker");
@@ -239,7 +227,7 @@ public class BatchIndicatorRuntime {
         try {
             List<Callable<IndicatorExecutionResult>> callables = new ArrayList<>();
             for (int index = 0; index < total; index++) {
-                ProfileTarget target = targets.get(index);
+                ProfileExecutionTarget target = targets.get(index);
                 String ruleId = target.ruleId();
                 String ruleName = target.ruleName();
                 String subtaskId = requestId + ":batch:" + index;
@@ -248,18 +236,18 @@ public class BatchIndicatorRuntime {
                     IndicatorExecutionResult result;
                     try {
                         result = target.profileId() == null
-                                ? IndicatorExecutionResult.failed(
-                                        ruleId, ruleName, null, target.profileName(), null,
-                                        "PROFILE_NOT_EXECUTABLE",
-                                        "当前指标没有可执行的已审批 Profile。")
+                                ? executor.execute(
+                                        ruleId, ruleName, subtaskId, timeText,
+                                        statStart, statEnd, context)
                                 : executor.execute(
                                         ruleId, ruleName,
-                                        target.profileId(), target.profileName(), target.eventNo(),
+                                        target.profileId(), target.profileLabel(),
+                                        target.eventNo(),
                                         subtaskId, timeText, statStart, statEnd, context);
                     } catch (RuntimeException exception) {
                         result = IndicatorExecutionResult.failed(
                                 ruleId, ruleName,
-                                target.profileId(), target.profileName(), target.eventNo(),
+                                target.profileId(), target.profileLabel(), target.eventNo(),
                                 "BATCH_INDICATOR_ERROR",
                                 exception.getMessage());
                     }
@@ -277,19 +265,15 @@ public class BatchIndicatorRuntime {
                     if (result.extractionStatus() != null) {
                         traceOutput.put("snapshot_status", result.extractionStatus());
                     }
-                    Map<String, Object> traceInput = new LinkedHashMap<>();
-                    traceInput.put("rule_id", ruleId);
-                    traceInput.put("rule_name", ruleName);
-                    traceInput.put("profile_id", target.profileId());
-                    traceInput.put("profile_name", target.profileName());
-                    if (target.eventNo() != null) {
-                        traceInput.put("event_no", target.eventNo());
-                    }
-                    emitTrace(observer, traceId, "batch_profile",
+                    emitProfileWorkflowTrace(
+                            observer, traceId, subtaskId, target, result);
+                    emitTrace(observer, traceId, "batch_indicator",
                             result.status() == Status.FAILED ? "failed" : "success",
-                            indicatorStarted, subtaskId, traceInput, traceOutput);
+                            indicatorStarted, subtaskId,
+                            profileTraceInput(target),
+                            traceOutput);
                     emitProgress(observer, traceId, completed.incrementAndGet(), total,
-                            ruleName + " / " + target.profileName(), result.ok());
+                            taskDisplay(target), result.ok());
                     return result;
                 });
             }
@@ -299,10 +283,10 @@ public class BatchIndicatorRuntime {
                 try {
                     results.add(futures.get(index).get());
                 } catch (Exception exception) {
-                    ProfileTarget target = targets.get(index);
+                    ProfileExecutionTarget target = targets.get(index);
                     results.add(IndicatorExecutionResult.failed(
                             target.ruleId(), target.ruleName(),
-                            target.profileId(), target.profileName(), target.eventNo(),
+                            target.profileId(), target.profileLabel(), target.eventNo(),
                             "BATCH_INDICATOR_ERROR", exception.getMessage()));
                 }
             }
@@ -312,7 +296,7 @@ public class BatchIndicatorRuntime {
             return targets.stream()
                     .map(target -> IndicatorExecutionResult.failed(
                             target.ruleId(), target.ruleName(),
-                            target.profileId(), target.profileName(), target.eventNo(),
+                            target.profileId(), target.profileLabel(), target.eventNo(),
                             "BATCH_CANCELLED", "批量任务已取消，请重新发送问题。"))
                     .toList();
         } finally {
@@ -320,47 +304,101 @@ public class BatchIndicatorRuntime {
         }
     }
 
-    /**
-     * 将指标范围展开为已审批 Profile 任务。知识库返回顺序即发布顺序，确保回答、
-     * Trace 和批次表均能稳定复现用户看到的顺序。
-     */
-    private List<ProfileTarget> enumerateProfiles(
-            List<Map<String, String>> indicators,
-            String hospitalId,
-            BatchRequestSpec spec) {
-        List<ProfileTarget> targets = new ArrayList<>();
-        for (Map<String, String> indicator : indicators) {
-            String ruleId = indicator.get("rule_id");
-            String ruleName = indicator.get("rule_name");
-            List<Map<String, Object>> profiles = rules.caliberProfiles(ruleId, hospitalId);
-            BatchRequestSpec.Target requested = spec.targets().stream()
-                    .filter(target -> ruleId.equals(target.ruleId()))
-                    .findFirst()
-                    .orElse(null);
-            if (requested != null && requested.profileId() != null) {
-                profiles = profiles.stream()
-                        .filter(profile -> requested.profileId().equals(
+    private List<ProfileExecutionTarget> expandProfiles(
+            List<BatchRequestSpec.Target> indicators,
+            String hospitalId) {
+        List<ProfileExecutionTarget> targets = new ArrayList<>();
+        for (BatchRequestSpec.Target indicator : indicators) {
+            List<Map<String, Object>> approved =
+                    rules.caliberProfiles(indicator.ruleId(), hospitalId);
+            if (indicator.profileId() != null) {
+                approved = approved.stream()
+                        .filter(profile -> indicator.profileId().equals(
                                 text(profile.get("profile_id"))))
                         .toList();
             }
-            if (profiles.isEmpty()) {
-                continue;
-            }
-            for (Map<String, Object> profile : profiles) {
-                Map<String, Object> extraction =
-                        objectMap(profile.get("extraction_contract"));
-                targets.add(new ProfileTarget(
-                        ruleId,
-                        ruleName,
-                        text(profile.get("profile_id")),
+            for (Map<String, Object> profile : approved) {
+                String profileId = text(profile.get("profile_id"));
+                Map<String, Object> effective =
+                        rules.effectiveRule(indicator.ruleId(), hospitalId, profileId);
+                String profileLabel = first(
+                        indicator.profileLabel(),
                         first(
-                                text(profile.get("profile_name")),
-                                text(profile.get("label")),
-                                text(profile.get("profile_id"))),
-                        text(extraction.get("event_no"))));
+                                text(effective.get("profile_name")),
+                                first(text(profile.get("label")), profileId)));
+                Map<String, Object> extraction =
+                        objectMap(effective.get("extraction_contract"));
+                targets.add(new ProfileExecutionTarget(
+                        indicator.ruleId(),
+                        indicator.ruleName(),
+                        profileId,
+                        profileLabel,
+                        first(
+                                text(extraction.get("event_no")),
+                                text(extraction.get("eventNo")))));
             }
         }
         return List.copyOf(targets);
+    }
+
+    private static Map<String, Object> profileTraceInput(
+            ProfileExecutionTarget target) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("rule_id", target.ruleId());
+        values.put("rule_name", target.ruleName());
+        if (target.profileId() != null) {
+            values.put("profile_id", target.profileId());
+        }
+        if (target.profileLabel() != null) {
+            values.put("profile_label", target.profileLabel());
+        }
+        if (target.eventNo() != null && !target.eventNo().isBlank()) {
+            values.put("event_no", target.eventNo());
+        }
+        return Map.copyOf(values);
+    }
+
+    private static String taskDisplay(ProfileExecutionTarget target) {
+        return target.ruleName() + " / " + target.profileLabel();
+    }
+
+    private static void emitProfileWorkflowTrace(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            ProfileExecutionTarget target,
+            IndicatorExecutionResult result) {
+        long now = System.currentTimeMillis();
+        boolean sourceContractMissing =
+                "SOURCE_EXTRACT_SQL_UNAVAILABLE".equals(result.errorCode());
+        emitTrace(
+                observer, traceId, "source_extraction_prepare",
+                sourceContractMissing ? "failed" : "success",
+                now, subtaskId, profileTraceInput(target),
+                sourceContractMissing
+                        ? Map.of("error_code", result.errorCode())
+                        : Map.of("status", "prepared"));
+        if (result.extractionId() != null) {
+            emitTrace(
+                    observer, traceId, "source_data_extraction", "success",
+                    now, subtaskId, profileTraceInput(target),
+                    Map.of(
+                            "extraction_id", result.extractionId(),
+                            "snapshot_status", first(
+                                    result.extractionStatus(), "SUCCESS")));
+        } else if (result.errorCode() != null
+                && result.errorCode().startsWith("SOURCE_EXTRACTION")) {
+            emitTrace(
+                    observer, traceId, "source_data_extraction", "failed",
+                    now, subtaskId, profileTraceInput(target),
+                    Map.of("error_code", result.errorCode()));
+        }
+        if (result.runId() != null) {
+            emitTrace(
+                    observer, traceId, "real_database_overview", "success",
+                    now, subtaskId, profileTraceInput(target),
+                    Map.of("run_id", result.runId(), "source_id", "winex_aima"));
+        }
     }
 
     /**
@@ -414,8 +452,8 @@ public class BatchIndicatorRuntime {
             ConversationSnapshot conversation,
             String traceId,
             BatchRequestSpec spec) {
-        String message = "请明确一个月以内的统计时间范围。"
-                + "例如“本月”或“2026年6月”。";
+        String message = "请明确要统计的时间范围，我会一次性计算全部指标。"
+                + "例如“今年”“本月”或“2026年1月至3月”。";
         AgentClarification clarification = timeClarification();
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running", "session_id", conversation.sessionId(),
@@ -437,8 +475,7 @@ public class BatchIndicatorRuntime {
         QueryScopeState previous = conversation.queryScope();
         conversations.rememberQueryScope(conversation, new QueryScopeState(
                 "indicator_trial_run",
-                spec.allActive() ? "ALL"
-                        : spec.targets().size() == 1 ? "SINGLE" : "SUBSET",
+                targetMode(spec),
                 spec.targets().stream()
                         .map(value -> new QueryTarget(value.ruleId(), value.ruleName()))
                         .toList(),
@@ -447,6 +484,13 @@ public class BatchIndicatorRuntime {
         return new AgentRunResult(
                 message, "clarification", traceId, conversation.sessionId(), 0,
                 null, null, clarification);
+    }
+
+    private static String targetMode(BatchRequestSpec spec) {
+        if (spec.allActive()) {
+            return "ALL";
+        }
+        return spec.targets().size() == 1 ? "SINGLE" : "SUBSET";
     }
 
     private AgentRunResult emptyIndicators(
@@ -556,71 +600,25 @@ public class BatchIndicatorRuntime {
         return value == null || value.isBlank() ? fallback : value.strip();
     }
 
-    private AgentRunResult periodClarification(
-            AgentRunRequest request,
-            AgentRunObserver observer,
-            ConversationSnapshot conversation,
-            String traceId,
-            BatchRequestSpec spec,
-            StatPeriodPolicy.Validation validation) {
-        String message = validation.message()
-                + " 请重新给出一个月以内的统计区间；系统不会自动拆月或相加。";
-        AgentClarification clarification = timeClarification();
-        emit(observer, "clarification_required", traceId, 0, Map.of(
-                "message", message,
-                "code", validation.code(),
-                "fallback_category", "USER_CLARIFICATION",
-                "clarification", clarification,
-                "stop_reason", "clarification"));
-        emit(observer, "agent_done", traceId, 0, Map.of(
-                "stop_reason", "clarification",
-                "status", "incomplete",
-                "step_count", 0));
-        AgentRunState state = new AgentRunState();
-        state.lastIntent("batch");
-        conversations.appendAssistant(conversation, request.principal(), message, state);
-        conversations.rememberCompoundTargets(
-                conversation,
-                spec.targets().stream().map(BatchRequestSpec.Target::ruleName).toList());
-        return new AgentRunResult(
-                message, "clarification", traceId, conversation.sessionId(), 0,
-                null, null, clarification);
-    }
-
-    private static String scopeMode(BatchRequestSpec spec, int indicatorCount) {
-        if (spec.allActive()) {
-            return "ALL";
-        }
-        return indicatorCount == 1 ? "SINGLE" : "SUBSET";
-    }
-
-    private static String first(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.strip();
-            }
-        }
-        return "";
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> objectMap(Object value) {
+        return value instanceof Map<?, ?> map
+                ? (Map<String, Object>) map : Map.of();
     }
 
     private static String text(Object value) {
         return value == null || String.valueOf(value).isBlank()
-                ? null : String.valueOf(value).strip();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> objectMap(Object value) {
-        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+                ? "" : String.valueOf(value).strip();
     }
 
     private static String id(String prefix) {
         return prefix + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
     }
 
-    private record ProfileTarget(
+    private record ProfileExecutionTarget(
             String ruleId,
             String ruleName,
             String profileId,
-            String profileName,
+            String profileLabel,
             String eventNo) {}
 }

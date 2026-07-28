@@ -200,7 +200,8 @@ public class CapabilitySpecRegistry {
                         "search_indicator_rules", CapabilitySpecRegistry::indicatorQuery, "rule_identity"),
                 spec(PlanCapability.RESOLVE_EFFECTIVE_RULE, Set.of("rule_identity"),
                         Set.of("effective_rule", "definition", "formula"),
-                        "get_effective_rule", CapabilitySpecRegistry::ruleReference, "effective_rule"),
+                        "get_effective_rule", CapabilitySpecRegistry::effectiveRuleReference,
+                        "effective_rule"),
                 spec(PlanCapability.RESOLVE_TIME_RANGE, Set.of(), Set.of("stat_period"),
                         null, null, "stat_period", "agent.time.resolve", "evidence_only"),
                 spec(PlanCapability.INSPECT_IMPLEMENTATION, Set.of("effective_rule"),
@@ -294,11 +295,17 @@ public class CapabilitySpecRegistry {
 
     private static Map<String, Object> ruleReference(
             PlanningExecution execution, AgentRunState state, String userMessage) {
+        return Map.of("rule_id", resolveRuleId(execution, state));
+    }
+
+    private static Map<String, Object> effectiveRuleReference(
+            PlanningExecution execution, AgentRunState state, String userMessage) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("rule_id", resolveRuleId(execution, state));
-        String profileId = execution.requestPlan().targetCaliber().profileId();
-        if (profileId != null && !profileId.isBlank()) {
-            values.put("profile_id", profileId);
+        if (execution.requestPlan().targetCaliber().profileId() != null) {
+            values.put(
+                    "profile_id",
+                    execution.requestPlan().targetCaliber().profileId());
         }
         return values;
     }
@@ -314,9 +321,10 @@ public class CapabilitySpecRegistry {
         values.put("rule_id", resolveRuleId(execution, state));
         values.put("stat_start_time", period.startTime().toString());
         values.put("stat_end_time", period.endTime().toString());
-        String profileId = execution.requestPlan().targetCaliber().profileId();
-        if (profileId != null && !profileId.isBlank()) {
-            values.put("profile_id", profileId);
+        if (execution.requestPlan().targetCaliber().profileId() != null) {
+            values.put(
+                    "profile_id",
+                    execution.requestPlan().targetCaliber().profileId());
         }
         return values;
     }
@@ -383,10 +391,6 @@ public class CapabilitySpecRegistry {
         values.put("issue_description", userMessage == null || userMessage.isBlank()
                 ? "请排查当前指标异常。"
                 : userMessage.strip());
-        String profileId = execution.requestPlan().targetCaliber().profileId();
-        if (profileId != null && !profileId.isBlank()) {
-            values.put("profile_id", profileId);
-        }
         if (execution.validation().resolvedTime() != null) {
             values.put("stat_period",
                     execution.validation().resolvedTime().startTime() + "~"

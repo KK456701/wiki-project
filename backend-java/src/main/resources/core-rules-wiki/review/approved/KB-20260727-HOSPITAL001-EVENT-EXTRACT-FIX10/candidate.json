@@ -1,0 +1,15 @@
+{
+  "schema_version": "knowledge-candidate-v2",
+  "candidate_id": "KB-20260727-HOSPITAL001-EVENT-EXTRACT-FIX10",
+  "release_id": "KB-20260727-HOSPITAL001-EVENT-EXTRACT-FIX10",
+  "status": "published",
+  "scope": "hospital",
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "model_id": "deterministic-adapter",
+  "prompt_version": "knowledge-release-normalizer-v1",
+  "prompt_sha256": "52a0288fc1c5af8b3cf50bfa029dba1da0424ca72679fcb916b65bd69c1c16ce",
+  "created_at": "2026-07-27T05:11:00.127Z",
+  "unresolved_questions": [],
+  "published_at": "2026-07-27T05:11:21.961Z"
+}

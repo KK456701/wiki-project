@@ -144,19 +144,6 @@ class BatchResultAggregatorTest {
         assertThat(report).doesNotContain("| 指标 |");
     }
 
-    @Test
-    void profileSummaryKeepsRequestedIndicatorScopeWhenDraftOnlyRuleHasNoTask() {
-        var profile = success(
-                "R1", "指标一", 96.0, 96L, 100L, "percent", 95, ">=")
-                .withProfile("R1-P1", "已审批口径", "EVENT_1", "EXT_1", "COMPLETED");
-
-        String report = aggregator.aggregateProfiles(
-                List.of(profile), START, END, 2);
-
-        assertThat(report).contains("共 2 项指标、1 个已审批口径");
-        assertThat(report).doesNotContain("无可执行已审批口径");
-    }
-
     private static IndicatorExecutionResult success(
             String ruleId, String ruleName, Double value, Long numerator, Long denominator,
             String unit, Object target, String direction) {

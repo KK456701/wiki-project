@@ -12,6 +12,18 @@ import com.hospital.wikiagent.agent.ir.RequestPlan.TimeExpression;
 
 class TimeRangeResolverTest {
     @Test
+    void resolvesNaturalMonthEmbeddedInCalculationRequest() {
+        TimeRangeResolver resolver = new TimeRangeResolver();
+
+        var range = resolver.resolve(new TimeExpression(
+                "计算2025年10月患者入院48小时内转科的比例", null, null));
+
+        assertThat(range).isNotNull();
+        assertThat(range.startTime().toString()).isEqualTo("2025-10-01T00:00");
+        assertThat(range.endTime().toString()).isEqualTo("2025-11-01T00:00");
+    }
+
+    @Test
     void resolvesNumericMonthWithColloquialMonthSuffixToNow() {
         Clock clock = Clock.fixed(
                 Instant.parse("2026-07-26T15:30:00Z"),
@@ -50,29 +62,5 @@ class TimeRangeResolverTest {
         assertThat(range).isNotNull();
         assertThat(range.startTime().toString()).isEqualTo("2025-02-01T00:00");
         assertThat(range.endTime().toString()).isEqualTo("2026-07-27T12:00");
-    }
-
-    @Test
-    void resolvesSingleAbsoluteMonthInsideCalculationRequest() {
-        TimeRangeResolver resolver = new TimeRangeResolver();
-
-        var range = resolver.resolve(new TimeExpression(
-                "计算2026年6月急会诊及时到位率", null, null));
-
-        assertThat(range).isNotNull();
-        assertThat(range.startTime().toString()).isEqualTo("2026-06-01T00:00");
-        assertThat(range.endTime().toString()).isEqualTo("2026-07-01T00:00");
-    }
-
-    @Test
-    void singleMonthPatternDoesNotConsumeAFullDate() {
-        TimeRangeResolver resolver = new TimeRangeResolver();
-
-        var range = resolver.resolve(new TimeExpression(
-                "计算2026年6月1日至2026年7月1日急会诊及时到位率", null, null));
-
-        assertThat(range).isNotNull();
-        assertThat(range.startTime().toString()).isEqualTo("2026-06-01T00:00");
-        assertThat(range.endTime().toString()).isEqualTo("2026-07-01T00:00");
     }
 }

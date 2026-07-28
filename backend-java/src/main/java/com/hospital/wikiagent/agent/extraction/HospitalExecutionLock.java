@@ -17,8 +17,7 @@ public class HospitalExecutionLock {
     private final ConcurrentHashMap<String, Semaphore> locks = new ConcurrentHashMap<>();
 
     public Lease acquire(String hospitalId) {
-        // 当前试运行环境的所有医院共用同一个 winex_aima 快照库，必须全局串行。
-        String key = "winex_aima-global-snapshot";
+        String key = hospitalId == null || hospitalId.isBlank() ? "unknown" : hospitalId;
         Semaphore semaphore = locks.computeIfAbsent(key, ignored -> new Semaphore(1, true));
         semaphore.acquireUninterruptibly();
         return new Lease(semaphore);

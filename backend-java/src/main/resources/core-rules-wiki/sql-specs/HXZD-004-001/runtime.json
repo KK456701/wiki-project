@@ -126,20 +126,6 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
-      },
-      "data_lineage": {
-        "schema_version": "data-lineage-v1",
-        "event_no": "GRADE_CARE_V2",
-        "event_name": "分级护理",
-        "source_main_table": null,
-        "intermediate_table": "MRAS_BUSINESS_GRADED_CARE",
-        "reference_tables": [
-          "INPATIENT_ENCOUNTER",
-          "MRAS_ORGANIZATION"
-        ],
-        "data_affecting_tables": [],
-        "affects_calculation": false,
-        "data_source": "住院医生站、病案管理系统"
       }
     }
   ],

@@ -25,15 +25,15 @@ public class PlanValidator {
     }
 
     public PlanValidation validate(RequestPlan plan) {
-        return validate(plan, false);
+        return validate(plan, true);
     }
 
     /**
-     * 单项和批量入口都由只读校验、数据库并发和查询超时限制资源使用，因此允许用户明确
-     * 指定跨月汇总周期。不能按月相加，否则会破坏跨月患者去重语义。
+     * 批量任务的每个 Profile 都会独立抽取并替换真实库快照，因此批量入口也必须在
+     * 生成任务前拒绝超过一个月的统计区间，不能依靠 worker 数或查询超时放宽限制。
      */
     public PlanValidation validateBatch(RequestPlan plan) {
-        return validate(plan, false);
+        return validate(plan, true);
     }
 
     private PlanValidation validate(RequestPlan plan, boolean enforceOneMonthLimit) {
@@ -142,7 +142,7 @@ public class PlanValidator {
         if (needsDatabase && constraints.contains("no_database_access")) {
             return PlanValidation.invalid(
                     "DATABASE_ACCESS_CONFLICT",
-                    "实际指标结果需要执行医院业务库只读聚合查询。",
+                    "实际指标结果需要先抽取数据并执行真实库只读聚合查询。",
                     FallbackCategory.BUSINESS_CONFIRMATION);
         }
         if (needsDatabase

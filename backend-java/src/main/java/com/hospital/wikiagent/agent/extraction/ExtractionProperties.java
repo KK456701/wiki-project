@@ -5,10 +5,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 控制源数据抽取是否成为指标计算的强制前置步骤。
  *
- * <p>当前仓库只定义网关契约，不包含医院抽取接口适配器。该开关只控制“抽取是否
- * 是双库计算的强制前置步骤”，不控制是否执行双库核对：默认关闭时跳过抽取，但
- * 业务库和真实库仍然都会执行；部署方提供真实 {@link SourceExtractionGateway}
- * 后可切换为 {@link Mode#REQUIRED}。</p>
+ * <p>{@link Mode#REQUIRED} 使用知识发布包中的受控 Profile 抽取契约，经本机
+ * DBHub 读取业务库并原子替换 {@code winex_aima} 快照；普通计算只读取该快照。
+ * {@link Mode#DISABLED} 只允许不访问数据库的定义、口径和 SQL 展示，计算会明确
+ * 失败，不能静默使用旧快照。</p>
  */
 @ConfigurationProperties(prefix = "wiki.agent.extraction")
 public class ExtractionProperties {

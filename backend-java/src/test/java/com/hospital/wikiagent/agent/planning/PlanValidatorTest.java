@@ -107,26 +107,25 @@ class PlanValidatorTest {
                         "2026-02-01T00:00:00")));
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.resolvedTime().startTime().toString())
-                .isEqualTo("2026-01-01T00:00");
         assertThat(result.resolvedTime().endTime().toString())
                 .isEqualTo("2026-02-01T00:00");
     }
 
     @Test
-    void allowsControlledLongPeriodBeforeExecution() {
+    void rejectsLongPeriodBeforeExecution() {
         PlanValidation result = validator.validate(plan(
                 List.of(),
                 new RequestPlan.TimeExpression(
-                        "超过一个月",
-                        "2026-01-01T00:00:00",
+                        "超过一年",
+                        "2025-01-01T00:00:00",
                         "2026-02-01T00:00:01")));
 
-        assertThat(result.ok()).isTrue();
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo(StatPeriodPolicy.EXCEEDED_CODE);
     }
 
     @Test
-    void batchValidationAllowsExplicitCrossMonthAggregatePeriod() {
+    void batchValidationAlsoRejectsCrossMonthAggregatePeriod() {
         TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
                 Instant.parse("2026-07-26T15:30:00Z"),
                 ZoneId.of("Asia/Shanghai")));
@@ -139,9 +138,8 @@ class PlanValidatorTest {
                         "2025-02-01T00:00:00",
                         "2026-07-26T23:30:00")));
 
-        assertThat(result.ok()).isTrue();
-        assertThat(result.resolvedTime().startTime().toString()).isEqualTo("2025-02-01T00:00");
-        assertThat(result.resolvedTime().endTime().toString()).isEqualTo("2026-07-26T23:30");
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo(StatPeriodPolicy.EXCEEDED_CODE);
     }
 
     @Test
@@ -172,36 +170,34 @@ class PlanValidatorTest {
     @Test
     void resolvesChineseMonthRangeWithoutTrustingPlannerDates() {
         TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
-                Instant.parse("2026-07-21T08:00:00Z"),
+                Instant.parse("2027-02-21T08:00:00Z"),
                 ZoneId.of("Asia/Shanghai")));
         PlanValidator fixedValidator = new PlanValidator(resolver);
 
         PlanValidation result = fixedValidator.validate(plan(
                 List.of(),
-                new RequestPlan.TimeExpression("从26年一月份到现在", null, null)));
+                new RequestPlan.TimeExpression("从25年一月份到现在", null, null)));
 
-        assertThat(result.ok()).isTrue();
-        assertThat(result.resolvedTime().startTime().toString())
-                .isEqualTo("2026-01-01T00:00");
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo(StatPeriodPolicy.EXCEEDED_CODE);
     }
 
     @Test
     void relativeUserTextOverridesModelInventedAbsoluteDates() {
         TimeRangeResolver resolver = new TimeRangeResolver(Clock.fixed(
-                Instant.parse("2026-07-22T04:30:00Z"),
+                Instant.parse("2027-02-22T04:30:00Z"),
                 ZoneId.of("Asia/Shanghai")));
         PlanValidator fixedValidator = new PlanValidator(resolver);
 
         PlanValidation result = fixedValidator.validate(plan(
                 List.of(),
                 new RequestPlan.TimeExpression(
-                        "从一月份到现在",
+                        "从25年一月份到现在",
                         "2025-01-01 00:00:00",
-                        "2026-07-22 00:00:00")));
+                        "2027-02-22 00:00:00")));
 
-        assertThat(result.ok()).isTrue();
-        assertThat(result.resolvedTime().startTime().toString())
-                .isEqualTo("2026-01-01T00:00");
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo(StatPeriodPolicy.EXCEEDED_CODE);
     }
 
     private static RequestPlan plan(List<String> constraints, RequestPlan.TimeExpression time) {

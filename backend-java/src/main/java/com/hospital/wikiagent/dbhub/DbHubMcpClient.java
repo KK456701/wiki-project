@@ -1,7 +1,12 @@
 package com.hospital.wikiagent.dbhub;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +31,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class DbHubMcpClient {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final DateTimeFormatter DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private final DbHubProperties properties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -189,7 +197,47 @@ public class DbHubMcpClient {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> toMap(JsonNode node) {
-        return MAPPER.convertValue(node, LinkedHashMap.class);
+        Map<String, Object> raw = MAPPER.convertValue(node, LinkedHashMap.class);
+        return convertDateValues(raw);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> convertDateValues(Map<String, Object> source) {
+        Map<String, Object> converted = new LinkedHashMap<>(source.size());
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            converted.put(entry.getKey(), convertDateValue(entry.getValue()));
+        }
+        return converted;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object convertDateValue(Object value) {
+        if (value instanceof String text) {
+            return parseDateTime(text);
+        }
+        if (value instanceof Map<?, ?> map) {
+            return convertDateValues((Map<String, Object>) map);
+        }
+        if (value instanceof List<?> list) {
+            List<Object> converted = new ArrayList<>(list.size());
+            for (Object item : list) {
+                converted.add(convertDateValue(item));
+            }
+            return converted;
+        }
+        return value;
+    }
+
+    private static Object parseDateTime(String text) {
+        if (text == null || text.length() != 19 || text.charAt(4) != '-' || text.charAt(10) != ' ') {
+            return text;
+        }
+        try {
+            LocalDateTime dateTime = LocalDateTime.parse(text, DATE_TIME);
+            return Date.from(dateTime.atZone(ZoneId.systemDefault()).toInstant());
+        } catch (DateTimeParseException ignored) {
+            return text;
+        }
     }
 
     private static String stripTrailingSlash(String value) {

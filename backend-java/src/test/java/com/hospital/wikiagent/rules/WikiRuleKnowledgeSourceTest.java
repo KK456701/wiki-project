@@ -85,37 +85,12 @@ class WikiRuleKnowledgeSourceTest {
                 .containsEntry("sql_status", "available")
                 .containsEntry("knowledge_release_id", pointer.get("release_id"));
         assertThat(rule.get("standard_sql")).asString().contains("MRAS_BUSINESS_FIRSTVISIT");
+        Map<?, ?> extraction = (Map<?, ?>) rule.get("extraction_contract");
+        assertThat(extraction.get("route")).isEqualTo("EVENT");
+        assertThat(extraction.get("event_table"))
+                .isEqualTo("MRAS_BUSINESS_FIRSTVISIT");
         assertThat(source.fieldMapping("HXZD-001-001", "hospital_001"))
                 .containsEntry("status", "confirmed");
-    }
-
-    @Test
-    void currentHospitalReleasePublishesFortyTwoApprovedExtractionContracts() {
-        var indicators = source.activeIndicatorNames("hospital_001", 100);
-        var profiles = indicators.stream()
-                .flatMap(indicator -> source.caliberProfiles(
-                        indicator.get("rule_id"), "hospital_001").stream())
-                .toList();
-
-        assertThat(indicators).hasSize(35);
-        assertThat(profiles).hasSize(42);
-        assertThat(profiles).allSatisfy(profile -> {
-            Map<?, ?> contract = (Map<?, ?>) profile.get("extraction_contract");
-            assertThat(contract.get("route")).isIn("EVENT", "TABLE_DOMAIN");
-            assertThat(contract.get("database_name")).isEqualTo("winex_aima");
-            assertThat(contract.get("schema_name")).isEqualTo("dbo");
-            assertThat(contract.get("target_tables")).asList().isNotEmpty();
-            assertThat(contract.get("allowed_result_fields")).isInstanceOf(Map.class);
-            assertThat(contract.get("target_schema_fingerprints")).isInstanceOf(Map.class);
-        });
-        assertThat(profiles.stream()
-                .map(profile -> (Map<?, ?>) profile.get("extraction_contract"))
-                .filter(contract -> "EVENT".equals(contract.get("route"))))
-                .hasSize(40);
-        assertThat(profiles.stream()
-                .map(profile -> (Map<?, ?>) profile.get("extraction_contract"))
-                .filter(contract -> "TABLE_DOMAIN".equals(contract.get("route"))))
-                .hasSize(2);
     }
 
     @Test

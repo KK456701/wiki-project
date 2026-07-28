@@ -1,8 +1,6 @@
 package com.hospital.wikiagent.agent.batch;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -130,7 +128,7 @@ class BatchRequestDetectorTest {
     }
 
     @Test
-    void explicitCalculatedIndicatorsUseProfileAwareBatchForOneOrMoreTargets() {
+    void oneOrMoreExplicitIndicatorsUseDeterministicSelectedBatch() {
         List<Map<String, String>> catalog = List.of(
                 Map.of("rule_id", "R1", "rule_name", "患者入院8小时内查房率"),
                 Map.of("rule_id", "R2", "rule_name", "急会诊及时到位率"));
@@ -148,25 +146,26 @@ class BatchRequestDetectorTest {
     }
 
     @Test
-    void explicitProfileNarrowsSingleIndicatorOtherwiseAllProfilesRemainSelected() {
+    void approvedProfilesExpandUnlessUserExplicitlyNamesOne() {
         WikiRuleKnowledgeSource rules = mock(WikiRuleKnowledgeSource.class);
-        when(rules.activeIndicatorNames(anyString(), anyInt())).thenReturn(List.of(
-                Map.of("rule_id", "R1", "rule_name", "急会诊及时到位率")));
-        when(rules.caliberProfiles("R1", "hospital_001")).thenReturn(List.of(
-                Map.of("profile_id", "R1-P1", "profile_name", "申请时间口径"),
-                Map.of("profile_id", "R1-P2", "profile_name", "到达时间口径")));
-        BatchRequestDetector profileAware = new BatchRequestDetector(rules);
+        BatchRequestDetector profileDetector = new BatchRequestDetector(rules);
+        List<Map<String, Object>> profiles = List.of(
+                Map.of(
+                        "profile_id", "R1-default",
+                        "profile_name", "默认统计口径"),
+                Map.of(
+                        "profile_id", "R1-candidate",
+                        "profile_name", "候选统计口径"));
+        when(rules.caliberProfiles("R1", "hospital_001")).thenReturn(profiles);
 
-        BatchRequestSpec allProfiles = profileAware.detect(
-                "计算本月急会诊及时到位率", null, "hospital_001");
-        BatchRequestSpec oneProfile = profileAware.detect(
-                "按到达时间口径计算本月急会诊及时到位率", null, "hospital_001");
-
-        assertThat(allProfiles.targets()).hasSize(1);
-        assertThat(allProfiles.targets().get(0).profileId()).isNull();
-        assertThat(oneProfile.targets()).singleElement().satisfies(target -> {
-            assertThat(target.profileId()).isEqualTo("R1-P2");
-            assertThat(target.profileName()).isEqualTo("到达时间口径");
-        });
+        assertThat(profileDetector.requiresProfileExpansion(
+                "计算指标一", "R1", "指标一", "hospital_001")).isTrue();
+        BatchRequestSpec.Target explicit = profileDetector.explicitProfileTarget(
+                "按候选统计口径计算指标一",
+                "R1", "指标一", "hospital_001");
+        assertThat(explicit.profileId()).isEqualTo("R1-candidate");
+        assertThat(profileDetector.requiresProfileExpansion(
+                "按候选统计口径计算指标一",
+                "R1", "指标一", "hospital_001")).isFalse();
     }
 }

@@ -15,8 +15,8 @@ import org.springframework.context.annotation.Primary;
  *
  * <p>With wiki.sqlserver.enabled=true there are multiple DataSource beans.
  * Spring Boot SQL init is only auto-configured for a single candidate, and
- * EntityManagerFactory beans may otherwise wait on a miswired initializer that
- * tries to run sqlite-runtime-schema.sql against SQL Server.</p>
+ * Without the explicit primary binding, the initializer can be skipped or can
+ * try to run sqlite-runtime-schema.sql against SQL Server.</p>
  */
 @Configuration
 @EnableConfigurationProperties(SqlInitializationProperties.class)

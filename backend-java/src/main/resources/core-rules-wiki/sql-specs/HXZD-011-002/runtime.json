@@ -137,23 +137,6 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
-      },
-      "data_lineage": {
-        "schema_version": "data-lineage-v1",
-        "event_no": "CORE_SURGERY",
-        "event_name": "手术安全",
-        "source_main_table": "CLIBASIC_SURGERY, EMPLOYEE_INFO, INPATIENT_ENCOUNTER, INPATIENT_PARTICIPANT, INP_SURGICAL_ANESTHESIA_PLAN, INP_SURGICAL_OPERATOR_PLAN, INP_SURGICAL_ORDER_ITEM, INP_SURGICAL_PLAN, ORGANIZATION, ORGANIZATION_X_EMPLOYEE",
-        "intermediate_table": "MRAS_BUSINESS_SURGERY",
-        "reference_tables": [
-          "INPATIENT_ENCOUNTER",
-          "INP_SURGICAL_PLAN",
-          "MRAS_ORGANIZATION"
-        ],
-        "data_affecting_tables": [
-          "INP_SURGICAL_ANESTHESIA_PLAN"
-        ],
-        "affects_calculation": true,
-        "data_source": "住院医生站、手麻管理系统"
       }
     }
   ],

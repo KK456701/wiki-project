@@ -59,17 +59,21 @@ public record BatchRequestSpec(
     }
 
     public record Target(
-            String ruleId, String ruleName, String profileId, String profileName) {
+            String ruleId,
+            String ruleName,
+            String profileId,
+            String profileLabel) {
+        public Target(String ruleId, String ruleName) {
+            this(ruleId, ruleName, null, null);
+        }
+
         public Target {
             ruleId = ruleId == null ? "" : ruleId.strip();
             ruleName = ruleName == null ? "" : ruleName.strip();
-            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
-            profileName = profileName == null || profileName.isBlank()
-                    ? null : profileName.strip();
-        }
-
-        public Target(String ruleId, String ruleName) {
-            this(ruleId, ruleName, null, null);
+            profileId = profileId == null || profileId.isBlank()
+                    ? null : profileId.strip();
+            profileLabel = profileLabel == null || profileLabel.isBlank()
+                    ? null : profileLabel.strip();
         }
     }
 }

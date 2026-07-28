@@ -43,7 +43,7 @@ import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
  */
 class BatchIndicatorRuntimeTest {
     private static final String START = "2026-01-01 00:00:00";
-    private static final String END = "2026-02-01 00:00:00";
+    private static final String END = "2026-04-01 00:00:00";
 
     private WikiRuleKnowledgeSource rules;
     private PreparedIndicatorExecutor executor;
@@ -81,18 +81,17 @@ class BatchIndicatorRuntimeTest {
                 null, null, null, null, List.of(), ""));
         when(timeResolver.resolve(any())).thenReturn(new ResolvedTimeRange(
                 LocalDateTime.of(2026, 1, 1, 0, 0),
-                LocalDateTime.of(2026, 2, 1, 0, 0), "一月"));
+                LocalDateTime.of(2026, 4, 1, 0, 0), "今年"));
         when(jobStore.createJob(
                 any(), any(), any(), any(), anyInt(), any(), any(), anyString()))
                 .thenReturn("BJOB_test");
-        when(rules.caliberProfiles(anyString(), anyString())).thenAnswer(invocation -> {
-            String ruleId = invocation.getArgument(0);
-            return List.of(Map.of(
-                    "profile_id", ruleId + "_P1",
-                    "profile_name", "默认口径",
-                    "label", "默认口径",
-                    "extraction_contract", Map.of("event_no", "EVENT_" + ruleId)));
-        });
+        when(rules.caliberProfiles(anyString(), anyString()))
+                .thenAnswer(invocation -> List.of(Map.of(
+                        "profile_id", invocation.getArgument(0) + "-default")));
+        when(rules.effectiveRule(anyString(), anyString(), anyString()))
+                .thenAnswer(invocation -> Map.of(
+                        "profile_name", "默认口径",
+                        "extraction_contract", Map.of("event_no", "CORE_DEFAULT")));
     }
 
     @Test
@@ -103,9 +102,8 @@ class BatchIndicatorRuntimeTest {
         AgentRunResult result = runtime.run(request(), observer, batchSpec());
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
-        assertThat(result.answer()).contains(
-                "共 3 项指标、3 个已审批口径：3 个口径成功、0 个口径无样本、0 个口径失败");
-        assertThat(result.answer()).contains("| 指标一 | 默认口径（R1_P1） | 92.50% |");
+        assertThat(result.answer()).contains("共 3 项：3 项成功、0 项无样本、0 项失败");
+        assertThat(result.answer()).contains("| 指标一 | 92.50% |");
         verify(executor, times(3)).execute(
                 anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), eq(START), eq(END),
@@ -138,7 +136,7 @@ class BatchIndicatorRuntimeTest {
         assertThat(start.get("subtask_count")).isEqualTo(35);
         assertThat(events.stream()
                 .filter(event -> "trace_node".equals(event.get("event")))
-                .filter(event -> "batch_profile".equals(event.get("node_name")))
+                .filter(event -> "batch_indicator".equals(event.get("node_name")))
                 .count()).isEqualTo(3);
     }
 
@@ -154,7 +152,7 @@ class BatchIndicatorRuntimeTest {
 
         AgentRunResult result = runtime.run(request(), observer, selected);
 
-        assertThat(result.answer()).contains("共 2 项指标、2 个已审批口径");
+        assertThat(result.answer()).contains("共 2 项：2 项成功");
         verify(rules, never()).activeIndicatorNames(anyString(), anyInt());
         verify(executor, times(2)).execute(
                 anyString(), anyString(), anyString(), anyString(), anyString(),
@@ -163,6 +161,70 @@ class BatchIndicatorRuntimeTest {
         verify(jobStore).createJob(
                 eq("storage_key"), eq("hospital_001"), eq("user_1"), anyString(),
                 eq(2), eq(START), eq(END), eq("TRACE_1"));
+    }
+
+    @Test
+    void singleIndicatorExpandsToEveryApprovedProfile() {
+        when(rules.caliberProfiles(eq("R1"), eq("hospital_001"))).thenReturn(List.of(
+                Map.of("profile_id", "R1-default"),
+                Map.of("profile_id", "R1-candidate")));
+        when(rules.effectiveRule(eq("R1"), eq("hospital_001"), anyString()))
+                .thenAnswer(invocation -> {
+                    String profileId = invocation.getArgument(2);
+                    return Map.of(
+                            "profile_name", profileId.equals("R1-default")
+                                    ? "默认口径" : "候选口径",
+                            "extraction_contract", Map.of("event_no", "CORE_TEST"));
+                });
+        when(executor.execute(
+                eq("R1"), eq("指标一"), anyString(), anyString(), eq("CORE_TEST"),
+                anyString(), anyString(), eq(START), eq(END),
+                any(AgentRuntimeContext.class)))
+                .thenAnswer(invocation -> profileSuccess(
+                        invocation.getArgument(2), invocation.getArgument(3)));
+
+        AgentRunResult result = runtime.run(
+                request(), observer,
+                BatchRequestSpec.selected(
+                        "计算指标一", "2026年1月",
+                        List.of(new BatchRequestSpec.Target("R1", "指标一"))));
+
+        assertThat(result.stepCount()).isEqualTo(2);
+        assertThat(result.answer())
+                .contains("共 1 项指标、2 个已审批口径")
+                .contains("R1-default")
+                .contains("R1-candidate");
+        verify(executor, times(2)).execute(
+                eq("R1"), eq("指标一"), anyString(), anyString(), eq("CORE_TEST"),
+                anyString(), anyString(), eq(START), eq(END),
+                any(AgentRuntimeContext.class));
+        verify(jobStore, times(2))
+                .recordTask(eq("BJOB_test"), anyInt(), any());
+    }
+
+    @Test
+    void indicatorWithoutApprovedProfileDoesNotCreatePhantomProfileTask() {
+        when(rules.caliberProfiles(eq("R2"), eq("hospital_001")))
+                .thenReturn(List.of());
+        when(executor.execute(
+                eq("R1"), eq("指标一"), anyString(), anyString(), anyString(),
+                anyString(), anyString(), eq(START), eq(END),
+                any(AgentRuntimeContext.class)))
+                .thenReturn(profileSuccess("R1-default", "默认口径"));
+
+        AgentRunResult result = runtime.run(
+                request(), observer,
+                BatchRequestSpec.selected(
+                        "计算指标一和指标二", "2026年1月",
+                        List.of(
+                                new BatchRequestSpec.Target("R1", "指标一"),
+                                new BatchRequestSpec.Target("R2", "指标二"))));
+
+        assertThat(result.stepCount()).isEqualTo(1);
+        assertThat(result.answer()).contains("共 2 项指标、1 个已审批口径");
+        verify(jobStore).createJob(
+                eq("storage_key"), eq("hospital_001"), eq("user_1"), anyString(),
+                eq(1), eq(START), eq(END), eq("TRACE_1"));
     }
 
     @Test
@@ -180,7 +242,7 @@ class BatchIndicatorRuntimeTest {
                     BatchRequestSpec.selected("计算指定指标", "今年", targets));
 
             assertThat(result.stepCount()).isEqualTo(count);
-            assertThat(result.answer()).contains("共 " + count + " 项指标、" + count + " 个已审批口径");
+            assertThat(result.answer()).contains("共 " + count + " 项");
             verify(executor, times(count)).execute(
                     anyString(), anyString(), anyString(), anyString(), anyString(),
                     anyString(), anyString(), eq(START), eq(END),
@@ -199,8 +261,7 @@ class BatchIndicatorRuntimeTest {
         AgentRunResult result = runtime.run(request(), observer, batchSpec());
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
-        assertThat(result.answer()).contains(
-                "共 3 项指标、3 个已审批口径：2 个口径成功、0 个口径无样本、1 个口径失败");
+        assertThat(result.answer()).contains("共 3 项：2 项成功、0 项无样本、1 项失败");
         assertThat(result.answer()).contains("**失败指标**");
         verify(jobStore).finishJob(eq("BJOB_test"), eq("PARTIAL_SUCCESS"), eq(2), eq(0), eq(1));
     }
@@ -249,25 +310,6 @@ class BatchIndicatorRuntimeTest {
     }
 
     @Test
-    void periodLongerThanOneMonthClarifiesBeforeEnumeratingProfilesOrExecuting() {
-        when(timeResolver.resolve(any())).thenReturn(new ResolvedTimeRange(
-                LocalDateTime.of(2026, 1, 1, 0, 0),
-                LocalDateTime.of(2026, 2, 1, 0, 1),
-                "超出一个月"));
-        stubIndicators("R1", "R2");
-
-        AgentRunResult result = runtime.run(request(), observer, batchSpec());
-
-        assertThat(result.stopReason()).isEqualTo("clarification");
-        assertThat(result.answer()).contains("最多允许一个月", "不会自动拆月");
-        verify(rules, never()).caliberProfiles(anyString(), anyString());
-        verify(executor, never()).execute(
-                anyString(), anyString(), anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), anyString(),
-                any(AgentRuntimeContext.class));
-    }
-
-    @Test
     void emptyIndicatorListReturnsFriendlyMessage() {
         when(rules.activeIndicatorNames(anyString(), anyInt())).thenReturn(List.of());
 
@@ -282,7 +324,7 @@ class BatchIndicatorRuntimeTest {
     }
 
     @Test
-    void concurrencyIsBoundedByConfiguredWorkers() {
+    void profileSnapshotReplacementIsStrictlySerial() {
         properties.setBatchWorkerConcurrency(2);
         stubIndicators("R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8");
         when(executor.execute(
@@ -298,57 +340,14 @@ class BatchIndicatorRuntimeTest {
                         Thread.currentThread().interrupt();
                     }
                     active.decrementAndGet();
-                    return success(invocation.getArgument(0), invocation.getArgument(1))
-                            .withProfile(
-                                    invocation.getArgument(2), invocation.getArgument(3),
-                                    invocation.getArgument(4), "EXT_1", "COMPLETED");
+                    return success(invocation.getArgument(0), invocation.getArgument(1));
                 });
 
         AgentRunResult result = runtime.run(request(), observer, batchSpec());
 
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(maxActive.get()).isEqualTo(1);
-        assertThat(result.answer()).contains("共 8 项指标、8 个已审批口径");
-    }
-
-    @Test
-    void thirtyFiveIndicatorsExpandToFortyTwoIndependentProfileTasks() {
-        List<Map<String, String>> indicators = new ArrayList<>();
-        for (int index = 1; index <= 35; index++) {
-            indicators.add(Map.of(
-                    "rule_id", "R" + index,
-                    "rule_name", "指标" + index));
-        }
-        when(rules.activeIndicatorNames(anyString(), anyInt())).thenReturn(indicators);
-        when(rules.caliberProfiles(anyString(), anyString())).thenAnswer(invocation -> {
-            String ruleId = invocation.getArgument(0);
-            int index = Integer.parseInt(ruleId.substring(1));
-            int count = index == 35 ? 0 : (index <= 8 ? 2 : 1);
-            List<Map<String, Object>> profiles = new ArrayList<>();
-            for (int profile = 1; profile <= count; profile++) {
-                profiles.add(Map.of(
-                        "profile_id", ruleId + "_P" + profile,
-                        "profile_name", "口径" + profile,
-                        "extraction_contract", Map.of("event_no", "SHARED_EVENT")));
-            }
-            return profiles;
-        });
-        stubExecutorSuccess();
-
-        AgentRunResult result = runtime.run(request(), observer, batchSpec());
-
-        assertThat(result.stopReason()).isEqualTo("final_answer");
-        assertThat(result.stepCount()).isEqualTo(42);
-        assertThat(result.answer()).contains("共 35 项指标、42 个已审批口径");
-        verify(executor, times(42)).execute(
-                anyString(), anyString(), anyString(), anyString(), anyString(),
-                anyString(), anyString(), eq(START), eq(END),
-                any(AgentRuntimeContext.class));
-        verify(executor, never()).execute(
-                eq("R35"), anyString(), any(), any(), any(),
-                anyString(), anyString(), eq(START), eq(END),
-                any(AgentRuntimeContext.class));
-        verify(jobStore, times(42)).recordTask(eq("BJOB_test"), anyInt(), any());
+        assertThat(result.answer()).contains("共 8 项：8 项成功");
     }
 
     private void stubIndicators(String... ruleIds) {
@@ -369,14 +368,9 @@ class BatchIndicatorRuntimeTest {
                     String ruleName = invocation.getArgument(1);
                     if ("RULE_FAIL".equals(ruleId)) {
                         return IndicatorExecutionResult.failed(
-                                ruleId, ruleName,
-                                invocation.getArgument(2), invocation.getArgument(3),
-                                invocation.getArgument(4),
-                                "TRIAL_RUN_FAILED", "试运行失败。");
+                                ruleId, ruleName, "TRIAL_RUN_FAILED", "试运行失败。");
                     }
-                    return success(ruleId, ruleName).withProfile(
-                            invocation.getArgument(2), invocation.getArgument(3),
-                            invocation.getArgument(4), "EXT_1", "COMPLETED");
+                    return success(ruleId, ruleName);
                 });
     }
 
@@ -384,6 +378,17 @@ class BatchIndicatorRuntimeTest {
         return new IndicatorExecutionResult(
                 ruleId, ruleName, Status.SUCCESS, 92.5, 185L, 200L, "percent",
                 95, ">=", START, END, "RUN_1", null, null, 10);
+    }
+
+    private static IndicatorExecutionResult profileSuccess(
+            String profileId, String profileLabel) {
+        return new IndicatorExecutionResult(
+                "R1", "指标一", Status.SUCCESS, 92.5, 185L, 200L,
+                null, "percent", null, null, 95, ">=", START, END,
+                "RUN_" + profileId, null, null, 10,
+                "refreshed_by_current_run",
+                profileId, profileLabel, "EXT_" + profileId,
+                "COMPLETED", "CORE_TEST");
     }
 
     private static String nameFor(String ruleId) {

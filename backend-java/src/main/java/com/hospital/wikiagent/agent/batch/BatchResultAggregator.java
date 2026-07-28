@@ -2,7 +2,6 @@ package com.hospital.wikiagent.agent.batch;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 
 import org.springframework.stereotype.Component;
 
@@ -28,45 +27,31 @@ public class BatchResultAggregator {
      */
     public String aggregate(
             List<IndicatorExecutionResult> results, String statStart, String statEnd) {
-        List<IndicatorExecutionResult> values = results == null ? List.of() : results;
-        long indicatorCount = values.stream()
-                .map(IndicatorExecutionResult::ruleId)
-                .filter(Objects::nonNull)
-                .filter(value -> !value.isBlank())
-                .distinct()
-                .count();
-        boolean profileResults = values.stream()
-                .anyMatch(value -> value.profileId() != null);
-        return render(values, statStart, statEnd, indicatorCount, profileResults);
+        int indicatorCount = results == null
+                ? 0
+                : (int) results.stream()
+                        .map(IndicatorExecutionResult::ruleId)
+                        .distinct()
+                        .count();
+        return aggregate(results, indicatorCount, statStart, statEnd);
     }
 
-    /**
-     * Profile 批量运行必须保留用户选择的指标范围数量；没有已审批 Profile 的草稿指标
-     * 不生成任务，但仍属于本次 35 项范围。
-     */
-    public String aggregateProfiles(
+    public String aggregate(
             List<IndicatorExecutionResult> results,
+            int indicatorCount,
             String statStart,
-            String statEnd,
-            int requestedIndicatorCount) {
+            String statEnd) {
         List<IndicatorExecutionResult> values = results == null ? List.of() : results;
-        return render(values, statStart, statEnd, requestedIndicatorCount, true);
-    }
-
-    private String render(
-            List<IndicatorExecutionResult> values,
-            String statStart,
-            String statEnd,
-            long indicatorCount,
-            boolean profileResults) {
         long succeeded = values.stream().filter(r -> r.status() == Status.SUCCESS).count();
         long noSample = values.stream().filter(r -> r.status() == Status.NO_SAMPLE).count();
         long failed = values.stream().filter(r -> r.status() == Status.FAILED).count();
+        boolean profileAware = values.stream().anyMatch(
+                value -> value.profileId() != null);
 
         StringBuilder output = new StringBuilder();
-        if (profileResults) {
-            output.append("共 ").append(indicatorCount).append(" 项指标、")
-                    .append(values.size()).append(" 个已审批口径：")
+        if (profileAware) {
+            output.append("共 ").append(Math.max(0, indicatorCount))
+                    .append(" 项指标、").append(values.size()).append(" 个已审批口径：")
                     .append(succeeded).append(" 个口径成功、")
                     .append(noSample).append(" 个口径无样本、")
                     .append(failed).append(" 个口径失败");
@@ -85,18 +70,17 @@ public class BatchResultAggregator {
         List<IndicatorExecutionResult> rows = values.stream()
                 .filter(IndicatorExecutionResult::ok).toList();
         if (!rows.isEmpty()) {
-            output.append(profileResults
-                    ? "\n| 指标 | Profile | 结果值 | 计算构成 | 目标值 | 达标 | 统计区间 |\n"
+            output.append(profileAware
+                    ? "\n| 指标 | Profile 口径 | 结果值 | 计算构成 | 目标值 | 达标 | 统计区间 |\n"
                     : "\n| 指标 | 结果值 | 计算构成 | 目标值 | 达标 | 统计区间 |\n");
-            output.append(profileResults
+            output.append(profileAware
                     ? "| --- | --- | --- | --- | --- | --- | --- |\n"
                     : "| --- | --- | --- | --- | --- | --- |\n");
             for (IndicatorExecutionResult row : rows) {
-                output.append("| ").append(row.ruleName());
-                if (profileResults) {
-                    output.append(" | ").append(formatProfile(row));
-                }
-                output
+                output.append("| ").append(row.ruleName())
+                        .append(profileAware
+                                ? " | " + formatProfile(row)
+                                : "")
                         .append(" | ").append(formatValue(row))
                         .append(" | ").append(formatFraction(row))
                         .append(" | ").append(formatTarget(row))
@@ -120,8 +104,8 @@ public class BatchResultAggregator {
             output.append("\n**失败指标**\n\n");
             for (IndicatorExecutionResult failure : failures) {
                 output.append("- ").append(failure.ruleName());
-                if (failure.profileName() != null) {
-                    output.append(" / ").append(failure.profileName());
+                if (profileAware) {
+                    output.append(" / ").append(formatProfile(failure));
                 }
                 if (failure.errorCode() != null) {
                     output.append("（").append(failure.errorCode()).append("）");
@@ -137,17 +121,12 @@ public class BatchResultAggregator {
     }
 
     private static String formatProfile(IndicatorExecutionResult result) {
-        if (result.profileName() == null && result.profileId() == null) {
-            return DASH;
+        if (result.profileId() == null) {
+            return "默认口径";
         }
-        if (result.profileName() == null) {
-            return result.profileId();
-        }
-        if (result.profileId() == null
-                || result.profileName().equals(result.profileId())) {
-            return result.profileName();
-        }
-        return result.profileName() + "（" + result.profileId() + "）";
+        String label = result.profileLabel() == null
+                ? result.profileId() : result.profileLabel();
+        return label + "（" + result.profileId() + "）";
     }
 
     private static String formatValue(IndicatorExecutionResult result) {

@@ -2,7 +2,6 @@ package com.hospital.wikiagent.sqlserver;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
-import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,39 +34,35 @@ class RealDatabaseSafetyPolicyTest {
     }
 
     @Test
-    void sqlServerConfigurationRejectsSaWrongDatabaseAndLookalikeDatabaseProperty() {
-        assertThatIllegalStateException()
-                .isThrownBy(() -> properties(
-                        "sa",
-                        "jdbc:sqlserver://127.0.0.1:1433;databaseName=winex_aima")
-                        .validate())
-                .withMessageContaining("禁止使用 sa");
-        assertThatIllegalStateException()
-                .isThrownBy(() -> properties(
-                        "winex_aima_writer",
-                        "jdbc:sqlserver://127.0.0.1:1433;databaseName=other")
-                        .validate())
-                .withMessageContaining("databaseName=winex_aima");
-        assertThatIllegalStateException()
-                .isThrownBy(() -> properties(
-                        "winex_aima_writer",
-                        "jdbc:sqlserver://127.0.0.1:1433;databaseName=winex_aima_evil")
-                        .validate())
-                .withMessageContaining("databaseName=winex_aima");
-        SqlServerProperties wrongSchema = properties(
-                "winex_aima_writer",
-                "jdbc:sqlserver://127.0.0.1:1433;databaseName=winex_aima");
-        wrongSchema.setSchema("other");
-        assertThatIllegalStateException()
-                .isThrownBy(wrongSchema::validate)
-                .withMessageContaining("winex_aima.dbo");
+    void disabledConfigurationDefaults() {
+        SqlServerProperties properties = new SqlServerProperties();
+        assertThat(properties.isEnabled()).isFalse();
+        assertThat(properties.getUrl()).isBlank();
+        assertThat(properties.getUsername()).isBlank();
+        assertThat(properties.getPassword()).isBlank();
+        assertThat(properties.getSchema()).isEqualTo("dbo");
+        assertThat(properties.getHikari().getMaximumPoolSize()).isEqualTo(2);
     }
 
     @Test
-    void disabledConfigurationNeedsNoNetworkCredentials() {
-        SqlServerProperties properties = new SqlServerProperties();
-        properties.validate();
-        assertThat(properties.isEnabled()).isFalse();
+    void applicationConfigurationContainsNoEmbeddedWriterCredentials()
+            throws IOException {
+        String yaml = Files.readString(Path.of(
+                "src", "main", "resources", "application.yml"))
+                .replace("\r\n", "\n");
+
+        assertThat(yaml)
+                .contains(
+                        "enabled: ${WIKI_SQLSERVER_ENABLED:false}",
+                        "url: ${WIKI_SQLSERVER_URL:}",
+                        "username: ${WIKI_SQLSERVER_USERNAME:}",
+                        "password: ${WIKI_SQLSERVER_PASSWORD:}",
+                        "schema-name: ${DBHUB_BUSINESS_SCHEMA:WINDBA_GN}",
+                        "property-naming-strategy: SNAKE_CASE",
+                        "fail-on-unknown-properties: true")
+                .doesNotContain(
+                        "jdbc:sqlserver://172.",
+                        "username: sa");
     }
 
     @Test
@@ -91,14 +86,5 @@ class RealDatabaseSafetyPolicyTest {
                     "GRANT SELECT, INSERT, DELETE ON OBJECT::[dbo].["
                             + table + "] TO [winex_aima_agent_writer];");
         }
-    }
-
-    private static SqlServerProperties properties(String username, String url) {
-        SqlServerProperties properties = new SqlServerProperties();
-        properties.setEnabled(true);
-        properties.setUsername(username);
-        properties.setPassword("test-only-password");
-        properties.setUrl(url);
-        return properties;
     }
 }

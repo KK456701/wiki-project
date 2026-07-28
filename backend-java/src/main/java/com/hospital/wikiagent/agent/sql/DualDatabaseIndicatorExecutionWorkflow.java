@@ -32,16 +32,14 @@ import com.hospital.wikiagent.agent.tools.ToolExecutionContext;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
 
 /**
- * 执行受控的 Profile 指标计算；显式诊断暂时保留原双库核对分支。
+ * 在源数据抽取完成后，使用本轮真实库快照执行指标计算。
  *
- * <p>普通计算固定为“抽取业务数据到真实库 → 真实库概览 SQL”，不查询业务库，也不
- * 自动触发差异诊断。只有用户显式进入诊断意图时才沿用既有双库与明细逻辑。</p>
+ * <p>普通计算固定执行“抽取、真实库概览、释放快照锁”，不再重复查询业务库。
+ * 诊断分支暂保留既有双库核对，且不把患者行写入 Trace。</p>
  */
 @Component
 public class DualDatabaseIndicatorExecutionWorkflow {
-    public static final String VERSION = "dual-database-indicator-workflow-v1";
-    public static final String REAL_CALCULATION_VERSION =
-            "profile-extract-real-overview-v1";
+    public static final String VERSION = "profile-snapshot-indicator-workflow-v2";
     private static final DateTimeFormatter SQL_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -73,12 +71,16 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         this.diagnosisReports = diagnosisReports;
     }
 
-    /** 受控计算 Workflow 是普通指标计算的固定执行路径。 */
+    /**
+     * 双库 Workflow 是普通指标计算的固定执行路径，不再由抽取开关控制。
+     */
     public boolean enabled() {
         return true;
     }
 
-    /** 抽取接口是否已启用为强制前置步骤。 */
+    /**
+     * 抽取接口是否是本轮真实库计算的强制前置步骤。
+     */
     public boolean extractionRequired() {
         return extractionProperties.required();
     }
@@ -92,18 +94,16 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         boolean explicitDiagnosis =
                 PlanIntent.INDICATOR_DIAGNOSIS.value().equals(
                         context.runState().lastIntent());
-        if (!explicitDiagnosis && !extractionRequired()) {
+        boolean realOnlyCalculation = !explicitDiagnosis;
+        if (realOnlyCalculation && !extractionRequired()) {
             return ToolResult.failure(
-                    "unavailable", "SOURCE_EXTRACTION_DISABLED",
-                    "指标计算必须先抽取数据到真实库；当前抽取模式未启用。", false);
+                    "unavailable", "SOURCE_EXTRACTION_REQUIRED",
+                    "指标计算必须先刷新真实库快照，请以 required 模式启用受控抽取。", false);
         }
         if (extractionRequired() && !extractionGateway.available()) {
             return ToolResult.failure(
                     "unavailable", "EXTRACTION_GATEWAY_UNAVAILABLE",
-                    explicitDiagnosis
-                            ? "源数据抽取接口尚未接入，不能执行诊断。"
-                            : "源数据抽取接口尚未接入，不能执行指标计算。",
-                    false);
+                    "源数据抽取接口尚未接入，不能执行指标计算。", false);
         }
 
         LocalDateTime statStart;
@@ -116,12 +116,9 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     "validation_failed", "STAT_PERIOD_INVALID",
                     "统计时间格式无效。", false);
         }
-        StatPeriodPolicy.Validation period = StatPeriodPolicy.validate(statStart, statEnd);
-        report(context,
-                explicitDiagnosis
-                        ? "dual_period_validation"
-                        : "calculation_period_validation",
-                "校验统计范围",
+        StatPeriodPolicy.Validation period =
+                StatPeriodPolicy.validate(statStart, statEnd);
+        report(context, "dual_period_validation", "校验统计范围",
                 period.ok() ? "success" : "failed", 0,
                 Map.of(
                         "stat_start", sql.statStart(),
@@ -134,39 +131,34 @@ public class DualDatabaseIndicatorExecutionWorkflow {
 
         Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
         boolean fullSchemaContract = schemaCompatible(contract);
-        boolean realOverviewContract = realOverviewCompatible(contract);
         boolean overviewStaticRuntime =
                 Boolean.TRUE.equals(rule.get("overview_runtime_eligible"));
-        boolean runtimeContractReady = explicitDiagnosis
-                ? fullSchemaContract
-                : realOverviewContract;
-        if (!runtimeContractReady && !overviewStaticRuntime) {
+        if (realOnlyCalculation && !overviewStaticRuntime) {
             return ToolResult.failure(
-                    "validation_failed",
-                    explicitDiagnosis
-                            ? "DUAL_DATABASE_SCHEMA_INCOMPATIBLE"
-                            : "REAL_OVERVIEW_RUNTIME_UNAVAILABLE",
-                    explicitDiagnosis
-                            ? "当前 Profile 尚未确认业务库与真实库具备同构查询对象，"
-                                    + "未执行抽取或数据库查询。"
-                            : "当前 Profile 的真实库概览 SQL 尚未通过运行校验。",
+                    "validation_failed", "REAL_DATABASE_SCHEMA_INCOMPATIBLE",
+                    "当前 Profile 尚未通过真实库概览执行门禁，未执行抽取或数据库查询。",
+                    false);
+        }
+        if (!realOnlyCalculation && !fullSchemaContract && !overviewStaticRuntime) {
+            return ToolResult.failure(
+                    "validation_failed", "DUAL_DATABASE_SCHEMA_INCOMPATIBLE",
+                    "当前 Profile 尚未确认业务库与真实库具备同构查询对象，未执行抽取或数据库查询。",
                     false);
         }
 
-        Map<String, Object> extractionContract =
-                objectMap(rule.get("extraction_contract"));
-        if ((!explicitDiagnosis || extractionRequired()) && extractionContract.isEmpty()) {
+        String sourceSql = text(rule.get("source_extract_sql"));
+        boolean sourceSqlRequired = "EVENT".equalsIgnoreCase(text(
+                objectMap(rule.get("extraction_contract")).get("route")));
+        if (extractionRequired() && sourceSqlRequired
+                && (sourceSql.isBlank() || !validator.validateReadOnly(sourceSql).ok())) {
             return ToolResult.failure(
-                    "validation_failed", "EXTRACTION_CONTRACT_INVALID",
-                    "当前 Profile 缺少已发布的事件抽取契约。", false);
+                    "validation_failed", "SOURCE_EXTRACT_SQL_UNAVAILABLE",
+                    "当前 Profile 的源数据 SQL 尚未通过可执行校验。", false);
         }
         if (!validator.validateReadOnly(sql.sqlText()).ok()) {
             return ToolResult.failure(
                     "validation_failed", "SQL_REVALIDATION_FAILED",
-                    explicitDiagnosis
-                            ? "概览 SQL 在双库执行前未通过只读安全校验。"
-                            : "概览 SQL 在真实库执行前未通过只读安全校验。",
-                    false);
+                    "概览 SQL 在真实库执行前未通过只读安全校验。", false);
         }
         Map<String, Object> extractionPreparation = new LinkedHashMap<>();
         extractionPreparation.put(
@@ -174,31 +166,28 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         extractionPreparation.put("release_id", text(rule.get("knowledge_release_id")));
         extractionPreparation.put("rule_id", sql.ruleId());
         extractionPreparation.put("profile_id", text(rule.get("profile_id")));
-        extractionPreparation.put("event_no",
-                text(extractionContract.get("event_no")));
-        extractionPreparation.put("route",
-                text(extractionContract.get("route")));
+        if (!sourceSql.isBlank()) {
+            extractionPreparation.put("source_sql_sha256", sha256(sourceSql));
+        }
         report(context, "source_extraction_prepare", "准备源数据抽取",
                 extractionRequired() ? "success" : "skipped", 0,
                 extractionPreparation);
 
         try (HospitalExecutionLock.Lease ignored =
                      executionLock.acquire(context.agentContext().hospitalId());
-             SourceExtractionLease extractionLease =
-                     prepareExtraction(sql, rule, boundParameters, context)) {
+             SourceExtractionLease extractionLease = extractionRequired()
+                     ? prepareExtraction(
+                             sql, rule, sourceSql, boundParameters, context)
+                     : SourceExtractionLease.completed(skippedExtraction(context))) {
             ExtractionResult extraction = extractionLease.result();
-            if ((!explicitDiagnosis && !extraction.successful())
-                    || (explicitDiagnosis && !extraction.allowsDualExecution())) {
+            if (!extraction.allowsDualExecution()) {
                 return ToolResult.failure(
                         "error",
                         blank(extraction.errorCode(), "SOURCE_EXTRACTION_FAILED"),
-                        blank(extraction.message(),
-                                explicitDiagnosis
-                                        ? "源数据抽取失败，未执行诊断。"
-                                        : "源数据抽取失败，未执行真实库指标计算。"),
+                        blank(extraction.message(), "源数据抽取失败，未执行真实库计算。"),
                         false);
             }
-            if (!explicitDiagnosis) {
+            if (realOnlyCalculation) {
                 return executeRealOnlyCalculation(
                         sql, rule, executableOverview, contract, extraction, context);
             }
@@ -316,13 +305,18 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             putIfPresent(data, "component_right", real.componentRight());
             putIfPresent(data, "sample_count", real.sampleCount());
             Number resolvedTarget = resolvedTarget(business, real);
+            if (resolvedTarget == null && !targetConflict) {
+                resolvedTarget = profileTarget(contract);
+            }
             putIfPresent(data, "target_value", resolvedTarget);
             if (targetConflict) {
                 data.put("target_conflict", true);
                 data.put("business_target_value", business.targetValue());
                 data.put("real_target_value", real.targetValue());
             } else if (resolvedTarget != null) {
-                data.put("target_source", targetSource(business, real));
+                String targetSource = targetSource(business, real);
+                data.put("target_source",
+                        targetSource.isBlank() ? "profile" : targetSource);
             }
             data.put("no_sample", real.denominator() != null
                     ? real.denominator() == 0
@@ -350,6 +344,75 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                             : "业务库与真实库结果不一致，已按可用契约执行受控诊断。",
                     data);
         }
+    }
+
+    private ToolResult executeRealOnlyCalculation(
+            PreparedSqlObject sql,
+            Map<String, Object> rule,
+            String executableOverview,
+            Map<String, Object> contract,
+            ExtractionResult extraction,
+            ToolExecutionContext context) {
+        DatabaseResult real;
+        try {
+            real = executeOverview(
+                    DatabaseRole.REAL, sql, executableOverview, contract, context);
+        } catch (OverviewResultContractException exception) {
+            return ToolResult.failure(
+                    "validation_failed", "OVERVIEW_RESULT_CONTRACT_INVALID",
+                    "真实库概览结果列与已发布映射不一致，请修正知识契约后重试。", false);
+        } catch (RuntimeException exception) {
+            return ToolResult.failure(
+                    "error", "REAL_DATABASE_OVERVIEW_FAILED",
+                    "真实库概览计算失败，未形成指标结果。", false);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("run_id", real.runId());
+        data.put("canonical_run_id", real.runId());
+        data.put("sql_id", sql.sqlId());
+        data.put("rule_id", sql.ruleId());
+        data.put("profile_id", rule.get("profile_id"));
+        data.put("stat_start", sql.statStart());
+        data.put("stat_end", sql.statEnd());
+        data.put("extraction_id", extraction.extractionId());
+        data.put("extraction_status", extraction.status().name());
+        data.put("data_freshness", "refreshed_by_current_run");
+        data.put("calculation_mode", "real_database_only");
+        data.put("real_result", real.safeMap());
+        if (real.numerator() != null) {
+            data.put("numerator_count", real.numerator());
+        }
+        if (real.denominator() != null) {
+            data.put("denominator_count", real.denominator());
+        }
+        data.put("result_value", real.resultValue());
+        putIfPresent(data, "component_left", real.componentLeft());
+        putIfPresent(data, "component_right", real.componentRight());
+        putIfPresent(data, "sample_count", real.sampleCount());
+        Number resolvedTarget = real.targetValue() != null
+                ? real.targetValue() : profileTarget(contract);
+        putIfPresent(data, "target_value", resolvedTarget);
+        if (resolvedTarget != null) {
+            data.put("target_source",
+                    real.targetValue() != null ? "real" : "profile");
+        }
+        data.put("no_sample", real.denominator() != null
+                ? real.denominator() == 0
+                : real.resultValue() == null);
+        data.put("workflow_version", VERSION);
+        context.runState().lastRunId(real.runId());
+        report(context, "real_calculation_complete", "完成真实库指标计算",
+                "success", 0,
+                Map.of(
+                        "run_id", real.runId(),
+                        "source_id", real.sourceId(),
+                        "status", data.get("no_sample").equals(Boolean.TRUE)
+                                ? "NO_SAMPLE" : "SUCCESS"));
+        return ToolResult.success(
+                "TRIAL_RUN_COMPLETED",
+                "已刷新真实库快照并完成指标计算。",
+                data);
     }
 
     /**
@@ -438,17 +501,17 @@ public class DualDatabaseIndicatorExecutionWorkflow {
     private SourceExtractionLease prepareExtraction(
             PreparedSqlObject sql,
             Map<String, Object> rule,
+            String sourceSql,
             Map<String, Object> parameters,
             ToolExecutionContext context) {
-        if (!extractionRequired()) {
-            return SourceExtractionLease.completed(skippedExtraction(context));
-        }
         long started = System.nanoTime();
         String idempotencyKey = sha256(
                 context.agentContext().traceId() + "|" + context.subtaskId()
-                        + "|" + sql.ruleId() + "|" + text(rule.get("profile_id"))
-                        + "|" + sql.statStart() + "|" + sql.statEnd());
-        String sourceSql = text(rule.get("source_extract_sql"));
+                        + "|" + sql.ruleId() + "|" + sql.statStart() + "|" + sql.statEnd());
+        Long hospitalSoid = extractionProperties.getHospitalSoid();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractionContract = rule.get("extraction_contract") instanceof Map<?, ?> m
+                ? (Map<String, Object>) m : Map.of();
         ExtractionRequest request = new ExtractionRequest(
                 context.agentContext().traceId(),
                 context.subtaskId(),
@@ -460,13 +523,13 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 parseTime(sql.statStart()),
                 parseTime(sql.statEnd()),
                 sourceSql,
-                sourceSql.isBlank() ? "" : sha256(sourceSql),
+                sha256(sourceSql),
                 parameters,
                 databaseQuery.sourceId(DatabaseRole.BUSINESS),
                 databaseQuery.sourceId(DatabaseRole.REAL),
                 idempotencyKey,
-                objectMap(rule.get("extraction_contract")),
-                extractionProperties.getHospitalSoid());
+                hospitalSoid,
+                extractionContract);
         SourceExtractionLease lease = extractionGateway.prepare(request);
         ExtractionResult result = lease.result();
         report(context, "source_data_extraction", "抽取数据到真实库",
@@ -481,76 +544,6 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         return lease;
     }
 
-    /**
-     * 普通计算只消费刚刚写入的真实库快照；这里不得出现 BUSINESS 查询、双库比较或
-     * 明细诊断调用。
-     */
-    private ToolResult executeRealOnlyCalculation(
-            PreparedSqlObject sql,
-            Map<String, Object> rule,
-            String executableOverview,
-            Map<String, Object> contract,
-            ExtractionResult extraction,
-            ToolExecutionContext context) {
-        DatabaseResult real;
-        try {
-            real = executeOverview(
-                    DatabaseRole.REAL, sql, executableOverview, contract, context);
-        } catch (OverviewResultContractException exception) {
-            return ToolResult.failure(
-                    "validation_failed", "OVERVIEW_RESULT_CONTRACT_INVALID",
-                    "真实库概览结果列与已发布映射不一致，请修正知识契约后重试。", false);
-        } catch (RuntimeException exception) {
-            return ToolResult.failure(
-                    "error", "REAL_DATABASE_OVERVIEW_FAILED",
-                    "真实库概览计算失败，未获得指标结果。", false);
-        }
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("run_id", real.runId());
-        data.put("canonical_run_id", real.runId());
-        data.put("sql_id", sql.sqlId());
-        data.put("rule_id", sql.ruleId());
-        data.put("profile_id", rule.get("profile_id"));
-        data.put("stat_start", sql.statStart());
-        data.put("stat_end", sql.statEnd());
-        data.put("extraction_id", extraction.extractionId());
-        data.put("extraction_status", extraction.status().name());
-        data.put("data_freshness", "refreshed_by_current_run");
-        data.put("source_role", DatabaseRole.REAL.value());
-        data.put("source_id", real.sourceId());
-        if (real.numerator() != null) {
-            data.put("numerator_count", real.numerator());
-        }
-        if (real.denominator() != null) {
-            data.put("denominator_count", real.denominator());
-        }
-        data.put("result_value", real.resultValue());
-        putIfPresent(data, "component_left", real.componentLeft());
-        putIfPresent(data, "component_right", real.componentRight());
-        putIfPresent(data, "sample_count", real.sampleCount());
-        putIfPresent(data, "target_value", real.targetValue());
-        if (real.targetValue() != null) {
-            data.put("target_source", "real");
-        }
-        data.put("no_sample", real.denominator() != null
-                ? real.denominator() == 0
-                : real.resultValue() == null);
-        data.put("workflow_version", REAL_CALCULATION_VERSION);
-        context.runState().lastRunId(real.runId());
-        report(context, "real_calculation_complete", "完成真实库指标计算", "success", 0,
-                Map.of(
-                        "run_id", real.runId(),
-                        "profile_id", text(rule.get("profile_id")),
-                        "extraction_id", extraction.extractionId()));
-        return ToolResult.success(
-                "TRIAL_RUN_COMPLETED",
-                Boolean.TRUE.equals(data.get("no_sample"))
-                        ? "真实库概览计算完成，当前统计区间没有可用样本。"
-                        : "真实库概览计算完成。",
-                data);
-    }
-
     private DatabaseResult executeOverview(
             DatabaseRole role,
             PreparedSqlObject sql,
@@ -562,14 +555,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         try {
             rows = databaseQuery.execute(role, executableSql);
         } catch (DbHubMcpException exception) {
-            report(context,
-                    role == DatabaseRole.BUSINESS
-                            ? "business_overview_retry"
-                            : "real_overview_retry",
-                    role == DatabaseRole.BUSINESS
-                            ? "重试业务库概览查询"
-                            : "重试真实库概览查询",
-                    "retrying",
+            report(context, "dual_overview_retry", "重试双库概览查询", "retrying",
                     elapsedMs(started), Map.of(
                             "source_role", role.value(),
                             "reason", "dbhub_mcp_failure"));
@@ -592,7 +578,13 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         Long denominator = null;
         Number resultValue;
         try {
-            if (ratioContract) {
+            if (rows.isEmpty() && ratioContract) {
+                numerator = 0L;
+                denominator = 0L;
+                resultValue = null;
+            } else if (rows.isEmpty() && scalarContract) {
+                resultValue = null;
+            } else if (ratioContract) {
                 if (!containsKey(first, numeratorColumn)
                         || !containsKey(first, denominatorColumn)) {
                     throw new OverviewResultContractException();
@@ -617,10 +609,14 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         } catch (NumberFormatException exception) {
             throw new OverviewResultContractException();
         }
-        String componentLeft = mappedText(first, componentLeftColumn);
-        String componentRight = mappedText(first, componentRightColumn);
-        Long sampleCount = mappedLong(first, sampleCountColumn);
-        Number targetValue = mappedNumber(first, targetValueColumn);
+        String componentLeft = rows.isEmpty()
+                ? null : mappedText(first, componentLeftColumn);
+        String componentRight = rows.isEmpty()
+                ? null : mappedText(first, componentRightColumn);
+        Long sampleCount = rows.isEmpty()
+                ? null : mappedLong(first, sampleCountColumn);
+        Number targetValue = rows.isEmpty()
+                ? null : mappedNumber(first, targetValueColumn);
         String runId = id(role == DatabaseRole.BUSINESS ? "RUN_BUSINESS_" : "RUN_REAL_");
         long durationMs = elapsedMs(started);
         Map<String, Object> runContext = new LinkedHashMap<>(sql.contextSnapshot());
@@ -628,12 +624,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 objectMap(runContext.get("execution_context"));
         executionContext.put("source_role", role.value());
         executionContext.put("source_id", databaseQuery.sourceId(role));
-        executionContext.put(
-                "workflow_version",
-                PlanIntent.INDICATOR_DIAGNOSIS.value().equals(
-                        context.runState().lastIntent())
-                        ? VERSION
-                        : REAL_CALCULATION_VERSION);
+        executionContext.put("workflow_version", VERSION);
         runContext.put("execution_context", executionContext);
         // 明细预览根据该数据源重新查询，不能沿用准备 SQL 时的旧单库来源。
         runContext.put("db_source_id", databaseQuery.sourceId(role));
@@ -826,19 +817,6 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 && "validated".equals(text(source.get("compile_status")));
     }
 
-    /**
-     * 普通计算只要求真实库概览对象经过发布校验。业务库只由抽取网关通过受控
-     * 事件契约读取，不再要求业务库也能执行同一条概览 SQL。
-     */
-    private static boolean realOverviewCompatible(Map<String, Object> contract) {
-        Set<String> sources = new LinkedHashSet<>(
-                strings(contract.get("verified_source_roles")));
-        Map<String, Object> verification =
-                objectMap(contract.get("source_verification"));
-        return sources.contains("real")
-                && sourceVerified(objectMap(verification.get("real")));
-    }
-
     private static Map<String, Object> mismatchSummary(
             DatabaseResult business,
             DatabaseResult real,
@@ -911,7 +889,19 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         if (business.targetValue() != null && real.targetValue() != null) {
             return "business_and_real";
         }
-        return real.targetValue() != null ? "real" : "business";
+        if (real.targetValue() != null) {
+            return "real";
+        }
+        return business.targetValue() != null ? "business" : "";
+    }
+
+    private static Number profileTarget(Map<String, Object> contract) {
+        try {
+            return numberValue(
+                    objectMap(contract.get("result_contract")).get("target_value"));
+        } catch (NumberFormatException exception) {
+            throw new OverviewResultContractException();
+        }
     }
 
     private static Object value(Map<String, Object> row, String key) {

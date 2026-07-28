@@ -68,15 +68,10 @@ public class WikiRuleKnowledgeSource {
                 Path.of("..").resolve(root).toAbsolutePath().normalize(),
                 Path.of("src", "main", "resources", directoryName).toAbsolutePath().normalize(),
                 Path.of("target", "classes", directoryName).toAbsolutePath().normalize());
-        Path fallback = fallbacks.stream()
+        return fallbacks.stream()
                 .filter(Files::isDirectory)
                 .findFirst()
-                .orElse(null);
-        if (fallback != null) {
-            return fallback;
-        }
-        Path materialized = ClasspathKnowledgeMaterializer.materialize();
-        return materialized == null ? requested : materialized;
+                .orElse(requested);
     }
 
     public Map<String, Object> searchForHospital(String query, String hospitalId, int limit) {
@@ -177,7 +172,6 @@ public class WikiRuleKnowledgeSource {
         result.put("effective_level", "company");
         result.put("profile_id", selectedProfileId);
         result.put("profile_name", profile.get("profile_name"));
-        result.put("governance_status", profile.get("governance_status"));
         result.put("execution_status", executionStatus);
         result.put("execution_blockers", blockers);
         result.put("definition", definition);
@@ -194,10 +188,10 @@ public class WikiRuleKnowledgeSource {
         result.put("implementation_status", overviewSql);
         result.put("standard_sql", overviewSql);
         result.put("source_extract_sql", sourceExtractSql);
-        result.put("extraction_contract", map(profile.get("extraction_contract")));
         result.put("department_detail_sql", departmentDetailSql);
         result.put("patient_detail_sql", patientDetailSql);
         result.put("sql_capabilities", sqlCapabilities);
+        result.put("extraction_contract", map(profile.get("extraction_contract")));
         result.put("dual_database_contract", dualDatabaseContract);
         result.put("result_mapping", resultMapping);
         result.put("result_contract", resultContract);

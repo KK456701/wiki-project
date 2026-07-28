@@ -10,7 +10,7 @@
 - `agent/tools`：工具注册、类型化上下文、策略判断和调用网关。
 - `agent/evidence`：Evidence 记录、验证、过期和跨医院隔离。
 - `agent/extraction`：源数据抽取的强类型网关与幂等契约；具体插入实现由业务抽取适配器提供。
-- `agent/sql`：Wiki 当前/候选口径 SQL 规格渲染、只读校验、抽取后真实库计算，以及暂时保留的诊断执行能力。
+- `agent/sql`：Wiki 当前/候选口径 SQL 规格渲染、只读校验、双库计算、结果比较和 DBHub 试运行。
 - `details`：分子分母明细快照、分页、Excel 和上传逐条比较。
 - `metadata`、`terminology`：双库元数据和医学术语能力。
 - `api`：供 Vue 使用的 HTTP/SSE 接口。
@@ -47,8 +47,8 @@ java -jar .\target\wiki-agent-java-0.1.0-SNAPSHOT.jar
 ## 运行约束
 
 - 不直连医院 SQL Server；只调用 DBHub 配置好的只读工具。
-- 单次统计周期最多一个月；普通指标计算固定为“受控抽取 → 真实库概览 SQL”，不再查询业务库或自动执行诊断明细。
-- 普通计算要求抽取模式为 `required`；`SourceExtractionGateway` 写入失败时不得查询旧真实库快照，`disabled` 模式直接拒绝计算。
+- 单次统计周期最多一个月；普通指标计算按业务库、真实库顺序执行并比较分子和分母。
+- 抽取模式设为 `required` 时，必须先由 `SourceExtractionGateway` 完成真实库写入，失败后不得继续双库计算。
 - 不允许模型或浏览器提交任意 SQL。
 - Final Answer 只消费经过 Verifier 的 Evidence。
 - Trace、Evidence 和会话不得保存密码、令牌、SQL 正文或患者原始行。

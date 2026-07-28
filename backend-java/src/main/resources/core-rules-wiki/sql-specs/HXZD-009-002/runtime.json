@@ -134,21 +134,6 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
-      },
-      "data_lineage": {
-        "schema_version": "data-lineage-v1",
-        "event_no": "CORE_DEATH",
-        "event_name": "死亡病例",
-        "source_main_table": "EMPLOYEE_INFO, HOLIDAY, INPATIENT_EMR_CONTENT, INPATIENT_EMR_SECTION, INPATIENT_EMR_SET, INPATIENT_ENCOUNTER, INPATIENT_PARTICIPANT, INP_EMR_SECTION_DATA_ELEMENT, MAHP_DMTS_MAIN, MRAS_MANAGE_COMPLAIN, ORGANIZATION, ORGANIZATION_X_EMPLOYEE",
-        "intermediate_table": "MRAS_BUSINESS_DEATH",
-        "reference_tables": [
-          "EMPLOYEE_INFO",
-          "INPATIENT_ENCOUNTER",
-          "MRAS_ORGANIZATION"
-        ],
-        "data_affecting_tables": [],
-        "affects_calculation": false,
-        "data_source": "医务系统（投诉纠纷管理）、病案管理系统、电子病历系统"
       }
     },
     {

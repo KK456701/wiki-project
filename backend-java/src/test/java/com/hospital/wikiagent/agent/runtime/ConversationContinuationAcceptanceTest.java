@@ -18,8 +18,8 @@ import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.RequestKind;
  * 回归的结构态更新、完整名称保护、复数指代、范围替换和批量续接。
  */
 class ConversationContinuationAcceptanceTest {
-    private static final String START = "2026-05-01 00:00:00";
-    private static final String END = "2026-06-01 00:00:00";
+    private static final String START = "2025-02-01 00:00:00";
+    private static final String END = "2026-07-27 00:00:00";
     private final BatchRequestDetector batches = new BatchRequestDetector();
     private final CompoundRequestSplitter splitter = new CompoundRequestSplitter();
 
@@ -30,8 +30,8 @@ class ConversationContinuationAcceptanceTest {
                 "分子和分母呢？",
                 "当前用的是什么口径？",
                 "概览 SQL 怎么写？",
-                "算一下2026年6月份的结果。",
-                "时间改成2026年5月份。",
+                "算一下从25年6月份开始的结果。",
+                "时间改成从25年2月份开始。",
                 "换成术中自体血回输率。",
                 "我觉得这个指标的分子口径有问题。",
                 "计算患者入院48小时内转科的比例、急会诊及时到位率、危急值报告时间。",
@@ -51,7 +51,7 @@ class ConversationContinuationAcceptanceTest {
         scope = single("rule_explanation", "R_URGENT", "急会诊及时到位率", null, null); // 3
         scope = single("indicator_sql_prepare", "R_URGENT", "急会诊及时到位率", null, null); // 4
         scope = single("indicator_trial_run", "R_URGENT", "急会诊及时到位率",
-                "2026-06-01 00:00:00", "2026-07-01 00:00:00"); // 5
+                "2025-06-01 00:00:00", END); // 5
         scope = single("indicator_trial_run", "R_URGENT", "急会诊及时到位率", START, END); // 6
         scope = single("indicator_trial_run", "R_BLOOD", "术中自体血回输率", START, END); // 7
         scope = single("indicator_diagnosis", "R_BLOOD", "术中自体血回输率", START, END); // 8

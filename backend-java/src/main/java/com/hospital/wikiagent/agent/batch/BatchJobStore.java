@@ -59,11 +59,6 @@ public class BatchJobStore {
                       position INT NOT NULL,
                       rule_id VARCHAR(128),
                       rule_name VARCHAR(255),
-                      profile_id VARCHAR(128),
-                      profile_name VARCHAR(255),
-                      event_no VARCHAR(128),
-                      extraction_id VARCHAR(128),
-                      snapshot_status VARCHAR(64),
                       status VARCHAR(32) NOT NULL,
                       result_value DOUBLE,
                       numerator_count BIGINT,
@@ -79,7 +74,7 @@ public class BatchJobStore {
             ensureTaskColumn("profile_id", "VARCHAR(128)");
             ensureTaskColumn("profile_name", "VARCHAR(255)");
             ensureTaskColumn("event_no", "VARCHAR(128)");
-            ensureTaskColumn("extraction_id", "VARCHAR(128)");
+            ensureTaskColumn("extraction_id", "VARCHAR(80)");
             ensureTaskColumn("snapshot_status", "VARCHAR(64)");
         } catch (Exception exception) {
             LOGGER.warn("Unable to initialize batch job tables; batch persistence disabled: {}",
@@ -131,19 +126,19 @@ public class BatchJobStore {
     public void recordTask(String jobId, int position, IndicatorExecutionResult result) {
         jdbc.update("""
                 INSERT INTO med_agent_batch_task
-                  (job_id, position, rule_id, rule_name, profile_id, profile_name,
-                   event_no, extraction_id, snapshot_status, status, result_value,
+                  (job_id, position, rule_id, rule_name, status, result_value,
                    numerator_count, denominator_count, target_value, run_id,
-                   error_code, error_message, created_at)
+                   error_code, error_message, created_at, profile_id, profile_name,
+                   event_no, extraction_id, snapshot_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                jobId, position, result.ruleId(), result.ruleName(),
-                result.profileId(), result.profileName(), result.eventNo(),
-                result.extractionId(), result.extractionStatus(), result.status().name(),
+                jobId, position, result.ruleId(), result.ruleName(), result.status().name(),
                 result.resultValue(), result.numerator(), result.denominator(),
                 result.targetValue() == null ? null : String.valueOf(result.targetValue()),
                 result.runId(), result.errorCode(), result.errorMessage(),
-                Instant.now().toString());
+                Instant.now().toString(),
+                result.profileId(), result.profileLabel(), result.eventNo(),
+                result.extractionId(), result.extractionStatus());
     }
 
     /**
@@ -160,16 +155,8 @@ public class BatchJobStore {
     }
 
     private void ensureJobColumn(String name, String type) {
-        ensureColumn("med_agent_batch_job", name, type);
-    }
-
-    private void ensureTaskColumn(String name, String type) {
-        ensureColumn("med_agent_batch_task", name, type);
-    }
-
-    private void ensureColumn(String table, String name, String type) {
         Boolean found = jdbc.query(
-                "SELECT * FROM " + table + " WHERE 1 = 0",
+                "SELECT * FROM med_agent_batch_job WHERE 1 = 0",
                 result -> {
                     java.sql.ResultSetMetaData metadata = result.getMetaData();
                     for (int index = 1; index <= metadata.getColumnCount(); index++) {
@@ -180,7 +167,24 @@ public class BatchJobStore {
                     return false;
                 });
         if (!Boolean.TRUE.equals(found)) {
-            jdbc.execute("ALTER TABLE " + table + " ADD COLUMN " + name + " " + type);
+            jdbc.execute("ALTER TABLE med_agent_batch_job ADD COLUMN " + name + " " + type);
+        }
+    }
+
+    private void ensureTaskColumn(String name, String type) {
+        Boolean found = jdbc.query(
+                "SELECT * FROM med_agent_batch_task WHERE 1 = 0",
+                result -> {
+                    java.sql.ResultSetMetaData metadata = result.getMetaData();
+                    for (int index = 1; index <= metadata.getColumnCount(); index++) {
+                        if (name.equalsIgnoreCase(metadata.getColumnName(index))) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+        if (!Boolean.TRUE.equals(found)) {
+            jdbc.execute("ALTER TABLE med_agent_batch_task ADD COLUMN " + name + " " + type);
         }
     }
 }

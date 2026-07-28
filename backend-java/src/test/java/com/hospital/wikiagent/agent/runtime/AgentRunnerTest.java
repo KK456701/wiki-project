@@ -1,7 +1,6 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -50,7 +49,6 @@ import com.hospital.wikiagent.agent.tools.PolicyDecisionService;
 import com.hospital.wikiagent.agent.tools.ToolGateway;
 import com.hospital.wikiagent.agent.tools.ToolRegistry;
 import com.hospital.wikiagent.agent.sql.IndicatorBusinessQueryClient;
-import com.hospital.wikiagent.agent.sql.DualDatabaseIndicatorExecutionWorkflow;
 import com.hospital.wikiagent.agent.sql.IndicatorSqlTools;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlObjectRepository;
@@ -378,7 +376,6 @@ class AgentRunnerTest {
                     }
                 },
                 objectMapper);
-        enableRealCalculation(sqlTools);
         ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -470,7 +467,6 @@ class AgentRunnerTest {
                     }
                 },
                 objectMapper);
-        enableRealCalculation(sqlTools);
         ToolRegistry tools = new ToolRegistry(fixture.rules(), sqlTools);
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -954,29 +950,6 @@ class AgentRunnerTest {
                 "mapping_data_type", dataType,
                 "metadata_data_type", dataType,
                 "status", "confirmed");
-    }
-
-    private static void enableRealCalculation(IndicatorSqlTools sqlTools) {
-        DualDatabaseIndicatorExecutionWorkflow workflow =
-                mock(DualDatabaseIndicatorExecutionWorkflow.class);
-        when(workflow.enabled()).thenReturn(true);
-        when(workflow.execute(any(), any(), anyString(), any(), any()))
-                .thenReturn(ToolResult.success(
-                        "TRIAL_RUN_COMPLETED",
-                        "真实库概览计算完成",
-                        Map.of(
-                                "run_id", "RUN_REAL_TEST",
-                                "canonical_run_id", "RUN_REAL_TEST",
-                                "numerator_count", 1L,
-                                "denominator_count", 4L,
-                                "result_value", 25.0,
-                                "no_sample", false,
-                                "source_role", "real",
-                                "source_id", "winex_aima",
-                                "extraction_status", "SUCCESS",
-                                "workflow_version",
-                                "profile-extract-real-overview-v1")));
-        sqlTools.setDualDatabaseWorkflow(workflow);
     }
 
     private static AgentModelProperties modelProperties() {

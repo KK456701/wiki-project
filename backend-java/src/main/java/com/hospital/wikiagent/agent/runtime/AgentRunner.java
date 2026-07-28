@@ -81,10 +81,9 @@ public class AgentRunner {
             "20\\d{2}[-年]|(?:\\d{2}|[一二三四五六七八九十]{2,4})年|"
                     + "(?:1[0-2]|0?[1-9]|[一二三四五六七八九十]{1,3})月份?|"
                     + "至今|到现在|本月|这个月|上月|今年|去年|今天|昨天");
-    /** 检测查询原文中是否存在显式日期/月份范围（如 2025-01-01、25年5月到6月、从5月开始到6月）。 */
+    /** 检测查询原文中是否存在两个以上显式日期（如 2025.01.01、2025-01-01、2025/01/01）。 */
     private static final Pattern EXPLICIT_DATE_RANGE = Pattern.compile(
-            "(?:\\d{2}|\\d{4})[.\\-/年]\\d{1,2}(?:[.\\-/月]\\d{1,2})?"
-                    + "|(?:从)?\\d{1,2}月(?:开始|起)?(?:到|至)\\d{1,2}月");
+            "20\\d{2}[.\\-/年]\\d{1,2}[.\\-/月]\\d{1,2}");
     private static final Pattern CLARIFICATION_ORIGINAL = Pattern.compile(
             "继续处理上一条请求“([^”]{1,200})”");
 
@@ -1813,15 +1812,8 @@ public class AgentRunner {
         // 2) RULE_EXPLANATION → TRIAL_RUN：用户提供了具体时间范围（提供时间意味着想算出结果）
         if (plan.intent() == PlanIntent.RULE_EXPLANATION
                 && hasExplicitTimeRange(plan, compact)) {
-            RequestPlan upgraded = plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+            return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
                     .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT));
-            // Planner 认定为解释意图时可能未提取时间，升级后必须把原文时间带入
-            RequestPlan.TimeExpression time = upgraded.timeExpression();
-            if (time.rawText().isBlank() && time.startTime() == null && time.endTime() == null) {
-                upgraded = upgraded.withTimeExpression(
-                        new RequestPlan.TimeExpression(query, null, null));
-            }
-            return upgraded;
         }
 
         return plan;

@@ -40,8 +40,8 @@ public class TimeRangeResolver {
     private static final Pattern MONTH_RANGE = Pattern.compile(
             "(?:从)?(?:(\\d{2}|\\d{4})年|今年)?(1[0-2]|[1-9])月(?:到|至)"
                     + "(?:(\\d{2}|\\d{4})年)?(1[0-2]|[1-9])月");
-    private static final Pattern SINGLE_MONTH = Pattern.compile(
-            "(?:(\\d{2}|\\d{4})年|(今年))(1[0-2]|[1-9])月(?!\\d|日|号)");
+    private static final Pattern SINGLE_NATURAL_MONTH = Pattern.compile(
+            "(?<!\\d)(\\d{2}|\\d{4})年(1[0-2]|[1-9])月(?![\\d日号])");
     private static final Pattern DATE_TO_NOW = Pattern.compile(
             "(?:从|自)?(\\d{2}|\\d{4})年(1[0-2]|[1-9])月"
                     + "(3[01]|[12]\\d|[1-9])(?:日|号)(?:到现在|至今|开始)");
@@ -117,14 +117,13 @@ public class TimeRangeResolver {
                     expression.rawText());
         }
 
-        Matcher singleMonth = SINGLE_MONTH.matcher(raw);
+        Matcher singleMonth = SINGLE_NATURAL_MONTH.matcher(raw);
         if (singleMonth.find()) {
-            int selectedYear = singleMonth.group(2) == null
-                    ? year(singleMonth.group(1), now.getYear())
-                    : now.getYear();
             LocalDateTime start = monthStart(
-                    selectedYear, Integer.parseInt(singleMonth.group(3)));
-            return valid(start, start == null ? null : start.plusMonths(1), expression.rawText());
+                    year(singleMonth.group(1), now.getYear()),
+                    Integer.parseInt(singleMonth.group(2)));
+            return valid(start, start == null ? null : start.plusMonths(1),
+                    expression.rawText());
         }
 
         Matcher dateToNow = DATE_TO_NOW.matcher(raw);

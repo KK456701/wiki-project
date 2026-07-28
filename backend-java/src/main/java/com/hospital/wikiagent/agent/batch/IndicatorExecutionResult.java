@@ -27,10 +27,10 @@ public record IndicatorExecutionResult(
         long durationMs,
         String dataFreshness,
         String profileId,
-        String profileName,
-        String eventNo,
+        String profileLabel,
         String extractionId,
-        String extractionStatus) {
+        String extractionStatus,
+        String eventNo) {
 
     /** 单指标执行结论的有限状态。 */
     public enum Status {
@@ -57,11 +57,42 @@ public record IndicatorExecutionResult(
         durationMs = Math.max(0, durationMs);
         dataFreshness = dataFreshness == null || dataFreshness.isBlank()
                 ? null : dataFreshness.strip();
-        profileId = normalize(profileId);
-        profileName = normalize(profileName);
-        eventNo = normalize(eventNo);
-        extractionId = normalize(extractionId);
-        extractionStatus = normalize(extractionStatus);
+        profileId = profileId == null || profileId.isBlank()
+                ? null : profileId.strip();
+        profileLabel = profileLabel == null || profileLabel.isBlank()
+                ? null : profileLabel.strip();
+        extractionId = extractionId == null || extractionId.isBlank()
+                ? null : extractionId.strip();
+        extractionStatus = extractionStatus == null || extractionStatus.isBlank()
+                ? null : extractionStatus.strip();
+        eventNo = eventNo == null || eventNo.isBlank() ? null : eventNo.strip();
+    }
+
+    /** 兼容尚未携带 Profile 与抽取元数据的结构化调用。 */
+    public IndicatorExecutionResult(
+            String ruleId,
+            String ruleName,
+            Status status,
+            Double resultValue,
+            Long numerator,
+            Long denominator,
+            String valueType,
+            String unit,
+            String calculationDisplay,
+            Long sampleCount,
+            Object targetValue,
+            String targetDirection,
+            String statStart,
+            String statEnd,
+            String runId,
+            String errorCode,
+            String errorMessage,
+            long durationMs,
+            String dataFreshness) {
+        this(ruleId, ruleName, status, resultValue, numerator, denominator,
+                valueType, unit, calculationDisplay, sampleCount, targetValue,
+                targetDirection, statStart, statEnd, runId, errorCode, errorMessage,
+                durationMs, dataFreshness, null, null, null, null, null);
     }
 
     /** 兼容尚不携带快照新鲜度的结构化调用。 */
@@ -123,12 +154,11 @@ public record IndicatorExecutionResult(
                 null, null, null, null, null, null);
     }
 
-    /** 构造一个带 Profile 身份的失败结果。 */
     public static IndicatorExecutionResult failed(
             String ruleId,
             String ruleName,
             String profileId,
-            String profileName,
+            String profileLabel,
             String eventNo,
             String code,
             String message) {
@@ -136,29 +166,10 @@ public record IndicatorExecutionResult(
                 ruleId, ruleName, Status.FAILED, null, null, null,
                 null, null, null, null, null, null,
                 null, null, null, code, message, 0,
-                null, profileId, profileName, eventNo, null, null);
+                null, profileId, profileLabel, null, null, eventNo);
     }
 
     public boolean ok() {
         return status == Status.SUCCESS || status == Status.NO_SAMPLE;
-    }
-
-    /** 将执行结果绑定到本轮 Profile 与抽取快照身份。 */
-    public IndicatorExecutionResult withProfile(
-            String selectedProfileId,
-            String selectedProfileName,
-            String selectedEventNo,
-            String selectedExtractionId,
-            String selectedExtractionStatus) {
-        return new IndicatorExecutionResult(
-                ruleId, ruleName, status, resultValue, numerator, denominator,
-                valueType, unit, calculationDisplay, sampleCount, targetValue,
-                targetDirection, statStart, statEnd, runId, errorCode, errorMessage,
-                durationMs, dataFreshness, selectedProfileId, selectedProfileName,
-                selectedEventNo, selectedExtractionId, selectedExtractionStatus);
-    }
-
-    private static String normalize(String value) {
-        return value == null || value.isBlank() ? null : value.strip();
     }
 }

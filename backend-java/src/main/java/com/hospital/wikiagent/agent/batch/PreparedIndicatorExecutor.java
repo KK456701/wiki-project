@@ -82,8 +82,7 @@ public class PreparedIndicatorExecutor {
             String rawTimeText,
             AgentRuntimeContext context) {
         return execute(
-                ruleId, ruleName, null, null, null,
-                subtaskId, rawTimeText, null, null, context);
+                ruleId, ruleName, subtaskId, rawTimeText, null, null, context);
     }
 
     /**
@@ -99,19 +98,19 @@ public class PreparedIndicatorExecutor {
             String fixedStatEnd,
             AgentRuntimeContext context) {
         return execute(
-                ruleId, ruleName, null, null, null,
-                subtaskId, rawTimeText, fixedStatStart, fixedStatEnd, context);
+                ruleId, ruleName, null, null, null, subtaskId, rawTimeText,
+                fixedStatStart, fixedStatEnd, context);
     }
 
     /**
-     * 计算一个明确的已审批 Profile。Profile 身份沿规则读取、SQL 准备和执行全链路传递，
-     * 不能退回默认口径。
+     * 计算一个明确的已审批 Profile。Profile 身份来自服务端知识契约，写入计划后仍会由
+     * 规则读取和 SQL 准备工具再次校验，不能用用户文本替换。
      */
     public IndicatorExecutionResult execute(
             String ruleId,
             String ruleName,
             String profileId,
-            String profileName,
+            String profileLabel,
             String eventNo,
             String subtaskId,
             String rawTimeText,
@@ -121,12 +120,12 @@ public class PreparedIndicatorExecutor {
         long started = System.nanoTime();
         try {
             return doExecute(
-                    ruleId, ruleName, profileId, profileName, eventNo,
+                    ruleId, ruleName, profileId, profileLabel, eventNo,
                     subtaskId, rawTimeText, fixedStatStart, fixedStatEnd,
                     context, started);
         } catch (RuntimeException exception) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, profileId, profileName, eventNo,
+                    ruleId, ruleName, profileId, profileLabel, eventNo,
                     "BATCH_INDICATOR_ERROR", exception.getMessage());
         }
     }
@@ -135,7 +134,7 @@ public class PreparedIndicatorExecutor {
             String ruleId,
             String ruleName,
             String profileId,
-            String profileName,
+            String profileLabel,
             String eventNo,
             String subtaskId,
             String rawTimeText,
@@ -149,19 +148,21 @@ public class PreparedIndicatorExecutor {
         state.currentRuleId(ruleId);
         state.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
         state.lastRuleName(ruleName);
-        if (profileId != null && !profileId.isBlank()) {
-            state.currentCaliber(profileId, profileName);
-        }
 
         boolean fixedPeriod = fixedStatStart != null && !fixedStatStart.isBlank()
                 && fixedStatEnd != null && !fixedStatEnd.isBlank();
         RequestPlan plan = new RequestPlan(
                 RequestPlan.VERSION,
                 PlanIntent.INDICATOR_TRIAL_RUN,
-                "批量计算指标「" + ruleName + "」的试运行结果",
+                "批量计算指标「" + ruleName + "」"
+                        + (profileLabel == null ? "" : "口径「" + profileLabel + "」")
+                        + "的试运行结果",
                 new RequestPlan.TargetIndicator(ruleName, ruleId),
-                new RequestPlan.TargetCaliber(
-                        profileName == null ? "" : profileName, profileId),
+                profileId == null
+                        ? null
+                        : new RequestPlan.TargetCaliber(
+                                profileLabel == null ? profileId : profileLabel,
+                                profileId),
                 fixedPeriod
                         ? new RequestPlan.TimeExpression(
                                 "批量固定统计周期", fixedStatStart, fixedStatEnd)
@@ -175,7 +176,7 @@ public class PreparedIndicatorExecutor {
         PlanValidation validation = validator.validateBatch(plan);
         if (!validation.ok()) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, profileId, profileName, eventNo,
+                    ruleId, ruleName, profileId, profileLabel, eventNo,
                     validation.code(), validation.message());
         }
         applyResolvedTime(state, validation);
@@ -185,7 +186,7 @@ public class PreparedIndicatorExecutor {
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
             if (decision.action() == ControllerAction.FALLBACK) {
                 return IndicatorExecutionResult.failed(
-                        ruleId, ruleName, profileId, profileName, eventNo,
+                        ruleId, ruleName, profileId, profileLabel, eventNo,
                         decision.code(), decision.message());
             }
             if (decision.action() == ControllerAction.COMPOSE_ANSWER) {
@@ -198,14 +199,14 @@ public class PreparedIndicatorExecutor {
             updateState(state, result);
             if (!result.ok()) {
                 return IndicatorExecutionResult.failed(
-                        ruleId, ruleName, profileId, profileName, eventNo,
+                        ruleId, ruleName, profileId, profileLabel, eventNo,
                         result.code(), result.summary());
             }
         }
 
         IndicatorExecutionResult verificationFailure =
                 verifyEvidence(
-                        ruleId, ruleName, profileId, profileName, eventNo,
+                        ruleId, ruleName, profileId, profileLabel, eventNo,
                         subtaskId, state, validation, context);
         if (verificationFailure != null) {
             return verificationFailure;
@@ -213,7 +214,8 @@ public class PreparedIndicatorExecutor {
 
         long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
         return extract(
-                ruleId, ruleName, profileId, profileName, eventNo, state, durationMs);
+                ruleId, ruleName, profileId, profileLabel, eventNo,
+                state, durationMs);
     }
 
     /**
@@ -224,7 +226,7 @@ public class PreparedIndicatorExecutor {
             String ruleId,
             String ruleName,
             String profileId,
-            String profileName,
+            String profileLabel,
             String eventNo,
             String subtaskId,
             AgentRunState state,
@@ -248,7 +250,7 @@ public class PreparedIndicatorExecutor {
             return null;
         } catch (EvidenceAccessException exception) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, profileId, profileName, eventNo,
+                    ruleId, ruleName, profileId, profileLabel, eventNo,
                     exception.code(), exception.getMessage());
         }
     }
@@ -259,16 +261,16 @@ public class PreparedIndicatorExecutor {
     private IndicatorExecutionResult extract(
             String ruleId,
             String ruleName,
-            String requestedProfileId,
-            String requestedProfileName,
-            String requestedEventNo,
+            String profileId,
+            String profileLabel,
+            String eventNo,
             AgentRunState state,
             long durationMs) {
         ToolResult trial = latestSuccessful(state, "TRIAL_RUN_COMPLETED");
         if (trial == null) {
             return IndicatorExecutionResult.failed(
-                    ruleId, ruleName, requestedProfileId, requestedProfileName,
-                    requestedEventNo, "TRIAL_RESULT_MISSING", "未取得试运行结果。");
+                    ruleId, ruleName, profileId, profileLabel, eventNo,
+                    "TRIAL_RESULT_MISSING", "未取得试运行结果。");
         }
         Map<String, Object> data = trial.data();
         ToolResult effective = latestSuccessful(state, "EFFECTIVE_RULE_FOUND");
@@ -278,9 +280,6 @@ public class PreparedIndicatorExecutor {
         String valueType = null;
         String unit = null;
         String displayName = ruleName;
-        String profileId = requestedProfileId;
-        String profileName = requestedProfileName;
-        String eventNo = requestedEventNo;
         if (effective != null) {
             Map<String, Object> params = objectMap(effective.data().get("effective_params"));
             targetValue = params.get("target_value");
@@ -292,11 +291,6 @@ public class PreparedIndicatorExecutor {
                     targetDirection, text(resultContract.get("target_direction")));
             valueType = text(resultContract.get("value_type"));
             unit = text(effective.data().get("result_unit"));
-            profileId = first(text(effective.data().get("profile_id")), profileId);
-            profileName = first(text(effective.data().get("profile_name")), profileName);
-            eventNo = first(
-                    text(objectMap(effective.data().get("extraction_contract")).get("event_no")),
-                    eventNo);
             String effectiveName = text(effective.data().get("rule_name"));
             if (effectiveName != null) {
                 displayName = effectiveName;
@@ -323,9 +317,14 @@ public class PreparedIndicatorExecutor {
             targetValue = "目标配置不一致";
         } else if (data.get("target_value") != null) {
             Double dynamicTarget = number(data.get("target_value"));
+            boolean profileFallback =
+                    "profile".equals(text(data.get("target_source")));
             // 耗时类 SQL 的 TargetValue CTE 在没有配置行时可能返回 0；0 分钟不是
             // 有效运行目标，应视为缺失并回退审批 Profile 的静态目标（当前为 5 分钟）。
-            targetValue = "median_duration".equals(valueType)
+            targetValue = profileFallback
+                    ? normalizeConfiguredTarget(
+                            data.get("target_value"), valueType, unit)
+                    : "median_duration".equals(valueType)
                     && dynamicTarget != null
                     && dynamicTarget <= 0
                     && configuredTarget != null
@@ -347,8 +346,11 @@ public class PreparedIndicatorExecutor {
                 text(data.get("stat_start")), text(data.get("stat_end")),
                 text(data.get("run_id")), null, null, durationMs,
                 text(data.get("data_freshness")),
-                profileId, profileName, eventNo,
-                text(data.get("extraction_id")), text(data.get("extraction_status")));
+                first(profileId, text(data.get("profile_id"))),
+                profileLabel,
+                text(data.get("extraction_id")),
+                text(data.get("extraction_status")),
+                eventNo);
     }
 
     /**

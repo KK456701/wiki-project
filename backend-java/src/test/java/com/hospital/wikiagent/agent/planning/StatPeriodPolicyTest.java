@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 class StatPeriodPolicyTest {
     @Test
-    void keepsOneMonthLimitForNormalRequests() {
+    void keepsOneYearLimitForNormalRequests() {
         var result = StatPeriodPolicy.validate(
                 LocalDateTime.parse("2025-02-01T00:00:00"),
                 LocalDateTime.parse("2026-07-26T23:30:00"));
@@ -18,7 +18,7 @@ class StatPeriodPolicyTest {
     }
 
     @Test
-    void allowsCrossMonthPeriodOnlyWhenCallerHasBatchResourceGuards() {
+    void explicitBypassIsReservedForNonExecutingSqlDisplay() {
         var result = StatPeriodPolicy.validate(
                 LocalDateTime.parse("2025-02-01T00:00:00"),
                 LocalDateTime.parse("2026-07-26T23:30:00"),

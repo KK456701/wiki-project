@@ -142,26 +142,6 @@
         "parameters": {},
         "relations": [],
         "query_profile": ""
-      },
-      "data_lineage": {
-        "schema_version": "data-lineage-v1",
-        "event_no": "无",
-        "event_name": "无",
-        "source_main_table": "MAHP_DMTS_MAIN,INPATIENT_ENCOUNTER,ORGANIZATION_X_EMPLOYEE,ORGANIZATION,INPATIENT_PARTICIPANT,EMPLOYEE_INFO,INP_EMR_SECTION_DATA_ELEMENT,INPATIENT_EMR_SECTION,INPATIENT_EMR_CONTENT,INPATIENT_EMR_SET",
-        "intermediate_table": null,
-        "reference_tables": [
-          "EMPLOYEE_INFO",
-          "INPATIENT_ENCOUNTER",
-          "INPATIENT_PARTICIPANT",
-          "MRAS_ORGANIZATION",
-          "ORGANIZATION"
-        ],
-        "data_affecting_tables": [
-          "INPATIENT_ENCOUNTER",
-          "INP_CLI_ORDER"
-        ],
-        "affects_calculation": true,
-        "data_source": "住院医生站"
       }
     }
   ],

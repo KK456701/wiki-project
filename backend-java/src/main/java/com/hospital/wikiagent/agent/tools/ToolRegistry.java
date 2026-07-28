@@ -25,6 +25,14 @@ import com.hospital.wikiagent.rules.RuleNotFoundException;
  */
 @Component
 public class ToolRegistry {
+    /*
+     * 计算工具包含业务库抽取、真实库事务替换和概览查询。它不是普通 30 秒
+     * 只读工具；若外层先超时，底层 JDBC/MCP 任务仍可能继续持有全局快照锁，
+     * 后续 Profile 就会被连锁误判超时。该上限应大于 DBHub 单次 120 秒上限，
+     * 批量总时限仍由上层 compound-timeout / 客户端控制。
+     */
+    private static final Duration INDICATOR_EXECUTION_TIMEOUT =
+            Duration.ofSeconds(180);
     private final Map<String, AgentTool> tools;
 
     @Autowired
@@ -95,9 +103,14 @@ public class ToolRegistry {
                     RuleReferenceInput arguments = (RuleReferenceInput) input;
                     Map<String, Object> data;
                     try {
-                        data = rules.effectiveRule(
-                                arguments.ruleId(), context.agentContext().hospitalId(),
-                                arguments.profileId());
+                        data = arguments.profileId() == null
+                                ? rules.effectiveRule(
+                                        arguments.ruleId(),
+                                        context.agentContext().hospitalId())
+                                : rules.effectiveRule(
+                                        arguments.ruleId(),
+                                        context.agentContext().hospitalId(),
+                                        arguments.profileId());
                     } catch (RuleNotFoundException exception) {
                         // 该指标在本医院没有可读取的生效规则（或规则未入库）。
                         // 返回结构化失败而非抛异常，避免复合请求中单个指标失败拖垮整体回答。
@@ -184,8 +197,8 @@ public class ToolRegistry {
                     "trial_run_indicator_sql",
                     IndicatorSqlTools.TrialInput.class,
                     Set.of(),
-                    Duration.ofSeconds(30),
-                    AgentTool.RiskLevel.READ_ONLY,
+                    INDICATOR_EXECUTION_TIMEOUT,
+                    AgentTool.RiskLevel.CONTROLLED_EXECUTION,
                     true,
                     (context, state) -> !state.validatedSqlIds().isEmpty(),
                     (input, context) -> sqlTools.trial((IndicatorSqlTools.TrialInput) input, context)));
@@ -215,8 +228,8 @@ public class ToolRegistry {
                     "trial_run_indicator_caliber_sql",
                     IndicatorCaliberTools.TrialInput.class,
                     Set.of(),
-                    Duration.ofSeconds(30),
-                    AgentTool.RiskLevel.READ_ONLY,
+                    INDICATOR_EXECUTION_TIMEOUT,
+                    AgentTool.RiskLevel.CONTROLLED_EXECUTION,
                     true,
                     (context, state) -> state.currentCaliberProfileId() != null
                             && !state.validatedSqlIds().isEmpty(),
@@ -327,16 +340,17 @@ public class ToolRegistry {
     }
 
     public record RuleReferenceInput(String ruleId, String profileId) {
+        public RuleReferenceInput(String ruleId) {
+            this(ruleId, null);
+        }
+
         public RuleReferenceInput {
             ruleId = ruleId == null ? "" : ruleId.strip();
-            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
+            profileId = profileId == null || profileId.isBlank()
+                    ? null : profileId.strip();
             if (ruleId.isEmpty()) {
                 throw new IllegalArgumentException("规则编号不能为空");
             }
-        }
-
-        public RuleReferenceInput(String ruleId) {
-            this(ruleId, null);
         }
     }
 

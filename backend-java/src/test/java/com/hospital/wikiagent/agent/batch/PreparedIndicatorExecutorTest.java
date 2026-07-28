@@ -26,6 +26,7 @@ import com.hospital.wikiagent.agent.planning.CapabilitySpecRegistry;
 import com.hospital.wikiagent.agent.planning.DeterministicDispatch;
 import com.hospital.wikiagent.agent.planning.PlanCompiler;
 import com.hospital.wikiagent.agent.planning.PlanValidator;
+import com.hospital.wikiagent.agent.planning.StatPeriodPolicy;
 import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
@@ -56,6 +57,7 @@ class PreparedIndicatorExecutorTest {
     private ToolResult trialResult;
     private final List<String> toolCalls = new ArrayList<>();
     private final List<Object> effectiveRuleIds = new ArrayList<>();
+    private final List<Map<String, Object>> toolArguments = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -204,6 +206,56 @@ class PreparedIndicatorExecutorTest {
     }
 
     @Test
+    void profileFallbackPercentageTargetIsNotScaledTwice() {
+        effectiveResult = effectiveRule(
+                RULE_ID, RULE_NAME, 95, ">=", "percent", "percentage");
+        trialResult = ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
+                        "run_id", "RUN_PROFILE_TARGET",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-02-01 00:00:00",
+                        "result_value", 96.0,
+                        "numerator_count", 96,
+                        "denominator_count", 100,
+                        "target_value", 95,
+                        "target_source", "profile"));
+
+        IndicatorExecutionResult result =
+                executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
+
+        assertThat(result.targetValue()).isEqualTo(95.0);
+    }
+
+    @Test
+    void explicitProfileIsBoundIntoRuleAndSqlPreparation() {
+        trialResult = ToolResult.success(
+                "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
+                        "run_id", "RUN_PROFILE",
+                        "profile_id", "PROFILE_2",
+                        "extraction_id", "EXT_PROFILE_2",
+                        "extraction_status", "COMPLETED",
+                        "stat_start", "2026-01-01 00:00:00",
+                        "stat_end", "2026-02-01 00:00:00",
+                        "result_value", 92.5,
+                        "numerator_count", 185,
+                        "denominator_count", 200));
+
+        IndicatorExecutionResult result = executor.execute(
+                RULE_ID, RULE_NAME,
+                "PROFILE_2", "第二口径", "CORE_TEST",
+                "SUB_2", TIME_TEXT,
+                "2026-01-01 00:00:00", "2026-02-01 00:00:00",
+                context);
+
+        assertThat(result.profileId()).isEqualTo("PROFILE_2");
+        assertThat(result.profileLabel()).isEqualTo("第二口径");
+        assertThat(result.extractionId()).isEqualTo("EXT_PROFILE_2");
+        assertThat(result.eventNo()).isEqualTo("CORE_TEST");
+        assertThat(toolArguments.get(0)).containsEntry("profile_id", "PROFILE_2");
+        assertThat(toolArguments.get(1)).containsEntry("profile_id", "PROFILE_2");
+    }
+
+    @Test
     void unresolvableTimeFailsValidationWithoutAnyToolCall() {
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", "某个模糊的时间", context);
@@ -214,14 +266,14 @@ class PreparedIndicatorExecutorTest {
     }
 
     @Test
-    void fixedBatchPeriodOverridesRelativeRawTimeForEveryWorker() {
+    void fixedCrossMonthBatchPeriodIsRejectedBeforeAnyWorkerToolCall() {
         IndicatorExecutionResult result = executor.execute(
                 RULE_ID, RULE_NAME, "SUB_1", "时间改成从25年2月份开始",
                 "2025-02-01 00:00:00", "2026-07-26 23:30:00", context);
 
-        assertThat(result.status()).isEqualTo(IndicatorExecutionResult.Status.SUCCESS);
-        assertThat(toolCalls).containsExactly(
-                "get_effective_rule", "prepare_indicator_sql", "trial_run_indicator_sql");
+        assertThat(result.status()).isEqualTo(IndicatorExecutionResult.Status.FAILED);
+        assertThat(result.errorCode()).isEqualTo(StatPeriodPolicy.EXCEEDED_CODE);
+        assertThat(toolCalls).isEmpty();
     }
 
     private void stubGateway() {
@@ -232,6 +284,7 @@ class PreparedIndicatorExecutorTest {
                     Map<String, Object> arguments = invocation.getArgument(1);
                     AgentRunState state = invocation.getArgument(3);
                     toolCalls.add(toolName);
+                    toolArguments.add(Map.copyOf(arguments));
                     ToolResult result = switch (toolName) {
                         case "get_effective_rule" -> {
                             effectiveRuleIds.add(arguments.get("rule_id"));

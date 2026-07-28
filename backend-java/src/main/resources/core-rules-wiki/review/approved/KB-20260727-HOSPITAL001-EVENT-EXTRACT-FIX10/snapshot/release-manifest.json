@@ -1,0 +1,838 @@
+{
+  "schema_version": "knowledge-release-v2",
+  "release_id": "KB-20260727-HOSPITAL001-EVENT-EXTRACT-FIX10",
+  "scope": "hospital",
+  "generated_at": "2026-07-27T05:10:59.340Z",
+  "source_path": "review/pending/KB-20260727-HOSPITAL001-EVENT-EXTRACT-FIX10/source/35项核心制度指标完整提取.md",
+  "source_sha256": "7a713381391385cad958aeed55d16ff381dcba49410d8debeca7ade816df64db",
+  "generator_version": "build-wiki-v2",
+  "model_id": "deterministic-adapter",
+  "prompt_version": "knowledge-release-normalizer-v1",
+  "prompt_sha256": "52a0288fc1c5af8b3cf50bfa029dba1da0424ca72679fcb916b65bd69c1c16ce",
+  "counts": {
+    "indicators": 35,
+    "profiles": 45,
+    "sql_blocks": 169
+  },
+  "files": {
+    "index.md": "1b0045a09ad55af3b7a16fe1399f0e7361217a6adf1e2c9e2e23b8ada8820d0c",
+    "indexes/alias_index.json": "785187f48f59ee947f15a1b08a55b50e45ea5b49742bf7ff5e2006ee107c663e",
+    "indexes/hospital_override_index.json": "80d19da3f4116d5221f34f986905050d5a07051587192b128bbf87f9cf800475",
+    "indexes/indicator_index.json": "c6d799760a0c842fcb9081437d98748968173681173d3698e4ad075de70926a1",
+    "indexes/keyword_index.json": "0886e242779fdead5ea00dafef406a9c9a5352ca088c2078a70c5f86775933ec",
+    "indexes/ngram_index.json": "89510111693ba2529858b441f2f6b2312c82afb8556a67438630846888fda707",
+    "indexes/profile_index.json": "3c44fb619c62c8591fe7b4bf5a1c113dfc69871c38eaa1eb4a6eec2c23aaf969",
+    "indexes/relation_index.json": "9af39b11f2467907ee8494dc099a8614e63e3ef9fc89f3028f3f26dc2415212a",
+    "indexes/retrieval_cards.json": "e2a69a51b97c14ea8e4999ed21934d79321ee83cb4386ca0822c5d34c06c141c",
+    "indexes/rule_index.json": "28e9837e1f4b12da9f60d202b1764648218161aeebef591c386a090a16537f8c",
+    "indexes/system_index.json": "256fba89f747c0a0e1b4e390f052350ad32fc8112374614336fcd2cd4165f3e1",
+    "sql-correction-manifest.json": "775345c750d43f4a96d9d1316a0ec4abd4a60e4fcd34d14b37d937cbaf963d94",
+    "sql-specs/HXZD-001-001/original/excel-original.md": "26ea752d44f0a6f12130603d2a4589ba5c0f22caf6ef29d218c89cbe67cf35dc",
+    "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/department.sql": "c3fa5895d65f86b1e2a6a2bb433a89505ff9602b7d474309246f67f52a923cb5",
+    "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/etl_source.sql": "a38a137584dd1ffd7362852f454200f12f23de0483be934f3845cbe122e628f3",
+    "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/overview.sql": "4c9d6a15641b6720b208594b25f0f2569ebb9accc318a51cda084e7a124aa2d4",
+    "sql-specs/HXZD-001-001/profiles/HXZD-001-001-company-default/patient_detail.sql": "e1e2cce73095b991cf0d81f7683b7df3663b2d37d59bf3222bf3400d907936b5",
+    "sql-specs/HXZD-001-001/runtime.json": "8dd250c11f5be6b0b7da71a8d9a435c90cd06e6057008d6d4c76b69c36d5e146",
+    "sql-specs/HXZD-001-001/sql-spec.md": "40f120700c93220b8dc0aac00ff18298fecd5a1f025d2301ce2eef877a868067",
+    "sql-specs/HXZD-002-001/original/excel-original.md": "5a8e24f374a6346f5aabfda052c0f99e18dfbb5d02bff0a725bdc2a328fe3724",
+    "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/department.sql": "a75ce5448df92918072cce856b588f7c741af0398221b93ec72cba5d9895a637",
+    "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/etl_source.sql": "6b955625160df197584c15e141b0839a20f74b31b9b80f3eed43140b12555b9e",
+    "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/overview.sql": "8f3f3869f8f5735478f824c1d7d96903857e2535e95c3374629f27810ecf847e",
+    "sql-specs/HXZD-002-001/profiles/HXZD-002-001-company-default/patient_detail.sql": "0d3be4b3360eb288ab0b9f023c5e452883853b95d36857c381f4bc0522046d9a",
+    "sql-specs/HXZD-002-001/runtime.json": "c8dad25fc91a63de10d4f08c54ce1e3d1ac72cc664e9f9eefcdb4ff3450774c1",
+    "sql-specs/HXZD-002-001/sql-spec.md": "112606f05de3ee43575d885ff6bf31bdf779558ea834de7a16c28bfafbc7030a",
+    "sql-specs/HXZD-002-002/original/excel-original.md": "bae89f7848334cee18a27410d684ec72be694a185d70a8a4c7a5bc89b81b8233",
+    "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/department.sql": "195d9a71036b4aa84809e626ec1f775282949bf65b15298882caebb80e3d754f",
+    "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/etl_source.sql": "6b955625160df197584c15e141b0839a20f74b31b9b80f3eed43140b12555b9e",
+    "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/overview.sql": "11dae15a4ac85b79d18b9f019b87ad4585f7e73374cbe6e7cfe50d7dce48ab16",
+    "sql-specs/HXZD-002-002/profiles/HXZD-002-002-company-default/patient_detail.sql": "0d3be4b3360eb288ab0b9f023c5e452883853b95d36857c381f4bc0522046d9a",
+    "sql-specs/HXZD-002-002/runtime.json": "e81734513c66418483c19d7d4025c8f57cbe16a30eda2dd393fdb00c56f11902",
+    "sql-specs/HXZD-002-002/sql-spec.md": "4806edf125a4428567985695d4e04e507e197691d22ab236c33d4bfbdd57c2ba",
+    "sql-specs/HXZD-002-003/original/excel-original.md": "d56053de727b077cedc803e9bb086d028b224f75d4211f920dd2ec0f64e8d74e",
+    "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/department.sql": "0581ecd06a9f3844878fcd189e88bcbcfdbf6363a299f554b87f2ce9d6671fc0",
+    "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/etl_source.sql": "6b955625160df197584c15e141b0839a20f74b31b9b80f3eed43140b12555b9e",
+    "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/overview.sql": "24cbe2d8925ba48ea47b3e55f46e4dc624e09b1fa5ebb6431b7610d923e15ef1",
+    "sql-specs/HXZD-002-003/profiles/HXZD-002-003-company-default/patient_detail.sql": "4c43f76a5f9f070a414cd3b767dd1552621bbf27433cb02801275479e2b846ab",
+    "sql-specs/HXZD-002-003/runtime.json": "d714769a8de2e14b7e4aba0d3e050d7b09d85a311676f9fac7fa976942fc89d6",
+    "sql-specs/HXZD-002-003/sql-spec.md": "2dbf109669f3c0dc991a7ffb4efac17c90f7c2e43333240dfa66fd50c2a950a2",
+    "sql-specs/HXZD-003-001/original/excel-original.md": "262bea969c556fb057d54b33ea49e2c7496eb5f5347402c3e86dde1bf110b2f1",
+    "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/department.sql": "a8f3440f8e788be3c9dc85e977b8cd4fd90e5466f7931ae5232a5c5b6a900299",
+    "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/etl_source.sql": "8cdfb9d6d87af75a138e9bacf3dbe6518cb5b1a2e9b3d48ef7f7c90871e1049d",
+    "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/overview.sql": "42eb47e82dc228fb6d8fdb8b4738306e57fa6aa19940220efd1d6855db426696",
+    "sql-specs/HXZD-003-001/profiles/HXZD-003-001-company-default/patient_detail.sql": "29d849829b83ce001ec5b0546cb5af295930fea76ac0dcc597cc4b89fcf9db63",
+    "sql-specs/HXZD-003-001/runtime.json": "99666806b75db3686fcf15d57147bcded0266887bd6b217a41a1dc8f92a10352",
+    "sql-specs/HXZD-003-001/sql-spec.md": "cc7b7e4e0d9a5f0e1942c30cb726e51529ba2a6d49c1b1c6fcbacf3c3a3da006",
+    "sql-specs/HXZD-003-002/original/excel-original.md": "d86e793a163c6369b8c68c5567a79b8bf7e2f0e67c9e25450dcc23b1c2e2b41c",
+    "sql-specs/HXZD-003-002/profiles/HXZD-003-002-company-default/department.sql": "fe75a17b3cc5e0882d9c86e998f64d069adadc06a0ffd55d9732818aeae984d6",
+    "sql-specs/HXZD-003-002/profiles/HXZD-003-002-company-default/etl_source.sql": "8cdfb9d6d87af75a138e9bacf3dbe6518cb5b1a2e9b3d48ef7f7c90871e1049d",
+    "sql-specs/HXZD-003-002/profiles/HXZD-003-002-company-default/overview.sql": "2c54dd5679771865149daf89722290616e50a576f009f219ba29fd2d1c7d4cde",
+    "sql-specs/HXZD-003-002/profiles/HXZD-003-002-company-default/patient_detail.sql": "1239b99d5db849c2c0e185bf93a44c27b20be4a942b0f1dc51da291b9110607d",
+    "sql-specs/HXZD-003-002/runtime.json": "7617c88b999775b8a24539f4febdef73a1c9c1206f14be6233a5d9cb44a407ad",
+    "sql-specs/HXZD-003-002/sql-spec.md": "007e5cfbb174afe95e5205d05e942aa1e7a1fee2ec2b68d331276a4d7008a6a4",
+    "sql-specs/HXZD-003-003/original/excel-original.md": "11f0626df3d1c3eb31a63666ad19b9008406c38ee881b2d3017ae6105d4ab76a",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/department.sql": "9614b3eb1734a18cb421ac81ca2afb0f8fbb8869b58e1474a7413bb985e13598",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/etl_source.sql": "ed1a6af2df972b4a6ff2f5eee060b17cca5c64a490a25186a868988efd5c378e",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/overview.sql": "c4ffd3067e59831464af005f142589318dd1a91064506cde93b7b052e5f9e6e7",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-candidate-01/patient_detail.sql": "a5ecf28f5b1a6aa9aa966813ad3104d213eb4dc9d21452edaf0f394b5116ca4d",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/department.sql": "9614b3eb1734a18cb421ac81ca2afb0f8fbb8869b58e1474a7413bb985e13598",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/etl_source.sql": "ed1a6af2df972b4a6ff2f5eee060b17cca5c64a490a25186a868988efd5c378e",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/overview.sql": "c4ffd3067e59831464af005f142589318dd1a91064506cde93b7b052e5f9e6e7",
+    "sql-specs/HXZD-003-003/profiles/HXZD-003-003-company-default/patient_detail.sql": "a5ecf28f5b1a6aa9aa966813ad3104d213eb4dc9d21452edaf0f394b5116ca4d",
+    "sql-specs/HXZD-003-003/runtime.json": "e5b5d8e662d4c3efef182ba697faceb730c9439329000419c880cae597d188e1",
+    "sql-specs/HXZD-003-003/sql-spec.md": "cefc99a0ec096039a83ba40d67a58d4a804a490587e616be2370cafcf28ddacb",
+    "sql-specs/HXZD-003-004/original/excel-original.md": "efa4de9da641cc1d95e7c5bf63fe2556ab41328c394f82476dd7be6c719c23e0",
+    "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/department.sql": "70d20ad30e520b72a8234cd97486d3262d839c989e80ed274bd99bd1693fcdc8",
+    "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/etl_source.sql": "ed1a6af2df972b4a6ff2f5eee060b17cca5c64a490a25186a868988efd5c378e",
+    "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/overview.sql": "c5508a092e73b111354e38641ba67a97e44abf45f34c7117e177312ce180a8df",
+    "sql-specs/HXZD-003-004/profiles/HXZD-003-004-company-default/patient_detail.sql": "da55825972ed51072f085115c4fea417fb7603dfb2da98ce517337f13282dab5",
+    "sql-specs/HXZD-003-004/runtime.json": "ebef6d0b4f74a313021a1404734e43a8bd4381555fdfb394cfbb614d11d9a958",
+    "sql-specs/HXZD-003-004/sql-spec.md": "54d990c1a596019f31a4b2e1b497cd663e43abd26a2d5f2215ea3af5198aad5e",
+    "sql-specs/HXZD-004-001/original/excel-original.md": "8936554be67d6a5cfed5d21e11666636f646159ef784b3c56c3185cbd2b7ff6c",
+    "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/department.sql": "069154e07056fae5bb2c64ec092804c68b8e9d99032862aebcb433feca1acccd",
+    "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/overview.sql": "4b520a6917159842a2fe9584e912312792df0bd27953da29563b6db05cb6c40e",
+    "sql-specs/HXZD-004-001/profiles/HXZD-004-001-company-default/patient_detail.sql": "2ac0c2d27040c397370be24091bc25e863d24bdac3e508f2f8fe3bb3049331c1",
+    "sql-specs/HXZD-004-001/runtime.json": "35a483d63ec33a7dca643f8c253771f3dc301b43e40a88c49cea2b4b8f22b8da",
+    "sql-specs/HXZD-004-001/sql-spec.md": "a68fcf07342128d96315f89b489a48c376f9945da0cb6747751dec1957cab54d",
+    "sql-specs/HXZD-005-001/original/excel-original.md": "da98ec591ab1d79fed39eb1bc1e05095eb2aa6c5cd2c47d877cf1d89ab0a52a4",
+    "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/department.sql": "d9254d94ea4a84894832468ba4cd1cd850e82155aa8609924134bf6d6011d378",
+    "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/overview.sql": "74a5f94cde8326af7365a19f363237c6d7a20d0dfcaa5709433937c7201b85e9",
+    "sql-specs/HXZD-005-001/profiles/HXZD-005-001-company-default/patient_detail.sql": "aa872d93f7e13e3e7c6e34edccfc9095af1f649f73917cf3737770bfe4dc9ad0",
+    "sql-specs/HXZD-005-001/runtime.json": "e799a0a8a03109ba88207bd03d9260cb9446ba3611d0a324d9d3adc97048ff81",
+    "sql-specs/HXZD-005-001/sql-spec.md": "7857dde07134dbd6c95f615b2474725ec619417bb36f0e7b6f61841217cf19ab",
+    "sql-specs/HXZD-006-001/original/excel-original.md": "86f4255bc346ba1416883474e12cef45c3f2fe200b12d1d1a33aa0590f132dae",
+    "sql-specs/HXZD-006-001/profiles/HXZD-006-001-company-default/department.sql": "d90c34a4109fd91019b03202a384edefaf7f63dad7959d5d6ec99e30ffd89c9d",
+    "sql-specs/HXZD-006-001/profiles/HXZD-006-001-company-default/etl_source.sql": "d673055200ee4cae11ee005edcbffccefd098e43c9475617d20a1b87b13cdf07",
+    "sql-specs/HXZD-006-001/profiles/HXZD-006-001-company-default/overview.sql": "93bcf46da9246c3a65caa69b25b0f13159342c13ad33a2d95efc62004ce71395",
+    "sql-specs/HXZD-006-001/profiles/HXZD-006-001-company-default/patient_detail.sql": "e1921cbdbc8b51a0f378b38e5d73e8ae9cba74d7c2aada7048ab97bd29ee39ac",
+    "sql-specs/HXZD-006-001/runtime.json": "9983c182c45d6193507162eea688f39e8c09c9c6673bd88d9884fe07938db342",
+    "sql-specs/HXZD-006-001/sql-spec.md": "c39738d87021e3858c36904543c0e67e6e13783809d4270b9ebb832f2fba5a28",
+    "sql-specs/HXZD-006-002/original/excel-original.md": "c623b3644476a7a0b6ce823cfe7e095bd0e1683e016c8a99aa7019c6b49d2ef8",
+    "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/department.sql": "ba31d320cb6730dfffa64b31f9bca5548b3a620001bedd92246c12aa274963b8",
+    "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/etl_source.sql": "d673055200ee4cae11ee005edcbffccefd098e43c9475617d20a1b87b13cdf07",
+    "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/overview.sql": "f78673ba995685966929e0c85752698212cb697e4df4120f88b39bae509c6bce",
+    "sql-specs/HXZD-006-002/profiles/HXZD-006-002-company-default/patient_detail.sql": "b30ca97d3c730b8a70f87b6350ab9dc276c96e3b8b71cd332c1d57a055dbb5d8",
+    "sql-specs/HXZD-006-002/runtime.json": "5d7fbee068acce0420c67e0631c20cc01dc0e72c3dd0a24fba83353e2eee4050",
+    "sql-specs/HXZD-006-002/sql-spec.md": "590592ce1e77d8d282c12f3a11cb2a95a2ec0e42b9882f13559030c515b36d8c",
+    "sql-specs/HXZD-006-003/original/excel-original.md": "219d3355bb61194047d43333ce86c6113504fe816eadee4f046b8bb7cad94e17",
+    "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/department.sql": "5d4c52adf3863c6a43b8392fa2466a5d2840d337a285d9e6a571fff2585d45ef",
+    "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/etl_source.sql": "e222517683d526312ef54ca9f8ebc147c130977ce6ceb17d513e6ddb4c0599e2",
+    "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/overview.sql": "dd98ef9aa58959b857855c1bfa95749ed1e3164f44581b37372d0b051617df70",
+    "sql-specs/HXZD-006-003/profiles/HXZD-006-003-company-default/patient_detail.sql": "5752ca43ae7f9991577b246dfd1f518e6cb75add23dfe3e194ddfbe685a42c1a",
+    "sql-specs/HXZD-006-003/runtime.json": "1517a00806562bae0f7a331f1ecd83e0bb4235c8fd65c19c0ef52f9184664baf",
+    "sql-specs/HXZD-006-003/sql-spec.md": "6fd2e7f544f3af8d84e3cf57ed4e25f75fb6d7d0ac4a76a15d47e8f77f495c25",
+    "sql-specs/HXZD-007-001/original/excel-original.md": "a1b1d24992e85c672229c5c801448edc73a004c18b319f9aa42bb61fe43e7963",
+    "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/department.sql": "a8508e2bcf9658681cc602ca975de1331e9a91ae26ce753c71a87283447444d2",
+    "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/etl_source.sql": "c525df2fc878044de0dc0ba60a2c93e829c439d2ed5611f2482a1133141555a2",
+    "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/overview.sql": "afc0219e1164a3fd30e73504bc484099f80dbe2a0e239a7228f50b982bbb2aad",
+    "sql-specs/HXZD-007-001/profiles/HXZD-007-001-company-default/patient_detail.sql": "424ce4bc9655ea05b0abe4bb68bec6a9152ca44bad4c481f854638c473302b6b",
+    "sql-specs/HXZD-007-001/runtime.json": "546dc543da4e132bfae8b4048e3be3adab86593970df2fc29adfaaac5fdb21c6",
+    "sql-specs/HXZD-007-001/sql-spec.md": "3d8d92d11c3f221cab9588094069fd85678bc03b361142dab5e4367642f37757",
+    "sql-specs/HXZD-008-001/original/excel-original.md": "727dc9852ef6bead1cde0d4cf58c3b527e1fbfaa3448b4bb931404ddfb333c7d",
+    "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/department.sql": "4604642b03a7cd28f39e025e593a67863203050a8d2b4dc8da966334ec82fe13",
+    "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/etl_source.sql": "a99f9f3d7cce8b9f2208ad372e1fe7bc5550a2f29b417c593586f98da4bc67f7",
+    "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/overview.sql": "1456ec2894137136499adb41e410386c7064d1211d097780b291f4d3a97f82d0",
+    "sql-specs/HXZD-008-001/profiles/HXZD-008-001-company-default/patient_detail.sql": "d7e27a6b43a2f518f1f568c78ce20cf4460c00d3af099d43a0dc1652432dc2d0",
+    "sql-specs/HXZD-008-001/runtime.json": "c3a7992013c2fada80708b2763388616f2373bbab48442172b13d73bc3964cbc",
+    "sql-specs/HXZD-008-001/sql-spec.md": "e340a4f83109d32ff3b51e0df07297c30d3e0231c0656f2f869a47afff57d387",
+    "sql-specs/HXZD-008-002/original/excel-original.md": "2a0bddc90a8f469cb956b705edd61c4c69038032a88f7401ed2aaa7849c45f39",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/department.sql": "d04e487cb63ce014e1f6e8267e74f63bb738c8dc146d3ab724d317155570535c",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/etl_source.sql": "6fa138c7200f5904973070c4d1785ebfddb3b789e5ee905b96c8dab9ffb7ef5a",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/overview.sql": "6a2b1248050e2212857613e54e3922b3b96d0d5e1dcd04005c00c2e4d5db52a2",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-candidate-01/patient_detail.sql": "c98bb25e8817f98f40b9fba22f80f52bc58d05b7cb4e50efd4f5f638d45c48a0",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/department.sql": "d04e487cb63ce014e1f6e8267e74f63bb738c8dc146d3ab724d317155570535c",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/etl_source.sql": "a99f9f3d7cce8b9f2208ad372e1fe7bc5550a2f29b417c593586f98da4bc67f7",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/overview.sql": "6a2b1248050e2212857613e54e3922b3b96d0d5e1dcd04005c00c2e4d5db52a2",
+    "sql-specs/HXZD-008-002/profiles/HXZD-008-002-company-default/patient_detail.sql": "c98bb25e8817f98f40b9fba22f80f52bc58d05b7cb4e50efd4f5f638d45c48a0",
+    "sql-specs/HXZD-008-002/runtime.json": "3e998a2d9c504a77a667f9da5384a1e1740468fbe8b2b151ff60d030eac1f584",
+    "sql-specs/HXZD-008-002/sql-spec.md": "3153c707cbcc51a5cc489d660d109fe1b1f4d3315865cb77d19bd7b7158177ad",
+    "sql-specs/HXZD-008-003/original/excel-original.md": "b464e0bdb4d2063096d85460708e33e983ec221637613dcb5c5535b573723c08",
+    "sql-specs/HXZD-008-003/profiles/HXZD-008-003-company-default/department.sql": "dfb2cc0c3e61c5958eccedb4dc29d9300c3840583a21dbd894ebf2e2a793d21f",
+    "sql-specs/HXZD-008-003/profiles/HXZD-008-003-company-default/etl_source.sql": "a99f9f3d7cce8b9f2208ad372e1fe7bc5550a2f29b417c593586f98da4bc67f7",
+    "sql-specs/HXZD-008-003/profiles/HXZD-008-003-company-default/overview.sql": "90f51d62a2f059c15d46915b34bc679341bb48a88802c98c8ad75a7899b09fd4",
+    "sql-specs/HXZD-008-003/profiles/HXZD-008-003-company-default/patient_detail.sql": "e7cc957a370f65cc3b15ab254bda382f0df111a043e898c09b0165207eb2c4d2",
+    "sql-specs/HXZD-008-003/runtime.json": "61fe9b3fb059d004fd8b41c4cba3dad6aafe38fed178fbc8bc380ba590e7f768",
+    "sql-specs/HXZD-008-003/sql-spec.md": "769b2e276a0535c564e8028be641aec821c7db1ca29f7b1f85f6c18d3079899e",
+    "sql-specs/HXZD-008-004/original/excel-original.md": "93d0bd9f2e5d0088d2aba7d498aaafe2b13114ee7ef45fe87973cef79cf9f8d8",
+    "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/department.sql": "0b3083c343bf6dabe3342b4f05c764c068efe3ecba86c5e281780d23bff4defc",
+    "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/etl_source.sql": "a99f9f3d7cce8b9f2208ad372e1fe7bc5550a2f29b417c593586f98da4bc67f7",
+    "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/overview.sql": "ce9aed48c98d96a74294b40c8cc823ae8df3d956311ab3198584ca090f10baf6",
+    "sql-specs/HXZD-008-004/profiles/HXZD-008-004-company-default/patient_detail.sql": "c38da61a1c9730112f1d109c08765c992d947144c5808bd9727bfa67f0a514d8",
+    "sql-specs/HXZD-008-004/runtime.json": "6ef5c3c6028f04d5540211d0434695c8cc8fd1179f876a628a6b498619929a90",
+    "sql-specs/HXZD-008-004/sql-spec.md": "1b14d94cabf90ba7e6a2f4a164d2abf9cde278fe4d3aa6a641eac36b68e58155",
+    "sql-specs/HXZD-009-001/original/excel-original.md": "57ddc7487965cd3066c619441be85b55099be5aca2f811c276f7aa350273a569",
+    "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/department.sql": "6fd30e3da2126e7fee246f79fdf7e4a823d03d93bb09e0ba5ac323cdd2c1fcf9",
+    "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/etl_source.sql": "1a6fb309c037bb207d7aff18a5c181d8ad12705ca4d2c3b0da96ed288f60aea0",
+    "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/overview.sql": "3c0071d43743342fd0e9aaf774df4102864a17541a738f7b008924add6dc5058",
+    "sql-specs/HXZD-009-001/profiles/HXZD-009-001-company-default/patient_detail.sql": "aa3b7e333e0da9e1a0a0c4e16ccfbab832d3659225cab20103d1cc80bccb5105",
+    "sql-specs/HXZD-009-001/runtime.json": "162444f40b746af2c6843ca9c2b8e7f15d5faa2853ae2d6bebbb0d95798e6a74",
+    "sql-specs/HXZD-009-001/sql-spec.md": "0bcda03c75ef05840ad40383ab3ce25827ac4360cface7f0d5104965afc0c4a7",
+    "sql-specs/HXZD-009-002/original/excel-original.md": "c869eb57428801832fb211aec7a8fa6c44f30c2587ecf9e7c12eccab21ceaefa",
+    "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-candidate-01/etl_source.sql": "69ed4eaed7e9d296da47979722b3aab5d994961d7599f4ae820700262fa501a9",
+    "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/department.sql": "6f16d726d7a97a431ecb974cb2eca3d9a70889edd9dff4a1dd3b48c956cd9cc6",
+    "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/etl_source.sql": "1a6fb309c037bb207d7aff18a5c181d8ad12705ca4d2c3b0da96ed288f60aea0",
+    "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/overview.sql": "db638784c9fb8be6605ce6fe239249420b5b61fadecca3cd4a79814382c6d22f",
+    "sql-specs/HXZD-009-002/profiles/HXZD-009-002-company-default/patient_detail.sql": "9cd9af68d57a472ba7c495ddab72697d62cd505d123d0e8235a5a00fc4c682d0",
+    "sql-specs/HXZD-009-002/runtime.json": "7c6bdb4aac66d17d4fdae60bb047c906e14c879a60c848e0e97dad355e4939e2",
+    "sql-specs/HXZD-009-002/sql-spec.md": "43ac35d213a5c842019b0723804a7f12e68675b6543879aeb8d310bbd0ada7f4",
+    "sql-specs/HXZD-009-003/original/excel-original.md": "dfbf665ed2cf787e39311df852093d598134e6488e70a6f82231e2f9e6ead1f0",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/department.sql": "3f760df02e926ce0b18c099c78555bf5c40bb35d748639d47e1592538dbccb65",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/etl_source.sql": "69ed4eaed7e9d296da47979722b3aab5d994961d7599f4ae820700262fa501a9",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/overview.sql": "9a9c64bd3a63e8d46ed98040e06fb9eac18d7983e283c409b64cd0f6cf0d7a00",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-candidate-01/patient_detail.sql": "ce7e3e597993914821e19760d593ae6d3e98de9ee8c96364f478c030355a3bbc",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/department.sql": "3f760df02e926ce0b18c099c78555bf5c40bb35d748639d47e1592538dbccb65",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/etl_source.sql": "1a6fb309c037bb207d7aff18a5c181d8ad12705ca4d2c3b0da96ed288f60aea0",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/overview.sql": "9a9c64bd3a63e8d46ed98040e06fb9eac18d7983e283c409b64cd0f6cf0d7a00",
+    "sql-specs/HXZD-009-003/profiles/HXZD-009-003-company-default/patient_detail.sql": "ce7e3e597993914821e19760d593ae6d3e98de9ee8c96364f478c030355a3bbc",
+    "sql-specs/HXZD-009-003/runtime.json": "cf73484cd9a5d8ad78e3a3b1f66a27cd2013199dd91d92e2cec4808abe6d02b1",
+    "sql-specs/HXZD-009-003/sql-spec.md": "9f93aecaa87dda56eebf2a0c073968f3e7ee0f2bcf7ad0c914bc5df72e3696c8",
+    "sql-specs/HXZD-009-004/original/excel-original.md": "c800b86166abe7fa511ffc65ec6630d0dd9b13cb4615c0ce0fa8f00c39b2ee72",
+    "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/department.sql": "95945c39f7598de6b95df9feb1c114efa9664955febc17026bdf60ef135eb23b",
+    "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/etl_source.sql": "1a6fb309c037bb207d7aff18a5c181d8ad12705ca4d2c3b0da96ed288f60aea0",
+    "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/overview.sql": "d59ae725ae8e8cae91265a58edeba06b67d39cdfb16e774933c1142f75150e8a",
+    "sql-specs/HXZD-009-004/profiles/HXZD-009-004-company-default/patient_detail.sql": "7e1a2007d1d9a8682b1124239875248400976b52fe7586937b939607412d3e4b",
+    "sql-specs/HXZD-009-004/runtime.json": "4d75cdbb8b94f9cbcfe286351ab08e35296f8d24f51fddd1152468cdd869ff5d",
+    "sql-specs/HXZD-009-004/sql-spec.md": "a2aa4cf3c4b612d5603ffbf1bd1f5a1c7e580ea706e960bf7cb9540dfd0578e6",
+    "sql-specs/HXZD-010-001/original/excel-original.md": "a2b23591c4a150790cad6702b73de0bf664b2cc37c7df3a380c79d2dfc2711d9",
+    "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/department.sql": "5200ce76b6186cbaf9452883cee70472fb7c1830838be21c623730be63d3c24a",
+    "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/etl_source.sql": "69ed4eaed7e9d296da47979722b3aab5d994961d7599f4ae820700262fa501a9",
+    "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/overview.sql": "cc0f376f97601c5bb7255880d57ff79ec847ca74db38202bc5d5688d92b65046",
+    "sql-specs/HXZD-010-001/profiles/HXZD-010-001-company-default/patient_detail.sql": "396795e6bacfb045086c550603f0b7e008e9d1547b3edb416fd096206fe76dd1",
+    "sql-specs/HXZD-010-001/runtime.json": "8f351baf3b5d20d18782ec876ff9e0f4b3d437b1ef26da8ac98562524d4a04fc",
+    "sql-specs/HXZD-010-001/sql-spec.md": "b8aeebe0f117672522116644df25d8666001318a3fe350ef8db5b68a14d5d841",
+    "sql-specs/HXZD-011-001/original/excel-original.md": "4a1c2c06ffe2126dfb9babdbe64ffec630d8f66c5fcfff00a787bba2488e8a0d",
+    "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/department.sql": "381f5745d64d47c077439addefe1959582c5bd4b7a4a59bd15ec2801b956f8ed",
+    "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/etl_source.sql": "b22d2b36a7a8eec2764936e7b61971cd17c36a3a0ddd50a2328f794f4159c678",
+    "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/overview.sql": "9da1c867bee328adc405075b9d92ed196c3386e85a3387355b1432cfd90d92b1",
+    "sql-specs/HXZD-011-001/profiles/HXZD-011-001-company-default/patient_detail.sql": "fa90fe2ead9e88605b16e1d03243fc0717d3f9312f3cfbad8a106ad63250d821",
+    "sql-specs/HXZD-011-001/runtime.json": "21dae77ba2e10f7d42d29ea8089eacac3b821c5de90378401d3e8061114c1eee",
+    "sql-specs/HXZD-011-001/sql-spec.md": "893291fd51e90c96585d5c81e23a7d038c20a46d829e1949f8d1df40834085d5",
+    "sql-specs/HXZD-011-002/original/excel-original.md": "239803f2d0c6162943c3bfaf7844b5ec9a8b87757536f183d311811323eabb26",
+    "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/department.sql": "12aad6123cdf9aa38a2cddaa45dd2f265add954c2b55f064fcdc62177862e5f1",
+    "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/etl_source.sql": "b22d2b36a7a8eec2764936e7b61971cd17c36a3a0ddd50a2328f794f4159c678",
+    "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/overview.sql": "2eec8706658fecb5b825044e87a10152af5b596e8f7510ab8c53f365fd5f12c5",
+    "sql-specs/HXZD-011-002/profiles/HXZD-011-002-company-default/patient_detail.sql": "c7ffaeb7321b56b511519d2cc4837f748c0a9ba3c9b0ffb6a77f8c0e83b35acf",
+    "sql-specs/HXZD-011-002/runtime.json": "3afc6aa0103b42524842045f68edcda948195bbf578983d2ae56705e84a9ab9b",
+    "sql-specs/HXZD-011-002/sql-spec.md": "d0579bad308b75d9f3e6b519bd1b0c3f3558fa94d486f2f8d9fc0a06ace52f40",
+    "sql-specs/HXZD-012-001/original/excel-original.md": "6580e8e4382c700330fbdd236bc3ce83ca1e0b0328ba8059b8752846c73e6184",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/department.sql": "27b3e5133284b6151e0afe86ad4bc79a3042f53575a9c9e7496460e8c749c8a2",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/etl_source.sql": "8a1580104ddfc6a46d5db1bec387c5e3590ceb6d165c8bace8bf453f6b3879df",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/overview.sql": "f813993b4695531a55e4c41279cfce19507fcea55018e1f5993666637803ca83",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-candidate-01/patient_detail.sql": "9eb691b3b9ef1c4873005796e4fb7eb7fb1babb98e0482ccb5a165aa4012a39b",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/department.sql": "27b3e5133284b6151e0afe86ad4bc79a3042f53575a9c9e7496460e8c749c8a2",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/etl_source.sql": "c896147889e1354e9228915ce25a7dc21c3075c27546d5f270c1ee773df8fa8b",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/overview.sql": "f813993b4695531a55e4c41279cfce19507fcea55018e1f5993666637803ca83",
+    "sql-specs/HXZD-012-001/profiles/HXZD-012-001-company-default/patient_detail.sql": "9eb691b3b9ef1c4873005796e4fb7eb7fb1babb98e0482ccb5a165aa4012a39b",
+    "sql-specs/HXZD-012-001/runtime.json": "5d5bc5240a9cb95d509194552c18131d4c87239ef549bd903cc1f7c81036e9f3",
+    "sql-specs/HXZD-012-001/sql-spec.md": "f8e020c6efde67e75262c635fe1df2034bbdb868a004702032d55eed935611d7",
+    "sql-specs/HXZD-012-002/original/excel-original.md": "3b34ab31add496bdd66499f919075518eb57a4ae99a01c5d5dd25675a238be68",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/department.sql": "5b34cd9eae2685311c7a5eee131c63bfd73a494a0f2b2897b76d873ee49cc256",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/etl_source.sql": "8a1580104ddfc6a46d5db1bec387c5e3590ceb6d165c8bace8bf453f6b3879df",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/overview.sql": "6392f8076f5efcbafd66156bdec9680b02c7e7b6745f2a8fa6421e9d43ea23f7",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-candidate-01/patient_detail.sql": "1864c000ded62e00c900b35442464e019c4836479e06f940c83eebde1a47e40a",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/department.sql": "5b34cd9eae2685311c7a5eee131c63bfd73a494a0f2b2897b76d873ee49cc256",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/etl_source.sql": "c896147889e1354e9228915ce25a7dc21c3075c27546d5f270c1ee773df8fa8b",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/overview.sql": "6392f8076f5efcbafd66156bdec9680b02c7e7b6745f2a8fa6421e9d43ea23f7",
+    "sql-specs/HXZD-012-002/profiles/HXZD-012-002-company-default/patient_detail.sql": "1864c000ded62e00c900b35442464e019c4836479e06f940c83eebde1a47e40a",
+    "sql-specs/HXZD-012-002/runtime.json": "34b664334dc3de0c28730fad0500706dfb58b99f573fac3f319d59ce97b4b796",
+    "sql-specs/HXZD-012-002/sql-spec.md": "5e32ee662dc574f290aa53cc039aa2b308add0f1f5f8601d8c2322f08fac172c",
+    "sql-specs/HXZD-012-003/original/excel-original.md": "1457021012742d867849a4594e5835fc4c930962b9fdcd554cc69380e09b1298",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/department.sql": "75816894ad1b05cdd6f58378aaa3176f2499536d4bc334e5584560328920b48d",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/etl_source.sql": "8a1580104ddfc6a46d5db1bec387c5e3590ceb6d165c8bace8bf453f6b3879df",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/overview.sql": "2d6af99b9f49b83bc19b58808de7879c3b5336825e013c24fd4b348c42996e1b",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-candidate-01/patient_detail.sql": "9fda0b9a6440cde4e3f2eceebebff78312ce1144831b37546a8975153ec94b59",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/department.sql": "75816894ad1b05cdd6f58378aaa3176f2499536d4bc334e5584560328920b48d",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/etl_source.sql": "c896147889e1354e9228915ce25a7dc21c3075c27546d5f270c1ee773df8fa8b",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/overview.sql": "2d6af99b9f49b83bc19b58808de7879c3b5336825e013c24fd4b348c42996e1b",
+    "sql-specs/HXZD-012-003/profiles/HXZD-012-003-company-default/patient_detail.sql": "9fda0b9a6440cde4e3f2eceebebff78312ce1144831b37546a8975153ec94b59",
+    "sql-specs/HXZD-012-003/runtime.json": "bbe0e4e348b90a7231c1f988ec48739fbe4178c6adf202c895aadeb9bb073e23",
+    "sql-specs/HXZD-012-003/sql-spec.md": "46113ec709c6ba9340dcdc42dc33ababd3380b9c733aa5778327508409f057dd",
+    "sql-specs/HXZD-012-004/original/excel-original.md": "e63e16248440d40d81b2e39624dedc577095156b3b3a54833ab34341fc8c4409",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/department.sql": "3dcd9571dac75fb60ba0c9685f8832dd27d1903c38eade54383b0ac062f89be6",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/etl_source.sql": "8a1580104ddfc6a46d5db1bec387c5e3590ceb6d165c8bace8bf453f6b3879df",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/overview.sql": "704cc8d1b44d715321b554dac726517d4434c90b555da63fdfec653306742c90",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-candidate-01/patient_detail.sql": "bd7bd8a54edb3d0e62b3b362b52f1bfe0307e9f967d984ac82e0f85f4b034473",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/department.sql": "3dcd9571dac75fb60ba0c9685f8832dd27d1903c38eade54383b0ac062f89be6",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/etl_source.sql": "c896147889e1354e9228915ce25a7dc21c3075c27546d5f270c1ee773df8fa8b",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/overview.sql": "704cc8d1b44d715321b554dac726517d4434c90b555da63fdfec653306742c90",
+    "sql-specs/HXZD-012-004/profiles/HXZD-012-004-company-default/patient_detail.sql": "bd7bd8a54edb3d0e62b3b362b52f1bfe0307e9f967d984ac82e0f85f4b034473",
+    "sql-specs/HXZD-012-004/runtime.json": "aeb88f536f6f3cf5f0fba58f66c31f5b4ad8fd90469d40b188652667b9d5c4d2",
+    "sql-specs/HXZD-012-004/sql-spec.md": "458ea40faa92bc017cabba83b9a1d214af0ef06a0f887416949f24a737831eb2",
+    "sql-specs/HXZD-013-001/original/excel-original.md": "8adb93cce4b44045de4b8ddd9fa609fcbb8bc0b47551064ad9d6bf6e0f1d202c",
+    "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/department.sql": "957adbd05ac709b030063fcfddbf29093659828b7cada62599597c4840769e6a",
+    "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/overview.sql": "e213551a9ff6b286e35a26046deee3a02d318e95165c1d1ba79dcb7b113ba49a",
+    "sql-specs/HXZD-013-001/profiles/HXZD-013-001-company-default/patient_detail.sql": "72bba8463091c0392c31bf1875438686e4308c3415bd09a6f6f887ee91b0c4ae",
+    "sql-specs/HXZD-013-001/runtime.json": "67ae7f8b94e0c926662eb3bead26145e8524738cf728bd6abc5c947e039da6be",
+    "sql-specs/HXZD-013-001/sql-spec.md": "adb85cfa4ac3419932548c22093456197c9fecf9fcded5e6a34b9d888fe38a04",
+    "sql-specs/HXZD-014-001/original/excel-original.md": "74b957844e6b1a841b31d8e11b06281f591066708505ad56b9d4301091d76ae9",
+    "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/department.sql": "223aee1da5c6103d43fdbb8e4dc4a90bb36570d47bd0db99686f8560868dc506",
+    "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/etl_source.sql": "9fe4bf589e96c47d904bed57f3fa286d81813c0265621c09d196a97dace15edc",
+    "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/overview.sql": "de2a33d8a8dcf19aedee0593c6e8eab40e208b58e493015b65136db4470a6987",
+    "sql-specs/HXZD-014-001/profiles/HXZD-014-001-company-default/patient_detail.sql": "a1f306d645436a96884e17cbfc77365345ee00eef3a8b94ef5aca551b8da7819",
+    "sql-specs/HXZD-014-001/runtime.json": "37683fa4582685150d585e5c92f875bc1c237b2523793fe5525a9b160322f21f",
+    "sql-specs/HXZD-014-001/sql-spec.md": "b15e2d1f874f8bb28960ed1e0612af8ae3e75c4d7f409ac21f9cb63e4b947ce5",
+    "sql-specs/HXZD-014-002/original/excel-original.md": "6756cdf041f8c5aeef7b6cd19cabfd63e8d91ed672d31a466ed8cbc284a7dfbb",
+    "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/department.sql": "6a95234ef363f45108e6ae2fa047700b436a23a1bfe1b05081d246fb8ccdcbb9",
+    "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/etl_source.sql": "9fe4bf589e96c47d904bed57f3fa286d81813c0265621c09d196a97dace15edc",
+    "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/overview.sql": "098859dd26c77b9aea11172f930c7e5c1f69fb1eddc94b6aad2d12d818d64323",
+    "sql-specs/HXZD-014-002/profiles/HXZD-014-002-company-default/patient_detail.sql": "8f7a5051b797b30f5a4f13c2eb064f52773cab6bdad64ec0852e378c5674faf3",
+    "sql-specs/HXZD-014-002/runtime.json": "bf4837495240e936996ba6d1c95c5067238651ff5ea82f441e75ae9e8d35c5bc",
+    "sql-specs/HXZD-014-002/sql-spec.md": "44f98dc87eaaad7865c548d0cbbc25a10cf5dccbc97ce8c7a1cfdceb0bb64d8f",
+    "sql-specs/HXZD-015-001/original/excel-original.md": "526445e44f523caeedfb58f385017e96822814442c1da6e7a5c28c8128b21f9e",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/department.sql": "01f268f8edbb2053e79fa24e0b8d5b01fbeaf3e2fd7c4d8fc8ddc1779250d7f5",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/etl_source.sql": "372afdf6ad07571a26c80a8d7b5b45ced31841dd8d9a6b8488999b814707fab2",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/overview.sql": "94670397c81ac24fb4db1e8d60be39594626c72cd911528b80bdd50ce65de4e2",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-candidate-01/patient_detail.sql": "fcf8dc8d36d53d1efaf48d034e00b568196c390130522a73db946b67ca76c685",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/department.sql": "01f268f8edbb2053e79fa24e0b8d5b01fbeaf3e2fd7c4d8fc8ddc1779250d7f5",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/etl_source.sql": "8cb4ec3025052c148df303ff8985989e2b1af918197b6b3a2e5a778a04d88b8c",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/overview.sql": "94670397c81ac24fb4db1e8d60be39594626c72cd911528b80bdd50ce65de4e2",
+    "sql-specs/HXZD-015-001/profiles/HXZD-015-001-company-default/patient_detail.sql": "fcf8dc8d36d53d1efaf48d034e00b568196c390130522a73db946b67ca76c685",
+    "sql-specs/HXZD-015-001/runtime.json": "5be7a322504931e418f839272e25d5b5353c9e81d8cb510de90d1f16bcd488a7",
+    "sql-specs/HXZD-015-001/sql-spec.md": "3bf30ff5370955c843c886aeca0e3f7bb20e7a086c31c61d04a45bb48753280e",
+    "sql-specs/HXZD-016-001/original/excel-original.md": "ce5d64206d496df468c65c7bc3c312535265c0ef84a8b80ed62add8b9da6b3a4",
+    "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/department.sql": "fca703ae8180da807f101bfc8a0129d6ee9387ed9bf9833e700bb4517920aae3",
+    "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/etl_source.sql": "e8fa28b459278c1713fb74783b51f712be20ba175eab92b6ef8afa03d4c76c73",
+    "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/overview.sql": "1bac78def43a5ba16c775c7deadc2b6780c67f8629814545ffb44292d47dc5c9",
+    "sql-specs/HXZD-016-001/profiles/HXZD-016-001-company-default/patient_detail.sql": "306d2fbadb8dff37169ee3c8a24a7f1194d761be72d2d25a405d62c103466833",
+    "sql-specs/HXZD-016-001/runtime.json": "f9532f8124bd90187cb2f56632f86d0540cee9de1f348437c4441ba9502dfec5",
+    "sql-specs/HXZD-016-001/sql-spec.md": "16452ec3995cb228ee30b42a8c8443fedfb6341ac3b247f2e4239d8487ca918a",
+    "sql-specs/HXZD-016-002/original/excel-original.md": "3bc6c51f899ee111f83d1073efe72abbb87f63dcfff944629af43d7c3d7fe18d",
+    "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/department.sql": "fd590cda0fcfd4f2203c5b1cffd0f9e1372d7edbbdfd80501e5410a678578f67",
+    "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/overview.sql": "b57c24baa3fda217402106f82d1d1c1dcb539af398e56528873ac6d3a8f3b226",
+    "sql-specs/HXZD-016-002/profiles/HXZD-016-002-company-default/patient_detail.sql": "89367784481ab79e6e42a2287a8d6d33a9b1bb891226c3d027000eb954dbaf67",
+    "sql-specs/HXZD-016-002/runtime.json": "086317440d92aa70ba3bc337de12546e9f544b05df27f20ef6205de78427799e",
+    "sql-specs/HXZD-016-002/sql-spec.md": "0b999cb7c9b08238f92ab4c07ff5c4470cfe96611e19405777bf33079af54c7b",
+    "wiki/indicators/HXZD-001-001/index.md": "057e268273da00b6b6a2ad048eae6bc92d445c5dd8825a4925dfb35d86bd1e1c",
+    "wiki/indicators/HXZD-001-001/profiles/company-default.md": "5f9b762cc462ccc72eb4ed4394932ec1442ddefcbe6a57205f25b48be141bf86",
+    "wiki/indicators/HXZD-002-001/index.md": "2380869c16dfee4197022d0061948c25300c7faedc6be1152b1f3cf6edbe103a",
+    "wiki/indicators/HXZD-002-001/profiles/company-default.md": "33e9946447e3c88c0e0bbba7d44de94fa9f6569366a7cd3111f51e3066ba907d",
+    "wiki/indicators/HXZD-002-002/index.md": "e3f84458432ec378c5a1d62c4be22b1887ee959798141bd4729bd755f6f077e3",
+    "wiki/indicators/HXZD-002-002/profiles/company-default.md": "f6c529fedb19df78fb3f64d75069cafc25347e398dcf8c7ecdc0dec84041625e",
+    "wiki/indicators/HXZD-002-003/index.md": "a6f60fcaed48fc18c9139fe234c09dfcdd403575e56514eb88abc381768dafe0",
+    "wiki/indicators/HXZD-002-003/profiles/company-default.md": "9b583d2b7f7754b6bf63ec6b0b6740b3ba936503f50edd1f60aac5b28a29a28e",
+    "wiki/indicators/HXZD-003-001/index.md": "e0baa2b295445c5e47850d056f2b690ee783ff1492449731833cdf4f7c6aed5d",
+    "wiki/indicators/HXZD-003-001/profiles/company-default.md": "691e03f18222238c7ca28eaa5e8960872a3827f1f57849f8257906d0612d6fb7",
+    "wiki/indicators/HXZD-003-002/index.md": "9a17391b984e85e86e49e943854001dffb1ba4bfc894e8b9210767d82753fc21",
+    "wiki/indicators/HXZD-003-002/profiles/company-default.md": "15d73163355ad94cb4711f5c6b75d79e5bae988803f5e182168e79b584ac9ee0",
+    "wiki/indicators/HXZD-003-003/index.md": "ff39a4b4984d4b35ec9153e7e7a09f8e36ca0700560ec0e5a9fb64bc979c1f08",
+    "wiki/indicators/HXZD-003-003/profiles/company-candidate-01.md": "641fe4890456ac05626fefaa412d24ef324ced71d755962fb73e7c298cab4ef1",
+    "wiki/indicators/HXZD-003-003/profiles/company-default.md": "c15db2997e91d128849f7bcda2ff7cad7f6405d64a5377b95e81db7bd6df69ec",
+    "wiki/indicators/HXZD-003-004/index.md": "34fec0937c10cfafcd4901b68fdd681b783ae6cee44597f702c4dcd62748b3cd",
+    "wiki/indicators/HXZD-003-004/profiles/company-default.md": "e177304dbaee12db03b2610410859a28a70662b62f1606a85ac522855db4fcd7",
+    "wiki/indicators/HXZD-004-001/index.md": "d4c39d556a57b3002ea23687302d9aa3f45e3460624ccdb856a71eb8cb9652f6",
+    "wiki/indicators/HXZD-004-001/profiles/company-default.md": "4ed07c37be34463695717b37addb5ce3a3856b8f6db48754c600d60abe75a196",
+    "wiki/indicators/HXZD-005-001/index.md": "e9c41f40a16a784dad1c5dd7a5b9610e2b49005d07802c4ef40a57065846d219",
+    "wiki/indicators/HXZD-005-001/profiles/company-default.md": "5f09f32ab294b6b119496c6665663250203d50b00adecbc03e2f38910d2162d7",
+    "wiki/indicators/HXZD-006-001/index.md": "82bbc8de791363e298943438c67b667945727a3ba9c57bb985ce8b09d1c2c69f",
+    "wiki/indicators/HXZD-006-001/profiles/company-default.md": "7e08dab7ee54d84c4ad1a430ed35b0823885945db3cd419bc55fbaa6c4f6911c",
+    "wiki/indicators/HXZD-006-002/index.md": "f32e1460e1a5e350e918d01e27256e034f8ef024c6c9d8fc43096a8d7b1cb97b",
+    "wiki/indicators/HXZD-006-002/profiles/company-default.md": "0868bb9f443d3ce124fc6a51ec62afce935992b1b9a6ffdc3cdae8aac03a111e",
+    "wiki/indicators/HXZD-006-003/index.md": "f49e037b32870710c07ef26ab65713b450a4df2173bd4c8233cf8142d90fc197",
+    "wiki/indicators/HXZD-006-003/profiles/company-candidate-01.md": "a78ac3516c45e49004a69845d73708e43a449fa220041a7fe285d6a9f8005653",
+    "wiki/indicators/HXZD-006-003/profiles/company-default.md": "cdb8c7942de2ba7384836f9c43801a9eb5d95595d9e58c643e0052b810d106f8",
+    "wiki/indicators/HXZD-007-001/index.md": "8e1e1acaddf5ae724bb82ad3f3fb99cc5a8e61fa93d82ba24aabb8214bedc636",
+    "wiki/indicators/HXZD-007-001/profiles/company-default.md": "d5c2df2dc48abdae9846afc34c5c3e01219db0a961b52d177c02876654083325",
+    "wiki/indicators/HXZD-008-001/index.md": "1d2245428e4256cf8616e5972f0c4ae90298b2ea9e78475cab280d598c8772af",
+    "wiki/indicators/HXZD-008-001/profiles/company-default.md": "267b49430327dd6df6d2889682fc2c693c4c02b70b4a62c672d7adddbbd1d598",
+    "wiki/indicators/HXZD-008-002/index.md": "a59b53419579b6c52090b02d4357c44e09d3befdd7b38017fe93660f57dec8ec",
+    "wiki/indicators/HXZD-008-002/profiles/company-candidate-01.md": "943825405de5627f2faa1b45f3c0f6ae5f080f64301971be7e0f9c079b111c22",
+    "wiki/indicators/HXZD-008-002/profiles/company-default.md": "0f02d007dbdc92a251c452e3f6428cd96bf399f686c6d169f079686ee51fda4d",
+    "wiki/indicators/HXZD-008-003/index.md": "62573db8c709927d97b0c72fbcf78536fcc868a0243371dbe71b87430b58557f",
+    "wiki/indicators/HXZD-008-003/profiles/company-default.md": "66ba3fbb404c8504dd9461f680f9f34546138c9384ac561c02d36d3448682598",
+    "wiki/indicators/HXZD-008-004/index.md": "17364e076f39b6f79385d2f467135af178bb49559e8372f1ea124326329d5962",
+    "wiki/indicators/HXZD-008-004/profiles/company-default.md": "a77fe034adfa50cf09e8ad09b9aa1bd455c0203edd4beef2bba168eda4ecd0e8",
+    "wiki/indicators/HXZD-009-001/index.md": "749a2d4b11e86562042b52dfe640949fb58b5919abab41dcdd6791d5a4c9392c",
+    "wiki/indicators/HXZD-009-001/profiles/company-default.md": "392f2413fee191dcdeebe527d4eb4e56f50553ba086b2e6460cc1e6c65299bfd",
+    "wiki/indicators/HXZD-009-002/index.md": "ea633b27a0fc4bcf9a7d3d0c1efbeaf355608d5dd134452be3101c2cfb0b17ce",
+    "wiki/indicators/HXZD-009-002/profiles/company-candidate-01.md": "cdfd548011f1caa0db441fe3da7b5022b0b41a72cf861f1cac8b5f7d7b60ad0e",
+    "wiki/indicators/HXZD-009-002/profiles/company-default.md": "20a0129e3ed9ced7cbf42132b2b048c08eb8ca928cf6ebf2b2ee72bfb30044c4",
+    "wiki/indicators/HXZD-009-003/index.md": "3fe05c188623747afa1d0f461c4e6fc4c5f21c399b5822b1e5707aad64076aa6",
+    "wiki/indicators/HXZD-009-003/profiles/company-candidate-01.md": "ce97cc45668e776446c453afeacbb148e56d3ca728070a4ec02d7d34ac3991ed",
+    "wiki/indicators/HXZD-009-003/profiles/company-default.md": "ea5faaaa76aad2c8f616f8f3338d9fb87b08bd81c2b993ff14dc70514d98eebb",
+    "wiki/indicators/HXZD-009-004/index.md": "3a3c302b399b7a51ea90002a1acb7c2ee1fc6142d53f8e14d234bb49d8e715b1",
+    "wiki/indicators/HXZD-009-004/profiles/company-default.md": "de21e6cac2496454bb97244953c050327b9c6eb79019855e36fd4927fa1abbf4",
+    "wiki/indicators/HXZD-010-001/index.md": "6badd425667ad9ccd8727b90966cf0c597988e1c61dd6a96b74f28ecd72e2018",
+    "wiki/indicators/HXZD-010-001/profiles/company-default.md": "4e20164bb1bbfb44d394afb02e326fdbe4a140595b88fdf209f05d17a82b3265",
+    "wiki/indicators/HXZD-011-001/index.md": "15a7b6973ea09d7960ffee58a6fe73324f873faefa573ace33cdd8518dfe196a",
+    "wiki/indicators/HXZD-011-001/profiles/company-default.md": "54e3ba4606a7201a19934903f8bbcbafe4d50634368a74245184facc2477eab2",
+    "wiki/indicators/HXZD-011-002/index.md": "c0a9334fffd60970f6fa14cc24e0345bb07b681132eafd2b0b1651f7e47f143c",
+    "wiki/indicators/HXZD-011-002/profiles/company-default.md": "753102c3b5207b77048a5e399dabd596ec7a261952b0866e382ad75ad4bd923e",
+    "wiki/indicators/HXZD-012-001/index.md": "89801ade864d3dfa2242f1d0d2c8ae73a16c5d7b7cc286fa84e0780669f31dce",
+    "wiki/indicators/HXZD-012-001/profiles/company-candidate-01.md": "af5190b7a48ef4f064af39096bab82912083bb3353116d21684510297b625c7e",
+    "wiki/indicators/HXZD-012-001/profiles/company-default.md": "5b0af6a0bb8dfdd84eed2c2fbcfd4c1be038963f30b867e93de91f28ebe34f2a",
+    "wiki/indicators/HXZD-012-002/index.md": "b5b0701355328dafc5e45c5e26f6226f337c7484bad6bbef941d9edc93e27b9f",
+    "wiki/indicators/HXZD-012-002/profiles/company-candidate-01.md": "1388a3138cdc490e7b782c1954d421fa6628b9e54a738e3819aba36a935c240e",
+    "wiki/indicators/HXZD-012-002/profiles/company-default.md": "e576899ca1b666ac28bc07f5d75a5cca07b2ee67c452e66637d2e603a5d8a265",
+    "wiki/indicators/HXZD-012-003/index.md": "1c10850cd854b4a2ee6cfd4eebe698ca9d1ead3c44f5953162076c3b414666d5",
+    "wiki/indicators/HXZD-012-003/profiles/company-candidate-01.md": "396c727f0f6c18b68ac26ecafc19c666e5ab1f544176899362f9a8cb2a53ad24",
+    "wiki/indicators/HXZD-012-003/profiles/company-default.md": "dbe50255bd074dc7605ba618863c1bc5c3e413b6c479eb9e2d39c3d005b9a45c",
+    "wiki/indicators/HXZD-012-004/index.md": "4edb181b3bed23874753520b184904c19df9af509daa124f6deb9481dd9967fc",
+    "wiki/indicators/HXZD-012-004/profiles/company-candidate-01.md": "490511a5bbba34f327a6d69dc4c06bf4dc23e99e6831d5e96ea48fb6ca233987",
+    "wiki/indicators/HXZD-012-004/profiles/company-default.md": "bf07c77726511301005069424ce591471110cddc3e71ca4de5adfe64cbe6e90b",
+    "wiki/indicators/HXZD-013-001/index.md": "13f9a7bcb97c9f6fbda52e722a93277de223347e0a7fe919804288c2a96c6699",
+    "wiki/indicators/HXZD-013-001/profiles/company-default.md": "8a22932ea0999a472187a7dbf8423def55d21a35b62178cd6bd2a91f0c394904",
+    "wiki/indicators/HXZD-014-001/index.md": "212da3574b5a49fbae9995d12b915684302077f7f408965a20642290220637a3",
+    "wiki/indicators/HXZD-014-001/profiles/company-default.md": "268c532e8b7dc84b5707fab7bb5822b61505d26f058d5d0866ee0e758ae94a14",
+    "wiki/indicators/HXZD-014-002/index.md": "cf76175056ef9ae0731a6f0101fccd6e0c65c39ec7d0762b276405c29c78b9b9",
+    "wiki/indicators/HXZD-014-002/profiles/company-default.md": "3cef8529af32fa6c85df6ad15132e26efb66ab9ba8d49db0b6c2f9a8023836a6",
+    "wiki/indicators/HXZD-015-001/index.md": "bd0a2788771ca990493c205962c7edde6e96f952d4e34274a0423feee401dd6d",
+    "wiki/indicators/HXZD-015-001/profiles/company-candidate-01.md": "9c83613b99fe9fea9b0d985aedbf9d6ad8eecb3c33e1d5824ef13bc6011acaf6",
+    "wiki/indicators/HXZD-015-001/profiles/company-default.md": "4ca8cf1fa795ccd4169cdc8af69ceaf3b8575a4225a49a4a3310868ffcdc93db",
+    "wiki/indicators/HXZD-016-001/index.md": "12c091a8ddd9e9006149be4bfc1fb00d9b43433f51b1c0126380f8e403aa1dab",
+    "wiki/indicators/HXZD-016-001/profiles/company-default.md": "96f3d1503ad115f2bfc13dffa7f1c89551f571e4022603c8b8b1c22cead5c81d",
+    "wiki/indicators/HXZD-016-002/index.md": "924fe49c6b7995200ca023d6165ab9d9fe1247a94fac623730e74858d5d9c22d",
+    "wiki/indicators/HXZD-016-002/profiles/company-default.md": "98c098254b4733633c463374515dc72d671b395660431e03b2cbfef0d4b04240",
+    "wiki/systems/HXZD-001-首诊负责制度.md": "73f8eb9e74285981b5491e4332b2b4f8e96bd848794dc619794da5ccfef619aa",
+    "wiki/systems/HXZD-002-三级查房制度.md": "5c3f7b4db1d3cefceb81c4ddf7fa4e7554f8a9713b1807578134f49b89d333c8",
+    "wiki/systems/HXZD-003-会诊制度.md": "0762449a883e033e643272ff0e6d5d11f6691737e985d146d0af4530de5516a1",
+    "wiki/systems/HXZD-004-分级护理制度.md": "89f085b5bb3e594d97adcd1c4b377d8e07663be2d6ff8d21581ede6f6f90eda9",
+    "wiki/systems/HXZD-005-值班和交接班制度.md": "be8c3aa8789804c209b374f1c4d3e678c587c7167033fb234b3d92b056984e72",
+    "wiki/systems/HXZD-006-疑难病例讨论制度.md": "aeb7d1b0dda2e9d9664e00ad2a51456361e7e0791d24e56d894b98a9ab393b70",
+    "wiki/systems/HXZD-007-急危重患者抢救制度.md": "3e1ce4d1bb81d92f03dc59287344941a4082d93da6b6e0cd3a1d43fe73743a05",
+    "wiki/systems/HXZD-008-术前讨论制度.md": "1f8425f787c7ea769520d0248aac2a63ec5c62e09a9be041bab45433b9f82818",
+    "wiki/systems/HXZD-009-死亡病例讨论制度.md": "eab13127a2b40d40860a8fbb95a1ea00ec12edd3dfb7625140ff41dfab7cc076",
+    "wiki/systems/HXZD-010-查对制度.md": "9cd094ff7dce124e0eb27eddeb5df964427bd49469d3984ee9dd1d382292333c",
+    "wiki/systems/HXZD-011-手术安全核查制度.md": "0a1e3d62073e265d3f086910ac27bb09e37acdec027499548d8200e17af5eb27",
+    "wiki/systems/HXZD-012-手术分级管理制度.md": "d4cf94fdfc4f01d84132285ea9f04bc4e480eb3912739990a15e022d8d35f51d",
+    "wiki/systems/HXZD-013-新技术和新项目准入制度.md": "e2feb41dac7bece86ebfc4cd332c04a841955eb883584fbad5c07116c5a14a74",
+    "wiki/systems/HXZD-014-危急值报告制度.md": "79fd16b30347557f23f0c7fc13dc88de7be13c3087d145bcc7069551b7e39a34",
+    "wiki/systems/HXZD-015-抗菌药物分级管理制度.md": "4349ac9477c804b87f8a5fed2a61e248c30c634f62a25c1fb968f6e79f575919",
+    "wiki/systems/HXZD-016-临床用血审核制度.md": "06431f443a2ddfaff1df1f0a7b33383c4d8d3526ada0de07b48e7999a82c90e2"
+  },
+  "hospital_id": "hospital_001",
+  "base_release_id": "KB-20260726-7e71f92e431a",
+  "inherited_hospital_validation": [
+    {
+      "profile_id": "HXZD-001-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-002-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-002-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-002-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-003-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-003-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-003-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-003-003-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-003-004-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-004-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-005-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-006-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-006-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-006-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-007-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-008-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-008-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-008-002-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-008-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-008-004-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-002-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-003-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-009-004-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-010-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-011-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-011-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-001-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-002-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-003-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-003-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-004-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-012-004-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-013-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-014-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-014-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-015-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-015-001-company-candidate-01",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-016-001-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "source_extract",
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    },
+    {
+      "profile_id": "HXZD-016-002-company-default",
+      "from_release_id": "KB-20260727-HOSPITAL001-QA-DIAG-FIX9",
+      "capabilities": [
+        "overview",
+        "department_detail",
+        "patient_detail"
+      ]
+    }
+  ]
+}

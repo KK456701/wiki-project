@@ -47,57 +47,12 @@ public class IndicatorDiagnosisTools {
             return failure("validation_failed", "RULE_NOT_VERIFIED",
                     "该指标尚未经过规则搜索或读取，不能启动诊断。", false);
         }
-        if (input.profileId() != null) {
-            return diagnoseProfile(input, context);
-        }
-        List<Map<String, Object>> profiles = rules.caliberProfiles(
-                input.ruleId(), context.agentContext().hospitalId());
-        if (profiles.isEmpty()) {
-            return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
-                    "当前指标没有可诊断的已审批 Profile。", false);
-        }
-        List<Map<String, Object>> profileReports = new ArrayList<>();
-        for (Map<String, Object> profile : profiles) {
-            String profileId = text(profile.get("profile_id"));
-            String profileName = first(
-                    text(profile.get("profile_name")),
-                    text(profile.get("label")),
-                    profileId);
-            ToolResult result = diagnoseProfile(
-                    new Input(
-                            input.ruleId(), input.issueDescription(),
-                            input.statPeriod(), profileId),
-                    context);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("profile_id", profileId);
-            item.put("profile_name", profileName);
-            item.put("ok", result.ok());
-            item.put("code", result.code());
-            item.put("summary", result.summary());
-            item.put("report", result.data());
-            profileReports.add(item);
-        }
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("rule_id", input.ruleId());
-        data.put("approved_profile_count", profileReports.size());
-        data.put("profile_reports", profileReports);
-        data.put("summary", "已逐一诊断 " + profileReports.size() + " 个已审批 Profile。");
-        return ToolResult.success(
-                "INDICATOR_DIAGNOSED",
-                "指标全部已审批 Profile 诊断已完成。",
-                data);
-    }
-
-    private ToolResult diagnoseProfile(Input input, ToolExecutionContext context) {
-        context.runState().currentCaliber(input.profileId(), input.profileId());
-        Map<String, Object> rule = rules.effectiveRule(
-                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
-        Map<String, Object> mapping = rules.fieldMapping(
-                input.ruleId(), context.agentContext().hospitalId(), input.profileId());
+        Map<String, Object> rule = rules.effectiveRule(input.ruleId(), context.agentContext().hospitalId());
+        Map<String, Object> mapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
         List<Map<String, Object>> layers = new ArrayList<>();
 
         ToolResult implementation = sqlTools.inspect(
-                new IndicatorSqlTools.InspectInput(input.ruleId(), input.profileId()), context);
+                new IndicatorSqlTools.InspectInput(input.ruleId()), context);
         Map<String, Object> structure = structureLayer(implementation);
         layers.add(structure);
         if (!Boolean.TRUE.equals(structure.get("ok"))) {
@@ -129,8 +84,7 @@ public class IndicatorDiagnosisTools {
         }
         ToolResult prepared = sqlTools.prepare(
                 new IndicatorSqlTools.PrepareInput(
-                        input.ruleId(), period[0].toString(), period[1].toString(),
-                        input.profileId()),
+                        input.ruleId(), period[0].toString(), period[1].toString()),
                 context);
         if (!prepared.ok()) {
             return layer(3, "数据快照与双库诊断", false, List.of(
@@ -208,7 +162,6 @@ public class IndicatorDiagnosisTools {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("rule_id", input.ruleId());
-        data.put("profile_id", input.profileId());
         data.put("diagnose_status", status);
         data.put("report_id", reportId);
         data.put("summary", summary);
@@ -453,29 +406,14 @@ public class IndicatorDiagnosisTools {
         return value == null ? "" : value.toString();
     }
 
-    private static String first(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.strip();
-            }
-        }
-        return "";
-    }
-
-    public record Input(
-            String ruleId, String issueDescription, String statPeriod, String profileId) {
+    public record Input(String ruleId, String issueDescription, String statPeriod) {
         public Input {
             ruleId = ruleId == null ? "" : ruleId.strip();
             issueDescription = issueDescription == null ? "" : issueDescription.strip();
             statPeriod = statPeriod == null || statPeriod.isBlank() ? null : statPeriod.strip();
-            profileId = profileId == null || profileId.isBlank() ? null : profileId.strip();
             if (ruleId.isEmpty() || issueDescription.isEmpty() || issueDescription.length() > 1000) {
                 throw new IllegalArgumentException("诊断参数无效");
             }
-        }
-
-        public Input(String ruleId, String issueDescription, String statPeriod) {
-            this(ruleId, issueDescription, statPeriod, null);
         }
     }
 }

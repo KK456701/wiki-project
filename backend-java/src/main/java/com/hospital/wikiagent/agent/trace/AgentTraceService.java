@@ -333,28 +333,7 @@ public class AgentTraceService {
             String lane = first(text(node.get("subtask_id")), "root");
             lanes.computeIfAbsent(lane, ignored -> new ArrayList<>()).add(node);
         }
-        // 计算子泳道在 root 序列中桥接的区间（避免 root 内直连跳过子泳道）
-        List<Map<String, Object>> rootLane = lanes.getOrDefault("root", List.of());
-        java.util.Set<String> bridgedGaps = new java.util.HashSet<>();
-        for (Map.Entry<String, List<Map<String, Object>>> entry : lanes.entrySet()) {
-            if ("root".equals(entry.getKey()) || entry.getValue().isEmpty()) continue;
-            List<Map<String, Object>> subLane = entry.getValue();
-            long subFirst = longValue(subLane.get(0).get("sequence"), Long.MAX_VALUE);
-            long subLast = longValue(subLane.get(subLane.size() - 1).get("sequence"), Long.MAX_VALUE);
-            Map<String, Object> before = null;
-            Map<String, Object> after = null;
-            for (Map<String, Object> rn : rootLane) {
-                long seq = longValue(rn.get("sequence"), Long.MAX_VALUE);
-                if (seq < subFirst) before = rn;
-                if (seq > subLast && after == null) after = rn;
-            }
-            if (before != null && after != null) {
-                bridgedGaps.add(text(before.get("node_id")) + "→" + text(after.get("node_id")));
-            }
-        }
-        for (Map.Entry<String, List<Map<String, Object>>> entry : lanes.entrySet()) {
-            List<Map<String, Object>> lane = entry.getValue();
-            boolean isRoot = "root".equals(entry.getKey());
+        for (List<Map<String, Object>> lane : lanes.values()) {
             lane.sort(java.util.Comparator
                     .comparingLong((Map<String, Object> node) ->
                             longValue(node.get("sequence"), Long.MAX_VALUE))
@@ -370,35 +349,9 @@ public class AgentTraceService {
                 String from = text(source.get("node_id"));
                 String to = text(target.get("node_id"));
                 if (from == null || to == null) continue;
-                // root 泳道中被跨泳道桥接的区间不直连
-                if (isRoot && bridgedGaps.contains(from + "→" + to)) continue;
                 String edgeType = edgeType(source, target);
                 String label = occurrence > 1 ? "循环 " + occurrence : "";
                 addFlowEdge(result, pairs, from, to, edgeType, label);
-            }
-        }
-        // 跨泳道连接：将子任务泳道（如 batch:0）接入 root 主链
-        for (Map.Entry<String, List<Map<String, Object>>> entry : lanes.entrySet()) {
-            if ("root".equals(entry.getKey()) || entry.getValue().isEmpty()) continue;
-            List<Map<String, Object>> subLane = entry.getValue();
-            long subFirst = longValue(subLane.get(0).get("sequence"), Long.MAX_VALUE);
-            long subLast = longValue(subLane.get(subLane.size() - 1).get("sequence"), Long.MAX_VALUE);
-            Map<String, Object> before = null;
-            Map<String, Object> after = null;
-            for (Map<String, Object> rn : rootLane) {
-                long seq = longValue(rn.get("sequence"), Long.MAX_VALUE);
-                if (seq < subFirst) before = rn;
-                if (seq > subLast && after == null) after = rn;
-            }
-            if (before != null) {
-                addFlowEdge(result, pairs,
-                        text(before.get("node_id")), text(subLane.get(0).get("node_id")),
-                        "sequence", "");
-            }
-            if (after != null) {
-                addFlowEdge(result, pairs,
-                        text(subLane.get(subLane.size() - 1).get("node_id")),
-                        text(after.get("node_id")), "sequence", "");
             }
         }
         return List.copyOf(result);

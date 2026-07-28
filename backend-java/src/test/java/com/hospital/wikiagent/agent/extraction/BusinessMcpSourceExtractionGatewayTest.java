@@ -36,6 +36,54 @@ import com.hospital.wikiagent.sqlserver.RealDatabaseSafetyVerifier;
 class BusinessMcpSourceExtractionGatewayTest {
 
     @Test
+    void preciseJsonWrapperKeepsLeadingCteAtTopLevelAndAppliesHospitalScope() {
+        String sql = """
+                -- SELECT in a comment must not be treated as the final query
+                ;WITH source_rows AS (
+                    SELECT 'SELECT (ignored)' AS memo, hospitalSoid
+                    FROM dbo.source_table
+                )
+                SELECT hospitalSoid, memo FROM source_rows
+                """;
+
+        String wrapped = BusinessMcpSourceExtractionGateway.preciseJsonSql(
+                sql,
+                "[__wiki_profile_source].[hospitalSoid] = 991827");
+
+        assertThat(wrapped)
+                .startsWith("-- SELECT in a comment")
+                .contains("[__wiki_profile_source] AS (")
+                .contains("SELECT hospitalSoid, memo FROM source_rows")
+                .contains("FROM [__wiki_profile_source]"
+                        + " WHERE [__wiki_profile_source].[hospitalSoid] = 991827"
+                        + " FOR JSON PATH, INCLUDE_NULL_VALUES")
+                .doesNotContain("FROM (;WITH");
+    }
+
+    @Test
+    void preciseJsonWrapperStillUsesDerivedTableForOrdinarySelect() {
+        String wrapped = BusinessMcpSourceExtractionGateway.preciseJsonSql(
+                "SELECT hospitalSoid FROM dbo.source_table",
+                "[__wiki_profile_source].[hospitalSoid] = 991827");
+
+        assertThat(wrapped)
+                .contains("FROM (SELECT hospitalSoid FROM dbo.source_table)"
+                        + " AS [__wiki_profile_source]")
+                .contains("WHERE [__wiki_profile_source].[hospitalSoid] = 991827")
+                .contains("FOR JSON PATH, INCLUDE_NULL_VALUES");
+    }
+
+    @Test
+    void hospitalAliasKeepsExactCaseForCaseSensitiveSqlServer() {
+        assertThat(BusinessMcpSourceExtractionGateway.hospitalResultAlias(
+                "SELECT t.HOSPITAL_SOID AS hospitalSOID FROM sample t"))
+                .isEqualTo("hospitalSOID");
+        assertThat(BusinessMcpSourceExtractionGateway.hospitalResultAlias(
+                "SELECT t.HOSPITAL_SOID AS hospitalSoid FROM sample t"))
+                .isEqualTo("hospitalSoid");
+    }
+
+    @Test
     void mcpFailureNeverStartsDeleteTransactionOrUsesOldSnapshot() throws Exception {
         DbHubMcpClient dbHub = mock(DbHubMcpClient.class);
         DataSource dataSource = mock(DataSource.class);
@@ -95,7 +143,9 @@ class BusinessMcpSourceExtractionGatewayTest {
         BusinessMcpSourceExtractionGateway gateway =
                 gateway(dbHub, dataSource, verifier);
         SourceExtractionLease lease = gateway.prepare(request(contract()));
-        assertThat(lease.result().status()).isEqualTo(ExtractionResult.Status.SUCCESS);
+        assertThat(lease.result().status())
+                .withFailMessage(lease.result().toString())
+                .isEqualTo(ExtractionResult.Status.SUCCESS);
         assertThat(lease.result().extractedRows()).isZero();
         assertThat(lease.result().insertedRows()).isZero();
         lease.close();
@@ -125,7 +175,9 @@ class BusinessMcpSourceExtractionGatewayTest {
                 gateway(dbHub, dataSource, verifier);
         try (SourceExtractionLease lease = gateway.prepare(request(contract()))) {
             assertThat(lease.result().status()).isEqualTo(ExtractionResult.Status.FAILED);
-            assertThat(lease.result().errorCode()).isEqualTo("REAL_DB_INSERT_FAILED");
+            assertThat(lease.result().errorCode())
+                    .withFailMessage(lease.result().toString())
+                    .isEqualTo("REAL_DB_INSERT_FAILED");
             assertThat(lease.result().message()).contains("MRAS_BUSINESS_DEATH");
             assertThat(lease.result().allowsDualExecution()).isFalse();
         }
@@ -155,7 +207,9 @@ class BusinessMcpSourceExtractionGatewayTest {
         BusinessMcpSourceExtractionGateway gateway =
                 gateway(dbHub, dataSource, verifier);
         try (SourceExtractionLease lease = gateway.prepare(request(contract()))) {
-            assertThat(lease.result().status()).isEqualTo(ExtractionResult.Status.SUCCESS);
+            assertThat(lease.result().status())
+                    .withFailMessage(lease.result().toString())
+                    .isEqualTo(ExtractionResult.Status.SUCCESS);
         }
 
         verify(fixture.insertStatement())
@@ -182,7 +236,7 @@ class BusinessMcpSourceExtractionGatewayTest {
                 LocalDateTime.of(2026, 1, 1, 0, 0),
                 LocalDateTime.of(2026, 2, 1, 0, 0),
                 sourceSql, sha256(sourceSql), Map.of(), "winex_all_dev", "winex_aima",
-                "IDEMPOTENCY_1", contract, 1L);
+                "IDEMPOTENCY_1", 1L, contract);
     }
 
     private static BusinessMcpSourceExtractionGateway gateway(

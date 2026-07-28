@@ -45,10 +45,6 @@ public class BatchRequestDetector {
     /** 命中即视为口径/定义类问题，不进入批量试运行。 */
     private static final Pattern WANTS_DEFINITION = Pattern.compile(
             "定义|口径|公式|是什么|什么意思|怎么算|如何计算|解释|含义");
-    /** “按某口径计算”中的“口径”是 Profile 限定词，不是查询口径定义。 */
-    private static final Pattern PROFILE_SCOPED_RESULT = Pattern.compile(
-            "按.{1,80}(口径|profile).{0,20}(计算|试运行|算)",
-            Pattern.CASE_INSENSITIVE);
     private static final Pattern TIME_CHANGE = Pattern.compile(
             "修改时间|时间改成|统计时间|统计区间|时间范围|到现在|至今|本月|这个月|当月|"
                     + "上月|上个月|今年|去年|"
@@ -66,15 +62,7 @@ public class BatchRequestDetector {
             String query, QueryScopeState previous, String hospitalId) {
         List<Map<String, String>> indicators = rules == null
                 ? List.of() : rules.activeIndicatorNames(hospitalId, 500);
-        BatchRequestSpec detected = detect(query, previous, indicators);
-        if (!detected.batch() || detected.allActive() || rules == null) {
-            return detected;
-        }
-        List<Target> enriched = detected.targets().stream()
-                .map(target -> withExplicitProfile(query, hospitalId, target))
-                .toList();
-        return BatchRequestSpec.selected(
-                detected.rawQuery(), detected.timeText(), enriched);
+        return detect(query, previous, indicators);
     }
 
     /**
@@ -89,8 +77,7 @@ public class BatchRequestDetector {
             return BatchRequestSpec.notBatch();
         }
         String normalized = normalize(query);
-        if (WANTS_DEFINITION.matcher(normalized).find()
-                && !PROFILE_SCOPED_RESULT.matcher(normalized).find()) {
+        if (WANTS_DEFINITION.matcher(normalized).find()) {
             return BatchRequestSpec.notBatch();
         }
         boolean scopeAll = SCOPE_ALL.matcher(normalized).find();
@@ -111,16 +98,13 @@ public class BatchRequestDetector {
             if ("ALL".equals(previous.targetMode())) {
                 return BatchRequestSpec.allActive(query, query);
             }
-            if ("SUBSET".equals(previous.targetMode()) && previous.targets().size() >= 2) {
+            if (("SINGLE".equals(previous.targetMode())
+                        || "SUBSET".equals(previous.targetMode()))
+                    && !previous.targets().isEmpty()) {
                 List<Target> remembered = previous.targets().stream()
                         .map(value -> new Target(value.ruleId(), value.ruleName()))
                         .toList();
                 return BatchRequestSpec.selected(query, query, remembered);
-            }
-            if ("SINGLE".equals(previous.targetMode()) && previous.targets().size() == 1) {
-                var value = previous.targets().get(0);
-                return BatchRequestSpec.selected(
-                        query, query, List.of(new Target(value.ruleId(), value.ruleName())));
             }
         }
         if (!normalized.contains("指标")) {
@@ -141,36 +125,6 @@ public class BatchRequestDetector {
                 && WANTS_RESULT.matcher(normalized).find();
     }
 
-    /**
-     * 用户明确写出 Profile 编号或完整名称时缩小到该 Profile；否则保持空值，运行时展开
-     * 该指标的全部已审批 Profile。
-     */
-    public Target withExplicitProfile(String query, String hospitalId, Target target) {
-        if (rules == null || query == null || query.isBlank()) {
-            return target;
-        }
-        String normalized = normalize(query);
-        return rules.caliberProfiles(target.ruleId(), hospitalId).stream()
-                .map(profile -> new Target(
-                        target.ruleId(),
-                        target.ruleName(),
-                        text(profile.get("profile_id")),
-                        first(
-                                text(profile.get("profile_name")),
-                                text(profile.get("label")),
-                                text(profile.get("profile_id")))))
-                .filter(profile -> profile.profileId() != null
-                        && profile.profileName() != null)
-                .filter(profile -> normalized.contains(normalize(profile.profileId()))
-                        || normalized.contains(normalize(profile.profileName())))
-                .sorted(Comparator.comparingInt(
-                        profile -> -Math.max(
-                                profile.profileId().length(),
-                                profile.profileName().length())))
-                .findFirst()
-                .orElse(target);
-    }
-
     public boolean isBareAllScope(String query) {
         if (query == null || query.isBlank()) {
             return false;
@@ -182,6 +136,60 @@ public class BatchRequestDetector {
 
     public boolean isAllScope(String query) {
         return query != null && SCOPE_ALL.matcher(normalize(query)).find();
+    }
+
+    /**
+     * 返回请求中明确点名的已审批 Profile。完整 profile_id、正式名称，以及
+     * “默认/当前口径”都由服务端知识契约解析，不能把任意用户文本当成 Profile。
+     */
+    public Target explicitProfileTarget(
+            String query, String ruleId, String ruleName, String hospitalId) {
+        if (rules == null || query == null || query.isBlank()
+                || ruleId == null || ruleId.isBlank()) {
+            return null;
+        }
+        String normalized = normalize(query);
+        List<Map<String, Object>> profiles = rules.caliberProfiles(ruleId, hospitalId);
+        for (Map<String, Object> profile : profiles) {
+            String profileId = text(profile.get("profile_id"));
+            String profileLabel = first(
+                    text(profile.get("label")),
+                    text(profile.get("profile_name")),
+                    profileId);
+            if ((!profileId.isBlank()
+                        && normalized.toLowerCase().contains(
+                                normalize(profileId).toLowerCase()))
+                    || (!profileLabel.isBlank()
+                        && normalized.contains(normalize(profileLabel)))) {
+                return new Target(ruleId, ruleName, profileId, profileLabel);
+            }
+        }
+        if (normalized.contains("默认口径") || normalized.contains("当前口径")) {
+            Map<String, Object> effective = rules.effectiveRule(ruleId, hospitalId);
+            String profileId = text(effective.get("profile_id"));
+            if (!profileId.isBlank()) {
+                return new Target(
+                        ruleId,
+                        ruleName,
+                        profileId,
+                        first(
+                                text(effective.get("profile_name")),
+                                text(effective.get("label")),
+                                profileId));
+            }
+        }
+        return null;
+    }
+
+    /** 未明确 Profile 时，只有存在多个已审批 Profile 才需要展开为 Profile 批次。 */
+    public boolean requiresProfileExpansion(
+            String query, String ruleId, String ruleName, String hospitalId) {
+        if (rules == null || ruleId == null || ruleId.isBlank()) {
+            return false;
+        }
+        return rules.caliberProfiles(ruleId, hospitalId).size() > 1
+                && explicitProfileTarget(
+                        query, ruleId, ruleName, hospitalId) == null;
     }
 
     /** 返回当前医院全部活跃指标，供非计算类的 35 项确定性展开使用。 */
@@ -265,8 +273,7 @@ public class BatchRequestDetector {
     }
 
     private static String text(Object value) {
-        return value == null || String.valueOf(value).isBlank()
-                ? null : String.valueOf(value).strip();
+        return value == null ? "" : String.valueOf(value).strip();
     }
 
     private static String first(String... values) {

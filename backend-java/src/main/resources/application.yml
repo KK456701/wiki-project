@@ -58,9 +58,9 @@ wiki:
     evidence-ttl-days: 30
     evidence-jsonl-path: runtime/agent_evidence_java.jsonl
     extraction:
-      # 普通计算必须为 required：先抽取到真实库，再只查真实库。disabled 会拒绝计算，
-      # 不允许拿旧快照生成看似成功的结果。
+      # 普通计算必须显式切换为 required：先抽取，再只查询真实库。
       mode: ${AGENT_EXTRACTION_MODE:disabled}
+      # 医院范围只能由服务端环境变量提供，不能接收浏览器或模型覆盖。
       hospital-soid: ${WIKI_EXTRACTION_HOSPITAL_SOID:}
     upload:
       root: runtime/uploads
@@ -123,7 +123,7 @@ wiki:
         thinking: true
   sqlserver:
     # 默认关闭，避免启动时强制连接医院 SQL Server。
-    # 启用后只创建独立的 JDBC DataSource / JdbcTemplate / TransactionManager。
+    # 启用后会创建独立的 sqlServerDataSource / JdbcTemplate / TransactionManager。
     # 运行时主库仍使用上方 spring.datasource（SQLite）；业务只读默认仍走 DBHub。
     enabled: ${WIKI_SQLSERVER_ENABLED:false}
     url: ${WIKI_SQLSERVER_URL:}
@@ -131,7 +131,6 @@ wiki:
     password: ${WIKI_SQLSERVER_PASSWORD:}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
     schema: ${WIKI_SQLSERVER_SCHEMA:dbo}
-    expected-database: winex_aima
     hikari:
       maximum-pool-size: ${WIKI_SQLSERVER_MAX_POOL_SIZE:2}
       minimum-idle: ${WIKI_SQLSERVER_MIN_IDLE:1}
@@ -139,7 +138,7 @@ wiki:
   dbhub:
     api-url: ${DBHUB_API_URL:http://127.0.0.1:8080}
     mcp-url: ${DBHUB_MCP_URL:http://127.0.0.1:8080/mcp}
-    biz-mcp-url: ${DBHUB_BIZ_MCP_URL:http://172.16.9.73/mras-mcp-mdm/http/mcp}
+    biz-mcp-url: ${DBHUB_BIZ_MCP_URL:http://127.0.0.1:8080/mcp}
     timeout-seconds: ${DBHUB_TIMEOUT_SECONDS:120}
     sources:
       business:

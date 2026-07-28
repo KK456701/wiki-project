@@ -2,7 +2,6 @@ package com.hospital.wikiagent.sqlserver;
 
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -25,7 +24,7 @@ class RealDatabaseSafetyVerifierTest {
         assertThatIllegalStateException()
                 .isThrownBy(() -> new RealDatabaseSafetyVerifier(jdbc).verify())
                 .withMessage("REAL_DB_IDENTITY_MISMATCH");
-        verify(jdbc, never()).queryForList(anyString(), eq(String.class));
+        verify(jdbc, never()).queryForList(anyString());
     }
 
     @Test
@@ -39,7 +38,7 @@ class RealDatabaseSafetyVerifierTest {
             assertThatIllegalStateException()
                     .isThrownBy(() -> new RealDatabaseSafetyVerifier(jdbc).verify())
                     .withMessage("REAL_DB_PERMISSION_UNSAFE");
-            verify(jdbc, never()).queryForList(anyString(), eq(String.class));
+            verify(jdbc, never()).queryForList(anyString());
         }
     }
 
@@ -48,8 +47,8 @@ class RealDatabaseSafetyVerifierTest {
         JdbcTemplate incomplete = mock(JdbcTemplate.class);
         when(incomplete.queryForMap(anyString()))
                 .thenReturn(identity("winex_aima", "writer", 0));
-        when(incomplete.queryForList(anyString(), eq(String.class)))
-                .thenReturn(List.of("MRAS_BUSINESS_DEATH"));
+        when(incomplete.queryForList(anyString()))
+                .thenReturn(List.of(permission("MRAS_BUSINESS_DEATH", true)));
         assertThatIllegalStateException()
                 .isThrownBy(() -> new RealDatabaseSafetyVerifier(incomplete).verify())
                 .withMessage("REAL_DB_SCHEMA_INCOMPLETE");
@@ -57,13 +56,37 @@ class RealDatabaseSafetyVerifierTest {
         JdbcTemplate safe = mock(JdbcTemplate.class);
         when(safe.queryForMap(anyString()))
                 .thenReturn(identity("winex_aima", "writer", 0));
-        when(safe.queryForList(anyString(), eq(String.class)))
-                .thenReturn(List.copyOf(RealDatabaseSafetyPolicy.TABLES));
+        when(safe.queryForList(anyString()))
+                .thenReturn(RealDatabaseSafetyPolicy.TABLES.stream()
+                        .map(table -> permission(table, true))
+                        .toList());
         RealDatabaseSafetyVerifier verifier = new RealDatabaseSafetyVerifier(safe);
         verifier.verify();
         verifier.verify();
         verify(safe, times(1)).queryForMap(anyString());
-        verify(safe, times(1)).queryForList(anyString(), eq(String.class));
+        verify(safe, times(1)).queryForList(anyString());
+    }
+
+    @Test
+    void rejectsMissingRequiredOrAnyForbiddenTablePermission() {
+        for (boolean requiredPermissions : List.of(false, true)) {
+            JdbcTemplate jdbc = mock(JdbcTemplate.class);
+            when(jdbc.queryForMap(anyString()))
+                    .thenReturn(identity("winex_aima", "writer", 0));
+            when(jdbc.queryForList(anyString()))
+                    .thenReturn(RealDatabaseSafetyPolicy.TABLES.stream()
+                            .map(table -> permission(
+                                    table,
+                                    requiredPermissions
+                                            || !table.equals("MRAS_BUSINESS_DEATH"),
+                                    requiredPermissions
+                                            && table.equals("MRAS_BUSINESS_DEATH")))
+                            .toList());
+
+            assertThatIllegalStateException()
+                    .isThrownBy(() -> new RealDatabaseSafetyVerifier(jdbc).verify())
+                    .withMessage("REAL_DB_PERMISSION_UNSAFE");
+        }
     }
 
     private static Map<String, Object> identity(
@@ -71,6 +94,28 @@ class RealDatabaseSafetyVerifierTest {
         return Map.of(
                 "database_name", database,
                 "login_name", login,
-                "is_sysadmin", sysadmin);
+                "is_sysadmin", sysadmin,
+                "is_db_owner", 0,
+                "control_server", 0,
+                "control_database", 0,
+                "alter_database", 0,
+                "create_table", 0);
+    }
+
+    private static Map<String, Object> permission(
+            String table, boolean required) {
+        return permission(table, required, false);
+    }
+
+    private static Map<String, Object> permission(
+            String table, boolean required, boolean forbidden) {
+        return Map.of(
+                "table_name", table,
+                "can_select", required ? 1 : 0,
+                "can_insert", required ? 1 : 0,
+                "can_delete", required ? 1 : 0,
+                "can_update", forbidden ? 1 : 0,
+                "can_alter", 0,
+                "can_control", 0);
     }
 }

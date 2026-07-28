@@ -148,25 +148,12 @@
         "target_direction": "<="
       },
       "dual_database_contract": {
+        "schema_version": "dual-database-execution-contract-v1",
         "overview_result_mapping": {
           "index_value": "index_value",
           "component_left": "分子-四级手术患者死亡率",
           "component_right": "分母-三级手术患者死亡率"
         }
-      },
-      "data_lineage": {
-        "schema_version": "data-lineage-v1",
-        "event_no": "CORE_SUR_GRADE",
-        "event_name": "手术分级管理制度",
-        "source_main_table": "CLIBASIC_SURGERY, INPATIENT_EMR_SET, INP_SURGICAL_ANESTHESIA_PLAN, INP_SURGICAL_PLAN, MAHP_DMTS_MAIN, MRAS_PATIENT_EVENT, VALUE_SET",
-        "intermediate_table": "MRAS_BUSINESS_SUR_GRADE",
-        "reference_tables": [
-          "INPATIENT_ENCOUNTER",
-          "MRAS_ORGANIZATION"
-        ],
-        "data_affecting_tables": [],
-        "affects_calculation": false,
-        "data_source": "病案管理系统、住院医生站"
       }
     },
     {

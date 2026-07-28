@@ -28,6 +28,8 @@ import java.util.UUID;
 import java.util.HexFormat;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
 
@@ -68,6 +70,9 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
     private static final ObjectMapper PRECISE_JSON = new ObjectMapper();
     private static final TypeReference<List<LinkedHashMap<String, Object>>> PRECISE_ROWS =
             new TypeReference<>() { };
+    private static final Pattern HOSPITAL_RESULT_ALIAS = Pattern.compile(
+            "(?i)\\bAS\\s+(?:\\[\\s*)?(hospitalsoid)(?:\\s*\\])?"
+                    + "(?![A-Za-z0-9_])");
     private static final Set<String> PATIENT_TABLES = Set.of(
             "INP_CLI_ORDER",
             "INP_SURGICAL_ANESTHESIA_PLAN",
@@ -75,6 +80,14 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
             "INPATIENT_ENCOUNTER",
             "MRAS_INDEX_SURGREC",
             "MRAS_PATIENT_EVENT");
+    /*
+     * CORE_SURGERY 的现有受控抽取 SQL 会携带固定值
+     * MRAS_TARGET_DEFINITION_ID，但试运行库的 MRAS_BUSINESS_SURGERY
+     * 没有该列，概览 SQL 也不使用它。只兼容这一组已知表/字段；其余未登记
+     * 字段仍由 prepareTable 严格拒绝，不能借此扩大写入面。
+     */
+    private static final Map<String, Set<String>> IGNORED_EVENT_FIELDS = Map.of(
+            "MRAS_BUSINESS_SURGERY", Set.of("MRAS_TARGET_DEFINITION_ID"));
 
     private final DbHubMcpClient dbHub;
     private final DbHubProperties dbHubProperties;
@@ -165,6 +178,9 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
                     "EXTRACTION_CONTRACT_INVALID", "源数据抽取只能使用 winex_all_dev。");
         }
         Map<String, List<Map<String, Object>>> tables = new LinkedHashMap<>();
+        if (contract.route() == Route.TABLE_DOMAIN) {
+            return fetchTableDomain(request, contract);
+        }
         List<Map<String, Object>> eventRows = List.of();
         if (contract.route() == Route.EVENT) {
             eventRows = sourceRows(request);
@@ -173,6 +189,22 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
 
         Set<String> encounterIds = encounterIds(eventRows);
         for (String table : contract.dependencyTables()) {
+            if (isSurgeryDictionaryDependency(request.ruleId(), table)) {
+                /*
+                 * 四级/三级手术系列只会通过事件行的 SURGERY_ID 关联手术字典。
+                 * 复制整张 CLIBASIC_SURGERY 既无业务必要，又会让每个 Profile
+                 * 传输和写入数分钟；使用固定关联字段做白名单 ID 子集抽取。
+                 * 事件为空时返回空字典，不访问 MCP。
+                 */
+                tables.put(table, rowsByNumericIds(
+                        table,
+                        contract,
+                        request.hospitalSoid(),
+                        "CLIBASIC_SURGERY_ID",
+                        numericValues(eventRows, "SURGERY_ID"),
+                        ""));
+                continue;
+            }
             tables.put(table, dependencyRows(
                     table,
                     contract.allowedFields().get(table),
@@ -180,6 +212,153 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
                     request.hospitalSoid()));
         }
         return tables;
+    }
+
+    private static boolean isSurgeryDictionaryDependency(
+            String ruleId, String table) {
+        return ruleId != null
+                && ruleId.startsWith("HXZD-012-")
+                && "CLIBASIC_SURGERY".equals(table);
+    }
+
+    private Map<String, List<Map<String, Object>>> fetchTableDomain(
+            ExtractionRequest request,
+            ExtractionContract contract) {
+        return switch (request.ruleId()) {
+            case "HXZD-010-001" -> fetchLongTermOrderDomain(request, contract);
+            case "HXZD-013-001" -> fetchMedicalTechnologyDomain(request, contract);
+            default -> throw new ExtractionFailure(
+                    "EXTRACTION_CONTRACT_INVALID",
+                    "当前指标没有已登记的固定表域抽取能力。");
+        };
+    }
+
+    private Map<String, List<Map<String, Object>>> fetchLongTermOrderDomain(
+            ExtractionRequest request,
+            ExtractionContract contract) {
+        requireTableDomainTables(contract, Set.of(
+                "MRAS_TARGET_DEFINITION",
+                "INP_CLI_ORDER",
+                "INPATIENT_ENCOUNTER",
+                "ORGANIZATION"));
+        Map<String, List<Map<String, Object>>> tables = new LinkedHashMap<>();
+        tables.put("MRAS_TARGET_DEFINITION", fixedDomainRows(
+                "MRAS_TARGET_DEFINITION", contract, request.hospitalSoid(), ""));
+        String period = "[START_AT] >= " + sqlLiteral(request.statStart())
+                + " AND [START_AT] < " + sqlLiteral(request.statEnd());
+        List<Map<String, Object>> orders = fixedDomainRows(
+                "INP_CLI_ORDER", contract, request.hospitalSoid(), period);
+        tables.put("INP_CLI_ORDER", orders);
+        Set<String> encounterIds = numericValues(orders, "ENCOUNTER_ID");
+        tables.put("INPATIENT_ENCOUNTER", rowsByNumericIds(
+                "INPATIENT_ENCOUNTER", contract, request.hospitalSoid(),
+                "ENCOUNTER_ID", encounterIds, ""));
+        tables.put("ORGANIZATION", fixedDomainRows(
+                "ORGANIZATION", contract, request.hospitalSoid(), ""));
+        return tables;
+    }
+
+    private Map<String, List<Map<String, Object>>> fetchMedicalTechnologyDomain(
+            ExtractionRequest request,
+            ExtractionContract contract) {
+        requireTableDomainTables(contract, Set.of(
+                "MRAS_TARGET_DEFINITION",
+                "MRAS_MEDTECH_PRO",
+                "MRAS_MEDTECH_PROC"));
+        Map<String, List<Map<String, Object>>> tables = new LinkedHashMap<>();
+        tables.put("MRAS_TARGET_DEFINITION", fixedDomainRows(
+                "MRAS_TARGET_DEFINITION", contract, request.hospitalSoid(), ""));
+        String projectsInScope =
+                "DATEADD(YEAR, 2, [CREATED_AT]) >= " + sqlLiteral(request.statStart())
+                + " AND DATEADD(YEAR, 1, [CREATED_AT]) <= "
+                + sqlLiteral(request.statEnd());
+        List<Map<String, Object>> projects = fixedDomainRows(
+                "MRAS_MEDTECH_PRO", contract, request.hospitalSoid(), projectsInScope);
+        tables.put("MRAS_MEDTECH_PRO", projects);
+        Set<String> projectIds =
+                numericValues(projects, "MRAS_MEDTECH_PRO_ID");
+        String procedurePeriod =
+                "[CREATED_AT] >= " + sqlLiteral(request.statStart())
+                + " AND [CREATED_AT] < " + sqlLiteral(request.statEnd());
+        tables.put("MRAS_MEDTECH_PROC", rowsByNumericIds(
+                "MRAS_MEDTECH_PROC", contract, request.hospitalSoid(),
+                "MRAS_MEDTECH_PRO_ID", projectIds, procedurePeriod));
+        return tables;
+    }
+
+    private List<Map<String, Object>> fixedDomainRows(
+            String table,
+            ExtractionContract contract,
+            Long hospitalSoid,
+            String extraCondition) {
+        Set<String> allowedFields = contract.allowedFields().get(table);
+        if (allowedFields == null || allowedFields.isEmpty()) {
+            throw new ExtractionFailure(
+                    "EXTRACTION_CONTRACT_INVALID", table + " 缺少允许结果字段。");
+        }
+        return executePreciseSql(dependencySql(
+                sourceSchema(), table, allowedFields.stream().sorted().toList(),
+                hospitalSoid, extraCondition));
+    }
+
+    private List<Map<String, Object>> rowsByNumericIds(
+            String table,
+            ExtractionContract contract,
+            Long hospitalSoid,
+            String idColumn,
+            Set<String> ids,
+            String extraCondition) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Set<String> allowedFields = contract.allowedFields().get(table);
+        if (allowedFields == null || !allowedFields.contains(idColumn)) {
+            throw new ExtractionFailure(
+                    "EXTRACTION_CONTRACT_INVALID",
+                    table + " 缺少固定表域关联字段：" + idColumn);
+        }
+        List<String> values = ids.stream()
+                .map(BusinessMcpSourceExtractionGateway::numericId)
+                .toList();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (int offset = 0; offset < values.size(); offset += ENCOUNTER_ID_BATCH_SIZE) {
+            List<String> batch = values.subList(
+                    offset, Math.min(offset + ENCOUNTER_ID_BATCH_SIZE, values.size()));
+            String idsCondition = "[" + idColumn + "] IN ("
+                    + String.join(",", batch) + ")";
+            String condition = extraCondition == null || extraCondition.isBlank()
+                    ? idsCondition
+                    : idsCondition + " AND " + extraCondition;
+            rows.addAll(executePreciseSql(dependencySql(
+                    sourceSchema(), table, allowedFields.stream().sorted().toList(),
+                    hospitalSoid, condition)));
+        }
+        return rows;
+    }
+
+    private static Set<String> numericValues(
+            List<Map<String, Object>> rows, String column) {
+        Set<String> values = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            Object value = valueIgnoreCase(row, column);
+            if (value != null) {
+                values.add(numericId(String.valueOf(value)));
+            }
+        }
+        return values;
+    }
+
+    private static void requireTableDomainTables(
+            ExtractionContract contract, Set<String> expected) {
+        if (!new LinkedHashSet<>(contract.dependencyTables()).equals(expected)) {
+            throw new ExtractionFailure(
+                    "EXTRACTION_CONTRACT_INVALID",
+                    "固定表域抽取的目标表集合与已登记能力不一致。");
+        }
+    }
+
+    private static String sqlLiteral(LocalDateTime value) {
+        return "'" + SQL_TIME.format(value) + "'";
     }
 
     private List<Map<String, Object>> sourceRows(ExtractionRequest request) {
@@ -216,10 +395,23 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
             throw new ExtractionFailure(
                     "SOURCE_EXTRACT_SQL_INVALID", exception.getMessage());
         }
-        String hospitalScoped = "SELECT * FROM (" + bound
-                + ") AS [profile_source] WHERE [profile_source].[hospitalSoid] = "
-                + request.hospitalSoid();
-        return executePreciseSql(hospitalScoped);
+        String hospitalAlias = hospitalResultAlias(sourceSql);
+        return executePreciseSql(
+                bound,
+                "[__wiki_profile_source].[" + hospitalAlias + "] = "
+                        + request.hospitalSoid());
+    }
+
+    static String hospitalResultAlias(String sourceSql) {
+        Matcher matcher = HOSPITAL_RESULT_ALIAS.matcher(text(sourceSql));
+        if (!matcher.find()) {
+            throw new ExtractionFailure(
+                    "EXTRACTION_SCHEMA_MISMATCH",
+                    "抽取 SQL 缺少受控医院字段别名 hospitalSoid。");
+        }
+        // Group text preserves the exact alias case required by a case-sensitive
+        // SQL Server collation while the pattern constrains the identifier.
+        return matcher.group(1);
     }
 
     private List<Map<String, Object>> dependencyRows(
@@ -259,10 +451,13 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
     }
 
     private List<Map<String, Object>> executePreciseSql(String sql) {
+        return executePreciseSql(sql, "");
+    }
+
+    private List<Map<String, Object>> executePreciseSql(
+            String sql, String rowFilter) {
         String normalized = text(sql).replaceFirst(";\\s*$", "");
-        String preciseSql = "SELECT COALESCE((SELECT * FROM (" + normalized
-                + ") AS [precise_source] FOR JSON PATH, INCLUDE_NULL_VALUES), '[]')"
-                + " AS [json_payload]";
+        String preciseSql = preciseJsonSql(normalized, rowFilter);
         List<Map<String, Object>> envelope = dbHub.executeSql(
                 dbHubProperties.businessSource().getExecuteTool(), preciseSql);
         if (envelope.size() != 1) {
@@ -290,6 +485,124 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
                     "SOURCE_EXTRACTION_RESPONSE_INVALID",
                     "业务库抽取的精确结果载荷无法解析。");
         }
+    }
+
+    static String preciseJsonSql(String sql, String rowFilter) {
+        String normalized = text(sql).replaceFirst(";\\s*$", "");
+        if (normalized.isBlank()) {
+            throw new ExtractionFailure(
+                    "SOURCE_EXTRACT_SQL_INVALID", "抽取 SQL 不能为空。");
+        }
+        String filter = text(rowFilter);
+        int finalSelect = leadingCteFinalSelect(normalized);
+        if (finalSelect >= 0) {
+            String ctePrefix = normalized.substring(0, finalSelect).stripTrailing();
+            String finalQuery = normalized.substring(finalSelect).stripLeading();
+            return ctePrefix
+                    + ",\n[__wiki_profile_source] AS (\n"
+                    + finalQuery
+                    + "\n)\nSELECT COALESCE((SELECT * FROM [__wiki_profile_source]"
+                    + (filter.isBlank() ? "" : " WHERE " + filter)
+                    + " FOR JSON PATH, INCLUDE_NULL_VALUES), '[]')"
+                    + " AS [json_payload]";
+        }
+        return "SELECT COALESCE((SELECT * FROM (" + normalized
+                + ") AS [__wiki_profile_source]"
+                + (filter.isBlank() ? "" : " WHERE " + filter)
+                + " FOR JSON PATH, INCLUDE_NULL_VALUES), '[]')"
+                + " AS [json_payload]";
+    }
+
+    /**
+     * Returns the first top-level SELECT following a leading WITH clause.
+     * SQL comments, quoted strings and bracketed identifiers are ignored so a
+     * comment containing SELECT cannot alter the extraction query structure.
+     */
+    private static int leadingCteFinalSelect(String sql) {
+        int depth = 0;
+        boolean leadingTokenSeen = false;
+        boolean leadingWith = false;
+        for (int index = 0; index < sql.length();) {
+            char current = sql.charAt(index);
+            if (Character.isWhitespace(current) || (!leadingTokenSeen && current == ';')) {
+                index++;
+                continue;
+            }
+            if (current == '-' && index + 1 < sql.length()
+                    && sql.charAt(index + 1) == '-') {
+                int newline = sql.indexOf('\n', index + 2);
+                index = newline < 0 ? sql.length() : newline + 1;
+                continue;
+            }
+            if (current == '/' && index + 1 < sql.length()
+                    && sql.charAt(index + 1) == '*') {
+                int end = sql.indexOf("*/", index + 2);
+                index = end < 0 ? sql.length() : end + 2;
+                continue;
+            }
+            if (current == '\'') {
+                index = skipQuoted(sql, index, '\'');
+                continue;
+            }
+            if (current == '"') {
+                index = skipQuoted(sql, index, '"');
+                continue;
+            }
+            if (current == '[') {
+                int end = sql.indexOf(']', index + 1);
+                index = end < 0 ? sql.length() : end + 1;
+                continue;
+            }
+            if (current == '(') {
+                depth++;
+                index++;
+                continue;
+            }
+            if (current == ')') {
+                depth = Math.max(0, depth - 1);
+                index++;
+                continue;
+            }
+            if (Character.isLetter(current) || current == '_') {
+                int start = index++;
+                while (index < sql.length()) {
+                    char part = sql.charAt(index);
+                    if (!Character.isLetterOrDigit(part) && part != '_') {
+                        break;
+                    }
+                    index++;
+                }
+                String token = sql.substring(start, index);
+                if (!leadingTokenSeen) {
+                    leadingTokenSeen = true;
+                    leadingWith = "WITH".equalsIgnoreCase(token);
+                    if (!leadingWith) {
+                        return -1;
+                    }
+                } else if (leadingWith && depth == 0
+                        && "SELECT".equalsIgnoreCase(token)) {
+                    return start;
+                }
+                continue;
+            }
+            index++;
+        }
+        return -1;
+    }
+
+    private static int skipQuoted(String sql, int start, char quote) {
+        int index = start + 1;
+        while (index < sql.length()) {
+            if (sql.charAt(index) == quote) {
+                if (index + 1 < sql.length() && sql.charAt(index + 1) == quote) {
+                    index += 2;
+                    continue;
+                }
+                return index + 1;
+            }
+            index++;
+        }
+        return sql.length();
     }
 
     private static Object valueIgnoreCase(Map<String, Object> row, String key) {
@@ -388,12 +701,19 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
         }
         List<Map<String, Object>> normalized = new ArrayList<>(rows.size());
         LinkedHashSet<String> insertColumns = new LinkedHashSet<>();
+        Timestamp snapshotAuditAt = Timestamp.from(Instant.now());
         for (Map<String, Object> row : rows) {
             Map<String, Object> converted = new LinkedHashMap<>();
             for (Map.Entry<String, Object> entry : row.entrySet()) {
                 String column = snake(entry.getKey());
                 ColumnInfo info = columns.get(column);
                 if (!allowedFields.contains(column)) {
+                    if (eventTable
+                            && IGNORED_EVENT_FIELDS
+                                    .getOrDefault(table, Set.of())
+                                    .contains(column)) {
+                        continue;
+                    }
                     if (info == null && isBlankPlaceholder(entry.getValue())) {
                         continue;
                     }
@@ -425,6 +745,12 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
         for (ColumnInfo info : columns.values()) {
             if (!info.nullable() && !info.hasDefault() && !info.identity()) {
                 for (Map<String, Object> row : normalized) {
+                    if ((!row.containsKey(info.name()) || row.get(info.name()) == null)
+                            && allowedFields.contains(info.name())
+                            && isSnapshotAuditTimestamp(info)) {
+                        row.put(info.name(), snapshotAuditAt);
+                        insertColumns.add(info.name());
+                    }
                     if (!row.containsKey(info.name()) || row.get(info.name()) == null) {
                         throw new ExtractionFailure(
                                 "EXTRACTION_REQUIRED_COLUMN_MISSING",
@@ -437,6 +763,13 @@ public class BusinessMcpSourceExtractionGateway implements SourceExtractionGatew
                 .filter(insertColumns::contains)
                 .toList();
         return new PreparedTable(table, ordered, normalized);
+    }
+
+    private static boolean isSnapshotAuditTimestamp(ColumnInfo info) {
+        return Set.of("CREATED_AT", "MODIFIED_AT").contains(info.name())
+                && Set.of(
+                        "datetime", "datetime2", "smalldatetime",
+                        "datetimeoffset").contains(info.type());
     }
 
     private static boolean isBlankPlaceholder(Object value) {

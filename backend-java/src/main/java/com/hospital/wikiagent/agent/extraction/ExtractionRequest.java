@@ -6,8 +6,8 @@ import java.util.Map;
 /**
  * 传给医院源数据抽取适配器的不可变请求。
  *
- * <p>{@code sourceSql} 只能来自当前不可变知识发布包中的 Profile ETL 引用，并携带
- * 摘要供网关复核；浏览器、模型和公开 API 不能提交或覆盖该 SQL。</p>
+ * <p>{@code sourceSql} 必须来自当前发布的 Wiki，调用方不得接收模型或浏览器提交的
+ * SQL。具体 HTTP 协议由后续适配器转换，本领域对象不绑定同事接口的临时字段名。</p>
  */
 public record ExtractionRequest(
         String traceId,
@@ -25,8 +25,8 @@ public record ExtractionRequest(
         String businessSourceId,
         String realSourceId,
         String idempotencyKey,
-        Map<String, Object> extractionContract,
-        Long hospitalSoid) {
+        Long hospitalSoid,
+        Map<String, Object> extractionContract) {
 
     public ExtractionRequest {
         parameters = parameters == null ? Map.of() : Map.copyOf(parameters);

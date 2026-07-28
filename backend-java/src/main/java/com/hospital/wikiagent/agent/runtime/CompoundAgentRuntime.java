@@ -175,20 +175,30 @@ public class CompoundAgentRuntime {
                             "RULE:" + value.ruleId(), "all_active_scope", 1.0, 0, 0))
                     .toList();
         }
-        if (batchDetector != null && batchRuntime != null
-                && !resolvedIndicators.isEmpty()
+        boolean continuesCalculation = batchDetector != null
                 && (batchDetector.isTrialRunRequest(request.query())
                     || conversation.queryScope() != null
                         && conversation.queryScope().valid()
                         && "indicator_trial_run".equals(
-                                conversation.queryScope().operation()))) {
-            List<BatchRequestSpec.Target> targets = resolvedIndicators.stream()
-                    .map(value -> batchDetector.withExplicitProfile(
-                            request.query(),
-                            request.principal().hospitalId(),
-                            new BatchRequestSpec.Target(
-                                    value.ruleId(), value.canonicalName())))
-                    .toList();
+                                conversation.queryScope().operation()));
+        BatchRequestSpec.Target explicitSingleProfile =
+                batchDetector == null || resolvedIndicators.size() != 1
+                        ? null
+                        : batchDetector.explicitProfileTarget(
+                                request.query(),
+                                resolvedIndicators.get(0).ruleId(),
+                                resolvedIndicators.get(0).canonicalName(),
+                                request.principal().hospitalId());
+        if (batchDetector != null && batchRuntime != null
+                && !resolvedIndicators.isEmpty()
+                && continuesCalculation) {
+            List<BatchRequestSpec.Target> targets =
+                    explicitSingleProfile != null
+                            ? List.of(explicitSingleProfile)
+                            : resolvedIndicators.stream()
+                                    .map(value -> new BatchRequestSpec.Target(
+                                            value.ruleId(), value.canonicalName()))
+                                    .toList();
             return batchRuntime.run(
                     request, observer,
                     BatchRequestSpec.selected(

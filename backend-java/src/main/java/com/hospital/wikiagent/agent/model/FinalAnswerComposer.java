@@ -249,36 +249,6 @@ public class FinalAnswerComposer {
             return value.toString().strip();
         }
         if (!diagnosis.isEmpty()) {
-            List<Map<String, Object>> profileReports =
-                    listOfMaps(diagnosis.get("profile_reports"));
-            if (!profileReports.isEmpty()) {
-                StringBuilder value = new StringBuilder("# 指标多口径异常诊断\n\n")
-                        .append("已逐一诊断 ")
-                        .append(profileReports.size())
-                        .append(" 个已审批 Profile；每个 Profile 都独立经过数据准备、")
-                        .append("双库概览和可用明细检查。\n");
-                for (Map<String, Object> profile : profileReports) {
-                    Map<String, Object> report = objectMap(profile.get("report"));
-                    value.append("\n## ")
-                            .append(firstText(
-                                    profile.get("profile_name"),
-                                    profile.get("profile_id")))
-                            .append("\n\n");
-                    append(value, "Profile 编号", profile.get("profile_id"));
-                    append(value, "执行状态", profile.get("code"));
-                    append(value, "结论", firstText(
-                            report.get("user_summary"),
-                            report.get("summary"),
-                            profile.get("summary")));
-                    append(value, "抽取状态", report.get("extraction_status"));
-                    append(value, "数据新鲜度", report.get("data_freshness"));
-                    append(value, "运行号", report.get("run_id"));
-                    append(value, "诊断报告号", firstText(
-                            report.get("diagnosis_report_id"),
-                            report.get("report_id")));
-                }
-                return value.toString().strip();
-            }
             StringBuilder value = new StringBuilder("# 指标异常诊断\n\n")
                     .append("## 当前计算和口径\n\n");
             append(value, "统计区间", diagnosis.get("stat_period"));
@@ -481,16 +451,6 @@ public class FinalAnswerComposer {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         source.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
-    }
-
-    private static List<Map<String, Object>> listOfMaps(Object value) {
-        if (!(value instanceof List<?> values)) {
-            return List.of();
-        }
-        return values.stream()
-                .map(FinalAnswerComposer::objectMap)
-                .filter(item -> !item.isEmpty())
-                .toList();
     }
 
     private static String period(Map<String, Object> value) {
