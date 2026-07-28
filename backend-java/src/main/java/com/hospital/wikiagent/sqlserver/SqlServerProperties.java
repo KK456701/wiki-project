@@ -26,6 +26,11 @@ public class SqlServerProperties {
 
     private String schema = "dbo";
 
+    /**
+     * 期望连接的业务数据库名（用于启动校验）。
+     */
+    private String expectedDatabase = "";
+
     private Hikari hikari = new Hikari();
 
     public boolean isEnabled() {
@@ -74,6 +79,14 @@ public class SqlServerProperties {
 
     public void setSchema(String schema) {
         this.schema = schema;
+    }
+
+    public String getExpectedDatabase() {
+        return expectedDatabase;
+    }
+
+    public void setExpectedDatabase(String expectedDatabase) {
+        this.expectedDatabase = expectedDatabase;
     }
 
     public Hikari getHikari() {
