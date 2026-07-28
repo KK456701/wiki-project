@@ -53,7 +53,7 @@ class RealDatabaseSafetyPolicyTest {
 
         assertThat(yaml)
                 .contains(
-                        "enabled: ${WIKI_SQLSERVER_ENABLED:false}",
+                        "enabled: ${WIKI_SQLSERVER_ENABLED:true}",
                         "url: ${WIKI_SQLSERVER_URL:}",
                         "username: ${WIKI_SQLSERVER_USERNAME:}",
                         "password: ${WIKI_SQLSERVER_PASSWORD:}",
