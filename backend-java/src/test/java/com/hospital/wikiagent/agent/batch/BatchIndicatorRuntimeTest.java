@@ -34,6 +34,7 @@ import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
+import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
@@ -51,6 +52,7 @@ class BatchIndicatorRuntimeTest {
     private TimeRangeResolver timeResolver;
     private AgentConversationMemory conversations;
     private AgentModelProperties properties;
+    private MrasSqlExecutionService mrasExecution;
     private BatchIndicatorRuntime runtime;
 
     private final List<Map<String, Object>> events = new CopyOnWriteArrayList<>();
@@ -68,9 +70,10 @@ class BatchIndicatorRuntimeTest {
         properties = new AgentModelProperties();
         properties.setBatchWorkerConcurrency(2);
         properties.setBatchMaxIndicators(35);
+        mrasExecution = mock(MrasSqlExecutionService.class);
         runtime = new BatchIndicatorRuntime(
                 rules, executor, new BatchResultAggregator(), jobStore,
-                timeResolver, properties, conversations);
+                timeResolver, properties, conversations, mrasExecution);
 
         events.clear();
         active.set(0);

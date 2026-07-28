@@ -265,7 +265,8 @@ public class BatchRequestDetector {
                     + "至"
                     + previous.statEnd().replace(' ', 'T');
         }
-        return query;
+        // 没有明确时间词且无历史范围：返回 null 触发时间澄清
+        return null;
     }
 
     private static String normalize(String value) {

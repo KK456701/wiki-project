@@ -194,6 +194,8 @@ public class MrasSqlExecutionService {
             return ToolResult.failure("validation_failed", "MRAS_TEMPLATE_EMPTY",
                     "领导知识库 SQL 模板渲染结果为空。", false);
         }
+        // 知识库部分 SQL 文件有前导双引号（如 "SELECT），需剥离
+        renderedSql = stripLeadingTrailingQuotes(renderedSql);
 
         // 第二步：只读安全校验
         ReadOnlySqlValidator.ValidationResult validation =
@@ -220,14 +222,17 @@ public class MrasSqlExecutionService {
         try {
             rows = databaseQuery.execute(DatabaseRole.REAL, executableSql);
         } catch (DbHubMcpException exception) {
+            log.warn("领导知识库查询失败 {} {}: {}", indicatorCode, queryType, exception.getMessage());
             // 瞬态连接失败重试一次
             try {
                 rows = databaseQuery.execute(DatabaseRole.REAL, executableSql);
             } catch (RuntimeException retryException) {
+                log.error("领导知识库查询重试仍失败 {} {}: {}", indicatorCode, queryType, retryException.getMessage());
                 return ToolResult.failure("error", "MRAS_QUERY_FAILED",
                         "领导知识库查询执行失败（已重试）。", true);
             }
         } catch (RuntimeException exception) {
+            log.warn("领导知识库查询异常 {} {}: {}", indicatorCode, queryType, exception.getMessage());
             return ToolResult.failure("error", "MRAS_QUERY_FAILED",
                     "领导知识库查询执行失败。", true);
         }
@@ -359,5 +364,31 @@ public class MrasSqlExecutionService {
         } catch (NumberFormatException exception) {
             return null;
         }
+    }
+
+    /**
+     * 剥离 SQL 前后的引号。
+     * 知识库部分文件的 SQL 块以 "SELECT 或 '-- 或 'WITH 开头、以 '" 结尾，
+     * 这是 Markdown 格式问题，需要在执行前剥离。
+     */
+    private static String stripLeadingTrailingQuotes(String sql) {
+        String result = sql.strip();
+        // 剥离前导引号（可能是 " 或 ' 或 "' 组合）
+        while (result.startsWith("\"") || result.startsWith("'")) {
+            // 保留 "" 转义序列
+            if (result.startsWith("\"\"")) {
+                break;
+            }
+            result = result.substring(1);
+        }
+        // 剥离尾部引号（可能是 '" 或 " 或 '）
+        while (result.endsWith("\"") || result.endsWith("'")) {
+            // 保留 "" 转义序列
+            if (result.endsWith("\"\"")) {
+                break;
+            }
+            result = result.substring(0, result.length() - 1);
+        }
+        return result.strip();
     }
 }

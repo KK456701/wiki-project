@@ -1,5 +1,6 @@
 package com.hospital.wikiagent.agent.batch;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,12 +25,14 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationS
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeState;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
+import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.planning.PlanValidation.ResolvedTimeRange;
 import com.hospital.wikiagent.agent.planning.TimeRangeResolver;
 import com.hospital.wikiagent.agent.runtime.AgentRunObserver;
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.agent.runtime.AgentRunState;
+import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
 import com.hospital.wikiagent.contract.AgentClarification;
 import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
@@ -56,6 +59,7 @@ public class BatchIndicatorRuntime {
     private final TimeRangeResolver timeResolver;
     private final AgentModelProperties properties;
     private final AgentConversationMemory conversations;
+    private final MrasSqlExecutionService mrasExecution;
 
     public BatchIndicatorRuntime(
             WikiRuleKnowledgeSource rules,
@@ -64,7 +68,8 @@ public class BatchIndicatorRuntime {
             BatchJobStore jobStore,
             TimeRangeResolver timeResolver,
             AgentModelProperties properties,
-            AgentConversationMemory conversations) {
+            AgentConversationMemory conversations,
+            MrasSqlExecutionService mrasExecution) {
         this.rules = rules;
         this.executor = executor;
         this.aggregator = aggregator;
@@ -72,6 +77,7 @@ public class BatchIndicatorRuntime {
         this.timeResolver = timeResolver;
         this.properties = properties;
         this.conversations = conversations;
+        this.mrasExecution = mrasExecution;
     }
 
     public AgentRunResult run(
@@ -97,6 +103,13 @@ public class BatchIndicatorRuntime {
 
         // 公共时间一次性解析：解析失败则整批只澄清一次，不猜测。
         long timeStarted = System.currentTimeMillis();
+        // 用户未指定时间且无历史范围：直接澄清
+        if (spec.timeText() == null) {
+            emitTrace(observer, traceId, "batch_time_resolve", "failed", timeStarted,
+                    "root", Map.of("time_text", ""), Map.of(
+                            "error_code", "TIME_RANGE_AMBIGUOUS"));
+            return timeClarification(request, observer, conversation, traceId, spec);
+        }
         ResolvedTimeRange resolved =
                 timeResolver.resolve(new TimeExpression(spec.timeText(), null, null));
         if (resolved == null) {
@@ -235,15 +248,21 @@ public class BatchIndicatorRuntime {
                     long indicatorStarted = System.currentTimeMillis();
                     IndicatorExecutionResult result;
                     try {
-                        result = target.profileId() == null
-                                ? executor.execute(
-                                        ruleId, ruleName, subtaskId, timeText,
-                                        statStart, statEnd, context)
-                                : executor.execute(
-                                        ruleId, ruleName,
-                                        target.profileId(), target.profileLabel(),
-                                        target.eventNo(),
-                                        subtaskId, timeText, statStart, statEnd, context);
+                        // 优先走领导知识库 MRAS 执行路径
+                        if (mrasExecution != null && mrasExecution.supports(ruleId)) {
+                            result = executeViaMras(
+                                    ruleId, ruleName, target, statStart, statEnd);
+                        } else if (target.profileId() == null) {
+                            result = executor.execute(
+                                    ruleId, ruleName, subtaskId, timeText,
+                                    statStart, statEnd, context);
+                        } else {
+                            result = executor.execute(
+                                    ruleId, ruleName,
+                                    target.profileId(), target.profileLabel(),
+                                    target.eventNo(),
+                                    subtaskId, timeText, statStart, statEnd, context);
+                        }
                     } catch (RuntimeException exception) {
                         result = IndicatorExecutionResult.failed(
                                 ruleId, ruleName,
@@ -340,6 +359,56 @@ public class BatchIndicatorRuntime {
             }
         }
         return List.copyOf(targets);
+    }
+
+    /**
+     * 通过领导知识库 MrasSqlExecutionService 执行概览查询，转换为批量结果。
+     */
+    private IndicatorExecutionResult executeViaMras(
+            String ruleId, String ruleName,
+            ProfileExecutionTarget target,
+            String statStart, String statEnd) {
+        long started = System.currentTimeMillis();
+        LocalDateTime start = LocalDateTime.parse(statStart, TIME_FORMAT);
+        LocalDateTime end = LocalDateTime.parse(statEnd, TIME_FORMAT);
+        ToolResult toolResult = mrasExecution.executeOverview(
+                ruleId, start, end, null, null);
+        long durationMs = System.currentTimeMillis() - started;
+
+        if (!toolResult.ok()) {
+            return IndicatorExecutionResult.failed(
+                    ruleId, ruleName,
+                    target.profileId(), target.profileLabel(), target.eventNo(),
+                    toolResult.code(), toolResult.summary());
+        }
+
+        Map<String, Object> data = toolResult.data();
+        Boolean noSample = (Boolean) data.get("no_sample");
+        if (Boolean.TRUE.equals(noSample)) {
+            return new IndicatorExecutionResult(
+                    ruleId, ruleName, Status.NO_SAMPLE, null, 0L, 0L,
+                    null, "percentage", null, 0L, null, null,
+                    statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
+                    null, target.profileId(), target.profileLabel(), null, null,
+                    target.eventNo());
+        }
+
+        Number resultValue = (Number) data.get("result_value");
+        Long numerator = data.get("numerator_count") instanceof Number n
+                ? n.longValue() : null;
+        Long denominator = data.get("denominator_count") instanceof Number n
+                ? n.longValue() : null;
+        Object targetValue = data.get("target_value");
+
+        return new IndicatorExecutionResult(
+                ruleId, ruleName, Status.SUCCESS,
+                resultValue != null ? resultValue.doubleValue() : null,
+                numerator, denominator,
+                null, "percentage", null,
+                denominator, targetValue, null,
+                statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
+                null, target.profileId(), target.profileLabel(), null, null,
+                target.eventNo());
     }
 
     private static Map<String, Object> profileTraceInput(

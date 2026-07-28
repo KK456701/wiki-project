@@ -17,7 +17,8 @@ public record BatchRequestSpec(
     public BatchRequestSpec {
         scope = scope == null ? Scope.NONE : scope;
         rawQuery = rawQuery == null ? "" : rawQuery.strip();
-        timeText = timeText == null || timeText.isBlank() ? rawQuery : timeText.strip();
+        // timeText 为 null 表示用户未指定时间，需要触发澄清
+        timeText = timeText == null ? null : timeText.strip();
         targets = targets == null ? List.of() : List.copyOf(targets);
     }
 
