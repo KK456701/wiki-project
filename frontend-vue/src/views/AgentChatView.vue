@@ -5,6 +5,7 @@ import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
 import MarkdownMessage from '../components/MarkdownMessage.vue'
 import ClarificationChoices from '../components/ClarificationChoices.vue'
+import IndicatorResultCards from '../components/IndicatorResultCards.vue'
 import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
 import { useAgentStore } from '../stores/agent'
 import {
@@ -248,6 +249,11 @@ async function exportDiagnosis(reportId?: string) {
               :content="message.content || '正在读取规则与证据…'"
             />
             <div v-else class="message-content">{{ message.content }}</div>
+            <IndicatorResultCards
+              v-if="message.role === 'agent' && message.batchResults?.length"
+              :results="message.batchResults"
+              :token="store.token"
+            />
             <ClarificationChoices
               v-if="message.role === 'agent' && message.clarification"
               :clarification="message.clarification"

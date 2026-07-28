@@ -89,6 +89,11 @@ export interface AgentEvent {
   result_value?: number
   numerator_count?: number
   denominator_count?: number
+  unit?: string
+  calculation_display?: string
+  stat_start?: string
+  stat_end?: string
+  run_id?: string
   error_code?: string
   error_message?: string
 }
@@ -295,6 +300,44 @@ export interface IndicatorItem {
 export async function listIndicators(token: string): Promise<IndicatorItem[]> {
   const response = await fetch('/api/kb/rules/list', { headers: authHeaders(token) })
   return readJson<IndicatorItem[]>(response)
+}
+
+/** 指标当前生效口径（卡片「口径 / 核算方式」按钮数据源），字段为后端知识库原始键名 */
+export type EffectiveRule = Record<string, unknown>
+
+export async function fetchEffectiveRule(token: string, ruleId: string): Promise<EffectiveRule> {
+  const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/effective`, {
+    headers: authHeaders(token),
+  })
+  return readJson<EffectiveRule>(response)
+}
+
+export interface IndicatorDetailResult {
+  rule_id: string
+  rule_name?: string
+  group: 'numerator' | 'denominator'
+  stat_start: string
+  stat_end: string
+  row_count: number
+  rows: Record<string, unknown>[]
+  truncated?: boolean
+  sql_source: string
+  detail_sql?: string
+}
+
+/** 按指标 + 统计区间直接查询分子/分母患者明细（卡片「明细」按钮） */
+export async function fetchIndicatorDetails(
+  token: string,
+  ruleId: string,
+  group: 'numerator' | 'denominator',
+  start: string,
+  end: string,
+): Promise<IndicatorDetailResult> {
+  const query = new URLSearchParams({ group, start, end })
+  const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/details?${query}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<IndicatorDetailResult>(response)
 }
 
 export async function uploadIndicatorFile(token: string, file: File): Promise<UploadResult> {

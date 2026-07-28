@@ -76,6 +76,11 @@ export interface BatchIndicatorResult {
   resultValue?: number
   numeratorCount?: number
   denominatorCount?: number
+  unit?: string
+  calculationDisplay?: string
+  statStart?: string
+  statEnd?: string
+  runId?: string
   errorCode?: string
   errorMessage?: string
 }
@@ -495,6 +500,11 @@ export const useAgentStore = defineStore('agent', {
           resultValue: event.result_value,
           numeratorCount: event.numerator_count,
           denominatorCount: event.denominator_count,
+          unit: event.unit,
+          calculationDisplay: event.calculation_display,
+          statStart: event.stat_start,
+          statEnd: event.stat_end,
+          runId: event.run_id,
           errorCode: event.error_code,
           errorMessage: event.error_message,
         })

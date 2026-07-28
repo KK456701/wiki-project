@@ -646,6 +646,21 @@ public class BatchIndicatorRuntime {
         if (result.denominator() != null) {
             payload.put("denominator_count", result.denominator());
         }
+        if (result.unit() != null) {
+            payload.put("unit", result.unit());
+        }
+        if (result.calculationDisplay() != null) {
+            payload.put("calculation_display", result.calculationDisplay());
+        }
+        if (result.statStart() != null) {
+            payload.put("stat_start", result.statStart());
+        }
+        if (result.statEnd() != null) {
+            payload.put("stat_end", result.statEnd());
+        }
+        if (result.runId() != null) {
+            payload.put("run_id", result.runId());
+        }
         if (result.errorCode() != null) {
             payload.put("error_code", result.errorCode());
         }

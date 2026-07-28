@@ -174,6 +174,41 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .guided-submit:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 720px) { .guided-tasks, .guided-indicator-grid { grid-template-columns: 1fr; } }
 
+.indicator-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 14px; }
+.indicator-card { display: grid; gap: 10px; align-content: start; padding: 14px 16px; background: white; border: 1px solid var(--line); border-top: 4px solid var(--teal); }
+.indicator-card[data-status="FAILED"] { border-top-color: var(--danger); }
+.indicator-card[data-status="NO_SAMPLE"] { border-top-color: var(--amber); }
+.indicator-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.indicator-card-head strong { color: var(--teal-dark); font-size: 14px; line-height: 1.4; }
+.indicator-status { flex: none; padding: 2px 8px; font-size: 11px; color: var(--teal); background: #eef8f5; border: 1px solid #96c5bb; }
+.indicator-status[data-status="FAILED"] { color: var(--danger); background: #fbf0ee; border-color: #dcaba2; }
+.indicator-status[data-status="NO_SAMPLE"] { color: var(--amber); background: #fdf6ec; border-color: #e0c297; }
+.indicator-card-body { display: grid; gap: 4px; }
+.indicator-value { margin: 0; color: var(--ink); font: 800 26px/1.2 Bahnschrift, "Microsoft YaHei UI", sans-serif; }
+.indicator-counts, .indicator-calc, .indicator-range { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.indicator-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+.indicator-loading { margin: 0; color: var(--muted); font-size: 12px; }
+.indicator-card-actions { display: flex; gap: 8px; }
+.indicator-card-actions button { flex: 1; padding: 7px 0; font-size: 12px; color: var(--teal); background: white; border: 1px solid #a9c7c0; transition: background-color .15s ease, border-color .15s ease; }
+.indicator-card-actions button:hover { border-color: var(--teal); background: #eef8f5; }
+.indicator-card-actions button.active { color: white; background: var(--teal); border-color: var(--teal); }
+.indicator-panel { display: grid; gap: 10px; padding: 12px; background: #f8fbfa; border: 1px solid #c8d8d3; }
+.indicator-fields { display: grid; gap: 6px; margin: 0; }
+.indicator-fields dt { color: var(--teal-dark); font-size: 12px; font-weight: 700; }
+.indicator-fields dd { margin: 0 0 6px; color: var(--ink); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+.indicator-sql summary { color: var(--teal); font-size: 12px; cursor: pointer; }
+.indicator-sql pre { margin: 8px 0 0; padding: 10px; max-height: 260px; overflow: auto; color: #e8f3f1; background: var(--teal-dark); font-size: 11px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+.indicator-detail-groups { display: flex; gap: 8px; }
+.indicator-detail-groups button { padding: 5px 14px; font-size: 12px; color: var(--teal); background: white; border: 1px solid #a9c7c0; }
+.indicator-detail-groups button.active { color: white; background: var(--teal); border-color: var(--teal); }
+.indicator-detail-summary { margin: 0; color: var(--muted); font-size: 12px; }
+.indicator-detail-table { max-height: 320px; overflow: auto; border: 1px solid var(--line); background: white; }
+.indicator-detail-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.indicator-detail-table th { position: sticky; top: 0; padding: 6px 10px; color: white; background: var(--teal-dark); text-align: left; white-space: nowrap; }
+.indicator-detail-table td { padding: 5px 10px; border-bottom: 1px solid #e4eeeb; color: var(--ink); white-space: nowrap; }
+.indicator-detail-table tbody tr:hover { background: #eef8f5; }
+@media (max-width: 720px) { .indicator-cards { grid-template-columns: 1fr; } }
+
 .message { display: flex; gap: 14px; margin: 0 0 30px; }
 .message.is-user { flex-direction: row-reverse; }
 .message-avatar { flex: 0 0 42px; height: 42px; display: grid; place-items: center; background: var(--teal-dark); color: white; border-radius: 11px 11px 3px 11px; font: 800 13px Bahnschrift, sans-serif; }
