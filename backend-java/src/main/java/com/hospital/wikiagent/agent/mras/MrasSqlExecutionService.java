@@ -154,6 +154,40 @@ public class MrasSqlExecutionService {
     }
 
     /**
+     * 执行由小模型合成、已通过只读校验的分子/分母明细 SQL。
+     *
+     * <p>生成的 SQL 仍含 {@code :marptBeginAt/:marptEndAt} 命名参数，复用标准
+     * 执行链路（模板修正→剥引号→只读校验→参数绑定→DBHub 执行）。</p>
+     *
+     * @param indicatorCode 指标编码
+     * @param detailSql     合成后的明细 SQL（含命名时间参数）
+     * @param start         统计开始时间
+     * @param end           统计结束时间
+     * @param queryType     查询类型（denominator_detail / numerator_detail）
+     */
+    public ToolResult executeGeneratedDetail(
+            String indicatorCode,
+            String detailSql,
+            LocalDateTime start,
+            LocalDateTime end,
+            String queryType) {
+
+        if (detailSql == null || detailSql.isBlank()) {
+            return ToolResult.failure("unavailable", "MRAS_GENERATED_SQL_EMPTY",
+                    "合成的明细 SQL 为空。", false);
+        }
+        EntityPageData entity = entityPageParser.getEntity(indicatorCode);
+        String indicatorName = entity == null ? indicatorCode : entity.name();
+        String dimension = entity == null ? null : entity.dimension();
+
+        Map<String, Object> params = parameterMapper.mapParameters(
+                start, end, null, null);
+
+        return executeSql(
+                detailSql, params, indicatorCode, queryType, indicatorName, dimension);
+    }
+
+    /**
      * 获取指标的元数据上下文（定义、口径、数据来源、监测参数），供 LLM 解释用。
      */
     public Map<String, String> getExplanationContext(String indicatorCode) {
@@ -371,7 +405,7 @@ public class MrasSqlExecutionService {
      * 知识库部分文件的 SQL 块以 "SELECT 或 '-- 或 'WITH 开头、以 '" 结尾，
      * 这是 Markdown 格式问题，需要在执行前剥离。
      */
-    private static String stripLeadingTrailingQuotes(String sql) {
+    static String stripLeadingTrailingQuotes(String sql) {
         String result = sql.strip();
         // 剥离前导引号（可能是 " 或 ' 或 "' 组合）
         while (result.startsWith("\"") || result.startsWith("'")) {

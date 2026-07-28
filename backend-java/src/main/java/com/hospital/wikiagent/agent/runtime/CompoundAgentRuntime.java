@@ -27,6 +27,8 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeSta
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.model.AgentModelRegistry;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer.DetailSqlPair;
 import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SplitResult;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SubtaskSpec;
@@ -63,6 +65,7 @@ public class CompoundAgentRuntime {
     private final BatchRequestDetector batchDetector;
     private final BatchIndicatorRuntime batchRuntime;
     private final MrasSqlExecutionService mrasExecution;
+    private final MrasDetailSqlSynthesizer detailSynthesizer;
     private final ExecutorService executor = Executors.newFixedThreadPool(4, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -75,7 +78,7 @@ public class CompoundAgentRuntime {
             AgentModelRegistry models,
             AgentModelProperties properties,
             AgentConversationMemory conversations) {
-        this(runner, splitter, models, properties, conversations, null, null, null, null, null);
+        this(runner, splitter, models, properties, conversations, null, null, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -85,7 +88,7 @@ public class CompoundAgentRuntime {
             AgentModelProperties properties,
             AgentConversationMemory conversations,
             HybridIndicatorResolver indicatorResolver) {
-        this(runner, splitter, models, properties, conversations, indicatorResolver, null, null, null, null);
+        this(runner, splitter, models, properties, conversations, indicatorResolver, null, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -97,7 +100,7 @@ public class CompoundAgentRuntime {
             HybridIndicatorResolver indicatorResolver,
             ClarificationPromptFactory clarificationPrompts) {
         this(runner, splitter, models, properties, conversations, indicatorResolver,
-                clarificationPrompts, null, null, null);
+                clarificationPrompts, null, null, null, null);
     }
 
     @Autowired
@@ -111,7 +114,8 @@ public class CompoundAgentRuntime {
             ClarificationPromptFactory clarificationPrompts,
             BatchRequestDetector batchDetector,
             BatchIndicatorRuntime batchRuntime,
-            MrasSqlExecutionService mrasExecution) {
+            MrasSqlExecutionService mrasExecution,
+            MrasDetailSqlSynthesizer detailSynthesizer) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
@@ -122,6 +126,7 @@ public class CompoundAgentRuntime {
         this.batchDetector = batchDetector;
         this.batchRuntime = batchRuntime;
         this.mrasExecution = mrasExecution;
+        this.detailSynthesizer = detailSynthesizer;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -861,6 +866,15 @@ public class CompoundAgentRuntime {
         return DETAIL_REQUEST.matcher(compact).find();
     }
 
+    /** 明细请求是否针对分母：含「分母」→分母明细；其余（含「分子」或泛称）→分子明细。 */
+    private static boolean detailKindDenominator(String query) {
+        if (query == null || query.isBlank()) {
+            return false;
+        }
+        String compact = query.replaceAll("[\\s，,。；;？?!！]+", "");
+        return compact.contains("分母");
+    }
+
     @SuppressWarnings("unchecked")
     private AgentRunResult tryDetailView(
             AgentRunRequest request,
@@ -890,21 +904,38 @@ public class CompoundAgentRuntime {
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running", "session_id", conversation.sessionId()));
         long started = TraceEvents.started();
-        ToolResult result = mrasExecution.executePatientDetail(
-                ruleId, start, end, null, null);
+        boolean denominator = detailKindDenominator(request.query());
+        String queryType = denominator ? "denominator_detail" : "numerator_detail";
+        // 优先用小模型合成的分子/分母明细 SQL；合成或执行失败则回退领导知识库患者明细 SQL
+        ToolResult result = null;
+        if (detailSynthesizer != null) {
+            DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
+            if (pair != null) {
+                String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
+                ToolResult generated = mrasExecution.executeGeneratedDetail(
+                        ruleId, detailSql, start, end, queryType);
+                if (generated.ok()) {
+                    result = generated;
+                }
+            }
+        }
+        if (result == null) {
+            result = mrasExecution.executePatientDetail(ruleId, start, end, null, null);
+        }
         TraceEvents.completed(observer, traceId, "mras_patient_detail", "database",
                 started, "root", Map.of("rule_id", ruleId),
-                Map.of("ok", result.ok(), "code", result.code()));
+                Map.of("ok", result.ok(), "code", result.code(), "query_type", queryType));
+        String detailLabel = denominator ? "分母明细" : "分子明细";
         String answer;
         if (!result.ok()) {
-            answer = "查询患者明细失败：" + result.summary();
+            answer = "查询" + detailLabel + "失败：" + result.summary();
         } else {
             Object rowCount = result.data().get("row_count");
             int rows = rowCount instanceof Number number ? number.intValue() : 0;
             if (rows == 0) {
                 answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
                         + " 内，" + (ruleName == null ? ruleId : ruleName)
-                        + " 无样本数据，无法展示患者明细。";
+                        + " 无样本数据，无法展示" + detailLabel + "。";
             } else {
                 answer = formatDetailTable(result.data(), ruleName, rows);
             }
