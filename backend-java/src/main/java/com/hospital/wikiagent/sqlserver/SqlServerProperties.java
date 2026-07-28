@@ -31,7 +31,14 @@ public class SqlServerProperties {
      */
     private String expectedDatabase = "";
 
+    /**
+     * 业务 MCP 抽取所需的医院 SOID（当前按院方要求写死在配置中）。
+     */
+    private Long hospitalSoid;
+
     private Hikari hikari = new Hikari();
+
+    private Jpa jpa = new Jpa();
 
     public boolean isEnabled() {
         return enabled;
@@ -89,12 +96,28 @@ public class SqlServerProperties {
         this.expectedDatabase = expectedDatabase;
     }
 
+    public Long getHospitalSoid() {
+        return hospitalSoid;
+    }
+
+    public void setHospitalSoid(Long hospitalSoid) {
+        this.hospitalSoid = hospitalSoid;
+    }
+
     public Hikari getHikari() {
         return hikari;
     }
 
     public void setHikari(Hikari hikari) {
         this.hikari = hikari;
+    }
+
+    public Jpa getJpa() {
+        return jpa;
+    }
+
+    public void setJpa(Jpa jpa) {
+        this.jpa = jpa;
     }
 
     /**
@@ -127,6 +150,48 @@ public class SqlServerProperties {
 
         public void setConnectionTimeout(long connectionTimeout) {
             this.connectionTimeout = connectionTimeout;
+        }
+    }
+
+    /**
+     * SQL Server 专用 JPA/Hibernate 参数。
+     */
+    public static class Jpa {
+        private String ddlAuto = "none";
+        private boolean showSql = false;
+        private String databasePlatform = "org.hibernate.dialect.SQLServerDialect";
+        private boolean openInView = false;
+
+        public String getDdlAuto() {
+            return ddlAuto;
+        }
+
+        public void setDdlAuto(String ddlAuto) {
+            this.ddlAuto = ddlAuto;
+        }
+
+        public boolean isShowSql() {
+            return showSql;
+        }
+
+        public void setShowSql(boolean showSql) {
+            this.showSql = showSql;
+        }
+
+        public String getDatabasePlatform() {
+            return databasePlatform;
+        }
+
+        public void setDatabasePlatform(String databasePlatform) {
+            this.databasePlatform = databasePlatform;
+        }
+
+        public boolean isOpenInView() {
+            return openInView;
+        }
+
+        public void setOpenInView(boolean openInView) {
+            this.openInView = openInView;
         }
     }
 

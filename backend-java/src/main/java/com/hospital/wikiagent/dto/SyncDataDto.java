@@ -7,10 +7,10 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * 核心制度指标数据同步请求体，包含医院 SOID 及待写入的表数据列表。
+ * 数据同步请求 DTO：描述一次抽取任务所需的医院 SOID、事件表、业务表列表。
  *
- * <p>职责边界：仅作为 HTTP 接口的入参载体，不包含任何业务逻辑；
- * 字段校验由 Jakarta Validation 注解在控制器层完成。</p>
+ * <p>由 {@code SyncDataController} 接收外部 JSON 或由抽取网关内部构建，
+ * 传递给 {@code SyncDataService.syncEventData} 执行清库重写。</p>
  */
 @Data
 public class SyncDataDto {

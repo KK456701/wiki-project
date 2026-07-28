@@ -1,39 +1,29 @@
 package com.hospital.wikiagent.agent.extraction;
 
-import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.format.DateTimeFormatter;
+import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
+import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-
-import cn.hutool.core.lang.Snowflake;
-import cn.hutool.core.util.StrUtil;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-import com.hospital.wikiagent.dbhub.DbHubMcpClient;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
-import com.hospital.wikiagent.sqlserver.SqlServerProperties;
+import com.hospital.wikiagent.dto.SyncDataDto;
+import com.hospital.wikiagent.dto.TableDataDto;
+import com.hospital.wikiagent.service.SyncDataService;
 
 /**
- * 通过同事的业务 MCP（execCustomQuery）抽取数据并写入 winex_aima。
+ * 源数据抽取网关：将 {@link ExtractionRequest} 映射为 {@link SyncDataDto}，
+ * 转调同事的 {@link SyncDataService#syncEventData} 完成清库 + 抽取 + 写入 winex_aima。
  *
- * <p>替换原 BusinessMcpSourceExtractionGateway（走本地 DBHub MCP），改为调用
- * {@code biz-mcp-url} 配置的远程 MCP 服务。读取路径走同事的 MCP，写入路径仍然
- * 使用本地 SQL Server JDBC 直连。</p>
+ * <p>保留 {@link SourceExtractionGateway} 接口与上层 Workflow 调用结构不变，
+ * 内部不再自行调 MCP / 拼 INSERT，全部委托给 SyncDataService。</p>
  */
 @Component
 @ConditionalOnProperty(prefix = "wiki.agent.extraction", name = "mode", havingValue = "required")
@@ -41,32 +31,11 @@ import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
 
     private static final Logger log = LoggerFactory.getLogger(McpSyncSourceExtractionGateway.class);
-    private static final String TOOLS_NAME = "execCustomQuery";
-    private static final DateTimeFormatter SQL_TIME =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final int SQL_SERVER_MAX_PARAMS = 2000;
-    private static final int DEFAULT_INSERT_BATCH_ROWS = 200;
-    private static final int ENCOUNTER_ID_BATCH_SIZE = 500;
 
-    private final Snowflake snowflake = new Snowflake(1, 1);
+    private final SyncDataService syncDataService;
 
-    /** 患者维度表：按 ENCOUNTER_ID 过滤抽取。 */
-    private static final Set<String> PATIENT_TABLES = Set.of(
-            "INP_CLI_ORDER", "INP_SURGICAL_ANESTHESIA_PLAN",
-            "INPAT_TRANSFER", "INPATIENT_ENCOUNTER",
-            "MRAS_INDEX_SURGREC", "MRAS_PATIENT_EVENT");
-
-    private final DbHubMcpClient dbHubMcpClient;
-    private final SqlServerProperties sqlServerProperties;
-    private final JdbcTemplate sqlServerJdbcTemplate;
-
-    public McpSyncSourceExtractionGateway(
-            DbHubMcpClient dbHubMcpClient,
-            SqlServerProperties sqlServerProperties,
-            @Qualifier("sqlServerJdbcTemplate") JdbcTemplate sqlServerJdbcTemplate) {
-        this.dbHubMcpClient = dbHubMcpClient;
-        this.sqlServerProperties = sqlServerProperties;
-        this.sqlServerJdbcTemplate = sqlServerJdbcTemplate;
+    public McpSyncSourceExtractionGateway(SyncDataService syncDataService) {
+        this.syncDataService = syncDataService;
     }
 
     @Override
@@ -90,54 +59,54 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             String eventTable = text(contract.get("event_table"));
             List<String> dependencyTables = strings(contract.get("dependency_tables"));
 
-            String start = SQL_TIME.format(request.statStart());
-            String end = SQL_TIME.format(request.statEnd());
-
-            // ---- 第一步：抽取事件中间表 ----
-            long totalExtracted = 0;
-            long totalInserted = 0;
-
             String sourceSql = text(request.sourceSql());
-            if (!sourceSql.isBlank() && !eventTable.isBlank()) {
-                Map<String, Object> params = new LinkedHashMap<>();
-                params.put("startTime", start);
-                params.put("endTime", end);
+            if (sourceSql.isBlank() || eventTable.isBlank()) {
+                return SourceExtractionLease.completed(failed(
+                        extractionId, "EXTRACTION_SQL_MISSING",
+                        "抽取 SQL 或事件表名为空，无法执行。"));
+            }
 
-                log.info("[{}] 开始抽取事件表 {} ({} ~ {})", extractionId, eventTable, start, end);
-                List<Map<String, Object>> eventRows = callMcp(sourceSql, params, request.hospitalSoid());
-                totalExtracted += eventRows.size();
+            // ---- 构建 SyncDataDto，委托 SyncDataService 完成全部抽取 ----
+            SyncDataDto dto = new SyncDataDto();
+            dto.setHospitalSOID(request.hospitalSoid());
 
-                replaceTableData(eventTable, eventRows);
-                totalInserted += eventRows.size();
-                log.info("[{}] 事件表 {} 写入完成: {} 行", extractionId, eventTable, eventRows.size());
+            // eventDataList：核心制度事件表（sourceSql + 时间范围）
+            TableDataDto eventData = new TableDataDto();
+            eventData.setTable(eventTable);
+            eventData.setSqlScript(sourceSql);
+            eventData.setStartTime(toDate(request.statStart()));
+            eventData.setEndTime(toDate(request.statEnd()));
+            dto.setEventDataList(List.of(eventData));
 
-                // ---- 第二步：收集 ENCOUNTER_ID ----
-                Set<String> encounterIds = collectEncounterIds(eventRows);
-
-                // ---- 第三步：抽取依赖表 ----
+            // bizDataList：依赖表（基础表 / 患者表由 SyncDataService 内部判断）
+            if (!dependencyTables.isEmpty()) {
+                List<TableDataDto> bizList = new ArrayList<>();
                 for (String depTable : dependencyTables) {
                     if (depTable.equalsIgnoreCase(eventTable)) {
-                        continue; // 事件表已处理
+                        continue;
                     }
-                    List<Map<String, Object>> depRows = fetchDependencyTable(
-                            depTable, encounterIds, request.hospitalSoid());
-                    totalExtracted += depRows.size();
-
-                    replaceTableData(depTable, depRows);
-                    totalInserted += depRows.size();
-                    log.info("[{}] 依赖表 {} 写入完成: {} 行", extractionId, depTable, depRows.size());
+                    TableDataDto biz = new TableDataDto();
+                    biz.setTable(depTable);
+                    bizList.add(biz);
                 }
+                dto.setBizDataList(bizList);
             }
+
+            log.info("[{}] 开始抽取: eventTable={}, bizTables={} ({} ~ {})",
+                    extractionId, eventTable, dependencyTables,
+                    request.statStart(), request.statEnd());
+
+            syncDataService.syncEventData(dto);
 
             ExtractionResult result = new ExtractionResult(
                     extractionId,
                     ExtractionResult.Status.SUCCESS,
-                    totalExtracted, totalInserted, 0, 0,
+                    0, 0, 0, 0,
                     Instant.now(),
                     request.idempotencyKey(),
                     "SNAP_" + UUID.randomUUID().toString().replace("-", ""),
                     "",
-                    "已通过业务 MCP 刷新真实库快照。");
+                    "已通过 SyncDataService 刷新真实库快照。");
             return SourceExtractionLease.completed(result);
 
         } catch (Exception exception) {
@@ -149,250 +118,13 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
         }
     }
 
-    // ==================== MCP 调用 ====================
-
-    private List<Map<String, Object>> callMcp(
-            String sqlScript, Map<String, Object> params, Long hospitalSOID) {
-        var result = dbHubMcpClient.callTool(TOOLS_NAME, sqlScript, params, hospitalSOID);
-        List<Map<String, Object>> rows = DbHubMcpClient.extractRowsV2(result);
-        return rows == null ? List.of() : rows;
-    }
-
-    private List<Map<String, Object>> fetchDependencyTable(
-            String table, Set<String> encounterIds, Long hospitalSOID) {
-        if (PATIENT_TABLES.contains(table.toUpperCase(Locale.ROOT))) {
-            if (encounterIds.isEmpty()) {
-                log.info("依赖表 {} 是患者表但无 ENCOUNTER_ID，跳过", table);
-                return List.of();
-            }
-            List<String> ids = new ArrayList<>(encounterIds);
-            List<Map<String, Object>> allRows = new ArrayList<>();
-            for (int offset = 0; offset < ids.size(); offset += ENCOUNTER_ID_BATCH_SIZE) {
-                List<String> batch = ids.subList(
-                        offset, Math.min(offset + ENCOUNTER_ID_BATCH_SIZE, ids.size()));
-                String inClause = batch.stream()
-                        .map(this::numericId)
-                        .collect(Collectors.joining(","));
-                String sql = "SELECT * FROM " + table
-                        + " WHERE ENCOUNTER_ID IN (" + inClause + ")";
-                allRows.addAll(callMcp(sql, Map.of(), hospitalSOID));
-            }
-            return allRows;
-        }
-        // 基础表：全量抽取
-        String sql = "SELECT * FROM " + table + " WHERE IS_DEL = 0";
-        try {
-            return callMcp(sql, Map.of(), hospitalSOID);
-        } catch (Exception e) {
-            // IS_DEL 列可能不存在，回退到全量
-            log.warn("表 {} 使用 IS_DEL 过滤失败，回退全量抽取: {}", table, e.getMessage());
-            return callMcp("SELECT * FROM " + table, Map.of(), hospitalSOID);
-        }
-    }
-
-    // ==================== 数据写入（逻辑同 SyncDataService） ====================
-
-    private void replaceTableData(String tableName, List<Map<String, Object>> rows) {
-        String qualified = qualifyTable(tableName);
-        sqlServerJdbcTemplate.update("DELETE FROM " + qualified);
-        log.info("已清空表 {}", qualified);
-
-        if (rows == null || rows.isEmpty()) {
-            return;
-        }
-        // 生成主键列（表名_ID），用 Snowflake 填充（同 SyncDataService 逻辑）
-        String pkColumn = tableName.toUpperCase(Locale.ROOT) + "_ID";
-        List<Map<String, Object>> converted = rows.stream()
-                .map(row -> {
-                    Map<String, Object> newRow = convertKeysToUpperSnakeCase(row);
-                    newRow.put(pkColumn, snowflake.nextId());
-                    return newRow;
-                })
-                .collect(Collectors.toList());
-        insertRows(tableName, converted);
-    }
-
-    /** 按目标表实际列插入（同 SyncDataService.insertRows）。 */
-    private void insertRows(String tableName, List<Map<String, Object>> rows) {
-        List<String> columns = resolveLocalColumns(tableName);
-        if (columns.isEmpty()) {
-            log.warn("表 {} 无法解析列，跳过插入", tableName);
-            return;
-        }
-        if (rows == null || rows.isEmpty()) {
-            return;
-        }
-
-        // 查找 NOT NULL 且无默认约束的列（MCP 数据可能不包含这些列，如 CREATED_AT）
-        Set<String> noDefaultNotNull = getNotNullNoDefaultColumns(tableName);
-
-        // 将每行规范化为目标表全列（缺失的填 null → DEFAULT）
-        List<Map<String, Object>> normalizedRows = new ArrayList<>(rows.size());
-        for (Map<String, Object> row : rows) {
-            if (row == null || row.isEmpty()) {
-                continue;
-            }
-            Map<String, Object> upperRow = new HashMap<>(row.size());
-            for (Map.Entry<String, Object> entry : row.entrySet()) {
-                if (entry.getKey() != null) {
-                    upperRow.put(entry.getKey().toUpperCase(Locale.ROOT), entry.getValue());
-                }
-            }
-            Map<String, Object> fullRow = new LinkedHashMap<>(columns.size());
-            for (String column : columns) {
-                Object val = upperRow.get(column);
-                if (val == null && noDefaultNotNull.contains(column)) {
-                    // NOT NULL 无默认值的列：自动填充当前时间（审计列）
-                    val = Timestamp.from(Instant.now());
-                }
-                fullRow.put(column, val);
-            }
-            normalizedRows.add(fullRow);
-        }
-        if (normalizedRows.isEmpty()) {
-            return;
-        }
-        batchInsert(qualifyTable(tableName), columns, normalizedRows);
-        log.info("插入 {} 行到 {}", normalizedRows.size(), tableName);
-    }
-
-    /** 批量 INSERT，null 值用 DEFAULT（同 SyncDataService.batchInsert）。 */
-    private void batchInsert(String qualifiedTable, List<String> columns, List<Map<String, Object>> rows) {
-        int maxRowsPerBatch = Math.max(1, Math.min(
-                DEFAULT_INSERT_BATCH_ROWS,
-                SQL_SERVER_MAX_PARAMS / columns.size()));
-        String columnList = String.join(",", columns);
-
-        for (int from = 0; from < rows.size(); from += maxRowsPerBatch) {
-            int to = Math.min(from + maxRowsPerBatch, rows.size());
-            List<Map<String, Object>> batch = rows.subList(from, to);
-
-            List<Object> params = new ArrayList<>(batch.size() * columns.size());
-            List<String> valueGroups = new ArrayList<>(batch.size());
-            for (Map<String, Object> row : batch) {
-                List<String> placeholders = new ArrayList<>(columns.size());
-                for (String column : columns) {
-                    Object value = row.get(column);
-                    if (value == null) {
-                        placeholders.add("DEFAULT");
-                    } else {
-                        placeholders.add("?");
-                        params.add(value);
-                    }
-                }
-                valueGroups.add("(" + String.join(",", placeholders) + ")");
-            }
-
-            String sql = "INSERT INTO " + qualifiedTable + " (" + columnList + ") VALUES "
-                    + String.join(",", valueGroups);
-            sqlServerJdbcTemplate.update(sql, params.toArray());
-        }
-    }
-
-    /** 解析目标表实际列名（大写，按序号排列），带缓存。 */
-    private final Map<String, List<String>> localColumnCache = new HashMap<>();
-    /** NOT NULL 且无默认约束的列缓存。 */
-    private final Map<String, Set<String>> notNullNoDefaultCache = new HashMap<>();
-
-    private List<String> resolveLocalColumns(String tableName) {
-        String cacheKey = tableName == null ? "" : tableName.toUpperCase(Locale.ROOT);
-        if (localColumnCache.containsKey(cacheKey)) {
-            return localColumnCache.get(cacheKey);
-        }
-        List<String> columns = new ArrayList<>();
-        try {
-            String schema = resolveSchema();
-            List<String> names = sqlServerJdbcTemplate.queryForList(
-                    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
-                            + "WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION",
-                    String.class, schema, tableName);
-            for (String name : names) {
-                if (name != null && !name.isBlank()) {
-                    columns.add(name.toUpperCase(Locale.ROOT));
-                }
-            }
-        } catch (Exception e) {
-            log.warn("解析表 {} 列失败: {}", tableName, e.getMessage());
-        }
-        localColumnCache.put(cacheKey, columns);
-        return columns;
-    }
-
-    /** 查询 NOT NULL 且无 DEFAULT 约束的列（排除 IDENTITY），这些列必须显式提供值。 */
-    private Set<String> getNotNullNoDefaultColumns(String tableName) {
-        String cacheKey = tableName == null ? "" : tableName.toUpperCase(Locale.ROOT);
-        if (notNullNoDefaultCache.containsKey(cacheKey)) {
-            return notNullNoDefaultCache.get(cacheKey);
-        }
-        Set<String> result = new LinkedHashSet<>();
-        try {
-            String schema = resolveSchema();
-            List<String> cols = sqlServerJdbcTemplate.queryForList(
-                    "SELECT c.COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS c "
-                            + "WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? AND c.IS_NULLABLE='NO' "
-                            + "AND NOT EXISTS (SELECT 1 FROM sys.default_constraints dc "
-                            + "  JOIN sys.columns sc ON dc.parent_object_id=sc.object_id AND dc.parent_column_id=sc.column_id "
-                            + "  WHERE sc.object_id=OBJECT_ID(?+'.'+?) AND sc.name=c.COLUMN_NAME) "
-                            + "AND COLUMNPROPERTY(OBJECT_ID(?+'.'+?), c.COLUMN_NAME, 'IsIdentity')=0",
-                    String.class, schema, tableName, schema, tableName, schema, tableName);
-            for (String col : cols) {
-                result.add(col.toUpperCase(Locale.ROOT));
-            }
-        } catch (Exception e) {
-            log.warn("查询表 {} NOT NULL 无默认列失败: {}", tableName, e.getMessage());
-        }
-        notNullNoDefaultCache.put(cacheKey, result);
-        return result;
-    }
-
-    private String resolveSchema() {
-        String schema = sqlServerProperties.getSchema();
-        return (schema == null || schema.isBlank()) ? "dbo" : schema;
-    }
-
     // ==================== 辅助方法 ====================
 
-    private Map<String, Object> convertKeysToUpperSnakeCase(Map<String, Object> row) {
-        Map<String, Object> converted = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            String key = entry.getKey();
-            String newKey = (key == null || key.isBlank()) ? key
-                    : StrUtil.toUnderlineCase(key).toUpperCase(Locale.ROOT);
-            converted.put(newKey, entry.getValue());
+    private static Date toDate(java.time.LocalDateTime ldt) {
+        if (ldt == null) {
+            return null;
         }
-        return converted;
-    }
-
-    private Set<String> collectEncounterIds(List<Map<String, Object>> rows) {
-        Set<String> ids = new LinkedHashSet<>();
-        for (Map<String, Object> row : rows) {
-            Object id = valueIgnoreCase(row, "ENCOUNTER_ID");
-            if (id != null && !String.valueOf(id).isBlank()) {
-                ids.add(String.valueOf(id));
-            }
-        }
-        return ids;
-    }
-
-    private String numericId(String id) {
-        try {
-            return String.valueOf(Long.parseLong(id));
-        } catch (NumberFormatException e) {
-            return "'" + id.replace("'", "''") + "'";
-        }
-    }
-
-    private String qualifyTable(String tableName) {
-        return resolveSchema() + "." + tableName;
-    }
-
-    private static Object valueIgnoreCase(Map<String, Object> row, String key) {
-        for (Map.Entry<String, Object> entry : row.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(key)) {
-                return entry.getValue();
-            }
-        }
-        return null;
+        return Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant());
     }
 
     private static ExtractionResult failed(String extractionId, String code, String message) {

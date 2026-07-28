@@ -6,6 +6,7 @@ import cn.hutool.core.util.StrUtil;
 import com.hospital.wikiagent.dbhub.DbHubMcpClient;
 import com.hospital.wikiagent.dto.SyncDataDto;
 import com.hospital.wikiagent.dto.TableDataDto;
+import com.hospital.wikiagent.enums.BizTableEnum;
 import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,12 +24,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 核心制度指标数据同步服务：通过业务 MCP 抽取源数据并写入本地 SQL Server。
+ * 统一数据抽取服务：通过业务 MCP 读取源库数据并清库重写到 winex_aima。
  *
- * <p>职责边界：仅负责数据搬运与格式转换，不涉及指标计算逻辑；
- * 写入操作通过 Spring 事务管理，失败时整体回滚以保证一致性。</p>
+ * <p>支持三类数据同步：事件中间表（eventDataList）、患者事件表（eventTableList）、
+ * 基础/业务表（bizDataList）。所有写入操作在同一个 SQL Server 事务内完成，
+ * 仅在 {@code wiki.sqlserver.enabled=true} 时注册为 Spring Bean。</p>
  */
-// @Service — 逻辑已复制到 McpSyncSourceExtractionGateway，本类保留作参考
+@Service
+@ConditionalOnProperty(prefix = "wiki.sqlserver", name = "enabled", havingValue = "true")
 public class SyncDataService {
 
     private static final Logger log = LoggerFactory.getLogger(SyncDataService.class);
@@ -48,8 +52,8 @@ public class SyncDataService {
     @PersistenceContext(unitName = "sqlServer")
     private EntityManager entityManager;
 
-    /** Local table column cache: key=table name upper, value=local column names upper in ordinal order */
-    private final Map<String, List<String>> localColumnCache = new HashMap<>();
+    /** Local table column cache: key=table name upper, value=column info map (column name -> data type) */
+    private final Map<String, Map<String, String>> localColumnCache = new HashMap<>();
 
     // base tables
     private final List<String> baseTableList = new ArrayList<>() {{
@@ -57,16 +61,6 @@ public class SyncDataService {
         add("MRAS_MEDTECH_PRO");
         add("MRAS_MEDTECH_PROC");
         add("CLIBASIC_SURGERY");
-    }};
-
-    // patient tables
-    private final List<String> patableList = new ArrayList<>() {{
-        add("INP_CLI_ORDER");
-        add("INP_SURGICAL_ANESTHESIA_PLAN");
-        add("INPAT_TRANSFER");
-        add("INPATIENT_ENCOUNTER");
-        add("MRAS_INDEX_SURGREC");
-        add("MRAS_PATIENT_EVENT");
     }};
 
     public SyncDataService(DbHubMcpClient dbHubMcpClient,
@@ -94,7 +88,7 @@ public class SyncDataService {
                 String targetTable = eventTableDto.getTable();
                 String sqlScript = eventTableDto.getSqlScript();
 
-                if (StrUtil.isBlank(targetTable) || StrUtil.isBlank(sqlScript)) {
+                if (StrUtil.isBlank(targetTable) || StrUtil.isBlank(sqlScript) || !"MRAS_PATIENT_EVENT".equals(targetTable)) {
                     log.warn("eventTableList item has blank table or sqlScript, skip");
                     continue;
                 }
@@ -109,8 +103,12 @@ public class SyncDataService {
                             TOOLS_NAME, eventTableDto.getSqlScript(), params, syncDataDto.getHospitalSOID()));
 
                     if (eventRows != null && !eventRows.isEmpty()) {
+                        // 为每行添加 EVENT_NO 字段
+                        for (Map<String, Object> row : eventRows) {
+                            row.put("EVENT_NO", eventNo);
+                        }
                         // 插入数据到目标表
-                        replaceTableData(targetTable, eventRows);
+                        replaceTableData(targetTable, eventRows, StrUtil.isBlank(eventNo) ? "" : "EVENT_NO = '" + eventNo + "'");
                         log.info("synced {} rows to table {} from eventTableList", eventRows.size(), targetTable);
                     } else {
                         log.info("no data returned from sqlScript for table {}", targetTable);
@@ -147,6 +145,9 @@ public class SyncDataService {
                     if (encounterId == null) {
                         encounterId = row.get("encounter_id");
                     }
+                    if (encounterId == null) {
+                        encounterId = row.get("encounterId");
+                    }
                     if (encounterId != null) {
                         try {
                             encounterIdList.add(Long.valueOf(encounterId.toString()));
@@ -157,51 +158,76 @@ public class SyncDataService {
                 }
             }
 
-            replaceTableData(eventTable, rows);
+            replaceTableData(eventTable, rows, "");
         }
         List<TableDataDto> bizDataList = syncDataDto.getBizDataList();
         if (CollUtil.isNotEmpty(bizDataList)) {
             for (TableDataDto bizData : bizDataList) {
                 String bizTable = bizData.getTable();
-
+                String sqlScript = bizData.getSqlScript();
                 if (StrUtil.isBlank(bizTable)) {
                     continue;
                 }
-                if (!baseTableList.contains(bizTable) && !patableList.contains(bizTable)) {
+                if (!baseTableList.contains(bizTable) && !BizTableEnum.getTableList().contains(bizTable)) {
                     log.info("table {} not in baseTableList or patableList, skip", bizTable);
                     continue;
                 }
 
                 Map<String, Object> bizParams = new HashMap<>();
-
                 if (baseTableList.contains(bizTable)) {
                     log.info("start sync base table {} data with IS_DEL=0", bizTable);
-                    bizParams.put("condition", "IS_DEL = 0");
-                } else if (patableList.contains(bizTable)) {
+                    if (StrUtil.isBlank(sqlScript)) {
+                        sqlScript = "select * from " + bizTable + " where IS_DEL = 0";
+                    }
+                    List<Map<String, Object>> bizRows = DbHubMcpClient.extractRowsV2(dbHubMcpClient.callTool(
+                            TOOLS_NAME, sqlScript, bizParams, syncDataDto.getHospitalSOID()));
+                    replaceTableData(bizTable, bizRows, "");
+                } else if (BizTableEnum.getTableList().contains(bizTable)) {
                     log.info("start sync patient table {} data with encounterIdList", bizTable);
-                    if (encounterIdList != null && !encounterIdList.isEmpty()) {
-                        String encounterIds = encounterIdList.stream()
-                                .distinct()
-                                .map(String::valueOf)
-                                .collect(Collectors.joining(","));
-                        bizParams.put("encounterIds", encounterIds);
-                    } else {
+                    if (CollUtil.isEmpty(encounterIdList)) {
                         log.info("encounterIdList is empty, skip table {}", bizTable);
                         continue;
                     }
+                    if (StrUtil.isBlank(sqlScript)) {
+                        String condition = BizTableEnum.getConditionByTable(bizTable);
+                        if (StrUtil.isBlank(condition)) {
+                            condition = " ENCOUNTER_ID in (:encounterIds)";
+                        }
+                        sqlScript = "select * from " + bizTable + " where IS_DEL = 0 and " + condition;
+                    }
+                    List<String> distinctIds = encounterIdList.stream()
+                            .distinct()
+                            .map(String::valueOf)
+                            .collect(Collectors.toList());
+
+                    int batchSize = 1800;
+                    List<Map<String, Object>> allBizRows = new ArrayList<>();
+
+                    for (int i = 0; i < distinctIds.size(); i += batchSize) {
+                        List<String> batchIds = distinctIds.subList(i, Math.min(i + batchSize, distinctIds.size()));
+                        String encounterIds = String.join(",", batchIds);
+                        String batchSql = sqlScript.replace(":encounterIds", encounterIds);
+                        log.info("syncing patient table {} batch {}/{}, encounterIds count: {}",
+                                bizTable, i / batchSize + 1,
+                                (distinctIds.size() + batchSize - 1) / batchSize,
+                                batchIds.size());
+                        List<Map<String, Object>> bizRows = DbHubMcpClient.extractRowsV2(dbHubMcpClient.callTool(
+                                TOOLS_NAME, batchSql, bizParams, syncDataDto.getHospitalSOID()));
+                        if (bizRows != null) {
+                            allBizRows.addAll(bizRows);
+                        }
+                    }
+
+                    replaceTableData(bizTable, allBizRows, "");
                 }
-
-                List<Map<String, Object>> bizRows = DbHubMcpClient.extractRowsV2(dbHubMcpClient.callTool(
-                        TOOLS_NAME, bizData.getSqlScript(), bizParams, syncDataDto.getHospitalSOID()));
-
-                replaceTableData(bizTable, bizRows);
             }
         }
         return "success";
     }
 
-    private void replaceTableData(String tableName, List<Map<String, Object>> rows) {
-        entityManager.createNativeQuery("DELETE FROM " + qualifyTable(tableName)).executeUpdate();
+    private void replaceTableData(String tableName, List<Map<String, Object>> rows, String condition) {
+        String clearedTableSql = "DELETE FROM " + qualifyTable(tableName) + (StrUtil.isBlank(condition) ? "" : " WHERE " + condition);
+        entityManager.createNativeQuery(clearedTableSql).executeUpdate();
         log.info("cleared table {}", tableName);
 
         if (rows != null && !rows.isEmpty()) {
@@ -229,16 +255,17 @@ public class SyncDataService {
     }
 
     private void insertRows(String eventTable, List<Map<String, Object>> rows) {
-        List<String> columns = resolveLocalColumns(eventTable);
-        if (columns.isEmpty()) {
+        Map<String, String> columnTypes = resolveLocalColumns(eventTable);
+        if (columnTypes.isEmpty()) {
             log.warn("local table {} has no resolved columns, skip insert", eventTable);
             return;
         }
+        List<String> columns = new ArrayList<>(columnTypes.keySet());
         if (rows == null || rows.isEmpty()) {
             return;
         }
 
-        // Always insert with full local table columns; missing/null values use DEFAULT.
+        // 拼接所有字段，空值用 DEFAULT
         List<Map<String, Object>> normalizedRows = new ArrayList<>(rows.size());
         for (Map<String, Object> row : rows) {
             if (row == null || row.isEmpty()) {
@@ -261,7 +288,7 @@ public class SyncDataService {
             return;
         }
 
-        batchInsert(qualifyTable(eventTable), columns, normalizedRows);
+        batchInsert(qualifyTable(eventTable), columns, columnTypes, normalizedRows);
     }
 
     /**
@@ -269,7 +296,7 @@ public class SyncDataService {
      * Null/missing values become DEFAULT so SQL Server column defaults still apply.
      * Batch size is limited by SQL Server parameter count (max 2100).
      */
-    private void batchInsert(String tableName, List<String> columns, List<Map<String, Object>> rows) {
+    private void batchInsert(String tableName, List<String> columns, Map<String, String> columnTypes, List<Map<String, Object>> rows) {
         if (columns == null || columns.isEmpty() || rows == null || rows.isEmpty()) {
             return;
         }
@@ -293,8 +320,11 @@ public class SyncDataService {
                         // Keep DB defaults for audit/not-null columns such as CREATED_AT.
                         placeholders.add("DEFAULT");
                     } else {
+                        // 根据列的数据类型转换值
+                        String dataType = columnTypes.get(column);
+                        Object convertedValue = convertValueByType(value, dataType);
                         placeholders.add("?");
-                        params.add(value);
+                        params.add(convertedValue);
                     }
                 }
                 valueGroups.add("(" + String.join(",", placeholders) + ")");
@@ -307,6 +337,53 @@ public class SyncDataService {
             sqlServerJdbcTemplate.update(sql, params.toArray());
         }
         log.info("batch inserted {} rows into {} with {} columns", rows.size(), tableName, columns.size());
+    }
+
+    /**
+     * 根据数据库列的数据类型转换值，避免类型不匹配导致的 SQL 错误
+     */
+    private Object convertValueByType(Object value, String dataType) {
+        if (value == null || dataType == null) {
+            return value;
+        }
+        // 如果已经是数值类型，直接返回
+        if (value instanceof Number) {
+            return value;
+        }
+        // 对于数值类型列，如果值是字符串，尝试转换为数值
+        if (value instanceof String strValue) {
+            if (strValue.isBlank()) {
+                return null;
+            }
+            // SQL Server 数值类型
+            if (isNumericType(dataType)) {
+                try {
+                    // 优先尝试 Long
+                    if (!strValue.contains(".")) {
+                        return Long.parseLong(strValue);
+                    }
+                    // 有小数点，使用 BigDecimal
+                    return new java.math.BigDecimal(strValue);
+                } catch (NumberFormatException e) {
+                    log.warn("Failed to convert '{}' to numeric type {}, keeping original", strValue, dataType);
+                    return value;
+                }
+            }
+        }
+        return value;
+    }
+
+    /**
+     * 判断 SQL Server 数据类型是否为数值类型
+     */
+    private boolean isNumericType(String dataType) {
+        if (dataType == null) {
+            return false;
+        }
+        String lower = dataType.toLowerCase();
+        return lower.contains("int") || lower.contains("numeric")
+                || lower.contains("decimal") || lower.contains("float")
+                || lower.contains("real") || lower.contains("money");
     }
 
     /**
@@ -394,26 +471,26 @@ public class SyncDataService {
      * Resolve SQL Server table column names via INFORMATION_SCHEMA.
      * Returns upper-case names for case-insensitive matching with remote fields.
      */
-    private List<String> resolveLocalColumns(String tableName) {
+    private Map<String, String> resolveLocalColumns(String tableName) {
         String cacheKey = tableName == null ? "" : tableName.toUpperCase();
         if (localColumnCache.containsKey(cacheKey)) {
             return localColumnCache.get(cacheKey);
         }
 
-        List<String> columns = new ArrayList<>();
+        Map<String, String> columns = new LinkedHashMap<>();
         try {
             String schema = resolveSchema();
             @SuppressWarnings("unchecked")
-            List<Object> names = entityManager.createNativeQuery(
-                            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+            List<Object[]> rows = entityManager.createNativeQuery(
+                            "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS "
                                     + "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? "
                                     + "ORDER BY ORDINAL_POSITION")
                     .setParameter(1, schema)
                     .setParameter(2, tableName)
                     .getResultList();
-            for (Object name : names) {
-                if (name != null && !name.toString().isBlank()) {
-                    columns.add(name.toString().toUpperCase());
+            for (Object[] row : rows) {
+                if (row != null && row.length >= 2 && row[0] != null && !row[0].toString().isBlank()) {
+                    columns.put(row[0].toString().toUpperCase(), row[1].toString().toLowerCase());
                 }
             }
         } catch (Exception e) {

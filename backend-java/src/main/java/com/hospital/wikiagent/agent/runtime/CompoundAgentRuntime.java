@@ -908,6 +908,7 @@ public class CompoundAgentRuntime {
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
         // 优先用小模型合成的分子/分母明细 SQL；合成或执行失败则回退领导知识库患者明细 SQL
         ToolResult result = null;
+        String usedDetailSql = null;
         if (detailSynthesizer != null) {
             DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
             if (pair != null) {
@@ -916,6 +917,7 @@ public class CompoundAgentRuntime {
                         ruleId, detailSql, start, end, queryType);
                 if (generated.ok()) {
                     result = generated;
+                    usedDetailSql = detailSql;
                 }
             }
         }
@@ -938,6 +940,11 @@ public class CompoundAgentRuntime {
                         + " 无样本数据，无法展示" + detailLabel + "。";
             } else {
                 answer = formatDetailTable(result.data(), ruleName, rows);
+            }
+            // 带上生成明细 SQL 一起输出
+            if (usedDetailSql != null && !usedDetailSql.isBlank()) {
+                answer = answer + "\n\n---\n\n**生成的" + detailLabel + " SQL：**\n\n```sql\n"
+                        + usedDetailSql.strip() + "\n```";
             }
         }
         conversations.appendUser(conversation, request.principal(), request.query(), request.fileKey());

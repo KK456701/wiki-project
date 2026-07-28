@@ -3,12 +3,16 @@ package com.hospital.wikiagent.agent.mras;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
@@ -17,6 +21,10 @@ import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
+import com.hospital.wikiagent.dto.SyncDataDto;
+import com.hospital.wikiagent.dto.TableDataDto;
+import com.hospital.wikiagent.service.SyncDataService;
+import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
 /**
  * 领导知识库（knowledge-index-mras）概览/科室/明细 SQL 的端到端执行服务。
@@ -39,6 +47,8 @@ public class MrasSqlExecutionService {
     private final ReadOnlySqlValidator sqlValidator;
     private final SqlParameterBinder parameterBinder;
     private final IndicatorDatabaseQueryClient databaseQuery;
+    private final SyncDataService syncDataService; // 可为 null（sqlserver 未启用时）
+    private final SqlServerProperties sqlServerProperties;
 
     public MrasSqlExecutionService(
             EntityPageParser entityPageParser,
@@ -46,13 +56,17 @@ public class MrasSqlExecutionService {
             MrasParameterMapper parameterMapper,
             ReadOnlySqlValidator sqlValidator,
             SqlParameterBinder parameterBinder,
-            IndicatorDatabaseQueryClient databaseQuery) {
+            IndicatorDatabaseQueryClient databaseQuery,
+            ObjectProvider<SyncDataService> syncDataProvider,
+            SqlServerProperties sqlServerProperties) {
         this.entityPageParser = entityPageParser;
         this.templateRenderer = templateRenderer;
         this.parameterMapper = parameterMapper;
         this.sqlValidator = sqlValidator;
         this.parameterBinder = parameterBinder;
         this.databaseQuery = databaseQuery;
+        this.syncDataService = syncDataProvider.getIfAvailable();
+        this.sqlServerProperties = sqlServerProperties;
     }
 
     /**
@@ -93,6 +107,9 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
 
+        // 查询前先抽取数据到 winex_aima
+        ensureExtracted(entity, start, end);
+
         return executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
                 entity.name(), entity.dimension(), true);
@@ -119,6 +136,9 @@ public class MrasSqlExecutionService {
 
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, null);
+
+        // 查询前先抽取数据到 winex_aima
+        ensureExtracted(entity, start, end);
 
         return executeSql(
                 entity.deptStatSql(), params, indicatorCode, "dept_stat",
@@ -147,6 +167,9 @@ public class MrasSqlExecutionService {
 
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
+
+        // 查询前先抽取数据到 winex_aima
+        ensureExtracted(entity, start, end);
 
         return executeSql(
                 entity.patientDetailSql(), params, indicatorCode, "patient_detail",
@@ -298,6 +321,69 @@ public class MrasSqlExecutionService {
                         ? "领导知识库患者明细查询完成。"
                         : "领导知识库科室统计查询完成。";
         return ToolResult.success("MRAS_QUERY_COMPLETED", summary, data);
+    }
+
+    // ==================== 抽取步骤 ====================
+
+    /**
+     * 查询前确保数据已抽取到 winex_aima：构建 SyncDataDto 并转调 SyncDataService。
+     *
+     * <p>hospitalSOID 从配置 wiki.sqlserver.hospital-soid 读取（当前写死 991827）。
+     * 抽取失败仅记录警告，不阻断查询（可能数据已存在）。</p>
+     */
+    private void ensureExtracted(EntityPageData entity, LocalDateTime start, LocalDateTime end) {
+        if (syncDataService == null) {
+            log.debug("SyncDataService 未启用，跳过 MRAS 抽取");
+            return;
+        }
+        if (!entity.canExtract()) {
+            log.debug("指标 {} 缺少源表 SQL 或目标表，跳过抽取", entity.code());
+            return;
+        }
+        Long hospitalSoid = sqlServerProperties.getHospitalSoid();
+        if (hospitalSoid == null) {
+            log.warn("未配置 wiki.sqlserver.hospital-soid，跳过 MRAS 抽取");
+            return;
+        }
+
+        try {
+            SyncDataDto dto = new SyncDataDto();
+            dto.setHospitalSOID(hospitalSoid);
+
+            // eventDataList：事件中间表
+            TableDataDto eventData = new TableDataDto();
+            eventData.setEventNo(entity.eventNo());
+            eventData.setTable(entity.targetTable());
+            eventData.setSqlScript(entity.sourceTableSql());
+            eventData.setStartTime(toDate(start));
+            eventData.setEndTime(toDate(end));
+            dto.setEventDataList(List.of(eventData));
+
+            // bizDataList：业务依赖表
+            if (entity.bizTables() != null && !entity.bizTables().isEmpty()) {
+                List<TableDataDto> bizList = new ArrayList<>();
+                for (String table : entity.bizTables()) {
+                    TableDataDto biz = new TableDataDto();
+                    biz.setTable(table);
+                    bizList.add(biz);
+                }
+                dto.setBizDataList(bizList);
+            }
+
+            log.info("MRAS 指标 {} 开始抽取: targetTable={}, bizTables={} ({} ~ {})",
+                    entity.code(), entity.targetTable(), entity.bizTables(), start, end);
+            syncDataService.syncEventData(dto);
+            log.info("MRAS 指标 {} 抽取完成", entity.code());
+        } catch (Exception exception) {
+            log.warn("MRAS 指标 {} 抽取失败（不阻断查询）: {}", entity.code(), exception.getMessage());
+        }
+    }
+
+    private static Date toDate(LocalDateTime ldt) {
+        if (ldt == null) {
+            return null;
+        }
+        return Date.from(ldt.atZone(ZoneId.systemDefault()).toInstant());
     }
 
     /**

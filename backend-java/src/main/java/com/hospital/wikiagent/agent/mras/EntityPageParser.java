@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -180,12 +181,57 @@ public class EntityPageParser {
         // 从 frontmatter tags 解析制度和分类
         String system = extractTag(content, 1); // tags[1] 通常是制度名
         String category = extractCategory(content);
+        String eventNo = extractTag(content, 2); // tags[2] 通常是事件编码（如 CORE_FDR）
+
+        // 从“数据来源”章节解析中间表（目标表）和业务表（影响数据）
+        String targetTable = extractTableFromDataSource(dataSource, "中间表");
+        List<String> bizTables = extractBizTables(dataSource);
 
         return new EntityPageData(
                 code, name, dimension, variantCode, variantLabel,
                 definition, formula, caliber, dataSource, monitorParams,
                 "", "", system, category,
-                sourceTableSql, overviewSql, deptStatSql, patientDetailSql);
+                sourceTableSql, overviewSql, deptStatSql, patientDetailSql,
+                eventNo, targetTable, bizTables);
+    }
+
+    /**
+     * 从“数据来源”章节文本中提取指定行对应的表名（反引号内内容）。
+     */
+    private String extractTableFromDataSource(String dataSourceText, String rowLabel) {
+        if (dataSourceText == null || dataSourceText.isBlank()) {
+            return "";
+        }
+        for (String line : dataSourceText.split("\n")) {
+            if (line.contains(rowLabel)) {
+                Matcher m = Pattern.compile("`([A-Za-z_][A-Za-z0-9_]*)`").matcher(line);
+                if (m.find()) {
+                    return m.group(1);
+                }
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 从“数据来源”章节提取“业务表(影响数据)”行中的表名列表。
+     */
+    private List<String> extractBizTables(String dataSourceText) {
+        if (dataSourceText == null || dataSourceText.isBlank()) {
+            return List.of();
+        }
+        for (String line : dataSourceText.split("\n")) {
+            if (line.contains("业务表") && line.contains("影响数据") && !line.contains("不影响")) {
+                Matcher m = Pattern.compile("`([^`]+)`").matcher(line);
+                if (m.find()) {
+                    return Arrays.stream(m.group(1).split(","))
+                            .map(String::strip)
+                            .filter(s -> !s.isBlank())
+                            .toList();
+                }
+            }
+        }
+        return List.of();
     }
 
     /**

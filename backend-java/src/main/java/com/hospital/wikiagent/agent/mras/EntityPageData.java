@@ -1,5 +1,7 @@
 package com.hospital.wikiagent.agent.mras;
 
+import java.util.List;
+
 /**
  * 领导知识库实体页的结构化解析结果，承载一个指标维度的全部元数据和四段 SQL。
  *
@@ -24,6 +26,9 @@ package com.hospital.wikiagent.agent.mras;
  * @param overviewSql      目标表-概览 SQL
  * @param deptStatSql      目标表-科室统计 SQL
  * @param patientDetailSql 目标表-患者明细 SQL
+ * @param eventNo          事件编码（如 CORE_FDR），用于 SyncDataService 抽取时标识事件类型
+ * @param targetTable      中间表名（如 MRAS_BUSINESS_FIRSTVISIT），抽取数据的目标表
+ * @param bizTables        业务表（影响数据）列表，抽取时需同步的依赖表
  */
 public record EntityPageData(
         String code,
@@ -43,7 +48,10 @@ public record EntityPageData(
         String sourceTableSql,
         String overviewSql,
         String deptStatSql,
-        String patientDetailSql
+        String patientDetailSql,
+        String eventNo,
+        String targetTable,
+        List<String> bizTables
 ) {
     /**
      * 是否具备可执行的概览 SQL。
@@ -58,5 +66,13 @@ public record EntityPageData(
     public boolean isPrimary() {
         return variantCode == null || variantCode.equals(code)
                 || variantCode.endsWith("_001");
+    }
+
+    /**
+     * 是否具备抽取所需的源表 SQL 和目标表名。
+     */
+    public boolean canExtract() {
+        return sourceTableSql != null && !sourceTableSql.isBlank()
+                && targetTable != null && !targetTable.isBlank();
     }
 }

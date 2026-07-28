@@ -22,7 +22,7 @@ import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 
 /**
  * MrasDetailSqlSynthesizer 单元测试：验证小模型合成分子/分母明细 SQL 的解析、
- * 只读校验、缓存命中与失败回退逻辑。
+ * 只读校验、每次重新生成与失败回退逻辑。
  */
 class MrasDetailSqlSynthesizerTest {
 
@@ -59,7 +59,7 @@ class MrasDetailSqlSynthesizerTest {
     }
 
     @Test
-    void synthesizeParsesValidatesAndCaches() {
+    void synthesizeParsesAndValidates() {
         when(invoker.complete(anyString(), anyString(), anyString(), any(Duration.class)))
                 .thenReturn(new ModelCompletion("test-model", VALID_JSON));
 
@@ -69,10 +69,10 @@ class MrasDetailSqlSynthesizerTest {
         assertThat(first.denominatorSql()).contains(":marptBeginAt").contains(":marptEndAt");
         assertThat(first.numeratorSql()).contains("TRANSFER_WITHIN_TWO_DAY");
 
-        // 第二次命中缓存，不应再调用模型
+        // 每次重新生成，第二次仍调用模型
         MrasDetailSqlSynthesizer.DetailSqlPair second = synthesizer.synthesize(INDICATOR);
-        assertThat(second).isSameAs(first);
-        verify(invoker, times(1)).complete(anyString(), anyString(), anyString(), any(Duration.class));
+        assertThat(second).isNotNull();
+        verify(invoker, times(2)).complete(anyString(), anyString(), anyString(), any(Duration.class));
     }
 
     @Test

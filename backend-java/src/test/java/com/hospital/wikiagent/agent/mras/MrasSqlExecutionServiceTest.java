@@ -12,12 +12,15 @@ import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
+import com.hospital.wikiagent.service.SyncDataService;
+import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
 /**
  * MrasSqlExecutionService 单元测试：验证领导知识库查询的端到端编排逻辑。
@@ -32,13 +35,20 @@ class MrasSqlExecutionServiceTest {
     void setUp() {
         entityPageParser = new EntityPageParser();
         databaseQuery = mock(IndicatorDatabaseQueryClient.class);
+        SqlServerProperties props = new SqlServerProperties();
+        props.setHospitalSoid(991827L);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<SyncDataService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(null);
         service = new MrasSqlExecutionService(
                 entityPageParser,
                 new MrasTemplateRenderer(),
                 new MrasParameterMapper(),
                 new ReadOnlySqlValidator(),
                 new SqlParameterBinder(),
-                databaseQuery);
+                databaseQuery,
+                provider,
+                props);
     }
 
     @Test

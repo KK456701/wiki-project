@@ -6,10 +6,10 @@ import lombok.Data;
 import java.util.Date;
 
 /**
- * 单张业务表的同步数据载体，包含表名、列名映射及行数据。
+ * 单表抽取参数：指定目标表名、抽取 SQL 脚本、时间范围及事件编号。
  *
- * <p>职责边界：仅描述一张表的结构与内容，由 SyncDataDto 聚合多张表后统一提交；
- * 本类不做任何持久化或网络调用。</p>
+ * <p>作为 {@link SyncDataDto} 的子项使用，由 SyncDataService 根据表名判断
+ * 属于事件表、基础表还是患者表，并自动构建实际执行 SQL。</p>
  */
 @Data
 public class TableDataDto {

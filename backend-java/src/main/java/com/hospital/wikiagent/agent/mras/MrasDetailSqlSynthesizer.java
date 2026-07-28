@@ -4,8 +4,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +25,7 @@ import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator.ValidationResult;
  * 作为列与 JOIN 的骨架参考，让小模型生成两条明细 SQL；生成结果必须通过
  * {@link ReadOnlySqlValidator} 只读校验（天然要求含 {@code :marptBeginAt/:marptEndAt}
  * 受控时间参数），校验失败带错误信息重试一次，仍失败返回 {@code null} 触发上游回退。
- * 概览 SQL 对每个指标是静态的，合成结果按指标编码缓存，避免重复调用模型。</p>
+ * 每次调用均重新生成，不做缓存。</p>
  *
  * <p>本类不执行 SQL、不修改知识库文件；执行交由 {@link MrasSqlExecutionService}
  * 走标准链路（参数绑定 {@code SqlParameterBinder} + DBHub MCP）。</p>
@@ -43,8 +41,6 @@ public class MrasDetailSqlSynthesizer {
     private final EntityPageParser entityPageParser;
     private final ReadOnlySqlValidator sqlValidator;
     private final ObjectMapper objectMapper;
-
-    private final Map<String, DetailSqlPair> cache = new ConcurrentHashMap<>();
 
     public MrasDetailSqlSynthesizer(
             AgentModelInvoker invoker,
@@ -64,15 +60,11 @@ public class MrasDetailSqlSynthesizer {
     }
 
     /**
-     * 合成指定指标的分母/分子明细 SQL；命中缓存直接返回，合成失败返回 {@code null}（上游回退）。
+     * 合成指定指标的分母/分子明细 SQL；每次重新生成，合成失败返回 {@code null}（上游回退）。
      */
     public DetailSqlPair synthesize(String indicatorCode) {
         if (indicatorCode == null || indicatorCode.isBlank()) {
             return null;
-        }
-        DetailSqlPair cached = cache.get(indicatorCode);
-        if (cached != null) {
-            return cached;
         }
         EntityPageData entity = entityPageParser.getEntity(indicatorCode);
         if (entity == null || !entity.hasOverviewSql()) {
@@ -81,7 +73,6 @@ public class MrasDetailSqlSynthesizer {
 
         Attempt first = attempt(entity, null);
         if (first.pair() != null) {
-            cache.put(indicatorCode, first.pair());
             log.info("领导知识库明细 SQL 合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
                     indicatorCode, first.pair().denominatorSql(), first.pair().numeratorSql());
             return first.pair();
@@ -89,7 +80,6 @@ public class MrasDetailSqlSynthesizer {
         // 带错误信息重试一次
         Attempt second = attempt(entity, first.error());
         if (second.pair() != null) {
-            cache.put(indicatorCode, second.pair());
             log.info("领导知识库明细 SQL 重试合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
                     indicatorCode, second.pair().denominatorSql(), second.pair().numeratorSql());
             return second.pair();
