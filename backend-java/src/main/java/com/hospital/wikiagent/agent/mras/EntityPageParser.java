@@ -173,7 +173,7 @@ public class EntityPageParser {
         String dataSource = sectionText(sections, "数据来源");
         String monitorParams = sectionText(sections, "监测参数");
 
-        String sourceTableSql = extractSql(sections, "源表");
+        String sourceTableSql = extractFirstSql(sections, "源表");
         String overviewSql = extractSql(sections, "目标表-概览");
         String deptStatSql = extractSql(sections, "目标表-科室统计");
         String patientDetailSql = extractSql(sections, "目标表-患者明细");
@@ -293,6 +293,21 @@ public class EntityPageParser {
     private String sectionText(Map<String, String> sections, String title) {
         String text = sections.get(title);
         return text == null ? "" : text.strip();
+    }
+
+    /**
+     * 从章节中提取第一个 ```sql ... ``` 代码块（仅取第一段，避免拼接带模板标记的后续变体）。
+     */
+    private String extractFirstSql(Map<String, String> sections, String title) {
+        String sectionContent = sections.get(title);
+        if (sectionContent == null || sectionContent.isBlank()) {
+            return "";
+        }
+        Matcher matcher = SQL_BLOCK.matcher(sectionContent);
+        if (matcher.find()) {
+            return matcher.group(1).strip();
+        }
+        return "";
     }
 
     /**
