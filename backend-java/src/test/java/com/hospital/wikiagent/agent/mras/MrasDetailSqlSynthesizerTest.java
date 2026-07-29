@@ -22,7 +22,7 @@ import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 
 /**
  * MrasDetailSqlSynthesizer 单元测试：验证小模型合成分子/分母明细 SQL 的解析、
- * 只读校验、成功结果缓存、分子判定表达式提取与失败回退逻辑。
+ * 只读校验、每次重新生成（不缓存）、分子判定表达式提取与失败回退逻辑。
  */
 class MrasDetailSqlSynthesizerTest {
 
@@ -69,20 +69,20 @@ class MrasDetailSqlSynthesizerTest {
         assertThat(first.denominatorSql()).contains(":marptBeginAt").contains(":marptEndAt");
         assertThat(first.numeratorSql()).contains("TRANSFER_WITHIN_TWO_DAY");
 
-        // 成功结果按指标缓存，第二次直接命中缓存不再调用模型
+        // 不缓存：第二次调用必须重新调用模型重新生成（用户明确要求）
         MrasDetailSqlSynthesizer.DetailSqlPair second = synthesizer.synthesize(INDICATOR);
         assertThat(second).isNotNull();
-        verify(invoker, times(1)).complete(anyString(), anyString(), anyString(), any(Duration.class));
+        verify(invoker, times(2)).complete(anyString(), anyString(), anyString(), any(Duration.class));
     }
 
     @Test
-    void synthesizeFailureIsNotCached() {
+    void synthesizeFailureFallsBackAndRegeneratesNextCall() {
         when(invoker.complete(anyString(), anyString(), anyString(), any(Duration.class)))
                 .thenReturn(new ModelCompletion("test-model", INVALID_JSON))
                 .thenReturn(new ModelCompletion("test-model", INVALID_JSON))
                 .thenReturn(new ModelCompletion("test-model", VALID_JSON));
 
-        // 首轮：首次 + 重试均失败，返回 null 且不落缓存
+        // 首轮：首次 + 重试均失败，返回 null
         assertThat(synthesizer.synthesize(INDICATOR)).isNull();
         // 第二轮：重新调用模型并成功
         assertThat(synthesizer.synthesize(INDICATOR)).isNotNull();

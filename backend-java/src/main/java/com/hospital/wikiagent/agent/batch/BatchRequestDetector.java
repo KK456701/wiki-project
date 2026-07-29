@@ -38,9 +38,13 @@ public class BatchRequestDetector {
                     + "|全指标|每一项指标|每个指标|各项指标"
                     + "|逐一(计算|算)|逐个(计算|算)");
 
-    /** 表示用户想要“计算结果”而非口径解释的动词/名词。 */
+    /** 表示用户想要“计算结果”而非口径解释的动词/名词。
+     * 句首或标点后的光杆“算”（如“算去年…比例”）同样是计算意图，排除“算了”；
+     * “怎么算/如何计算”由 WANTS_DEFINITION 先行拦截，不会误入。 */
     private static final Pattern WANTS_RESULT = Pattern.compile(
-            "计算|结果|数值|试运行|得分|监测|达标|算一遍|算一下|都算");
+            "计算|结果|数值|试运行|得分|监测|达标|算一遍|算一下|都算"
+                    + "|帮我算|给我算|重算|再算"
+                    + "|(?:^|[，。？！、；：,;])算(?!了)");
 
     /** 命中即视为口径/定义类问题，不进入批量试运行。 */
     private static final Pattern WANTS_DEFINITION = Pattern.compile(

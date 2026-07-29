@@ -69,7 +69,7 @@ public class IndicatorDetailQueryController {
         boolean denominator = "denominator".equals(group);
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
 
-        // 优先用合成的分子/分母明细 SQL（合成器内部按指标缓存）；合成或执行失败回退领导知识库患者明细 SQL
+        // 优先用合成的分子/分母明细 SQL（每次重新合成，不缓存）；合成或执行失败回退领导知识库患者明细 SQL
         ToolResult result = null;
         String usedDetailSql = null;
         DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);

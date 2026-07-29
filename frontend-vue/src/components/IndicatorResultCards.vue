@@ -120,7 +120,8 @@ async function switchDetailGroup(item: BatchIndicatorResult, group: DetailGroup)
 }
 
 async function loadDetail(item: BatchIndicatorResult, state: CardState, group: DetailGroup) {
-  if (state.details[group] || state.detailLoading) return
+  // 不用本地缓存：每次展开/切换都重新请求，后端明细 SQL 也是每次重新生成
+  if (state.detailLoading) return
   if (!item.statStart || !item.statEnd) {
     state.detailError = '缺少统计区间，无法查询明细。'
     return

@@ -276,10 +276,13 @@ public class AgentTraceService {
     }
 
     private static boolean validatedCapability(Map<String, Object> capability) {
-        return List.of(
-                "static_validated", "metadata_validated", "compile_validated",
-                "trial_validated", "executable")
-                .contains(text(capability.get("status")))
+        // status 可能缺失（text 返回 null），List.of 不可变列表 contains(null) 会抛 NPE
+        String status = text(capability.get("status"));
+        return status != null
+                && List.of(
+                        "static_validated", "metadata_validated", "compile_validated",
+                        "trial_validated", "executable")
+                        .contains(status)
                 && !(capability.get("blockers") instanceof List<?> blockers && !blockers.isEmpty());
     }
 

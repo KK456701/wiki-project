@@ -515,8 +515,9 @@ public class MrasSqlExecutionService {
      * 剥离 SQL 前后的引号。
      * 知识库部分文件的 SQL 块以 "SELECT 或 '-- 或 'WITH 开头、以 '" 结尾，
      * 这是 Markdown 格式问题，需要在执行前剥离。
+     * 公开供 MrasRuleKnowledgeSource 在输出 standard_sql 前做同口径清洗。
      */
-    static String stripLeadingTrailingQuotes(String sql) {
+    public static String stripLeadingTrailingQuotes(String sql) {
         String result = sql.strip();
         // 剥离前导引号（可能是 " 或 ' 或 "' 组合）
         while (result.startsWith("\"") || result.startsWith("'")) {

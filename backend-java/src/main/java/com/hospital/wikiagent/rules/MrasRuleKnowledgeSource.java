@@ -19,6 +19,8 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.mras.ConceptPageParser;
 import com.hospital.wikiagent.agent.mras.EntityPageData;
 import com.hospital.wikiagent.agent.mras.EntityPageParser;
+import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
+import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 
 /**
  * 基于领导知识库（knowledge-index-mras）的规则知识源适配器。
@@ -37,11 +39,16 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
 
     private final EntityPageParser entityParser;
     private final ConceptPageParser conceptParser;
+    private final MrasTemplateRenderer templateRenderer;
 
-    public MrasRuleKnowledgeSource(EntityPageParser entityParser, ConceptPageParser conceptParser) {
+    public MrasRuleKnowledgeSource(
+            EntityPageParser entityParser,
+            ConceptPageParser conceptParser,
+            MrasTemplateRenderer templateRenderer) {
         super();
         this.entityParser = entityParser;
         this.conceptParser = conceptParser;
+        this.templateRenderer = templateRenderer;
         log.info("MrasRuleKnowledgeSource 初始化完成: {} 个实体, {} 个概念页",
                 entityParser.size(), conceptParser.size());
     }
@@ -113,6 +120,10 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
 
         boolean hasSql = entity.hasOverviewSql();
         String executionStatus = hasSql ? "executable" : "documentation_only";
+        // 概览 SQL 原文带实体页引号包裹与 #ETC/#EQUALS 模板标记，必须先按与批量执行
+        // 链路同口径解析后再对外暴露，否则 Planner 路径的 IndicatorSqlTools 只读校验
+        // 会因前导引号/未解析表达式拒绝（SQL_VALIDATION_FAILED）。
+        String standardSql = hasSql ? renderOverviewSql(entity.overviewSql()) : "";
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("rule_id", entity.code());
@@ -131,8 +142,8 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         result.put("denominator_rule", denominatorRule);
         result.put("filter_rule", "");
         result.put("exclude_rule", "");
-        result.put("implementation_status", hasSql ? entity.overviewSql() : "");
-        result.put("standard_sql", entity.overviewSql());
+        result.put("implementation_status", standardSql);
+        result.put("standard_sql", standardSql);
         result.put("source_extract_sql", entity.sourceTableSql());
         result.put("department_detail_sql", entity.deptStatSql());
         result.put("patient_detail_sql", entity.patientDetailSql());
@@ -265,6 +276,24 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
     }
 
     // ─── 内部方法 ───────────────────────────────────────────────────────────
+
+    /**
+     * 按批量执行链路同口径预解析概览 SQL：#ETC/#EQUALS 条件裁剪 + 方言修正 +
+     * 剥首尾引号；保留 :marptBeginAt/:marptEndAt 命名参数交给下游 SqlParameterBinder。
+     * 条件判定参数与 MrasParameterMapper 默认行为一致：只提供时间参数，
+     * hospitalAreaList/onlySearchFeilds 等可选参数缺失 → 对应 #ETC 行删除、#EQUALS 走假分支。
+     */
+    private String renderOverviewSql(String overviewSql) {
+        try {
+            String rendered = templateRenderer.renderTemplate(overviewSql, Map.of(
+                    "marptBeginAt", "统计开始时间",
+                    "marptEndAt", "统计结束时间"));
+            return MrasSqlExecutionService.stripLeadingTrailingQuotes(rendered);
+        } catch (RuntimeException exception) {
+            log.warn("概览 SQL 模板预解析失败，回退原文: {}", exception.getMessage());
+            return overviewSql;
+        }
+    }
 
     private EntityPageData resolveEntity(String query, String profileId) {
         // 精确编码匹配
