@@ -102,6 +102,8 @@ public class AgentConversationMemory {
             ensureColumn("caliber_profile_id", "VARCHAR(128)");
             ensureColumn("caliber_label", "VARCHAR(255)");
             ensureColumn("digest", "VARCHAR(512)");
+            // 批量指标卡片载荷（JSON 数组）随助手消息持久化，切换会话后前端可恢复卡片。
+            ensureColumn("batch_results", "TEXT");
             // 复合指标确认目标需要随会话持久化，服务重启后仍可恢复，
             // 供后续纯时间补充/指代追问重新展开为复合，与消息持久化能力保持一致。
             jdbc.execute("""
@@ -202,7 +204,8 @@ public class AgentConversationMemory {
                 conversation.ruleId(), conversation.ruleName(),
                 conversation.caliberProfileId(), conversation.caliberLabel(),
                 conversation.statStart(), conversation.statEnd(), conversation.lastRunId(),
-                first(uploadFileKey, conversation.uploadFileKey()), Instant.now().toString(), null));
+                first(uploadFileKey, conversation.uploadFileKey()), Instant.now().toString(),
+                null, null));
     }
 
     public void appendAssistant(
@@ -210,15 +213,39 @@ public class AgentConversationMemory {
             HospitalPrincipal principal,
             String content,
             AgentRunState state) {
+        appendAssistant(conversation, principal, content, state, null);
+    }
+
+    /**
+     * 保存助手回答，可附带批量指标卡片载荷（与 SSE batch_indicator_result 同形态）。
+     * 卡片载荷序列化为 JSON 存入 batch_results 列，仅供会话恢复时重建卡片，
+     * 不进入 Planner 历史上下文；序列化失败仅告警，不影响文本消息落库。
+     */
+    public void appendAssistant(
+            ConversationSnapshot conversation,
+            HospitalPrincipal principal,
+            String content,
+            AgentRunState state,
+            List<Map<String, Object>> batchResults) {
         ContextValues values = contextValues(state, conversation);
         fallbackContext.put(conversation.storageKey(), values);
         String digest = generateDigest(state, content);
+        String batchJson = null;
+        if (batchResults != null && !batchResults.isEmpty() && objectMapper != null) {
+            try {
+                batchJson = objectMapper.writeValueAsString(batchResults);
+            } catch (Exception exception) {
+                LOGGER.warn("Unable to serialize batch results for session key hash={}: {}",
+                        Integer.toHexString(conversation.storageKey().hashCode()),
+                        exception.getMessage());
+            }
+        }
         append(new Message(
                 conversation.storageKey(), principal.hospitalId(), principal.userId(),
                 "assistant", limited(content, 12_000), values.ruleId(), values.ruleName(),
                 values.caliberProfileId(), values.caliberLabel(),
                 values.statStart(), values.statEnd(), values.runId(), values.uploadFileKey(),
-                Instant.now().toString(), digest));
+                Instant.now().toString(), digest, batchJson));
     }
 
     /**
@@ -352,7 +379,7 @@ public class AgentConversationMemory {
                         SELECT session_key, hospital_id, user_id, role, content,
                                rule_id, rule_name, caliber_profile_id, caliber_label,
                                stat_start, stat_end, run_id,
-                               upload_file_key, created_at, digest
+                               upload_file_key, created_at, digest, batch_results
                         FROM med_agent_java_message
                         WHERE session_key = ?
                         ORDER BY id DESC
@@ -367,7 +394,7 @@ public class AgentConversationMemory {
                         result.getString("stat_start"),
                         result.getString("stat_end"), result.getString("run_id"),
                         result.getString("upload_file_key"), result.getString("created_at"),
-                        result.getString("digest")),
+                        result.getString("digest"), result.getString("batch_results")),
                         key, MAX_MESSAGES);
                 Collections.reverse(rows);
                 return merge(rows, fallback.getOrDefault(key, List.of()));
@@ -388,14 +415,15 @@ public class AgentConversationMemory {
                         INSERT INTO med_agent_java_message (
                           session_key, hospital_id, user_id, role, content, rule_id, rule_name,
                           caliber_profile_id, caliber_label, stat_start, stat_end, run_id,
-                          upload_file_key, created_at, digest
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          upload_file_key, created_at, digest, batch_results
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         message.sessionKey(), message.hospitalId(), message.userId(), message.role(),
                         message.content(), message.ruleId(), message.ruleName(),
                         message.caliberProfileId(), message.caliberLabel(),
                         message.statStart(), message.statEnd(), message.runId(),
-                        message.uploadFileKey(), message.createdAt(), message.digest());
+                        message.uploadFileKey(), message.createdAt(), message.digest(),
+                        message.batchResults());
             } catch (RuntimeException exception) {
                 LOGGER.warn("Unable to persist Agent conversation memory; using fallback for session key hash={}: {}",
                         Integer.toHexString(message.sessionKey().hashCode()), exception.getMessage());
@@ -775,9 +803,11 @@ public class AgentConversationMemory {
         String key = storageKey(principal, sessionId);
         try {
             return jdbc.query("""
-                    SELECT role, content, rule_id, rule_name, stat_start, stat_end, run_id, created_at
+                    SELECT role, content, rule_id, rule_name, stat_start, stat_end, run_id,
+                           created_at, batch_results
                     FROM (
-                      SELECT id, role, content, rule_id, rule_name, stat_start, stat_end, run_id, created_at
+                      SELECT id, role, content, rule_id, rule_name, stat_start, stat_end, run_id,
+                             created_at, batch_results
                       FROM med_agent_java_message
                       WHERE session_key = ?
                       ORDER BY id DESC
@@ -792,10 +822,28 @@ public class AgentConversationMemory {
                     result.getString("stat_start"),
                     result.getString("stat_end"),
                     result.getString("run_id"),
-                    result.getString("created_at")), key);
+                    result.getString("created_at"),
+                    parseBatchResults(result.getString("batch_results"))), key);
         } catch (RuntimeException exception) {
             LOGGER.warn("Unable to load session messages: {}", exception.getMessage());
             return List.of();
+        }
+    }
+
+    /**
+     * 把持久化的批量卡片 JSON 还原为结构化列表；为空或解析失败时返回 null，
+     * 按无卡片处理，不影响文本消息恢复。
+     */
+    private List<Map<String, Object>> parseBatchResults(String json) {
+        if (json == null || json.isBlank() || objectMapper == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+        } catch (Exception exception) {
+            LOGGER.warn("Unable to parse persisted batch results: {}", exception.getMessage());
+            return null;
         }
     }
 
@@ -842,7 +890,8 @@ public class AgentConversationMemory {
             String statStart,
             String statEnd,
             String runId,
-            String createdAt) {
+            String createdAt,
+            List<Map<String, Object>> batchResults) {
     }
 
     public record ConversationSnapshot(
@@ -958,6 +1007,7 @@ public class AgentConversationMemory {
             String runId,
             String uploadFileKey,
             String createdAt,
-            String digest) {
+            String digest,
+            String batchResults) {
     }
 }

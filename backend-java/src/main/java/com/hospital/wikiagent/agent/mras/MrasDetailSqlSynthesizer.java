@@ -45,6 +45,10 @@ public class MrasDetailSqlSynthesizer {
             "(?:COUNT|SUM)\\s*\\(\\s*CASE\\s+WHEN\\s+(.+?)\\s+THEN",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
+    /** 列表达式中的表别名引用（如 event.、emp1.），用于骨架列白名单判定。 */
+    private static final Pattern ALIAS_REF = Pattern.compile(
+            "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\.");
+
     private final AgentModelInvoker invoker;
     private final AgentModelRegistry registry;
     private final EntityPageParser entityPageParser;
@@ -143,7 +147,7 @@ public class MrasDetailSqlSynthesizer {
                 3. 所有表引用保留 WITH (NOLOCK)。
                 4. 分母明细必须严格复刻概览 SQL 中「分母」（如 COUNT(1)）所统计的人群：使用与概览 SQL 相同的主表（沿用别名 event）与相同的 WHERE 时间过滤（必须含 :marptBeginAt/:marptEndAt，可保留 IS_DEL、VERSION 等基础有效性过滤）。分母明细绝对不要 JOIN 任何其他业务表，不要追加任何与分子判定相关的过滤条件。
                 5. 分子明细的生成方式必须是机械的：先完整复制你生成的分母明细 SQL，然后仅在 WHERE 子句末尾追加一个 AND 条件——该条件就是用户消息中【分子判定表达式】给出的内容（已从概览 SQL 的 COUNT(CASE WHEN <判定表达式> THEN 1 ELSE NULL END) 中机械提取），必须原样照抄、一字不改。例如分母 WHERE 结尾是 ... AND event.VERSION = 'V2.0'，分子就是 ... AND event.VERSION = 'V2.0' AND (<判定表达式>)。严禁在分子明细中使用 EXISTS、JOIN 或任何子查询，严禁引用主表以外的任何表，分子过滤条件只能使用主表 event 上的列。
-                6. 输出列只允许来自主表（别名 event），从下方「患者明细输出列参考」中选取属于 event 的列（如患者标识、住院号、患者姓名、科室、入出区时间等）；禁止引用 team.、t1.、o1.、o2. 等其他表别名的列，以免出现未绑定列错误。列别名使用双引号包裹并沿用骨架风格；骨架仅供选取输出列与别名参考，其 JOIN 与 WHERE 过滤不要照抄。
+                6. 输出列只允许来自主表（别名 event），从下方「患者明细输出列参考」中选取属于 event 的列（如患者标识、住院号、患者姓名、科室、入出区时间等）；禁止引用 team.、t1.、o1.、o2.、inp.、emp1. 等任何其他表别名的列，以免出现未绑定列错误。列别名使用双引号包裹并沿用骨架风格；骨架仅供选取输出列与别名参考，其 JOIN 与 WHERE 过滤不要照抄。
                 7. 分母明细与分子明细必须是两条不同的 SQL：分母不含分子判定条件，分子含分子判定条件，二者返回行数应不同。
                 8. 列别名使用双引号包裹（如 "患者姓名"），与骨架保持一致。
                 9. 输出 SQL 中严禁出现任何模板标记，包括但不限于 #ETC{...}、#EQUALS{...}、#NAME?、#{...}、{{...}}、{%...%}；下方骨架与概览 SQL 里的这类标记只是参考，必须删除，绝不能照抄到输出里。
@@ -244,12 +248,14 @@ public class MrasDetailSqlSynthesizer {
 
     /**
      * 仅提取骨架 SELECT 列清单中主表（别名 event）的列并以逗号换行拼接，
-     * 丢弃引用其他表别名（team./t1./o1./o2./inp. 等）的列。只返回「列清单」本身，
-     * 不含 FROM/JOIN/WHERE，从根本上避免小模型照抄骨架里依赖转科表 INPAT_TRANSFER
-     * 的 JOIN 与 WHERE 过滤（如 t1.INPAT_TRANSFER_TYPE_CODE 之类）导致生成错误的
-     * EXISTS/JOIN 逻辑；骨架的唯一用途是参考输出列名与中文别名。
+     * 采用白名单判定：列表达式里出现的所有「别名.」引用必须都是 event，
+     * 引用任何其他别名（team/t1/o1/o2/inp/emp1 等，随知识库骨架变化不可枚举）
+     * 的列一律丢弃，避免小模型照抄未 JOIN 的维表列导致「未绑定标识符」错误。
+     * 只返回「列清单」本身，不含 FROM/JOIN/WHERE，从根本上避免小模型照抄骨架里
+     * 依赖转科表 INPAT_TRANSFER 的 JOIN 与 WHERE 过滤导致生成错误的 EXISTS/JOIN
+     * 逻辑；骨架的唯一用途是参考输出列名与中文别名。
      */
-    private static String skeletonColumnList(String sql) {
+    static String skeletonColumnList(String sql) {
         if (sql == null || sql.isBlank()) {
             return "";
         }
@@ -270,12 +276,23 @@ public class MrasDetailSqlSynthesizer {
             if (trimmed.isEmpty()) {
                 continue;
             }
-            if (trimmed.toLowerCase(Locale.ROOT).matches(".*\\b(?:team|t1|o1|o2|inp)\\..*")) {
+            if (!referencesOnlyEventAlias(trimmed)) {
                 continue;
             }
             kept.add(trimmed);
         }
         return String.join(",\n", kept);
+    }
+
+    /** 白名单判定：表达式中出现的每个「别名.」引用都必须是主表 event，否则不采纳该列。 */
+    private static boolean referencesOnlyEventAlias(String expression) {
+        Matcher matcher = ALIAS_REF.matcher(expression);
+        while (matcher.find()) {
+            if (!"event".equalsIgnoreCase(matcher.group(1))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 从 start 起查找括号深度为 0 的 FROM 关键字位置（区分大小写边界）。 */

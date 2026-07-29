@@ -372,6 +372,28 @@ function makeId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)}`
 }
 
+/** 把持久化的批量卡片载荷（snake_case，与 SSE batch_indicator_result 同形态）转为前端卡片数据 */
+function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
+  return {
+    ruleId: String(raw.rule_id ?? ''),
+    ruleName: String(raw.rule_name ?? ''),
+    status: String(raw.status ?? ''),
+    done: Number(raw.done ?? 0),
+    total: Number(raw.total ?? 0),
+    resultValue: raw.result_value as number | undefined,
+    numeratorCount: raw.numerator_count as number | undefined,
+    denominatorCount: raw.denominator_count as number | undefined,
+    unit: raw.unit as string | undefined,
+    calculationDisplay: raw.calculation_display as string | undefined,
+    statStart: raw.stat_start as string | undefined,
+    statEnd: raw.stat_end as string | undefined,
+    runId: raw.run_id as string | undefined,
+    dataFreshness: raw.data_freshness as string | undefined,
+    errorCode: raw.error_code as string | undefined,
+    errorMessage: raw.error_message as string | undefined,
+  }
+}
+
 function setAgentContent(message: ChatMessage, value: string) {
   const detailMarker = /\{\{detail_export:(RUN_[A-Za-z0-9_-]+)\}\}/g
   const comparisonMarker = /\{\{upload_comparison_export:(RUN_[A-Za-z0-9_-]+):([A-Za-z0-9_-]+)\}\}/g
@@ -505,13 +527,19 @@ export const useAgentStore = defineStore('agent', {
         this.latestFileName = ''
         this.error = ''
         const list = Array.isArray(historyMessages) ? historyMessages : []
-        this.messages = list.map((message: SessionMessage) => ({
-          id: makeId('message'),
-          role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
-          content: message.content || '',
-          status: 'complete' as const,
-          evidence: [],
-        }))
+        this.messages = list.map((message: SessionMessage) => {
+          // 持久化的批量卡片载荷与 SSE batch_indicator_result 同形态，
+          // 恢复后卡片组件渲染效果与实时推送一致。
+          const rawBatch = Array.isArray(message.batch_results) ? message.batch_results : []
+          return {
+            id: makeId('message'),
+            role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
+            content: message.content || '',
+            status: 'complete' as const,
+            evidence: [],
+            batchResults: rawBatch.length ? rawBatch.map(toBatchResult) : undefined,
+          }
+        })
         // 如果该会话仍有后台运行中的请求，把实时消息重新挂回列表，
         // 让用户切回来时能看到正在处理的进度，而不是误以为请求消失。
         if (runningMessage && !this.messages.some((message) => message.id === runningMessage.id)) {

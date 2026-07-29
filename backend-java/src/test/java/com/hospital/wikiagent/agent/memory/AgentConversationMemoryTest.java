@@ -115,6 +115,43 @@ class AgentConversationMemoryTest {
     }
 
     @Test
+    void persistsBatchCardPayloadsAndRestoresThemWithSessionMessages() {
+        DataSource source = new EmbeddedDatabaseBuilder()
+                .setType(EmbeddedDatabaseType.H2)
+                .setName("memory_" + System.nanoTime())
+                .build();
+        AgentConversationMemory memory = new AgentConversationMemory(
+                new JdbcTemplate(source), new ObjectMapper());
+        memory.initialize();
+        HospitalPrincipal principal = principal("hospital_001", "user_001");
+        var conversation = memory.open(principal, "session_batch");
+        memory.appendUser(conversation, principal, "计算两个指标的结果", null);
+        List<Map<String, Object>> cards = List.of(
+                Map.of("rule_id", "HXZD-009-003",
+                        "rule_name", "科主任主持死亡病例讨论率",
+                        "status", "SUCCESS", "done", 1, "total", 2,
+                        "result_value", 6.25),
+                Map.of("rule_id", "MQSI2025_001",
+                        "rule_name", "48小时内转科比例",
+                        "status", "SUCCESS", "done", 2, "total", 2));
+        memory.appendAssistant(
+                conversation, principal, "批量汇总文本", new AgentRunState(), cards);
+
+        var messages = memory.getSessionMessages(principal, "session_batch");
+
+        assertThat(messages).hasSize(2);
+        // 用户消息无卡片载荷；助手消息带回与 SSE 同形态的卡片列表
+        assertThat(messages.get(0).batchResults()).isNull();
+        var assistant = messages.get(1);
+        assertThat(assistant.batchResults()).hasSize(2);
+        assertThat(assistant.batchResults().stream()
+                .map(card -> card.get("rule_id")))
+                .containsExactly("HXZD-009-003", "MQSI2025_001");
+        assertThat(assistant.batchResults().get(0).get("result_value"))
+                .isEqualTo(6.25);
+    }
+
+    @Test
     void persistsStructuredBatchScopeAcrossMemoryInstances() {
         DataSource source = new EmbeddedDatabaseBuilder()
                 .setType(EmbeddedDatabaseType.H2)

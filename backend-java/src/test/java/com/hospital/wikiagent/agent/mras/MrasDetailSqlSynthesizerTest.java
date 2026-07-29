@@ -147,4 +147,24 @@ class MrasDetailSqlSynthesizerTest {
         assertThat(result).isNull();
         verify(invoker, times(0)).complete(anyString(), anyString(), anyString(), any(Duration.class));
     }
+
+    @Test
+    void skeletonColumnListKeepsOnlyEventAliasColumns() {
+        String skeleton = "SELECT event.PATIENT_ID as \"患者标识\",\n"
+                + "event.PATIENT_NAME as \"患者姓名\",\n"
+                + "emp1.EMPLOYEE_NAME as \"死亡病例讨论主持人\",\n"
+                + "team.ORGANIZATION_NAME as \"科室\",\n"
+                + "inp.WARD_NAME as \"病区\",\n"
+                + "CONVERT(varchar(19), event.MARPT_BEGIN_AT, 120) as \"入区时间\"\n"
+                + "FROM MRAS_BUSINESS_DEATH event WITH (NOLOCK)\n"
+                + "LEFT JOIN EMPLOYEE_INFO emp1 WITH (NOLOCK) ON emp1.ID = event.HOST_ID";
+
+        String columns = MrasDetailSqlSynthesizer.skeletonColumnList(skeleton);
+
+        // 白名单：只保留主表 event 的列，emp1/team/inp 等未枚举别名一律丢弃，
+        // 避免小模型照抄未 JOIN 的维表列导致「未绑定标识符」错误。
+        assertThat(columns).contains("event.PATIENT_ID").contains("event.PATIENT_NAME");
+        assertThat(columns).contains("CONVERT(varchar(19), event.MARPT_BEGIN_AT, 120)");
+        assertThat(columns).doesNotContain("emp1.").doesNotContain("team.").doesNotContain("inp.");
+    }
 }

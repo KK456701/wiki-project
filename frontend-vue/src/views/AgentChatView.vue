@@ -251,11 +251,12 @@ async function exportDiagnosis(reportId?: string) {
                 @select="openNode(message.traceId, $event)"
               />
 
+              <!-- 批量指标结果只展示卡片，隐藏文字汇总（实时推送与历史恢复一致） -->
               <MarkdownMessage
-                v-if="message.role === 'agent'"
+                v-if="message.role === 'agent' && !message.batchResults?.length"
                 :content="message.content || '正在读取规则与证据…'"
               />
-              <div v-else class="message-content">{{ message.content }}</div>
+              <div v-else-if="message.role !== 'agent'" class="message-content">{{ message.content }}</div>
               <IndicatorResultCards
                 v-if="message.role === 'agent' && message.batchResults?.length"
                 :results="message.batchResults"

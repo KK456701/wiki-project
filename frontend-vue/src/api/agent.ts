@@ -698,6 +698,8 @@ export interface SessionMessage {
   stat_end?: string
   run_id?: string
   created_at: string
+  /** 批量指标卡片载荷（与 SSE batch_indicator_result 同形态），供恢复会话时重建卡片 */
+  batch_results?: Array<Record<string, unknown>> | null
 }
 
 /** 创建新会话，后端生成 session_id */

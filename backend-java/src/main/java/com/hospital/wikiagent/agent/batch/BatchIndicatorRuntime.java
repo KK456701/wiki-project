@@ -193,7 +193,15 @@ public class BatchIndicatorRuntime {
                 .map(indicator -> indicator.get("rule_name"))
                 .collect(Collectors.joining("、")));
         memoryState.statPeriod(statStart, statEnd);
-        conversations.appendAssistant(conversation, request.principal(), answer, memoryState);
+        // 持久化逐指标卡片载荷（与 SSE batch_indicator_result 同形态），
+        // 切换会话后前端可从消息历史直接恢复卡片展示。
+        List<Map<String, Object>> cardPayloads = new ArrayList<>();
+        for (int index = 0; index < results.size(); index++) {
+            cardPayloads.add(indicatorResultPayload(
+                    index + 1, results.size(), results.get(index)));
+        }
+        conversations.appendAssistant(
+                conversation, request.principal(), answer, memoryState, cardPayloads);
         conversations.rememberCompoundTargets(
                 conversation,
                 indicators.stream().map(value -> value.get("rule_name")).toList());
@@ -703,6 +711,18 @@ public class BatchIndicatorRuntime {
             int done,
             int total,
             IndicatorExecutionResult result) {
+        emit(observer, "batch_indicator_result", traceId, done,
+                indicatorResultPayload(done, total, result));
+    }
+
+    /**
+     * 单指标结果载荷：SSE 逐条推送与会话消息持久化共用同一形态，
+     * 保证切换会话后恢复的卡片字段与实时推送完全一致。
+     */
+    static Map<String, Object> indicatorResultPayload(
+            int done,
+            int total,
+            IndicatorExecutionResult result) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("rule_id", result.ruleId());
         payload.put("rule_name", result.ruleName());
@@ -742,7 +762,7 @@ public class BatchIndicatorRuntime {
         if (result.errorMessage() != null) {
             payload.put("error_message", result.errorMessage());
         }
-        emit(observer, "batch_indicator_result", traceId, done, payload);
+        return payload;
     }
 
     private static void emitTrace(
