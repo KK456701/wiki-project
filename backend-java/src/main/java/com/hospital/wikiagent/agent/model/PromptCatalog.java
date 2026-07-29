@@ -27,6 +27,9 @@ public class PromptCatalog {
     public String indicatorCandidateDisambiguator() {
         return read("prompts/indicator-candidate-disambiguator.txt");
     }
+    public String batchIntentVerifier() {
+        return read("prompts/batch-intent-verify.txt");
+    }
 
     private String read(String path) {
         try (var input = new ClassPathResource(path).getInputStream()) {

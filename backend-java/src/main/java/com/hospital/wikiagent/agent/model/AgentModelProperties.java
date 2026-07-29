@@ -30,6 +30,10 @@ public class AgentModelProperties {
     private double confidenceThreshold = 0.7;
     private int batchMaxIndicators = 35;
     private int batchWorkerConcurrency = 4;
+    /** 指标消歧 LLM 调用的独立超时，短于 Planner 以避免离线模型阻塞主链路。 */
+    private Duration disambiguationTimeout = Duration.ofSeconds(20);
+    /** 批量意图 LLM 校验的独立超时；超时或失败时回退正则结果。 */
+    private Duration batchVerifyTimeout = Duration.ofSeconds(15);
     private List<ModelDefinition> models = new ArrayList<>();
 
     public String getDefaultModel() { return defaultModel; }
@@ -66,6 +70,10 @@ public class AgentModelProperties {
     public void setBatchMaxIndicators(int value) { batchMaxIndicators = value; }
     public int getBatchWorkerConcurrency() { return batchWorkerConcurrency; }
     public void setBatchWorkerConcurrency(int value) { batchWorkerConcurrency = value; }
+    public Duration getDisambiguationTimeout() { return disambiguationTimeout; }
+    public void setDisambiguationTimeout(Duration value) { disambiguationTimeout = value; }
+    public Duration getBatchVerifyTimeout() { return batchVerifyTimeout; }
+    public void setBatchVerifyTimeout(Duration value) { batchVerifyTimeout = value; }
     public List<ModelDefinition> getModels() { return models; }
     public void setModels(List<ModelDefinition> value) {
         models = value == null ? new ArrayList<>() : new ArrayList<>(value);

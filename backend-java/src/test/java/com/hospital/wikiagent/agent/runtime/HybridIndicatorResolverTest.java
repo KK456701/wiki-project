@@ -1,11 +1,13 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -104,8 +106,11 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
-    void lowConfidenceCandidatesRequireUserChoiceWithoutCallingLlm() {
+    void lowConfidenceCandidatesFallBackToUserChoiceWhenLlmFails() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
+        // LLM 消歧超时/失败时安全降级为“把候选交给用户确认”
+        when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenThrow(new RuntimeException("timeout"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -118,12 +123,35 @@ class HybridIndicatorResolverTest {
         assertThat(result.indicators()).isEmpty();
         assertThat(result.needsClarification()).isTrue();
         assertThat(result.ambiguities().get(0).candidates()).hasSize(2);
-        verifyNoInteractions(models);
+    }
+
+    @Test
+    void llmDisambiguationResolvesAmbiguousCandidates() {
+        AgentModelInvoker models = mock(AgentModelInvoker.class);
+        when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(new AgentModelInvoker.ModelCompletion("ollama-test",
+                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"RULE_1\"}]}"));
+        Fixture fixture = fixture(List.of(
+                rule("RULE_1", "急会诊及时到位率"),
+                rule("RULE_2", "急会诊及时到达率")), models);
+
+        var result = fixture.resolver().resolve(
+                "急会诊及时率怎么算", "hospital_001", "ollama-test",
+                "trace-4b", "root", AgentRunObserver.noop());
+
+        assertThat(result.usedLlm()).isTrue();
+        assertThat(result.indicators()).hasSize(1);
+        assertThat(result.indicators().get(0).ruleId()).isEqualTo("RULE_1");
+        assertThat(result.needsClarification()).isFalse();
     }
 
     @Test
     void inventedRuleIdIsRejectedAndLeavesClarification() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
+        // LLM 返回不存在的 rule_id，应被拒绝，仍留澄清
+        when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(new AgentModelInvoker.ModelCompletion("ollama-test",
+                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"FAKE_999\"}]}"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -134,7 +162,6 @@ class HybridIndicatorResolverTest {
 
         assertThat(result.indicators()).isEmpty();
         assertThat(result.needsClarification()).isTrue();
-        verifyNoInteractions(models);
     }
 
     private static Fixture fixture(

@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.hospital.wikiagent.agent.batch.BatchIndicatorRuntime;
+import com.hospital.wikiagent.agent.batch.BatchIntentVerifier;
 import com.hospital.wikiagent.agent.batch.BatchRequestDetector;
 import com.hospital.wikiagent.agent.batch.BatchRequestSpec;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
@@ -64,6 +65,7 @@ public class CompoundAgentRuntime {
     private final ClarificationPromptFactory clarificationPrompts;
     private final BatchRequestDetector batchDetector;
     private final BatchIndicatorRuntime batchRuntime;
+    private final BatchIntentVerifier batchIntentVerifier;
     private final MrasSqlExecutionService mrasExecution;
     private final MrasDetailSqlSynthesizer detailSynthesizer;
     private final ExecutorService executor = Executors.newFixedThreadPool(4, runnable -> {
@@ -78,7 +80,7 @@ public class CompoundAgentRuntime {
             AgentModelRegistry models,
             AgentModelProperties properties,
             AgentConversationMemory conversations) {
-        this(runner, splitter, models, properties, conversations, null, null, null, null, null, null);
+        this(runner, splitter, models, properties, conversations, null, null, null, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -88,7 +90,7 @@ public class CompoundAgentRuntime {
             AgentModelProperties properties,
             AgentConversationMemory conversations,
             HybridIndicatorResolver indicatorResolver) {
-        this(runner, splitter, models, properties, conversations, indicatorResolver, null, null, null, null, null);
+        this(runner, splitter, models, properties, conversations, indicatorResolver, null, null, null, null, null, null);
     }
 
     public CompoundAgentRuntime(
@@ -100,7 +102,7 @@ public class CompoundAgentRuntime {
             HybridIndicatorResolver indicatorResolver,
             ClarificationPromptFactory clarificationPrompts) {
         this(runner, splitter, models, properties, conversations, indicatorResolver,
-                clarificationPrompts, null, null, null, null);
+                clarificationPrompts, null, null, null, null, null);
     }
 
     @Autowired
@@ -114,6 +116,7 @@ public class CompoundAgentRuntime {
             ClarificationPromptFactory clarificationPrompts,
             BatchRequestDetector batchDetector,
             BatchIndicatorRuntime batchRuntime,
+            BatchIntentVerifier batchIntentVerifier,
             MrasSqlExecutionService mrasExecution,
             MrasDetailSqlSynthesizer detailSynthesizer) {
         this.runner = runner;
@@ -125,6 +128,7 @@ public class CompoundAgentRuntime {
         this.clarificationPrompts = clarificationPrompts;
         this.batchDetector = batchDetector;
         this.batchRuntime = batchRuntime;
+        this.batchIntentVerifier = batchIntentVerifier;
         this.mrasExecution = mrasExecution;
         this.detailSynthesizer = detailSynthesizer;
     }
@@ -141,6 +145,11 @@ public class CompoundAgentRuntime {
             BatchRequestSpec batchSpec = batchDetector.detect(
                     request.query(), conversation.queryScope(),
                     request.principal().hospitalId());
+            // LLM 意图兜底：正则结果与会话状态存在歧义时让模型确认“全部还是这几个”
+            if (batchIntentVerifier != null) {
+                batchSpec = batchIntentVerifier.verify(
+                        batchSpec, conversation.queryScope(), request.query());
+            }
             if (batchSpec.batch()) {
                 return batchRuntime.run(request, observer, batchSpec);
             }

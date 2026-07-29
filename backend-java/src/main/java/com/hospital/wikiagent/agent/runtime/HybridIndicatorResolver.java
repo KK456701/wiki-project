@@ -148,9 +148,18 @@ public class HybridIndicatorResolver {
                         "threshold", SEMANTIC_THRESHOLD,
                         "margin", SEMANTIC_MARGIN));
 
-        // 低置信度候选必须交给用户确认。此处不再调用模型二次猜测，避免离线模型
-        // 超时后才返回同一组候选，也保证“信心不足时主动给候选”行为可复现。
+        // 第三层：语义召回拿不准时调用 LLM 消歧，使用独立短超时避免离线模型阻塞主链路。
+        // 超时或失败时安全降级为“把候选交给用户确认”，不猜测。
         boolean usedLlm = false;
+        if (!ambiguities.isEmpty()) {
+            Disambiguation disambiguation = disambiguate(
+                    input, ambiguities, modelId, traceId, subtaskId, sink);
+            if (!disambiguation.resolved().isEmpty()) {
+                resolved.addAll(disambiguation.resolved());
+                usedLlm = true;
+            }
+            ambiguities = new ArrayList<>(disambiguation.remaining());
+        }
         resolved = new ArrayList<>(deduplicate(resolved));
         if (resolved.size() > MAX_INDICATORS) {
             ambiguities = new ArrayList<>(List.of(new Ambiguity(input, resolved.stream()
@@ -315,7 +324,7 @@ public class HybridIndicatorResolver {
         long started = TraceEvents.started();
         String raw = "";
         try {
-            Duration timeout = properties.getPlannerTimeout();
+            Duration timeout = properties.getDisambiguationTimeout();
             raw = models.complete(modelId, systemPrompt, userPrompt, timeout).content();
             Map<?, ?> output = objectMapper.readValue(
                     ModelJsonExtractor.firstObject(raw), Map.class);

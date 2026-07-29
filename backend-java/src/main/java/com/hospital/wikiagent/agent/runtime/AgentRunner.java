@@ -281,32 +281,73 @@ public class AgentRunner {
                     deterministicQuery, conversation, resolvedIndicator);
         }
         if (followupPlan != null) {
-            // 明确的 SQL 或规则分项追问可由结构化会话唯一确定，无需再次让小模型猜测。
+            // 确定性快路径：高置信追问直接走规则；低置信度时升级 LLM 验证。
             long followupStarted = TraceEvents.started();
-            modelPlan = new PlannerResult(
-                    followupPlan, "deterministic-followup", request.modelId(), false);
-            String skipReason = switch (followupPlan.intent()) {
-                case RULE_EXPLANATION ->
-                    "指标和规则解释关注点可由结构化会话状态唯一确定";
-                case INDICATOR_TRIAL_RUN ->
-                    "上一轮计算意图、当前明确指标和统计周期可由结构化会话状态唯一确定";
-                case INDICATOR_DIAGNOSIS ->
-                    "当前异常描述、指标和统计周期可由确定性规则唯一确定";
-                default ->
-                    "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定";
-            };
-            TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
-                    followupStarted, subtaskId, eventValues(
-                            "query", request.query(),
-                            "planner_invoked", false,
-                            "planner_skip_reason", skipReason,
-                            "context_rule_id", followupPlan.targetIndicator().ruleId(),
-                            "context_stat_start", followupPlan.timeExpression().startTime(),
-                            "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
-                            "intent", followupPlan.intent().name(),
-                            "requested_outputs", followupPlan.requestedOutputs(),
-                            "explanation_focuses", followupPlan.explanationFocuses(),
-                            "decision", "未调用 LLM Planner"));
+            boolean lowConfidence = modelProperties != null
+                    && followupPlan.confidence() != null
+                    && followupPlan.confidence() < modelProperties.getConfidenceThreshold();
+            if (lowConfidence) {
+                // 规则拿不准：调用 LLM Planner 验证，意图不一致时以 LLM 为准。
+                try {
+                    PlannerResult llmVerification = planner.plan(new PlannerInput(
+                            request.query(), request.modelId(),
+                            LocalDate.now(ZoneId.of("Asia/Shanghai")),
+                            request.structuredState(), request.recentHistory()));
+                    if (llmVerification.plan().intent() != followupPlan.intent()) {
+                        TraceEvents.completed(observer, traceId, "followup_llm_escalation", "llm",
+                                followupStarted, subtaskId, eventValues(
+                                        "query", request.query(),
+                                        "deterministic_intent", followupPlan.intent().name(),
+                                        "llm_intent", llmVerification.plan().intent().name(),
+                                        "deterministic_confidence", followupPlan.confidence()),
+                                Map.of("decision", "LLM 意图与规则不一致，采用 LLM 结果"));
+                        modelPlan = llmVerification;
+                    } else {
+                        TraceEvents.completed(observer, traceId, "followup_llm_escalation", "llm",
+                                followupStarted, subtaskId, eventValues(
+                                        "query", request.query(),
+                                        "deterministic_intent", followupPlan.intent().name(),
+                                        "llm_intent", llmVerification.plan().intent().name(),
+                                        "deterministic_confidence", followupPlan.confidence()),
+                                Map.of("decision", "LLM 确认规则结果，继续走确定性路径"));
+                        modelPlan = new PlannerResult(
+                                followupPlan, "deterministic-followup-verified",
+                                request.modelId(), false);
+                    }
+                } catch (RuntimeException exception) {
+                    // LLM 验证失败时安全回退到规则结果，不阻断主链路。
+                    TraceEvents.failed(observer, traceId, "followup_llm_escalation", "llm",
+                            followupStarted, subtaskId, "LLM_VERIFICATION_FAILED",
+                            exception.getMessage());
+                    modelPlan = new PlannerResult(
+                            followupPlan, "deterministic-followup", request.modelId(), false);
+                }
+            } else {
+                modelPlan = new PlannerResult(
+                        followupPlan, "deterministic-followup", request.modelId(), false);
+                String skipReason = switch (followupPlan.intent()) {
+                    case RULE_EXPLANATION ->
+                        "指标和规则解释关注点可由结构化会话状态唯一确定";
+                    case INDICATOR_TRIAL_RUN ->
+                        "上一轮计算意图、当前明确指标和统计周期可由结构化会话状态唯一确定";
+                    case INDICATOR_DIAGNOSIS ->
+                        "当前异常描述、指标和统计周期可由确定性规则唯一确定";
+                    default ->
+                        "指标、统计周期和 SQL 展示目标可由结构化会话状态唯一确定";
+                };
+                TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
+                        followupStarted, subtaskId, eventValues(
+                                "query", request.query(),
+                                "planner_invoked", false,
+                                "planner_skip_reason", skipReason,
+                                "context_rule_id", followupPlan.targetIndicator().ruleId(),
+                                "context_stat_start", followupPlan.timeExpression().startTime(),
+                                "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
+                                "intent", followupPlan.intent().name(),
+                                "requested_outputs", followupPlan.requestedOutputs(),
+                                "explanation_focuses", followupPlan.explanationFocuses(),
+                                "decision", "未调用 LLM Planner"));
+            }
         } else {
             emit(observer, "model_start", traceId, 0, Map.of("message", "规划业务目标"));
             long plannerStarted = TraceEvents.started();
@@ -1572,6 +1613,8 @@ public class AgentRunner {
                 && !explicitIndicatorReplacement) {
             return null;
         }
+        // 纯继承上下文的弱匹配降低置信度，触发 LLM 验证；显式关键词命中仍为高置信。
+        double confidence = explicitTrial ? 1.0 : 0.65;
         String statStart = !hasCurrentTime && hasInheritedPeriod
                 ? scope.statStart() : null;
         String statEnd = !hasCurrentTime && hasInheritedPeriod
@@ -1588,7 +1631,7 @@ public class AgentRunner {
                 List.of(RequestedOutput.TRIAL_RESULT),
                 List.of("deterministic_trial_followup"),
                 List.of(),
-                1.0);
+                confidence);
     }
 
     private static RequestPlan deterministicDiagnosisFollowup(
