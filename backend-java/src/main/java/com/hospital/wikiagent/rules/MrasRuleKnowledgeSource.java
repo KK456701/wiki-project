@@ -23,7 +23,7 @@ import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 
 /**
- * 基于领导知识库（knowledge-index-mras）的规则知识源适配器。
+ * 基于领导知识库（knowledge-index）的规则知识源适配器。
  *
  * <p>完全替代旧 core-rules-wiki 数据源，对外暴露与 WikiRuleKnowledgeSource 相同的
  * 公共 API，内部从 EntityPageParser + ConceptPageParser 取数据。下游 10+ 个消费类
@@ -168,14 +168,14 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         result.put("sql_status", hasSql ? "available" : "unavailable");
         result.put("hospital_override", null);
         result.put("company_rule", Map.of(
-                "path", "knowledge-index-mras/entities/" + entity.variantCode(),
+                "path", "knowledge-index/entities/" + entity.variantCode(),
                 "implementation", entity.variantLabel(),
                 "implementation_status", executionStatus));
         result.put("national_rule", Map.of(
                 "definition", definition,
                 "formula", formula,
                 "version", "2025",
-                "source_path", "knowledge-index-mras/concepts/" + entity.name() + ".md"));
+                "source_path", "knowledge-index/concepts/" + entity.code() + entity.name() + ".md"));
         result.put("national_params", Map.of());
         result.put("effective_params", Map.of(
                 "marptBeginAt", "统计开始时间",
@@ -364,7 +364,7 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         card.put("time_dimension", entity.dimension());
         card.put("execution_status", entity.hasOverviewSql() ? "executable" : "documentation_only");
         card.put("type", "wiki_rule");
-        card.put("path", "knowledge-index-mras/entities/" + entity.variantCode() + ".md");
+        card.put("path", "knowledge-index/entities/" + entity.variantCode() + ".md");
         return card;
     }
 

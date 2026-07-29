@@ -404,11 +404,14 @@ public class BatchIndicatorRuntime {
         // 抽取失败时结果基于中间表旧数据，用 dataFreshness 标记并透传到前端
         String dataFreshness = data.get("extraction_warning") instanceof String
                 ? "extraction_failed_stale" : null;
+        // 单位由 MRAS 服务按概念页计量单位确定（百分比类为 percentage，数值类为空），
+        // 不能在这里硬编码 percentage，否则分钟数等数值型结果会被前端误加 % 后缀
+        String unit = data.get("unit") instanceof String s ? s : "percentage";
         Boolean noSample = (Boolean) data.get("no_sample");
         if (Boolean.TRUE.equals(noSample)) {
             return new IndicatorExecutionResult(
                     ruleId, ruleName, Status.NO_SAMPLE, null, 0L, 0L,
-                    null, "percentage", null, 0L, null, null,
+                    null, unit, null, 0L, null, null,
                     statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
                     dataFreshness, target.profileId(), target.profileLabel(), null, null,
                     target.eventNo());
@@ -425,7 +428,7 @@ public class BatchIndicatorRuntime {
                 ruleId, ruleName, Status.SUCCESS,
                 resultValue != null ? resultValue.doubleValue() : null,
                 numerator, denominator,
-                null, "percentage", null,
+                null, unit, null,
                 denominator, targetValue, null,
                 statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
                 dataFreshness, target.profileId(), target.profileLabel(), null, null,

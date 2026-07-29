@@ -42,6 +42,7 @@ class MrasSqlExecutionServiceTest {
         when(provider.getIfAvailable()).thenReturn(null);
         service = new MrasSqlExecutionService(
                 entityPageParser,
+                new ConceptPageParser(),
                 new MrasTemplateRenderer(),
                 new MrasParameterMapper(),
                 new ReadOnlySqlValidator(),
@@ -96,6 +97,10 @@ class MrasSqlExecutionServiceTest {
         assertThat(result.data().get("numerator_count")).isEqualTo(5L);
         assertThat(result.data().get("denominator_count")).isEqualTo(100L);
         assertThat(result.data().get("no_sample")).isEqualTo(false);
+        // 百分比类指标：概览 SQL 返回的 0-1 比值必须换算为百分数
+        assertThat(((Number) result.data().get("result_value")).doubleValue()).isEqualTo(5.0);
+        assertThat(((Number) result.data().get("target_value")).doubleValue()).isEqualTo(10.0);
+        assertThat(result.data().get("unit")).isEqualTo("percentage");
     }
 
     @Test

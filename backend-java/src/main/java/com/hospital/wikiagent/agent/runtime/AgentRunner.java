@@ -86,6 +86,9 @@ public class AgentRunner {
             "20\\d{2}[.\\-/年]\\d{1,2}[.\\-/月]\\d{1,2}");
     private static final Pattern CLARIFICATION_ORIGINAL = Pattern.compile(
             "继续处理上一条请求“([^”]{1,200})”");
+    /** 低置信度意图澄清的回复前缀，命中即视为用户已确认意图，不得再次反问。 */
+    private static final Pattern INTENT_CONFIRMATION_REPLY = Pattern.compile(
+            "我确认要执行的操作是：\\s*(.+)\\s*$", Pattern.DOTALL);
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -391,7 +394,16 @@ public class AgentRunner {
         // 提前反问并中断。这样 8B 与 API 大模型会得到一致的确定性行为。
         boolean deterministicCaliberOptionsQuery = isCaliberOptionsQuery(request.query());
         boolean deterministicIssueDiagnosis = isExplicitIssueDiagnosis(request.query());
+        // 意图确认回复的确定性识别：用户已在低置信度澄清中点选过操作，
+        // 确认文本重新进入 Planner 后往往仍被判低置信，必须在这里强制落地
+        // 所选意图并绕过低置信度反问，否则会形成无限确认循环。
+        Matcher intentConfirmed = INTENT_CONFIRMATION_REPLY.matcher(request.query());
+        boolean confirmedIntentReply = intentConfirmed.find();
+        if (confirmedIntentReply) {
+            enrichedPlan = applyConfirmedIntent(enrichedPlan, intentConfirmed.group(1));
+        }
         if (enrichedPlan.confidence() < threshold
+                && !confirmedIntentReply
                 && !deterministicCaliberOptionsQuery
                 && !deterministicIssueDiagnosis) {
             long clarificationStarted = TraceEvents.started();
@@ -402,7 +414,7 @@ public class AgentRunner {
             AgentClarification clarification = indicatorUnresolved
                     ? clarificationPrompts.indicatorUnresolved(
                             request.principal().hospitalId(), request.query(), lowTarget.rawName())
-                    : buildIntentClarification(enrichedPlan);
+                    : buildIntentClarification(request.query(), enrichedPlan);
             String clarificationMessage = indicatorUnresolved
                     ? "未能匹配到您说的指标，请确认要处理的指标："
                     : "无法确定您的意图，请确认您想要的操作：";
@@ -1878,9 +1890,10 @@ public class AgentRunner {
      * 为低置信度意图生成澄清选项，供用户选择。
      *
      * <p>根据 Planner 识别的意图和语义歧义生成 2-3 个候选意图选项，
-     * 用户选择后将作为下一轮 query 的 prepend 上下文重新进入 Planner。</p>
+     * 用户选择后将以 resumePrefix + 选项值的形式重新进入 Planner，
+     * 并由 INTENT_CONFIRMATION_REPLY 确定性识别，不再二次反问。</p>
      */
-    private static AgentClarification buildIntentClarification(RequestPlan plan) {
+    private static AgentClarification buildIntentClarification(String originalQuery, RequestPlan plan) {
         List<AgentClarification.Option> options = new ArrayList<>();
         String indicatorName = plan.targetIndicator().rawName();
         // 根据当前识别的意图生成候选选项
@@ -1916,6 +1929,14 @@ public class AgentRunner {
                         "执行 SQL 并返回 " + indicatorName + " 的统计结果", ""));
             }
         }
+        String original = originalQuery == null ? "" : originalQuery.strip();
+        if (original.length() > 200) {
+            original = original.substring(0, 200);
+        }
+        // resumePrefix 带上原始请求和固定确认前缀，保证确认回复可被服务端确定性识别
+        String resumePrefix = original.isBlank()
+                ? "我确认要执行的操作是："
+                : "继续处理上一条请求“" + original + "”。我确认要执行的操作是：";
         return new AgentClarification(
                 "LOW_CONFIDENCE_INTENT",
                 "intent",
@@ -1926,7 +1947,36 @@ public class AgentRunner {
                 options,
                 true,
                 "或者输入更具体的描述...",
-                "");
+                resumePrefix);
+    }
+
+    /**
+     * 将用户在意图澄清中点选的操作映射为确定意图。
+     *
+     * <p>用户已经明确点选过一次，无论关键词是否命中，都必须把置信度提升到
+     * 1.0，避免同一句确认再次触发低置信度反问形成循环；关键词未命中时
+     * （如“继续按系统识别的意图执行”或自由文本）保留 Planner 当前意图。</p>
+     */
+    private static RequestPlan applyConfirmedIntent(RequestPlan plan, String action) {
+        String compact = action == null
+                ? "" : action.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        if (compact.contains("sql") || compact.contains("脚本")) {
+            return plan.withIntent(PlanIntent.INDICATOR_SQL_PREPARE)
+                    .withRequestedOutputs(List.of(RequestedOutput.PREPARED_SQL_HANDLE))
+                    .withConfidence(1.0);
+        }
+        if (compact.contains("定义") || compact.contains("公式") || compact.contains("口径")) {
+            return plan.withIntent(PlanIntent.RULE_EXPLANATION)
+                    .withRequestedOutputs(List.of(
+                            RequestedOutput.DEFINITION, RequestedOutput.FORMULA))
+                    .withConfidence(1.0);
+        }
+        if (compact.contains("计算") || compact.contains("数值") || compact.contains("结果")) {
+            return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+                    .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT))
+                    .withConfidence(1.0);
+        }
+        return plan.withConfidence(1.0);
     }
 
     /**

@@ -16,7 +16,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * 启动时扫描 knowledge-index-mras/concepts/*.md，解析指标概念页补充元数据。
+ * 启动时扫描 knowledge-index/concepts/*.md，解析指标概念页补充元数据。
  *
  * <p>职责边界：只读解析概念页中的「指标意义」「计量单位」等 entities/ 没有的字段；
  * 不修改知识库文件、不执行 SQL、不访问网络。</p>
@@ -26,7 +26,7 @@ public class ConceptPageParser {
 
     private static final Logger log = LoggerFactory.getLogger(ConceptPageParser.class);
     private static final String CONCEPTS_PATTERN =
-            "classpath:knowledge-index-mras/concepts/*.md";
+            "classpath:knowledge-index/concepts/*.md";
     private static final Pattern CODE_COMMENT = Pattern.compile(
             "<!--\\s*concept:\\s*(HXZD-\\d{3}-\\d{3})");
     private static final Pattern TITLE_CODE = Pattern.compile(
@@ -71,7 +71,7 @@ public class ConceptPageParser {
                 }
             }
         } catch (IOException exception) {
-            throw new UncheckedIOException("无法扫描 knowledge-index-mras/concepts 目录", exception);
+            throw new UncheckedIOException("无法扫描 knowledge-index/concepts 目录", exception);
         }
         log.info("领导知识库概念页加载完成: {} 个指标", map.size());
         return map;

@@ -19,7 +19,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
- * 启动时扫描 knowledge-index-mras/entities/*.md，解析为结构化 EntityPageData 并缓存。
+ * 启动时扫描 knowledge-index/entities/*.md，解析为结构化 EntityPageData 并缓存。
  *
  * <p>职责边界：只读解析 Markdown 实体页，不修改知识库文件、不执行 SQL、不访问网络。
  * 解析失败的文件仅记录警告日志，不阻塞应用启动。</p>
@@ -29,7 +29,7 @@ public class EntityPageParser {
 
     private static final Logger log = LoggerFactory.getLogger(EntityPageParser.class);
     private static final String ENTITIES_PATTERN =
-            "classpath:knowledge-index-mras/entities/*.md";
+            "classpath:knowledge-index/entities/*.md";
     private static final Pattern FILENAME_CODE = Pattern.compile(
             "^(HXZD-\\d{3}-\\d{3})(?:_(\\d{3}))?_(.+?)(?:_([^_]+))?\\.md$");
     private static final Pattern SQL_BLOCK = Pattern.compile(
@@ -117,7 +117,7 @@ public class EntityPageParser {
                 }
             }
         } catch (IOException exception) {
-            throw new UncheckedIOException("无法扫描 knowledge-index-mras/entities 目录", exception);
+            throw new UncheckedIOException("无法扫描 knowledge-index/entities 目录", exception);
         }
         log.info("领导知识库实体页加载完成: {} 个实体（含变体）", map.size());
         return map;

@@ -42,6 +42,7 @@ public class MrasSqlExecutionService {
     private static final Logger log = LoggerFactory.getLogger(MrasSqlExecutionService.class);
 
     private final EntityPageParser entityPageParser;
+    private final ConceptPageParser conceptPageParser;
     private final MrasTemplateRenderer templateRenderer;
     private final MrasParameterMapper parameterMapper;
     private final ReadOnlySqlValidator sqlValidator;
@@ -52,6 +53,7 @@ public class MrasSqlExecutionService {
 
     public MrasSqlExecutionService(
             EntityPageParser entityPageParser,
+            ConceptPageParser conceptPageParser,
             MrasTemplateRenderer templateRenderer,
             MrasParameterMapper parameterMapper,
             ReadOnlySqlValidator sqlValidator,
@@ -60,6 +62,7 @@ public class MrasSqlExecutionService {
             ObjectProvider<SyncDataService> syncDataProvider,
             SqlServerProperties sqlServerProperties) {
         this.entityPageParser = entityPageParser;
+        this.conceptPageParser = conceptPageParser;
         this.templateRenderer = templateRenderer;
         this.parameterMapper = parameterMapper;
         this.sqlValidator = sqlValidator;
@@ -326,7 +329,7 @@ public class MrasSqlExecutionService {
         }
 
         if ("overview".equals(queryType)) {
-            parseOverviewResult(rows, data);
+            parseOverviewResult(rows, data, indicatorCode);
         } else {
             data.put("rows", rows);
         }
@@ -412,8 +415,18 @@ public class MrasSqlExecutionService {
     /**
      * 解析概览查询结果行，提取分子/分母/指标值/目标值。
      * 领导知识库概览 SQL 返回中文列名（如 "分子...", "分母...", "监测情况", "目标值"）。
+     *
+     * <p>量纲约定：知识库概览 SQL 的“监测情况”“目标值”对百分比类指标返回
+     * 0-1 比值（如 10/417=0.0239），而系统内展示约定是百分数（2.40 → “2.40%”），
+     * 需 ×100 换算；“数值”类指标（如危急值报告时间中位数分钟数）保持原值。
+     * 计量单位来自概念页“监测参数”表格，缺失时按百分比处理（知识库绝大多数为率值指标）。</p>
      */
-    private void parseOverviewResult(List<Map<String, Object>> rows, Map<String, Object> data) {
+    private void parseOverviewResult(
+            List<Map<String, Object>> rows, Map<String, Object> data, String indicatorCode) {
+        ConceptPageParser.ConceptPageData concept = conceptPageParser.getConcept(indicatorCode);
+        String unitText = concept == null ? "" : concept.unit();
+        boolean percentageUnit = !unitText.contains("数值");
+        data.put("unit", percentageUnit ? "percentage" : "");
         if (rows.isEmpty()) {
             data.put("status", "empty");
             data.put("result_value", null);
@@ -432,13 +445,17 @@ public class MrasSqlExecutionService {
         Number targetValue = findNumberByContains(first, "目标值");
         String qualified = findStringByContains(first, "是否达标");
 
+        if (percentageUnit) {
+            resultValue = scaleRatioToPercent(resultValue);
+            targetValue = scaleRatioToPercent(targetValue);
+        }
         if (numerator == null) {
             numerator = getLong(first, "numerator_count");
         }
         if (denominator == null) {
             denominator = getLong(first, "denominator_count");
         }
-        if (resultValue == null && numerator != null && denominator != null
+        if (percentageUnit && resultValue == null && numerator != null && denominator != null
                 && denominator > 0) {
             resultValue = BigDecimal.valueOf(numerator)
                     .divide(BigDecimal.valueOf(denominator), 6, RoundingMode.HALF_UP)
@@ -455,6 +472,18 @@ public class MrasSqlExecutionService {
         data.put("no_sample", (denominator != null && denominator == 0)
                 || (numerator == null && denominator == null && resultValue == null));
         data.put("raw_first_row", first);
+    }
+
+    /**
+     * 把 0-1 比值换算为百分数（保留 4 位小数，前端展示时再取 2 位）。
+     */
+    private static Number scaleRatioToPercent(Number ratio) {
+        if (ratio == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(ratio.doubleValue())
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(4, RoundingMode.HALF_UP);
     }
 
     private static Long findLongByPrefix(Map<String, Object> row, String prefix) {

@@ -179,6 +179,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .indicator-card[data-status="FAILED"] { border-top-color: var(--danger); }
 .indicator-card[data-status="NO_SAMPLE"] { border-top-color: var(--amber); }
 .indicator-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.indicator-caliber-block { display: grid; gap: 10px; }
+.indicator-caliber-block + .indicator-caliber-block { padding-top: 10px; border-top: 1px dashed var(--line); }
+.indicator-caliber-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 0; }
 .indicator-card-head strong { color: var(--teal-dark); font-size: 14px; line-height: 1.4; }
 .indicator-status { flex: none; padding: 2px 8px; font-size: 11px; color: var(--teal); background: #eef8f5; border: 1px solid #96c5bb; }
 .indicator-status[data-status="FAILED"] { color: var(--danger); background: #fbf0ee; border-color: #dcaba2; }
