@@ -22,7 +22,7 @@ import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
 
 /**
  * MrasDetailSqlSynthesizer 单元测试：验证小模型合成分子/分母明细 SQL 的解析、
- * 只读校验、每次重新生成与失败回退逻辑。
+ * 只读校验、成功结果缓存、分子判定表达式提取与失败回退逻辑。
  */
 class MrasDetailSqlSynthesizerTest {
 
@@ -69,10 +69,51 @@ class MrasDetailSqlSynthesizerTest {
         assertThat(first.denominatorSql()).contains(":marptBeginAt").contains(":marptEndAt");
         assertThat(first.numeratorSql()).contains("TRANSFER_WITHIN_TWO_DAY");
 
-        // 每次重新生成，第二次仍调用模型
+        // 成功结果按指标缓存，第二次直接命中缓存不再调用模型
         MrasDetailSqlSynthesizer.DetailSqlPair second = synthesizer.synthesize(INDICATOR);
         assertThat(second).isNotNull();
-        verify(invoker, times(2)).complete(anyString(), anyString(), anyString(), any(Duration.class));
+        verify(invoker, times(1)).complete(anyString(), anyString(), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void synthesizeFailureIsNotCached() {
+        when(invoker.complete(anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(new ModelCompletion("test-model", INVALID_JSON))
+                .thenReturn(new ModelCompletion("test-model", INVALID_JSON))
+                .thenReturn(new ModelCompletion("test-model", VALID_JSON));
+
+        // 首轮：首次 + 重试均失败，返回 null 且不落缓存
+        assertThat(synthesizer.synthesize(INDICATOR)).isNull();
+        // 第二轮：重新调用模型并成功
+        assertThat(synthesizer.synthesize(INDICATOR)).isNotNull();
+        verify(invoker, times(3)).complete(anyString(), anyString(), anyString(), any(Duration.class));
+    }
+
+    @Test
+    void extractNumeratorConditionFindsFirstCaseWhen() {
+        String overview = "SELECT COUNT(CASE WHEN TRANSFER_WITHIN_TWO_DAY = '98175' THEN 1 ELSE NULL END) AS mol,\n"
+                + "COUNT(1) AS den,\n"
+                + "CASE WHEN COUNT(1) = 0 THEN 0 ELSE 1 END AS rate\n"
+                + "FROM MRAS_BUSINESS_FIRSTVISIT event (NOLOCK)";
+
+        assertThat(MrasDetailSqlSynthesizer.extractNumeratorCondition(overview))
+                .isEqualTo("TRANSFER_WITHIN_TWO_DAY = '98175'");
+    }
+
+    @Test
+    void extractNumeratorConditionSupportsSumForm() {
+        String overview = "SELECT SUM(CASE WHEN event.UNPLANNED_FLAG = 98175\n"
+                + "    AND event.IS_DEL = 0 THEN 1 ELSE 0 END) AS mol FROM T event (NOLOCK)";
+
+        assertThat(MrasDetailSqlSynthesizer.extractNumeratorCondition(overview))
+                .isEqualTo("event.UNPLANNED_FLAG = 98175 AND event.IS_DEL = 0");
+    }
+
+    @Test
+    void extractNumeratorConditionReturnsEmptyWhenAbsent() {
+        assertThat(MrasDetailSqlSynthesizer.extractNumeratorCondition(
+                "SELECT COUNT(1) FROM T event (NOLOCK)")).isEmpty();
+        assertThat(MrasDetailSqlSynthesizer.extractNumeratorCondition(null)).isEmpty();
     }
 
     @Test
@@ -95,6 +136,8 @@ class MrasDetailSqlSynthesizerTest {
         MrasDetailSqlSynthesizer.DetailSqlPair result = synthesizer.synthesize(INDICATOR);
 
         assertThat(result).isNull();
+        // 模型不可用时不重试，只调用一次，避免双倍超时阻塞
+        verify(invoker, times(1)).complete(anyString(), anyString(), anyString(), any(Duration.class));
     }
 
     @Test

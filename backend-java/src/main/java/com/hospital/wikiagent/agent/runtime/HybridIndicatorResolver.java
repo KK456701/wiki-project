@@ -40,7 +40,11 @@ public class HybridIndicatorResolver {
     private static final Pattern SEGMENT_SPLIT = Pattern.compile(
             "[,，、;；]|(?:还有|以及|另外(?:再|还|也)?|同时(?:还|也)?)");
     private static final Pattern ACTION_PREFIX = Pattern.compile(
-            "^(?:请|帮我|给我|再|同时|分别|查询|查一下|计算|算一下|统计|查看|看看)+");
+            "^(?:请|帮我|给我|再|同时|分别|查询|查一下|计算|算一下|算|统计|查看|看看)+");
+    /** 句首时间词（如“去年”“2025年3月”）不属于指标名，召回前先剥离以免拉低相似度。 */
+    private static final Pattern TIME_PREFIX = Pattern.compile(
+            "^(?:今年|去年|前年|本月|这个月|当月|上月|上个月|"
+                    + "\\d{2,4}年(?:\\d{1,2}月份?)?|[一二三四五六七八九十]{1,3}月份?)+(?:的)?");
     private static final Pattern ACTION_SUFFIX = Pattern.compile(
             "(?:的)?(?:定义|公式|口径|具体结果|指标结果|结果|数值|指标值|分子分母)?"
                     + "(?:怎么(?:算|计算|写)|如何(?:算|计算)|是多少|是什么|什么意思|给我)?[？?。]*$");
@@ -428,6 +432,7 @@ public class HybridIndicatorResolver {
 
     private static String cleanSegment(String value) {
         String cleaned = ACTION_PREFIX.matcher(value == null ? "" : value.strip()).replaceFirst("");
+        cleaned = TIME_PREFIX.matcher(cleaned).replaceFirst("").strip();
         cleaned = TIME_TAIL.matcher(cleaned).replaceFirst("").strip();
         cleaned = ACTION_SUFFIX.matcher(cleaned).replaceFirst("").strip();
         return cleaned.replaceAll("^[\\s,，、;；。？?]+|[\\s,，、;；。？?]+$", "");

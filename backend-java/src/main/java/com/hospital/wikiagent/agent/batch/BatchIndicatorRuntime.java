@@ -247,12 +247,15 @@ public class BatchIndicatorRuntime {
                 String subtaskId = requestId + ":batch:" + index;
                 callables.add(() -> {
                     long indicatorStarted = System.currentTimeMillis();
+                    // MRAS 路径由 executeViaMras 自行发出带真实耗时的抽取/查询节点，
+                    // 不再走 emitProfileWorkflowTrace 的 0ms 占位节点。
+                    boolean viaMras = mrasExecution != null && mrasExecution.supports(ruleId);
                     IndicatorExecutionResult result;
                     try {
-                        // 优先走领导知识库 MRAS 执行路径
-                        if (mrasExecution != null && mrasExecution.supports(ruleId)) {
+                        if (viaMras) {
                             result = executeViaMras(
-                                    ruleId, ruleName, target, statStart, statEnd);
+                                    ruleId, ruleName, target, statStart, statEnd,
+                                    observer, traceId, subtaskId);
                         } else if (target.profileId() == null) {
                             result = executor.execute(
                                     ruleId, ruleName, subtaskId, timeText,
@@ -285,8 +288,10 @@ public class BatchIndicatorRuntime {
                     if (result.extractionStatus() != null) {
                         traceOutput.put("snapshot_status", result.extractionStatus());
                     }
-                    emitProfileWorkflowTrace(
-                            observer, traceId, subtaskId, target, result);
+                    if (!viaMras) {
+                        emitProfileWorkflowTrace(
+                                observer, traceId, subtaskId, target, result);
+                    }
                     emitTrace(observer, traceId, "batch_indicator",
                             result.status() == Status.FAILED ? "failed" : "success",
                             indicatorStarted, subtaskId,
@@ -364,17 +369,21 @@ public class BatchIndicatorRuntime {
 
     /**
      * 通过领导知识库 MrasSqlExecutionService 执行概览查询，转换为批量结果。
+     * 抽取与 SQL 执行分别发出独立计时的 trace 节点，耗时归属不再全部算在
+     * “完成单项指标计算”一个节点上。
      */
     private IndicatorExecutionResult executeViaMras(
             String ruleId, String ruleName,
             ProfileExecutionTarget target,
-            String statStart, String statEnd) {
+            String statStart, String statEnd,
+            AgentRunObserver observer, String traceId, String subtaskId) {
         long started = System.currentTimeMillis();
         LocalDateTime start = LocalDateTime.parse(statStart, TIME_FORMAT);
         LocalDateTime end = LocalDateTime.parse(statEnd, TIME_FORMAT);
         ToolResult toolResult = mrasExecution.executeOverview(
                 ruleId, start, end, null, null);
         long durationMs = System.currentTimeMillis() - started;
+        emitMrasPhaseTrace(observer, traceId, subtaskId, target, toolResult);
 
         if (!toolResult.ok()) {
             return IndicatorExecutionResult.failed(
@@ -434,6 +443,37 @@ public class BatchIndicatorRuntime {
 
     private static String taskDisplay(ProfileExecutionTarget target) {
         return target.ruleName() + " / " + target.profileLabel();
+    }
+
+    /**
+     * 把 MRAS 执行结果里的阶段耗时（抽取 / 真实库 SQL 执行）各自发为独立 trace 节点，
+     * 时长取自 MrasSqlExecutionService 的实测值，不再是 0ms 占位。
+     */
+    private static void emitMrasPhaseTrace(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            ProfileExecutionTarget target,
+            ToolResult toolResult) {
+        Map<String, Object> data = toolResult.data() == null ? Map.of() : toolResult.data();
+        long now = System.currentTimeMillis();
+        if (data.get("extraction_duration_ms") instanceof Number extraction) {
+            boolean extractionFailed = data.get("extraction_warning") != null;
+            emitTrace(observer, traceId, "source_data_extraction",
+                    extractionFailed ? "failed" : "success",
+                    now - Math.max(0, extraction.longValue()), subtaskId,
+                    profileTraceInput(target),
+                    extractionFailed
+                            ? Map.of("warning", String.valueOf(data.get("extraction_warning")))
+                            : Map.of("status", "extracted", "source_id", "winex_aima"));
+        }
+        if (toolResult.ok() && data.get("duration_ms") instanceof Number query) {
+            emitTrace(observer, traceId, "real_database_overview", "success",
+                    now - Math.max(0, query.longValue()), subtaskId,
+                    profileTraceInput(target),
+                    Map.of("source_id", "winex_aima",
+                            "row_count", data.getOrDefault("row_count", 0)));
+        }
     }
 
     private static void emitProfileWorkflowTrace(

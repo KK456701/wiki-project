@@ -51,6 +51,10 @@ public class BatchRequestDetector {
                     + "[一二三四五六七八九十]{1,3}月份?|"
                     + "\\d{2,4}年|\\d{4}-\\d{1,2}-\\d{1,2}");
 
+    /** 命中即说明句子里带有具体指标语义（如“入院内转科的比例”），不是纯时间修改，必须交给语义召回。 */
+    private static final Pattern INDICATOR_CONTENT = Pattern.compile(
+            "率|比例|会诊|转科|查房|患者|住院|手术|抢救|死亡|感染|输血");
+
     /**
      * 判断一条用户问题是否应进入批量指标计算路径。
      */
@@ -212,10 +216,13 @@ public class BatchRequestDetector {
             return false;
         }
         String normalized = normalize(query);
+        // 含指标语义内容（如“算去年患者入院内转科的比例”）的句子不是纯时间修改，
+        // 不能在这里提前拦截，必须放行给语义召回 + LLM 兜底识别指标。
         return normalized.length() <= 80
                 && TIME_CHANGE.matcher(normalized).find()
                 && !WANTS_DEFINITION.matcher(normalized).find()
-                && !WANTS_RESULT.matcher(normalized).find();
+                && !WANTS_RESULT.matcher(normalized).find()
+                && !INDICATOR_CONTENT.matcher(normalized).find();
     }
 
     public String timeTextFor(String query, QueryScopeState previous) {

@@ -276,6 +276,10 @@ function cellText(row: Record<string, unknown>, column: string): string {
             共 {{ stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.row_count }} 条记录
             <template v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.truncated">（仅展示前 200 条）</template>
           </p>
+          <p
+            v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.sql_source === 'mras_patient_detail'"
+            class="indicator-error"
+          >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
           <div
             v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.rows.length"
             class="indicator-detail-table"

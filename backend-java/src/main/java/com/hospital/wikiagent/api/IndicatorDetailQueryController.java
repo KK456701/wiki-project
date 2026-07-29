@@ -6,7 +6,6 @@ import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -42,9 +41,6 @@ public class IndicatorDetailQueryController {
     private final MrasSqlExecutionService mrasExecution;
     private final MrasDetailSqlSynthesizer detailSynthesizer;
 
-    /** 明细 SQL 合成结果缓存：合成走小模型较慢，同一指标分子/分母共用一次合成。 */
-    private final Map<String, DetailSqlPair> pairCache = new ConcurrentHashMap<>();
-
     public IndicatorDetailQueryController(
             HospitalAuthService authService,
             MrasSqlExecutionService mrasExecution,
@@ -73,11 +69,10 @@ public class IndicatorDetailQueryController {
         boolean denominator = "denominator".equals(group);
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
 
-        // 优先用合成的分子/分母明细 SQL；合成或执行失败回退领导知识库患者明细 SQL
+        // 优先用合成的分子/分母明细 SQL（合成器内部按指标缓存）；合成或执行失败回退领导知识库患者明细 SQL
         ToolResult result = null;
         String usedDetailSql = null;
-        // 合成失败返回 null 时 computeIfAbsent 不会缓存，下次调用会重试合成
-        DetailSqlPair pair = pairCache.computeIfAbsent(ruleId, detailSynthesizer::synthesize);
+        DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
         if (pair != null) {
             String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
             ToolResult generated = mrasExecution.executeGeneratedDetail(

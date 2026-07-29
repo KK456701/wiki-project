@@ -107,12 +107,14 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
 
-        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默。抽取独立计时供 trace 归属。
+        long extractStarted = System.currentTimeMillis();
         String extractionWarning = ensureExtracted(entity, start, end);
+        long extractionDurationMs = System.currentTimeMillis() - extractStarted;
 
         return executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
-                entity.name(), entity.dimension(), true, extractionWarning);
+                entity.name(), entity.dimension(), true, extractionWarning, extractionDurationMs);
     }
 
     /**
@@ -138,11 +140,13 @@ public class MrasSqlExecutionService {
                 start, end, deptFilter, null);
 
         // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        long deptExtractStarted = System.currentTimeMillis();
         String extractionWarning = ensureExtracted(entity, start, end);
+        long deptExtractionMs = System.currentTimeMillis() - deptExtractStarted;
 
         return executeSql(
                 entity.deptStatSql(), params, indicatorCode, "dept_stat",
-                entity.name(), entity.dimension(), true, extractionWarning);
+                entity.name(), entity.dimension(), true, extractionWarning, deptExtractionMs);
     }
 
     /**
@@ -169,11 +173,13 @@ public class MrasSqlExecutionService {
                 start, end, deptFilter, qualifiedFilter);
 
         // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默
+        long detailExtractStarted = System.currentTimeMillis();
         String extractionWarning = ensureExtracted(entity, start, end);
+        long detailExtractionMs = System.currentTimeMillis() - detailExtractStarted;
 
         return executeSql(
                 entity.patientDetailSql(), params, indicatorCode, "patient_detail",
-                entity.name(), entity.dimension(), true, extractionWarning);
+                entity.name(), entity.dimension(), true, extractionWarning, detailExtractionMs);
     }
 
     /**
@@ -207,7 +213,7 @@ public class MrasSqlExecutionService {
                 start, end, null, null);
 
         return executeSql(
-                detailSql, params, indicatorCode, queryType, indicatorName, dimension, false, null);
+                detailSql, params, indicatorCode, queryType, indicatorName, dimension, false, null, -1);
     }
 
     /**
@@ -237,7 +243,8 @@ public class MrasSqlExecutionService {
             String indicatorName,
             String dimension,
             boolean stripQuotes,
-            String extractionWarning) {
+            String extractionWarning,
+            long extractionDurationMs) {
 
         // 第一步：模板解析（#ETC/#EQUALS + 方言修正），保留命名参数
         String renderedSql;
@@ -307,6 +314,10 @@ public class MrasSqlExecutionService {
         data.put("dimension", dimension);
         data.put("query_type", queryType);
         data.put("duration_ms", durationMs);
+        if (extractionDurationMs >= 0) {
+            // 抽取与 SQL 执行分开计时，供上层 trace 节点正确归属耗时
+            data.put("extraction_duration_ms", extractionDurationMs);
+        }
         data.put("sql_source", "mras");
         data.put("row_count", rows.size());
         if (extractionWarning != null) {

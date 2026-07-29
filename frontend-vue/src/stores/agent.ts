@@ -153,6 +153,7 @@ const nodeLabels: Record<string, string> = {
   dual_period_validation: '校验统计范围',
   source_extraction_prepare: '准备源数据抽取',
   source_data_extraction: '抽取数据到真实库',
+  real_database_overview: '执行真实库概览 SQL',
   business_overview: '计算业务库概览',
   real_overview: '计算真实库概览',
   dual_comparison: '核对双库结果',
@@ -193,6 +194,7 @@ const ruleTools = new Set([
 const dataNodeNames = new Set([
   'source_extraction_prepare',
   'source_data_extraction',
+  'real_database_overview',
   'business_overview',
   'real_overview',
   'mras_patient_detail',

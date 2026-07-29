@@ -85,6 +85,15 @@ class BatchRequestDetectorTest {
     }
 
     @Test
+    void queryWithIndicatorContentIsNotTimeOnlyChange() {
+        // 含指标语义内容的句子不是纯时间修改，必须放行给语义召回 + LLM 兜底识别指标
+        assertThat(detector.isTimeOnlyChange("算去年患者入院内转科的比例")).isFalse();
+        assertThat(detector.isTimeOnlyChange("去年的会诊情况")).isFalse();
+        // 不含指标内容的纯时间修改仍然命中
+        assertThat(detector.isTimeOnlyChange("时间改成去年")).isTrue();
+    }
+
+    @Test
     void lastStatPeriodReferenceUsesStructuredPreviousPeriod() {
         QueryScopeState previous = new QueryScopeState(
                 "sql_prepare", "SINGLE",

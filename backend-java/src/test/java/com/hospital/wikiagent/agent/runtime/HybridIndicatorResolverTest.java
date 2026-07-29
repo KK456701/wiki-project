@@ -76,6 +76,25 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
+    void leadingActionAndTimeWordsAreStrippedBeforeSemanticRecall() {
+        Fixture fixture = fixture(List.of(
+                rule("MQSI2025_001", TRANSFER), rule("MQSI2025_005", CONSULT)), null);
+
+        // 句首“算”与时间词“去年”不属于指标名，剥离后模糊名称应能语义命中或给出候选，
+        // 绝不能落入“请补充指标”的自由文本澄清
+        var result = fixture.resolver().resolve(
+                "算去年患者入院内转科的比例",
+                "hospital_001", "ollama-test", "trace-time", "root", AgentRunObserver.noop());
+
+        boolean resolvedDirectly = result.indicators().stream()
+                .anyMatch(value -> "MQSI2025_001".equals(value.ruleId()));
+        boolean offeredAsCandidate = result.ambiguities().stream()
+                .flatMap(value -> value.candidates().stream())
+                .anyMatch(value -> "MQSI2025_001".equals(value.ruleId()));
+        assertThat(resolvedDirectly || offeredAsCandidate).isTrue();
+    }
+
+    @Test
     void staleTerminologyRuleLinkCannotOverrideCurrentWikiRuleId() {
         Fixture fixture = fixture(List.of(
                 rule("HXZD-001-001", "患者入院48小时内转科的比例")), null);
