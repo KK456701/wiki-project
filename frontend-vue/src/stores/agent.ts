@@ -88,6 +88,8 @@ export interface ChatMessage {
 export interface BatchIndicatorResult {
   ruleId: string
   ruleName: string
+  profileId?: string
+  profileLabel?: string
   status: string
   done: number
   total: number
@@ -377,6 +379,8 @@ function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
   return {
     ruleId: String(raw.rule_id ?? ''),
     ruleName: String(raw.rule_name ?? ''),
+    profileId: raw.profile_id as string | undefined,
+    profileLabel: raw.profile_label as string | undefined,
     status: String(raw.status ?? ''),
     done: Number(raw.done ?? 0),
     total: Number(raw.total ?? 0),
@@ -670,9 +674,11 @@ export const useAgentStore = defineStore('agent', {
       }
       if (event.event === 'batch_indicator_result') {
         if (!message.batchResults) message.batchResults = []
-        message.batchResults.push({
+        const incoming: BatchIndicatorResult = {
           ruleId: event.rule_id || '',
           ruleName: event.rule_name || '',
+          profileId: event.profile_id,
+          profileLabel: event.profile_label,
           status: event.status || '',
           done: event.done || 0,
           total: event.total || 0,
@@ -687,7 +693,17 @@ export const useAgentStore = defineStore('agent', {
           dataFreshness: event.data_freshness,
           errorCode: event.error_code,
           errorMessage: event.error_message,
-        })
+        }
+        // 同一指标+口径重复推送时原地替换，避免叠出同形卡片；
+        // 不同口径（profileId 不同）各自保留一张卡片。
+        const existing = message.batchResults.findIndex(
+          (item) => item.ruleId === incoming.ruleId
+            && (item.profileId ?? '') === (incoming.profileId ?? ''))
+        if (existing >= 0) {
+          message.batchResults.splice(existing, 1, incoming)
+        } else {
+          message.batchResults.push(incoming)
+        }
         setStage(message,
           `已完成 ${event.done}/${event.total}：${event.rule_name || ''}`,
           'code', event.status === 'FAILED' ? 'warning' : 'success')

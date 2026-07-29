@@ -368,11 +368,13 @@ public class MrasSqlExecutionService {
             SyncDataDto dto = new SyncDataDto();
             dto.setHospitalSOID(hospitalSoid);
 
-            // eventDataList：事件中间表
+            // eventDataList：事件中间表。
+            // 部分实体页的源表 SQL 与概览 SQL 一样带 Markdown 前后引号（"SELECT ..."），
+            // 直接透传 DBHub 会以“未定义处理异常”快速失败，必须与概览同口径剥离。
             TableDataDto eventData = new TableDataDto();
             eventData.setEventNo(entity.eventNo());
             eventData.setTable(entity.targetTable());
-            eventData.setSqlScript(entity.sourceTableSql());
+            eventData.setSqlScript(stripLeadingTrailingQuotes(entity.sourceTableSql()));
             eventData.setStartTime(toDate(start));
             eventData.setEndTime(toDate(end));
             dto.setEventDataList(List.of(eventData));
@@ -448,7 +450,10 @@ public class MrasSqlExecutionService {
         data.put("result_value", resultValue);
         data.put("target_value", targetValue);
         data.put("qualified_label", qualified);
-        data.put("no_sample", denominator != null && denominator == 0);
+        // 分母为 0，或聚合行全为 NULL（统计区间内无任何样本进入聚合，如
+        // SUM over 空集）都视为无样本，避免误报 SUCCESS 却没有任何数值。
+        data.put("no_sample", (denominator != null && denominator == 0)
+                || (numerator == null && denominator == null && resultValue == null));
         data.put("raw_first_row", first);
     }
 

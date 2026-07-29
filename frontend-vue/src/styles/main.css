@@ -766,6 +766,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .app-shell .indicator-card-head strong { color: var(--ink); font-size: 15px; }
 .app-shell .indicator-card-head code { color: #71827d; font: 9px Consolas, monospace; }
+.indicator-profile-label { display: inline-block; width: fit-content; margin: 0; padding: 1px 7px; color: var(--teal-dark); background: #eef8f5; border: 1px solid #96c5bb; border-radius: 999px; font-size: 11px; font-style: normal; line-height: 1.5; }
 .app-shell .indicator-status { border-radius: 999px; }
 .indicator-result-grid {
   display: grid;

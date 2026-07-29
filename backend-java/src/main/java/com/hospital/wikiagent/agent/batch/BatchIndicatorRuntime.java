@@ -729,6 +729,14 @@ public class BatchIndicatorRuntime {
         payload.put("status", result.status().name());
         payload.put("done", done);
         payload.put("total", total);
+        // 同一指标多口径时，前端靠 profile_id 去重、靠 profile_label 区分卡片，
+        // 缺失时多张卡片会完全同形。
+        if (result.profileId() != null) {
+            payload.put("profile_id", result.profileId());
+        }
+        if (result.profileLabel() != null) {
+            payload.put("profile_label", result.profileLabel());
+        }
         if (result.resultValue() != null) {
             payload.put("result_value", result.resultValue());
         }

@@ -30,9 +30,15 @@ interface CardState {
 
 const states = reactive<Record<string, CardState>>({})
 
-function stateOf(ruleId: string): CardState {
-  if (!states[ruleId]) {
-    states[ruleId] = {
+/** 同一指标多口径时每个口径一张卡片，卡片 key 必须带上 profileId 区分 */
+function cardKey(item: BatchIndicatorResult): string {
+  return item.profileId ? `${item.ruleId}:${item.profileId}` : item.ruleId
+}
+
+function stateOf(item: BatchIndicatorResult): CardState {
+  const key = cardKey(item)
+  if (!states[key]) {
+    states[key] = {
       activeTab: '',
       detailGroup: 'numerator',
       ruleLoading: false,
@@ -42,7 +48,7 @@ function stateOf(ruleId: string): CardState {
       detailError: '',
     }
   }
-  return states[ruleId]
+  return states[key]
 }
 
 function statusLabel(status: string): string {
@@ -87,7 +93,7 @@ function ruleText(rule: EffectiveRule | undefined, key: string): string {
 }
 
 async function toggleTab(item: BatchIndicatorResult, tab: TabKey) {
-  const state = stateOf(item.ruleId)
+  const state = stateOf(item)
   if (state.activeTab === tab) {
     state.activeTab = ''
     return
@@ -114,7 +120,7 @@ async function loadRule(item: BatchIndicatorResult, state: CardState) {
 }
 
 async function switchDetailGroup(item: BatchIndicatorResult, group: DetailGroup) {
-  const state = stateOf(item.ruleId)
+  const state = stateOf(item)
   state.detailGroup = group
   await loadDetail(item, state, group)
 }
@@ -154,7 +160,7 @@ function cellText(row: Record<string, unknown>, column: string): string {
   <section class="indicator-cards">
     <article
       v-for="item in props.results"
-      :key="item.ruleId"
+      :key="cardKey(item)"
       class="indicator-card"
       :data-status="item.status"
     >
@@ -163,6 +169,7 @@ function cellText(row: Record<string, unknown>, column: string): string {
           <span>计算结果 · 已验证</span>
           <strong>{{ item.ruleName || item.ruleId }}</strong>
           <code>{{ item.ruleId }}</code>
+          <em v-if="item.profileLabel" class="indicator-profile-label">{{ item.profileLabel }}</em>
         </div>
         <span class="indicator-status" :data-status="item.status">{{ statusLabel(item.status) }}</span>
       </header>
@@ -203,45 +210,45 @@ function cellText(row: Record<string, unknown>, column: string): string {
       <div class="indicator-card-actions">
         <button
           type="button"
-          :class="{ active: stateOf(item.ruleId).activeTab === 'caliber' }"
+          :class="{ active: stateOf(item).activeTab === 'caliber' }"
           @click="toggleTab(item, 'caliber')"
         >指标口径</button>
         <button
           type="button"
-          :class="{ active: stateOf(item.ruleId).activeTab === 'method' }"
+          :class="{ active: stateOf(item).activeTab === 'method' }"
           @click="toggleTab(item, 'method')"
         >核算方式</button>
         <button
           type="button"
-          :class="{ active: stateOf(item.ruleId).activeTab === 'detail' }"
+          :class="{ active: stateOf(item).activeTab === 'detail' }"
           @click="toggleTab(item, 'detail')"
         >明细</button>
       </div>
 
       <!-- 指标口径 -->
-      <div v-if="stateOf(item.ruleId).activeTab === 'caliber'" class="indicator-panel">
-        <p v-if="stateOf(item.ruleId).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
-        <p v-else-if="stateOf(item.ruleId).ruleError" class="indicator-error">{{ stateOf(item.ruleId).ruleError }}</p>
+      <div v-if="stateOf(item).activeTab === 'caliber'" class="indicator-panel">
+        <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
+        <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
         <dl v-else class="indicator-fields">
           <template v-for="[key, label] in caliberFields" :key="key">
-            <template v-if="ruleText(stateOf(item.ruleId).rule, key)">
+            <template v-if="ruleText(stateOf(item).rule, key)">
               <dt>{{ label }}</dt>
-              <dd>{{ ruleText(stateOf(item.ruleId).rule, key) }}</dd>
+              <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
             </template>
           </template>
         </dl>
       </div>
 
       <!-- 核算方式 -->
-      <div v-if="stateOf(item.ruleId).activeTab === 'method'" class="indicator-panel">
-        <p v-if="stateOf(item.ruleId).ruleLoading" class="indicator-loading">正在读取核算方式…</p>
-        <p v-else-if="stateOf(item.ruleId).ruleError" class="indicator-error">{{ stateOf(item.ruleId).ruleError }}</p>
+      <div v-if="stateOf(item).activeTab === 'method'" class="indicator-panel">
+        <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取核算方式…</p>
+        <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
         <template v-else>
           <dl class="indicator-fields">
             <template v-for="[key, label] in methodFields" :key="key">
-              <template v-if="ruleText(stateOf(item.ruleId).rule, key)">
+              <template v-if="ruleText(stateOf(item).rule, key)">
                 <dt>{{ label }}</dt>
-                <dd>{{ ruleText(stateOf(item.ruleId).rule, key) }}</dd>
+                <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
               </template>
             </template>
             <template v-if="item.calculationDisplay">
@@ -249,62 +256,62 @@ function cellText(row: Record<string, unknown>, column: string): string {
               <dd>{{ item.calculationDisplay }}</dd>
             </template>
           </dl>
-          <details v-if="ruleText(stateOf(item.ruleId).rule, 'standard_sql')" class="indicator-sql">
+          <details v-if="ruleText(stateOf(item).rule, 'standard_sql')" class="indicator-sql">
             <summary>查看核算 SQL</summary>
-            <pre>{{ ruleText(stateOf(item.ruleId).rule, 'standard_sql') }}</pre>
+            <pre>{{ ruleText(stateOf(item).rule, 'standard_sql') }}</pre>
           </details>
         </template>
       </div>
 
       <!-- 明细 -->
-      <div v-if="stateOf(item.ruleId).activeTab === 'detail'" class="indicator-panel">
+      <div v-if="stateOf(item).activeTab === 'detail'" class="indicator-panel">
         <div class="indicator-detail-groups">
           <button
             type="button"
-            :class="{ active: stateOf(item.ruleId).detailGroup === 'numerator' }"
+            :class="{ active: stateOf(item).detailGroup === 'numerator' }"
             @click="switchDetailGroup(item, 'numerator')"
           >分子明细</button>
           <button
             type="button"
-            :class="{ active: stateOf(item.ruleId).detailGroup === 'denominator' }"
+            :class="{ active: stateOf(item).detailGroup === 'denominator' }"
             @click="switchDetailGroup(item, 'denominator')"
           >分母明细</button>
         </div>
-        <p v-if="stateOf(item.ruleId).detailLoading" class="indicator-loading">正在查询患者明细（首次查询需生成明细 SQL，可能需要十几秒）…</p>
-        <p v-else-if="stateOf(item.ruleId).detailError" class="indicator-error">{{ stateOf(item.ruleId).detailError }}</p>
-        <template v-else-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]">
+        <p v-if="stateOf(item).detailLoading" class="indicator-loading">正在查询患者明细（首次查询需生成明细 SQL，可能需要十几秒）…</p>
+        <p v-else-if="stateOf(item).detailError" class="indicator-error">{{ stateOf(item).detailError }}</p>
+        <template v-else-if="stateOf(item).details[stateOf(item).detailGroup]">
           <p class="indicator-detail-summary">
-            共 {{ stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.row_count }} 条记录
-            <template v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.truncated">（仅展示前 200 条）</template>
+            共 {{ stateOf(item).details[stateOf(item).detailGroup]!.row_count }} 条记录
+            <template v-if="stateOf(item).details[stateOf(item).detailGroup]!.truncated">（仅展示前 200 条）</template>
           </p>
           <p
-            v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.sql_source === 'mras_patient_detail'"
+            v-if="stateOf(item).details[stateOf(item).detailGroup]!.sql_source === 'mras_patient_detail'"
             class="indicator-error"
           >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
           <div
-            v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.rows.length"
+            v-if="stateOf(item).details[stateOf(item).detailGroup]!.rows.length"
             class="indicator-detail-table"
           >
             <table>
               <thead>
                 <tr>
-                  <th v-for="column in detailColumns(stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup])" :key="column">{{ column }}</th>
+                  <th v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ column }}</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(row, rowIndex) in stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.rows" :key="rowIndex">
-                  <td v-for="column in detailColumns(stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup])" :key="column">{{ cellText(row, column) }}</td>
+                <tr v-for="(row, rowIndex) in stateOf(item).details[stateOf(item).detailGroup]!.rows" :key="rowIndex">
+                  <td v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ cellText(row, column) }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p v-else class="indicator-loading">统计区间内没有明细记录。</p>
           <details
-            v-if="stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.detail_sql"
+            v-if="stateOf(item).details[stateOf(item).detailGroup]!.detail_sql"
             class="indicator-sql"
           >
             <summary>查看明细 SQL</summary>
-            <pre>{{ stateOf(item.ruleId).details[stateOf(item.ruleId).detailGroup]!.detail_sql }}</pre>
+            <pre>{{ stateOf(item).details[stateOf(item).detailGroup]!.detail_sql }}</pre>
           </details>
         </template>
       </div>

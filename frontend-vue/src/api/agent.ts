@@ -84,6 +84,8 @@ export interface AgentEvent {
   clarification?: AgentClarificationWire
   rule_id?: string
   rule_name?: string
+  profile_id?: string
+  profile_label?: string
   done?: number
   total?: number
   result_value?: number
