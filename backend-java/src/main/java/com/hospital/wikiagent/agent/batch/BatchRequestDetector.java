@@ -88,11 +88,13 @@ public class BatchRequestDetector {
         String timeText = timeText(query, previous);
         List<Target> explicitTargets = explicitTargets(query, activeIndicators);
 
-        if (scopeAll && (wantsResult || continuesTrial)) {
-            return BatchRequestSpec.allActive(query, timeText);
-        }
+        // 明确点名的指标优先于“全部指标”措辞：澄清续答或原句里同时出现
+        // 指标名和“全部指标”时，按用户点名的指标计算，不能退化成全量。
         if (!explicitTargets.isEmpty() && (wantsResult || continuesTrial)) {
             return BatchRequestSpec.selected(query, timeText, explicitTargets);
+        }
+        if (scopeAll && (wantsResult || continuesTrial)) {
+            return BatchRequestSpec.allActive(query, timeText);
         }
         if (continuesTrial && isTimeOnlyChange(query) && explicitTargets.isEmpty()) {
             if ("ALL".equals(previous.targetMode())) {

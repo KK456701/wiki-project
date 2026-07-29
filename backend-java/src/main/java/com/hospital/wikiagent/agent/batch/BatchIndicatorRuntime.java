@@ -108,7 +108,7 @@ public class BatchIndicatorRuntime {
             emitTrace(observer, traceId, "batch_time_resolve", "failed", timeStarted,
                     "root", Map.of("time_text", ""), Map.of(
                             "error_code", "TIME_RANGE_AMBIGUOUS"));
-            return timeClarification(request, observer, conversation, traceId, spec);
+            return timeClarification(request, observer, conversation, traceId, spec, null);
         }
         ResolvedTimeRange resolved =
                 timeResolver.resolve(new TimeExpression(spec.timeText(), null, null));
@@ -116,7 +116,8 @@ public class BatchIndicatorRuntime {
             emitTrace(observer, traceId, "batch_time_resolve", "failed", timeStarted,
                     "root", Map.of("time_text", spec.timeText()), Map.of(
                             "error_code", "TIME_RANGE_AMBIGUOUS"));
-            return timeClarification(request, observer, conversation, traceId, spec);
+            return timeClarification(
+                    request, observer, conversation, traceId, spec, spec.timeText());
         }
         String statStart = resolved.startTime().format(TIME_FORMAT);
         String statEnd = resolved.endTime().format(TIME_FORMAT);
@@ -524,10 +525,24 @@ public class BatchIndicatorRuntime {
             AgentRunObserver observer,
             ConversationSnapshot conversation,
             String traceId,
-            BatchRequestSpec spec) {
-        String message = "请明确要统计的时间范围，我会一次性计算全部指标。"
+            BatchRequestSpec spec,
+            String invalidTimeText) {
+        // 澄清话术必须说明失败原因并复述指标范围：时间起止倒序等解析失败时，
+        // 不能让用户误以为“没给时间”；续答前缀也不能把已点名的指标退化成“全部指标”。
+        String scopeText = scopeText(spec);
+        // timeText 可能是整句原文，过长时不整句引用，只给出简短原因提示。
+        String lead;
+        if (invalidTimeText == null || invalidTimeText.isBlank()) {
+            lead = "请明确要统计的时间范围，";
+        } else if (invalidTimeText.strip().length() <= 30) {
+            lead = "无法识别统计时间“" + invalidTimeText.strip()
+                    + "”（请检查起止顺序是否颠倒），请重新明确时间范围，";
+        } else {
+            lead = "无法识别你给出的统计时间（请检查起止顺序是否颠倒），请重新明确时间范围，";
+        }
+        String message = lead + "我会一次性计算" + scopeText + "。"
                 + "例如“今年”“本月”或“2026年1月至3月”。";
-        AgentClarification clarification = timeClarification();
+        AgentClarification clarification = timeClarification(spec, scopeText);
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running", "session_id", conversation.sessionId(),
                 "batch", true, "runtime_version", VERSION));
@@ -587,7 +602,18 @@ public class BatchIndicatorRuntime {
                 null, null);
     }
 
-    private static AgentClarification timeClarification() {
+    /** 澄清后的续答范围文本：点名指标时复述指标名，避免退化为“全部指标”。 */
+    private static String scopeText(BatchRequestSpec spec) {
+        if (spec.allActive() || spec.targets().isEmpty()) {
+            return "全部指标";
+        }
+        return spec.targets().stream()
+                .map(BatchRequestSpec.Target::ruleName)
+                .collect(Collectors.joining("、"));
+    }
+
+    private static AgentClarification timeClarification(
+            BatchRequestSpec spec, String scopeText) {
         List<AgentClarification.Option> options = List.of(
                 new AgentClarification.Option(
                         "year-to-date", "今年至今", "今年至今",
@@ -598,17 +624,20 @@ public class BatchIndicatorRuntime {
                 new AgentClarification.Option(
                         "previous-month", "上个月", "上个月",
                         "统计上个自然月", "time"));
+        boolean allScope = spec.allActive() || spec.targets().isEmpty();
         return new AgentClarification(
                 "TIME_RANGE_AMBIGUOUS",
                 "time_range",
                 "还需要一个统计时间",
                 "请选择常用时间范围，或在下方输入自定义开始和结束日期。",
-                "计算全部指标结果需要明确的统计周期，整批只会询问一次。",
+                "计算" + scopeText + "的结果需要明确的统计周期，整批只会询问一次。",
                 "single",
                 options,
                 true,
                 "例如：2026-01-01 至 2026-03-31",
-                "计算全部指标结果，统计时间为：");
+                allScope
+                        ? "计算全部指标结果，统计时间为："
+                        : "计算" + scopeText + "的结果，统计时间为：");
     }
 
     private static void emitProgress(
