@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 
-import TraceDrawer from '../components/TraceDrawer.vue'
 import DetailDrawer from '../components/DetailDrawer.vue'
+import ExecutionPanel from '../components/ExecutionPanel.vue'
 import MarkdownMessage from '../components/MarkdownMessage.vue'
+import NodeDetailDrawer from '../components/NodeDetailDrawer.vue'
 import ClarificationChoices from '../components/ClarificationChoices.vue'
 import IndicatorResultCards from '../components/IndicatorResultCards.vue'
 import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
-import { useAgentStore } from '../stores/agent'
+import { useAgentStore, type ExecutionNode } from '../stores/agent'
 import {
   createDiagnosisReportExport,
   createUploadComparisonExport,
@@ -17,8 +18,8 @@ import {
 
 const store = useAgentStore()
 const query = ref('')
-const selectedTraceId = ref('')
 const selectedDetailRunId = ref('')
+const selectedNode = ref<{ traceId: string; node: ExecutionNode } | null>(null)
 const uploadInput = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLElement | null>(null)
 const exportingComparison = ref('')
@@ -109,18 +110,14 @@ async function uploadFile(event: Event) {
   }
 }
 
-function openTrace(traceId?: string) {
-  if (traceId) selectedTraceId.value = traceId
+function openNode(traceId: string | undefined, node: ExecutionNode) {
+  if (traceId) selectedNode.value = { traceId, node }
 }
 
 function formatDuration(durationMs?: number): string {
   if (durationMs === undefined) return ''
   if (durationMs < 1000) return `${durationMs} ms`
   return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 2 : 1)} 秒`
-}
-
-function formatStageNumber(value?: number): string {
-  return String(value || 1).padStart(2, '0')
 }
 
 async function exportComparison(runId?: string, fileToken?: string) {
@@ -177,7 +174,10 @@ async function exportDiagnosis(reportId?: string) {
     <section class="workspace">
       <aside v-if="sidebarOpen" class="session-sidebar">
         <header class="sidebar-head">
-          <h3>最近对话</h3>
+          <div>
+            <h3>对话</h3>
+            <span>历史记录 {{ displaySessionList.length }}</span>
+          </div>
           <button type="button" class="sidebar-new" @click="startNewSession()">＋ 新对话</button>
         </header>
         <ul class="session-list">
@@ -196,112 +196,127 @@ async function exportDiagnosis(reportId?: string) {
         <p v-if="!displaySessionList.length" class="sidebar-empty">暂无历史对话</p>
       </aside>
 
-      <div ref="conversation" class="conversation-panel">
-        <section v-if="!store.messages.length" class="welcome-panel">
-          <p class="eyebrow">核心制度 · 当前生效口径</p>
-          <h1>选好指标和时间，<br>结果和<em>原因</em>一键算清。</h1>
-          <p>选择下方快捷入口，按引导选好指标和时间范围即可开始；也可直接在底部输入框用自然语言提问。</p>
-          <GuidedTaskPanel
-            :token="store.token"
-            :disabled="store.running"
-            @send="send($event)"
-          />
-        </section>
-
-        <article v-for="message in store.messages" :key="message.id" class="message" :class="`is-${message.role}`">
-          <div class="message-avatar">{{ message.role === 'agent' ? 'AI' : '你' }}</div>
-          <div class="message-card">
-            <header class="message-head">
-              <div class="message-owner">
-                <strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong>
-                <span
-                  v-if="message.role === 'agent' && message.stageLabel"
-                  class="stage-machine"
-                  :data-kind="message.stageKind"
-                  :data-state="message.stageState"
-                  :data-running="message.status === 'running'"
-                >
-                  <b>{{ formatStageNumber(message.stageNumber) }}</b>
-                  <i aria-hidden="true"></i>
-                  <span>{{ message.stageLabel }}</span>
-                  <time v-if="message.stageDurationMs !== undefined">
-                    {{ formatDuration(message.stageDurationMs) }}
-                  </time>
-                </span>
-              </div>
-              <div class="message-outcome">
-                <time v-if="message.role === 'agent' && message.durationMs !== undefined">
-                  本轮耗时 {{ formatDuration(message.durationMs) }}
-                </time>
-                <span>{{
-                  message.status === 'running'
-                    ? '处理中'
-                    : message.status === 'failed'
-                      ? '未完成'
-                      : message.awaitingClarification && !message.clarificationResolved
-                        ? '等待选择'
-                        : '已完成'
-                }}</span>
-              </div>
-            </header>
-            <MarkdownMessage
-              v-if="message.role === 'agent'"
-              :content="message.content || '正在读取规则与证据…'"
-            />
-            <div v-else class="message-content">{{ message.content }}</div>
-            <IndicatorResultCards
-              v-if="message.role === 'agent' && message.batchResults?.length"
-              :results="message.batchResults"
+      <div class="conversation-column">
+        <div ref="conversation" class="conversation-panel">
+          <section v-if="!store.messages.length" class="welcome-panel">
+            <p class="eyebrow">临床指标核算 · 当前生效口径</p>
+            <h1>选好指标与时间，<br>核算过程<em>全程留痕</em>。</h1>
+            <p>按引导选择指标和时间范围即可开始。每一步口径、数据来源与核算结果都可追溯。</p>
+            <GuidedTaskPanel
               :token="store.token"
-            />
-            <ClarificationChoices
-              v-if="message.role === 'agent' && message.clarification"
-              :clarification="message.clarification"
               :disabled="store.running"
-              :resolved="message.clarificationResolved"
-              @submit="continueFromClarification(message.id, $event)"
+              @send="send($event)"
             />
-            <button
-              v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
-              :key="`${runId}-${detailIndex}`"
-              type="button"
-              class="detail-link"
-              @click="selectedDetailRunId = runId"
-            >查看第 {{ detailIndex + 1 }} 个指标明细并导出 Excel →</button>
-            <button
-              v-for="(comparison, comparisonIndex) in message.comparisonExports || (message.comparisonRunId && message.comparisonFileToken ? [{ runId: message.comparisonRunId, fileToken: message.comparisonFileToken }] : [])"
-              v-show="canExportDetails"
-              :key="`${comparison.runId}-${comparisonIndex}`"
-              type="button"
-              class="detail-link"
-              :disabled="exportingComparison === comparison.runId"
-              @click="exportComparison(comparison.runId, comparison.fileToken)"
-            >{{ exportingComparison === comparison.runId ? '正在生成差异表…' : `导出第 ${comparisonIndex + 1} 个逐条差异 Excel →` }}</button>
-            <button
-              v-for="reportId in message.diagnosisReportIds || []"
-              v-show="canExportDetails"
-              :key="reportId"
-              type="button"
-              class="detail-link"
-              :disabled="exportingDiagnosis === reportId"
-              @click="exportDiagnosis(reportId)"
-            >{{ exportingDiagnosis === reportId ? '正在生成诊断明细…' : '导出诊断明细 Excel →' }}</button>
-            <button v-if="message.traceId" type="button" class="trace-link" @click="openTrace(message.traceId)">查看链路 →</button>
-          </div>
-        </article>
+          </section>
+
+          <article v-for="message in store.messages" :key="message.id" class="message" :class="`is-${message.role}`">
+            <div class="message-avatar">{{ message.role === 'agent' ? 'AI' : '你' }}</div>
+            <div class="message-card">
+              <header class="message-head">
+                <div class="message-owner">
+                  <strong>{{ message.role === 'agent' ? '核心制度指标 Agent' : store.user?.accountId }}</strong>
+                  <span
+                    v-if="message.role === 'agent' && message.stageLabel"
+                    class="stage-machine"
+                    :data-kind="message.stageKind"
+                    :data-state="message.stageState"
+                    :data-running="message.status === 'running'"
+                  >
+                    <i aria-hidden="true"></i>
+                    <span>{{ message.stageLabel }}</span>
+                    <time v-if="message.stageDurationMs !== undefined">
+                      {{ formatDuration(message.stageDurationMs) }}
+                    </time>
+                  </span>
+                </div>
+                <div class="message-outcome">
+                  <time v-if="message.role === 'agent' && message.durationMs !== undefined">
+                    本轮耗时 {{ formatDuration(message.durationMs) }}
+                  </time>
+                  <span>{{
+                    message.status === 'running'
+                      ? '处理中'
+                      : message.status === 'failed'
+                        ? '未完成'
+                        : message.awaitingClarification && !message.clarificationResolved
+                          ? '等待选择'
+                          : '已完成'
+                  }}</span>
+                </div>
+              </header>
+
+              <ExecutionPanel
+                v-if="message.role === 'agent'"
+                :message="message"
+                @select="openNode(message.traceId, $event)"
+              />
+
+              <MarkdownMessage
+                v-if="message.role === 'agent'"
+                :content="message.content || '正在读取规则与证据…'"
+              />
+              <div v-else class="message-content">{{ message.content }}</div>
+              <IndicatorResultCards
+                v-if="message.role === 'agent' && message.batchResults?.length"
+                :results="message.batchResults"
+                :token="store.token"
+              />
+              <ClarificationChoices
+                v-if="message.role === 'agent' && message.clarification"
+                :clarification="message.clarification"
+                :disabled="store.running"
+                :resolved="message.clarificationResolved"
+                @submit="continueFromClarification(message.id, $event)"
+              />
+              <button
+                v-for="(runId, detailIndex) in message.detailRunIds || (message.detailRunId ? [message.detailRunId] : [])"
+                :key="`${runId}-${detailIndex}`"
+                type="button"
+                class="detail-link"
+                @click="selectedDetailRunId = runId"
+              >查看第 {{ detailIndex + 1 }} 个指标明细并导出 Excel →</button>
+              <button
+                v-for="(comparison, comparisonIndex) in message.comparisonExports || (message.comparisonRunId && message.comparisonFileToken ? [{ runId: message.comparisonRunId, fileToken: message.comparisonFileToken }] : [])"
+                v-show="canExportDetails"
+                :key="`${comparison.runId}-${comparisonIndex}`"
+                type="button"
+                class="detail-link"
+                :disabled="exportingComparison === comparison.runId"
+                @click="exportComparison(comparison.runId, comparison.fileToken)"
+              >{{ exportingComparison === comparison.runId ? '正在生成差异表…' : `导出第 ${comparisonIndex + 1} 个逐条差异 Excel →` }}</button>
+              <button
+                v-for="reportId in message.diagnosisReportIds || []"
+                v-show="canExportDetails"
+                :key="reportId"
+                type="button"
+                class="detail-link"
+                :disabled="exportingDiagnosis === reportId"
+                @click="exportDiagnosis(reportId)"
+              >{{ exportingDiagnosis === reportId ? '正在生成诊断明细…' : '导出诊断明细 Excel →' }}</button>
+            </div>
+          </article>
+        </div>
+
+        <form class="composer" @submit.prevent="send()">
+          <input ref="uploadInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="uploadFile" />
+          <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
+          <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
+          <textarea v-model="query" rows="1" maxlength="5000" placeholder="输入指标、统计时间或对比要求…" @keydown.ctrl.enter.prevent="send()"></textarea>
+          <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
+        </form>
       </div>
+
     </section>
 
-    <form class="composer" @submit.prevent="send()">
-      <input ref="uploadInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="uploadFile" />
-      <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
-      <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
-      <textarea v-model="query" rows="1" maxlength="5000" placeholder="输入指标、统计时间或对比要求…" @keydown.ctrl.enter.prevent="send()"></textarea>
-      <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
-    </form>
     <p v-if="store.error" class="global-error">{{ store.error }}</p>
 
-    <TraceDrawer v-if="selectedTraceId" :token="store.token" :trace-id="selectedTraceId" @close="selectedTraceId = ''" />
+    <NodeDetailDrawer
+      v-if="selectedNode"
+      :token="store.token"
+      :trace-id="selectedNode.traceId"
+      :node="selectedNode.node"
+      @close="selectedNode = null"
+    />
     <DetailDrawer
       v-if="selectedDetailRunId"
       :token="store.token"

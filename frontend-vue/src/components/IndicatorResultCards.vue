@@ -56,6 +56,7 @@ function formatValue(item: BatchIndicatorResult): string {
   const value = Number(item.resultValue)
   if (Number.isNaN(value)) return String(item.resultValue)
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2)
+  if (item.unit === 'percentage' || item.unit === 'percent') return `${text}%`
   return item.unit ? `${text}${item.unit}` : text
 }
 
@@ -157,17 +158,41 @@ function cellText(row: Record<string, unknown>, column: string): string {
       :data-status="item.status"
     >
       <header class="indicator-card-head">
-        <strong>{{ item.ruleName || item.ruleId }}</strong>
+        <div>
+          <span>计算结果 · 已验证</span>
+          <strong>{{ item.ruleName || item.ruleId }}</strong>
+          <code>{{ item.ruleId }}</code>
+        </div>
         <span class="indicator-status" :data-status="item.status">{{ statusLabel(item.status) }}</span>
       </header>
 
+      <div class="indicator-result-grid">
+        <div class="indicator-result-primary">
+          <span>指标值</span>
+          <p class="indicator-value">{{ formatValue(item) }}</p>
+          <small v-if="statRange(item)">{{ statRange(item) }}</small>
+        </div>
+        <div class="indicator-result-stat">
+          <span>分子</span>
+          <strong>{{ item.numeratorCount ?? '—' }}</strong>
+          <small>符合条件的患者人次</small>
+        </div>
+        <div class="indicator-result-stat">
+          <span>分母</span>
+          <strong>{{ item.denominatorCount ?? '—' }}</strong>
+          <small>统计范围内患者人次</small>
+        </div>
+        <div class="indicator-result-check" :data-status="item.status">
+          <span aria-hidden="true">{{ item.status === 'SUCCESS' ? '✓' : item.status === 'NO_SAMPLE' ? '!' : '×' }}</span>
+          <div>
+            <strong>{{ statusLabel(item.status) }}</strong>
+            <small>{{ item.status === 'SUCCESS' ? '结果已通过证据验证' : '请查看本卡片的状态说明' }}</small>
+          </div>
+        </div>
+      </div>
+
       <div class="indicator-card-body">
-        <p class="indicator-value">{{ formatValue(item) }}</p>
-        <p v-if="item.numeratorCount !== undefined || item.denominatorCount !== undefined" class="indicator-counts">
-          分子 {{ item.numeratorCount ?? '—' }} ／ 分母 {{ item.denominatorCount ?? '—' }}
-        </p>
         <p v-if="item.calculationDisplay" class="indicator-calc">{{ item.calculationDisplay }}</p>
-        <p v-if="statRange(item)" class="indicator-range">统计区间：{{ statRange(item) }}</p>
         <p v-if="item.dataFreshness === 'extraction_failed_stale'" class="indicator-stale-warning">
           ⚠️ 数据抽取失败，本结果基于中间表旧数据，仅供参考
         </p>

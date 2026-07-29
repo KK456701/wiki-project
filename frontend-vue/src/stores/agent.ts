@@ -29,6 +29,23 @@ export interface EvidenceStep {
 
 export type StageKind = 'llm' | 'code' | 'tool' | 'storage' | 'done'
 export type StageState = 'running' | 'success' | 'warning' | 'failed'
+export type ExecutionNodeCategory = 'llm' | 'rule' | 'data' | 'verification' | 'summary' | 'failure'
+
+export interface ExecutionNode {
+  id: string
+  nodeName: string
+  nodeType: string
+  label: string
+  category: ExecutionNodeCategory
+  status: StageState
+  durationMs?: number
+  toolName?: string
+  capability?: string
+  modelId?: string
+  subtaskId?: string
+  occurrence: number
+  repeatCount?: number
+}
 
 interface StageTransition {
   label: string
@@ -65,6 +82,7 @@ export interface ChatMessage {
   awaitingClarification?: boolean
   clarificationResolved?: boolean
   batchResults?: BatchIndicatorResult[]
+  executionNodes?: ExecutionNode[]
 }
 
 export interface BatchIndicatorResult {
@@ -146,6 +164,9 @@ const nodeLabels: Record<string, string> = {
   compound_split: '拆分复合指标请求',
   compound_subtask: '执行指标子任务',
   compound_merge: '按输入顺序合并结果',
+  batch_indicator_enumerate: '确认本次指标清单',
+  batch_indicator: '完成单项指标计算',
+  batch_result_merge: '汇总本次计算结果',
 }
 
 function stageKind(value?: string): StageKind {
@@ -153,6 +174,129 @@ function stageKind(value?: string): StageKind {
     return value === 'database' ? 'tool' : value
   }
   return 'code'
+}
+
+const ruleNodeNames = new Set([
+  'indicator_rule_match',
+  'indicator_semantic_retrieval',
+  'indicator_llm_disambiguation',
+])
+
+const ruleTools = new Set([
+  'search_indicator_rules',
+  'get_effective_rule',
+  'inspect_indicator_implementation',
+  'list_indicator_calibers',
+  'resolve_indicator_caliber',
+])
+
+const dataNodeNames = new Set([
+  'source_extraction_prepare',
+  'source_data_extraction',
+  'business_overview',
+  'real_overview',
+  'mras_patient_detail',
+  'batch_indicator_enumerate',
+  'batch_indicator',
+])
+
+const dataTools = new Set([
+  'prepare_indicator_sql',
+  'trial_run_indicator_sql',
+  'prepare_indicator_caliber_sql',
+  'trial_run_indicator_caliber_sql',
+  'analyze_uploaded_indicators',
+])
+
+const verificationNodeNames = new Set([
+  'plan_verify',
+  'response_guard',
+  'dual_period_validation',
+  'dual_comparison',
+  'dual_department_detail',
+  'dual_patient_detail',
+  'difference_diagnosis_layer_1',
+  'difference_diagnosis_layer_2',
+  'difference_diagnosis_layer_3',
+  'difference_diagnosis_layer_4',
+  'difference_diagnosis_layer_5',
+  'difference_diagnosis_layer_6',
+])
+
+const summaryNodeNames = new Set([
+  'batch_result_merge',
+  'compound_merge',
+  'difference_diagnosis_conclusion',
+  'difference_diagnosis_answer',
+  'dual_diagnosis_conclusion',
+  'prepared_sql_answer',
+  'caliber_simulation_answer',
+  'final_answer_llm',
+])
+
+function executionCategory(event: AgentEvent): ExecutionNodeCategory | null {
+  const status = event.status || ''
+  const nodeName = event.node_name || ''
+  const toolName = event.tool_name || ''
+  if (status === 'failed' || status === 'error') return 'failure'
+  if (nodeName === 'batch_indicator'
+      && !event.subtask_id
+      && (event.message || '').startsWith('正在计算指标')) return null
+  if (event.node_type === 'llm') return 'llm'
+  if (ruleNodeNames.has(nodeName)
+      || (nodeName === 'tool_result' && ruleTools.has(toolName))) return 'rule'
+  if (event.node_type === 'database'
+      || dataNodeNames.has(nodeName)
+      || (nodeName === 'tool_result' && dataTools.has(toolName))) return 'data'
+  if (verificationNodeNames.has(nodeName) || nodeName.includes('validation')) return 'verification'
+  if (summaryNodeNames.has(nodeName) || nodeName.endsWith('_conclusion')) return 'summary'
+  return null
+}
+
+function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: string) {
+  const category = executionCategory(event)
+  if (!category) return
+  const nodes = message.executionNodes || (message.executionNodes = [])
+  const nodeName = event.node_name || 'unknown'
+  const subtaskId = event.subtask_id || 'root'
+  const repeatedBatchNode = subtaskId.includes(':batch:')
+    ? nodes.find((node) => node.nodeName === nodeName && node.category === category)
+    : undefined
+  if (repeatedBatchNode) {
+    repeatedBatchNode.label = label
+    repeatedBatchNode.status = event.status === 'failed' || event.status === 'error'
+      ? 'failed'
+      : 'success'
+    repeatedBatchNode.durationMs = event.duration_ms
+    repeatedBatchNode.toolName = event.tool_name
+    repeatedBatchNode.capability = event.capability
+    repeatedBatchNode.modelId = event.model_id
+    repeatedBatchNode.subtaskId = subtaskId
+    repeatedBatchNode.occurrence = 0
+    repeatedBatchNode.repeatCount = (repeatedBatchNode.repeatCount || 1) + 1
+    return
+  }
+  const occurrence = nodes.filter((node) =>
+    node.nodeName === nodeName && (node.subtaskId || 'root') === subtaskId,
+  ).length
+  nodes.push({
+    id: `${nodeName}-${subtaskId}-${occurrence}`,
+    nodeName,
+    nodeType: event.node_type || 'code',
+    label,
+    category,
+    status: event.status === 'failed' || event.status === 'error'
+      ? 'failed'
+      : event.status === 'warning' || event.status === 'incomplete'
+        ? 'warning'
+        : 'success',
+    durationMs: event.duration_ms,
+    toolName: event.tool_name,
+    capability: event.capability,
+    modelId: event.model_id,
+    subtaskId,
+    occurrence,
+  })
 }
 
 // 毫秒级代码节点会在同一帧内连续到达；保留短暂驻留时间，确保状态文字可被看到。
@@ -486,7 +630,11 @@ export const useAgentStore = defineStore('agent', {
       if (event.event === 'agent_start') setStage(message, '读取会话上下文', 'storage')
       if (event.event === 'model_start') setStage(message, event.message || '模型处理中', 'llm')
       if (event.event === 'stage_update' && message.status === 'running') {
-        const label = event.message || nodeLabels[event.node_name || ''] || '推进业务流程'
+        const backendLabel = event.message || ''
+        const label = !backendLabel || backendLabel === event.node_name
+          ? nodeLabels[event.node_name || ''] || backendLabel || '推进业务流程'
+          : backendLabel
+        appendExecutionNode(message, event, label)
         setStage(message, label, stageKind(event.node_type),
           event.status === 'failed' ? 'failed' : 'success', event.duration_ms)
       }
