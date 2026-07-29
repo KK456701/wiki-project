@@ -43,6 +43,14 @@ public class SyncDataService {
 
     private static final String TOOLS_NAME = "execCustomQuery";
 
+    /**
+     * 审计时间列：winex_aima 部分中间表（如 MRAS_BUSINESS_SUR_GRADE/
+     * MRAS_BUSINESS_ANTI）这些列 NOT NULL 且无库端默认值，源行为空时
+     * DEFAULT 占位会落成 NULL 导致整批 INSERT 失败，需补当前时间。
+     */
+    private static final Set<String> AUDIT_TIME_COLUMNS =
+            Set.of("CREATED_AT", "MODIFIED_AT", "UPDATED_AT");
+
     private final Snowflake snowflake = new Snowflake(1, 1);
 
     private final DbHubMcpClient dbHubMcpClient;
@@ -317,8 +325,14 @@ public class SyncDataService {
                 for (String column : columns) {
                     Object value = row.get(column);
                     if (value == null) {
-                        // Keep DB defaults for audit/not-null columns such as CREATED_AT.
-                        placeholders.add("DEFAULT");
+                        if (isAuditTimestampColumn(column, columnTypes.get(column))) {
+                            // 审计时间列无库端默认值时 DEFAULT 会落成 NULL，补当前时间
+                            placeholders.add("?");
+                            params.add(new java.sql.Timestamp(System.currentTimeMillis()));
+                        } else {
+                            // Keep DB defaults for other nullable/defaulted columns.
+                            placeholders.add("DEFAULT");
+                        }
                     } else {
                         // 根据列的数据类型转换值
                         String dataType = columnTypes.get(column);
@@ -337,6 +351,15 @@ public class SyncDataService {
             sqlServerJdbcTemplate.update(sql, params.toArray());
         }
         log.info("batch inserted {} rows into {} with {} columns", rows.size(), tableName, columns.size());
+    }
+
+    /**
+     * 判断是否为需补当前时间的审计时间列（列名在名单内且为日期类型）。
+     */
+    private static boolean isAuditTimestampColumn(String column, String dataType) {
+        return column != null && dataType != null
+                && dataType.contains("date")
+                && AUDIT_TIME_COLUMNS.contains(column);
     }
 
     /**

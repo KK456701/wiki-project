@@ -98,7 +98,17 @@ class MrasTemplateRendererTest {
         String template = "FROM MRAS_TARGET_DEFINITION WITH (NOLOCK)";
         String result = renderer.render(template, Map.of());
         assertThat(result).contains("WITH (NOLOCK)");
-        assertThat(result).doesNotContain("WITH WITH");
+        assertThat(result).doesNotContainPattern("(?i)WITH\\s+WITH");
+    }
+
+    @Test
+    void hashNolockPlaceholderConverted() {
+        // 知识库 V3 新写法：#{NOLOCK} → WITH (NOLOCK)，且不能叠成 WITH WITH
+        String template = "FROM MRAS_TARGET_DEFINITION #{NOLOCK}\nWHERE TARGET_NO = 'HXZD-013-001'";
+        String result = renderer.render(template, Map.of());
+        assertThat(result).contains("MRAS_TARGET_DEFINITION WITH (NOLOCK)");
+        assertThat(result).doesNotContain("#{");
+        assertThat(result).doesNotContainPattern("(?i)WITH\\s+WITH");
     }
 
     @Test

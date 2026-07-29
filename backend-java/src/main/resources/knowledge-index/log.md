@@ -125,3 +125,72 @@
 **指标覆盖：** 35项指标 × 45个衍生指标（10个变体可选方案）
 **concepts 分类：** 按指标名称分类（v5/v6 核心特性）
 **新增特性：** comparisons/ + queries/ + README.md + Wikilink 自动修复
+
+---
+
+## v61 — Agent 体系定义 (2026-07-29)
+
+### 新增文件
+
+- `AGENTS.md` — 全部智能体定义（3内置 + 3自定义）：IngestAgent、QueryAgent、LintAgent、IndicatorUnderstandingAgent、ComparisonAgent、EvidenceChainAgent
+- `references/IndicatorUnderstandingAgent-技术方案.md` — IndicatorUnderstandingAgent 详细技术方案（IR设计、模块架构、六步流水线、实现路线图）
+
+### 设计要点
+
+- **IndicatorUnderstandingAgent**：指标编译引擎，输入自然语言/Excel/JSON → 输出 concept 页 + entity 页 + 索引更新
+- **ComparisonAgent**：方案对比分析，自动识别 _001 vs _002 的 7 维差异
+- **EvidenceChainAgent**：六层证据链验证，连接数据库逐层 PASS/FAIL 检查
+- 所有 Agent 遵循全局规则：读写隔离、日志强制、标签合规、Wikilink 闭合、模板遵循、编码唯一
+
+---
+
+## v62 — knowledgeskill7 Skill 技能包创建 (2026-07-29)
+
+### 新增 Skill 仓库
+
+创建 `skills/knowledgeskill7/` 完整技能包（24 个文件）：
+
+**核心文件（4个）：**
+- `SKILL.md` — Skill 入口 + 5种工作流定义 + 6 Agent架构
+- `SCHEMA.md` — 结构规范 + 标签库（继承v6 + 新增15个v7标签）
+- `AGENTS.md` — 6 Agent完整定义（3内置+3自定义）
+- `README.md` — Skill 级人类可读概览
+
+**Agent 独立定义（7个）：**
+- `agents/openai.yaml` — Skill 级 agent 注册配置
+- `agents/ingest-agent.md` — 资料摄入编译
+- `agents/query-agent.md` — 知识库问答检索
+- `agents/lint-agent.md` — 健康巡检（12项检查 + 7项自动修复）
+- `agents/indicator-understanding-agent.md` — 指标理解生成引擎 🆕
+- `agents/comparison-agent.md` — 方案对比分析 🆕
+- `agents/evidence-chain-agent.md` — 证据链验证 🆕
+
+**模板（5个）：**
+- `templates/entity-template.md` — 衍生实体页模板（继承v6）
+- `templates/concept-template.md` — 概念页模板（继承v6）
+- `templates/report-template.md` — 报告模板（继承v6）
+- `templates/queries-template.md` — 查询文档模板（继承v6）
+- `templates/ir-schema.json` — Indicator IR JSON Schema v1.0 🆕
+
+**参考文件（3个）：**
+- `references/indicator-map.md` — 指标映射表（继承v6）
+- `references/evidence-chain.md` — 证据链规程（继承v6）
+- `references/agent-workflows.md` — 5种工作流详细定义 🆕
+
+**脚本（3个）：**
+- `scripts/agent_router.js` — Agent 路由调度器 🆕
+- `scripts/query_indicators.js` — 数据库查询（继承v6）
+- `scripts/read_excel.js` — Excel解析（继承v6）
+
+**模板文件（2个）：**
+- `comparisons/variant-comparison-template.md` — 变体对比模板
+- `queries/query-doc-template.md` — 查询文档模板
+
+### 设计要点
+
+- **6 Agent 协作网络**：从单体 Skill 升级为多Agent架构，每个Agent独立定义、独立触发
+- **5 种工作流**：全量摄入(A) / 增量更新(B) / 报告生成(C) / 健康巡检(D) / 问答检索(E)
+- **Indicator IR 协议**：统一 JSON Schema，Agent 间标准化通信
+- **IR v1.0**：header + indicator + formula + scope + derivedEntities + evidenceChain + pages
+- **v7 新增标签**：agent-generated / nl-generated / sql-generated / L1~L6-PASS 等15个
+- **向后兼容**：完全兼容 knowledge-index-v60 目录结构、模板和编码体系

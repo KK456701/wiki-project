@@ -152,7 +152,8 @@ public class MrasTemplateRenderer {
      * SQL Server 方言修正：
      * 1. ""别名"" → "别名"
      * 2. TABLE (NOLOCK) → TABLE WITH (NOLOCK)
-     * 3. 去除首尾多余的 "' 和 '"（实体页 SQL 块包裹符号）
+     * 3. #{NOLOCK} 占位符 → WITH (NOLOCK)（知识库 V3 引入的新写法）
+     * 4. 去除首尾多余的 "' 和 '"（实体页 SQL 块包裹符号）
      */
     private String fixDialect(String sql) {
         String result = sql;
@@ -166,8 +167,14 @@ public class MrasTemplateRenderer {
         // ""别名"" → "别名"
         result = result.replace("\"\"", "\"");
 
-        // TABLE (NOLOCK) → TABLE WITH (NOLOCK)（仅当 NOLOCK 前没有 WITH 时）
-        result = result.replaceAll("(?i)(?<!WITH)\\s*\\(NOLOCK\\)", " WITH (NOLOCK)");
+        // #{NOLOCK} 占位符（知识库 V3 新写法）→ (NOLOCK)，交给下方规则统一补 WITH；
+        // 否则残留 #{ 会被只读校验判为未渲染模板
+        result = result.replaceAll("(?i)#\\{\\s*NOLOCK\\s*\\}", "(NOLOCK)");
+
+        // TABLE (NOLOCK) → TABLE WITH (NOLOCK)；先统一补 WITH，再把原本
+        // 已带 WITH 被叠成的 WITH WITH 折回（lookbehind 在 \s* 回溯时拦不住）
+        result = result.replaceAll("(?i)\\s*\\(NOLOCK\\)", " WITH (NOLOCK)");
+        result = result.replaceAll("(?i)WITH\\s+WITH\\s+\\(NOLOCK\\)", "WITH (NOLOCK)");
 
         return result;
     }

@@ -91,6 +91,7 @@ function formatValue(item: BatchIndicatorResult): string {
   if (Number.isNaN(value)) return String(item.resultValue)
   const text = Number.isInteger(value) ? String(value) : value.toFixed(2)
   if (item.unit === 'percentage' || item.unit === 'percent') return `${text}%`
+  if (item.unit === 'ratio') return `${text} 倍`
   return item.unit ? `${text}${item.unit}` : text
 }
 

@@ -3,7 +3,7 @@
 > **医疗质量安全核心制度落实情况监测指标知识库**
 >
 > 基于 LLM Wiki v3 方法论 + knowledgeskill6 v6.0.0 构建
-> 数据库：WiNEX_All_QA @ 172.17.0.117:1455 · Schema: WINDBA_GN · 只读连接
+> 数据源：AI指标顾问【AI Metrics Advisor】7.xls（2025年版 医疗质量安全核心制度）
 
 ---
 
@@ -44,9 +44,9 @@ knowledge-index-v60/
 │   ├── 35 个指标概念页           #   按指标名称命名，如「患者入院48小时内转科的比例.md」
 │   └── 8 个索引/技术页           #   四维分类索引、证据链验证模型、ETL抽取逻辑说明 等
 │
-├── entities/                     # Layer 2：衍生指标实体页（45个）
-│   ├── 35 个主方案（_001）       #   推荐实现方案
-│   └── 10 个变体方案（_002）     #   可选实现方案
+├── entities/                     # Layer 2：衍生指标实体页（90个）
+│   ├── 45 个衍生实体页           #   35个主方案(_001) + 10个变体(_002)
+│   └── 45 个血缘解析页           #   _血缘说明.md，S0→S3完整数据链路
 │
 ├── comparisons/                  # 🆕 Layer 3：方案对比分析
 │   └── 35指标45衍生指标-主方案与变体差异分析.md
@@ -60,11 +60,12 @@ knowledge-index-v60/
 │   ├── indicator-map.md          #   16制度→35指标→45衍生→15表 完整映射
 │   └── evidence-chain.md         #   6层证据链验证规程
 │
-└── templates/                    # 页面模板（4个）
+└── templates/                    # 页面模板（5个）
     ├── concept-template.md
     ├── entity-template.md
+    ├── entitymetricline-template.md # 🆕 血缘解析页模板
     ├── report-template.md
-    └── queries-template.md       #   🆕 查询结果/说明文档模板
+    └── queries-template.md
 ```
 
 ---
@@ -76,7 +77,8 @@ knowledge-index-v60/
 | `concept` | 指标概念页（按指标名称分类） | `concepts/` | 35 | `{指标名称}.md` |
 | `concept` | 索引/技术页 | `concepts/` | 8 | `{索引名}.md` |
 | `entity` | 衍生指标实体（主方案） | `entities/` | 35 | `{扩展编码}_001_{名称}.md` |
-| `entity` | 衍生指标实体（变体） | `entities/` | 10 | `{扩展编码}_002_{名称}_{变体说明}.md` |
+| `entity` | 衍生指标实体（变体） | `entities/` | 10 | `{扩展编码}_002_{名称}_可选方案.md` |
+| `lineage` | 血缘解析页 🆕 | `entities/` | 45 | `{扩展编码}_{名称}_血缘说明.md` |
 | `comparison` | 方案对比/版本 diff 🆕 | `comparisons/` | ≥1 | 描述性文件名 |
 | `query` | 查询结果/说明文档 🆕 | `queries/` | ≥1 | 描述性文件名 |
 | `report` | 时间戳指标报告 | `report/` | 按需 | `yyyymmddhhmmss.md` |
@@ -98,8 +100,8 @@ knowledge-index-v60/
            ▼               ▼            ▼                ▼
     ┌────────────┐  ┌───────────┐  ┌───────────┐  ┌────────────┐
     │ concepts/  │  │ entities/ │  │comparisons│  │references/ │
-    │ 35个指标   │  │ 45个衍生  │  │ 方案对比   │  │ 映射表+    │
-    │ 概念页     │◄─┤ 实体页    │  │ 变体分析   │  │ 证据链规程 │
+    │ 35个指标   │  │ 45衍生+   │  │ 方案对比   │  │ 映射表+    │
+    │ 概念页     │◄─┤ 45血缘    │  │ 变体分析   │  │ 证据链规程 │
     └─────┬──────┘  └─────┬─────┘  └─────┬─────┘  └────────────┘
           │               │              │
           │    ┌──────────┘              │
@@ -228,6 +230,7 @@ confidence: high       # high | medium | low
 | 查看 XXJOB 调度作业 | [[concepts/XXJOB作业索引]] |
 | 生成一份指标报告 | 参考 `templates/report-template.md` |
 | 新增一个指标 | 参考 `templates/entity-template.md` + `templates/concept-template.md` |
+| 新增血缘解析 | 参考 `templates/entitymetricline-template.md` 🆕 |
 | 归档查询结果 | 参考 `templates/queries-template.md` 🆕 |
 
 ---
@@ -258,9 +261,9 @@ confidence: high       # high | medium | low
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
-| v60 | 2026-07-28 | 基于 knowledgeskill6 v6.0.0 初始创建，新增 comparisons/、queries/、README.md、Wikilink自动修复、10个新标签 |
-| v60 继承 v50 | — | 继承 v50 全部 88 个结构化页面，concepts 按指标名称分类，35指标概念页 + 45衍生实体页 |
+| v60 | 2026-07-29 | 基于 knowledgeskill6 v6.0.0 + AI指标顾问7.xls，新增45个血缘解析页、entitymetricline-template模板、8个_002可选方案实体 |
+| v60 init | 2026-07-28 | 初始创建，新增 comparisons/、queries/、README.md、Wikilink自动修复 |
 
 ---
 
-<!-- readme: knowledge-index-v60 | generated: 2026-07-28 | pages: 90+ structured pages | variant-pairs: 10 | features: comparisons+queries+readme+wikilink-fix -->
+<!-- readme: knowledge-index-v60 | updated: 2026-07-29 | pages: 135+ | concepts: 35 | entities: 45 | lineage: 45 | variant-pairs: 10 | features: lineage+template+wikilink-fix -->

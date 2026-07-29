@@ -374,10 +374,15 @@ public class MrasSqlExecutionService {
             // eventDataList：事件中间表。
             // 部分实体页的源表 SQL 与概览 SQL 一样带 Markdown 前后引号（"SELECT ..."），
             // 直接透传 DBHub 会以“未定义处理异常”快速失败，必须与概览同口径剥离。
+            // 知识库 V3 给源表 SQL 新增了 #EQUALS{:syncType}/#ETC{:exDeptSet} 模板行，
+            // 必须先渲染再交给 DBHub：syncType=outHosp 保持 V3 前按出区时间
+            // 过滤的语义，:startTime/:endTime 保留命名参数由 DBHub 绑定。
             TableDataDto eventData = new TableDataDto();
             eventData.setEventNo(entity.eventNo());
             eventData.setTable(entity.targetTable());
-            eventData.setSqlScript(stripLeadingTrailingQuotes(entity.sourceTableSql()));
+            eventData.setSqlScript(templateRenderer.renderTemplate(
+                    stripLeadingTrailingQuotes(entity.sourceTableSql()),
+                    Map.of("syncType", "outHosp")));
             eventData.setStartTime(toDate(start));
             eventData.setEndTime(toDate(end));
             dto.setEventDataList(List.of(eventData));
@@ -418,15 +423,22 @@ public class MrasSqlExecutionService {
      *
      * <p>量纲约定：知识库概览 SQL 的“监测情况”“目标值”对百分比类指标返回
      * 0-1 比值（如 10/417=0.0239），而系统内展示约定是百分数（2.40 → “2.40%”），
-     * 需 ×100 换算；“数值”类指标（如危急值报告时间中位数分钟数）保持原值。
+     * 需 ×100 换算；“数值”“比值”类指标（如危急值报告时间中位数、四级与三级
+     * 手术死亡率比）保持原值。
      * 计量单位来自概念页“监测参数”表格，缺失时按百分比处理（知识库绝大多数为率值指标）。</p>
      */
     private void parseOverviewResult(
             List<Map<String, Object>> rows, Map<String, Object> data, String indicatorCode) {
         ConceptPageParser.ConceptPageData concept = conceptPageParser.getConcept(indicatorCode);
         String unitText = concept == null ? "" : concept.unit();
-        boolean percentageUnit = !unitText.contains("数值");
-        data.put("unit", percentageUnit ? "percentage" : "");
+        boolean ratioUnit = unitText.contains("比值") || unitText.contains("倍");
+        boolean percentageUnit = !ratioUnit && !unitText.contains("数值");
+        data.put("unit", percentageUnit ? "percentage" : ratioUnit ? "ratio" : "");
+        String targetDirection = resolveTargetDirection(indicatorCode);
+        if (targetDirection != null) {
+            // 达标判定方向来自实体页“指标导向”，随结果透传给批量聚合层
+            data.put("target_direction", targetDirection);
+        }
         if (rows.isEmpty()) {
             data.put("status", "empty");
             data.put("result_value", null);
@@ -472,6 +484,31 @@ public class MrasSqlExecutionService {
         data.put("no_sample", (denominator != null && denominator == 0)
                 || (numerator == null && denominator == null && resultValue == null));
         data.put("raw_first_row", first);
+    }
+
+    /**
+     * 从实体页“监测参数”表格解析指标导向，映射为达标判定方向符号。
+     *
+     * <p>逐步降低 → "<"（与知识库概览 SQL“监测情况 >= 目标值则未达标”一致）；
+     * 逐步提高 → ">="；无导向（如比值类填“--”）返回 null，由聚合层按默认处理。</p>
+     */
+    private String resolveTargetDirection(String indicatorCode) {
+        EntityPageData entity = entityPageParser.getEntity(indicatorCode);
+        if (entity == null || entity.monitorParams() == null) {
+            return null;
+        }
+        for (String line : entity.monitorParams().split("\n")) {
+            if (!line.contains("指标导向")) {
+                continue;
+            }
+            if (line.contains("逐步降低")) {
+                return "<";
+            }
+            if (line.contains("逐步提高")) {
+                return ">=";
+            }
+        }
+        return null;
     }
 
     /**

@@ -408,10 +408,16 @@ public class BatchIndicatorRuntime {
         // 不能在这里硬编码 percentage，否则分钟数等数值型结果会被前端误加 % 后缀
         String unit = data.get("unit") instanceof String s ? s : "percentage";
         Boolean noSample = (Boolean) data.get("no_sample");
+        // 目标值/达标方向来自 TargetValue CTE 与实体页“指标导向”，与样本无关，
+        // 无样本卡片也一并透传，保持展示信息一致
+        Object targetValue = data.get("target_value");
+        // 达标判定方向由 MRAS 服务按实体页“指标导向”解析（逐步降低→"<"），
+        // 缺失时聚合层按 ">=" 默认判定
+        String targetDirection = data.get("target_direction") instanceof String d ? d : null;
         if (Boolean.TRUE.equals(noSample)) {
             return new IndicatorExecutionResult(
                     ruleId, ruleName, Status.NO_SAMPLE, null, 0L, 0L,
-                    null, unit, null, 0L, null, null,
+                    null, unit, null, 0L, targetValue, targetDirection,
                     statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
                     dataFreshness, target.profileId(), target.profileLabel(), null, null,
                     target.eventNo());
@@ -422,14 +428,13 @@ public class BatchIndicatorRuntime {
                 ? n.longValue() : null;
         Long denominator = data.get("denominator_count") instanceof Number n
                 ? n.longValue() : null;
-        Object targetValue = data.get("target_value");
 
         return new IndicatorExecutionResult(
                 ruleId, ruleName, Status.SUCCESS,
                 resultValue != null ? resultValue.doubleValue() : null,
                 numerator, denominator,
                 null, unit, null,
-                denominator, targetValue, null,
+                denominator, targetValue, targetDirection,
                 statStart, statEnd, "mras-" + ruleId, null, null, durationMs,
                 dataFreshness, target.profileId(), target.profileLabel(), null, null,
                 target.eventNo());
@@ -751,6 +756,13 @@ public class BatchIndicatorRuntime {
         }
         if (result.unit() != null) {
             payload.put("unit", result.unit());
+        }
+        // 目标值与达标方向随卡片透传，前端/回放脚本才能展示达标判定依据
+        if (result.targetValue() != null) {
+            payload.put("target_value", result.targetValue());
+        }
+        if (result.targetDirection() != null) {
+            payload.put("target_direction", result.targetDirection());
         }
         if (result.calculationDisplay() != null) {
             payload.put("calculation_display", result.calculationDisplay());

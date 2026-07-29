@@ -145,6 +145,34 @@ class MrasSqlExecutionServiceTest {
     }
 
     @Test
+    void parseOverviewAppliesDirectionAndRatioUnit() {
+        when(databaseQuery.execute(eq(DatabaseRole.REAL), anyString()))
+                .thenReturn(List.of(Map.of("监测情况", 0.8, "目标值", 1.0)));
+
+        // 逐步降低类指标：达标方向透传为 "<"，百分比仍 ×100
+        ToolResult lower = service.executeOverview(
+                "HXZD-011-001",
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59),
+                null, null);
+        assertThat(lower.ok()).isTrue();
+        assertThat(lower.data().get("target_direction")).isEqualTo("<");
+        assertThat(lower.data().get("unit")).isEqualTo("percentage");
+        assertThat(((Number) lower.data().get("result_value")).doubleValue()).isEqualTo(80.0);
+
+        // 比值类指标（计量单位“比值”）：单位为 ratio，数值不 ×100，无导向
+        ToolResult ratio = service.executeOverview(
+                "HXZD-012-002",
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59),
+                null, null);
+        assertThat(ratio.ok()).isTrue();
+        assertThat(ratio.data().get("unit")).isEqualTo("ratio");
+        assertThat(((Number) ratio.data().get("result_value")).doubleValue()).isEqualTo(0.8);
+        assertThat(ratio.data().get("target_direction")).isNull();
+    }
+
+    @Test
     void getExplanationContextEmptyForUnknown() {
         Map<String, String> context = service.getExplanationContext("HXZD-999-999");
         assertThat(context).isEmpty();
