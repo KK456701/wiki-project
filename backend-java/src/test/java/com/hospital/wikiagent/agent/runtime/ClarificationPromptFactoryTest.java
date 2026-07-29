@@ -61,6 +61,21 @@ class ClarificationPromptFactoryTest {
     }
 
     @Test
+    void stripResumeWrapperUnwrapsNestedClarificationPrefixes() {
+        String nested = "继续处理上一条请求“继续处理上一条请求“继续处理上一条请求“我要算指标”。"
+                + "我确认要执行的操作是：继续按系统识别的意图执行”。我的目标是：计算具体结果”。"
+                + "我选择的指标是：普通会诊及时完成率（HXZD-003-003）";
+
+        assertThat(ClarificationPromptFactory.stripResumeWrapper(nested))
+                .isEqualTo("我要算指标");
+        assertThat(ClarificationPromptFactory.stripResumeWrapper(
+                "继续处理上一条请求“我要算指标”。我的目标是：计算具体结果"))
+                .isEqualTo("我要算指标");
+        assertThat(ClarificationPromptFactory.stripResumeWrapper("我要算指标"))
+                .isEqualTo("我要算指标");
+    }
+
+    @Test
     void offersDeterministicTimePresetsAndFreeText() {
         ClarificationPromptFactory factory = new ClarificationPromptFactory(
                 mock(RuleReadRepository.class), CLOCK);

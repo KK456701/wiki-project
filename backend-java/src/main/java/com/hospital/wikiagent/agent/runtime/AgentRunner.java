@@ -1717,7 +1717,9 @@ public class AgentRunner {
         }
         Matcher embedded = CLARIFICATION_ORIGINAL.matcher(current);
         if (embedded.find()) {
-            return embedded.group(1).strip();
+            // 旧会话可能存在多层嵌套前缀，优先循环剥离还原最内层原始问题
+            String unwrapped = ClarificationPromptFactory.stripResumeWrapper(current);
+            return unwrapped.equals(current) ? embedded.group(1).strip() : unwrapped;
         }
         String latestUser = "";
         for (String line : safe(recentHistory).split("\\R")) {
@@ -1929,7 +1931,8 @@ public class AgentRunner {
                         "执行 SQL 并返回 " + indicatorName + " 的统计结果", ""));
             }
         }
-        String original = originalQuery == null ? "" : originalQuery.strip();
+        // 先剥离历史澄清包装，避免多轮确认时前缀逐轮嵌套
+        String original = ClarificationPromptFactory.stripResumeWrapper(originalQuery);
         if (original.length() > 200) {
             original = original.substring(0, 200);
         }

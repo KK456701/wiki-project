@@ -483,6 +483,8 @@ public class ClarificationPromptFactory {
                 "PLAN_INTENT_MISMATCH").contains(code);
     }
 
+    private static final String RESUME_WRAPPER_HEAD = "继续处理上一条请求“";
+
     private static boolean asksForMultipleIndicators(String query) {
         String value = safe(query);
         return value.contains("两个")
@@ -493,7 +495,7 @@ public class ClarificationPromptFactory {
     }
 
     private static String resumePrefix(String originalQuery, String action) {
-        String original = safe(originalQuery);
+        String original = stripResumeWrapper(originalQuery);
         if (original.isBlank()) {
             return action;
         }
@@ -501,6 +503,28 @@ public class ClarificationPromptFactory {
             original = original.substring(0, 200);
         }
         return "继续处理上一条请求“" + original + "”。" + action;
+    }
+
+    /**
+     * 剥离历史澄清回复中的“继续处理上一条请求”包装，还原最内层原始问题。
+     *
+     * <p>多轮澄清时当前 query 已带上一轮前缀，若不剥离会逐轮嵌套；
+     * 前缀可能叠加多层，因此循环剥离后取首个右引号前的内容。</p>
+     */
+    static String stripResumeWrapper(String query) {
+        String value = safe(query);
+        boolean stripped = false;
+        while (value.startsWith(RESUME_WRAPPER_HEAD)) {
+            value = value.substring(RESUME_WRAPPER_HEAD.length());
+            stripped = true;
+        }
+        if (stripped) {
+            int close = value.indexOf('”');
+            if (close >= 0) {
+                value = value.substring(0, close);
+            }
+        }
+        return value.strip();
     }
 
     private static boolean supportsAllIndicatorSelection(String query) {
