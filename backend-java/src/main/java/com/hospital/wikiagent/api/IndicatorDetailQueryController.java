@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor;
 import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor.DetailExtraction;
@@ -23,13 +22,15 @@ import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
+import com.hospital.wikiagent.details.IndicatorDetailException;
 
 /**
  * 指标结果卡片的「明细」按钮接口：按 rule_id + 统计区间直接查询分子/分母明细。
  *
- * <p>明细 SQL 由 {@link MrasDetailSqlExtractor} 从概览/科室统计口径确定性提取
- * （逐字保留 FROM/JOIN/WHERE，仅换 SELECT*、删 GROUP BY、分子追加判定），
- * 行数与卡片口径一致；无法机械转换的异形指标显式报错，不降级、不回退到对不上的患者明细。</p>
+ * <p>明细 SQL 由 {@link MrasDetailSqlExtractor} 从「目标表-概览」口径（卡片分子/分母的真实
+ * 来源）确定性提取（逐字保留 FROM/JOIN/WHERE，仅换 SELECT*、删 GROUP BY、分子追加判定），
+ * 行数与卡片口径一致；无法安全机械改写的指标返回统一的 DETAIL_UNSUPPORTED 错误，
+ * 不降级、不回退科室统计口径、不返回对不上的患者明细。</p>
  */
 @RestController
 @RequestMapping("/api/kb/rules")
@@ -58,31 +59,35 @@ public class IndicatorDetailQueryController {
             @RequestParam(defaultValue = "numerator") String group,
             @RequestParam String start,
             @RequestParam String end,
-            @RequestParam(required = false) String profileId,
-            @RequestParam(required = false) String modelId) {
+            @RequestParam(required = false) String profileId) {
         authService.authenticate(BearerTokens.require(authorization));
         if (!"numerator".equals(group) && !"denominator".equals(group)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "group 只能是 numerator 或 denominator");
+            throw new IndicatorDetailException("DETAIL_GROUP_INVALID",
+                    "group 只能是 numerator 或 denominator", HttpStatus.BAD_REQUEST);
         }
         if (!mrasExecution.supports(ruleId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "指标 " + ruleId + " 暂不支持明细查询");
+            throw new IndicatorDetailException("DETAIL_INDICATOR_UNSUPPORTED",
+                    "指标 " + ruleId + " 暂不支持明细查询", HttpStatus.NOT_FOUND);
         }
         LocalDateTime startTime = parseStart(start);
         LocalDateTime endTime = parseEnd(end);
         boolean denominator = "denominator".equals(group);
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
 
-        // 从概览/科室统计口径确定性提取分子/分母明细 SQL；异形指标无法机械转换时显式报错，不降级回退。
+        // 只从「目标表-概览」口径确定性提取分子/分母明细 SQL；无法安全机械改写的指标显式报错，
+        // 统一走 DETAIL_UNSUPPORTED（不降级、不回退科室统计口径）。
         DetailExtraction extraction = detailExtractor.extract(ruleId, profileId);
         if (!extraction.supported()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "该指标口径不支持明细下钻：" + extraction.unsupportedReason());
+            throw new IndicatorDetailException("DETAIL_UNSUPPORTED",
+                    "该指标口径暂不支持明细下钻：" + extraction.unsupportedReason(),
+                    HttpStatus.UNPROCESSABLE_ENTITY);
         }
         String detailSql = denominator ? extraction.denominatorSql() : extraction.numeratorSql();
         ToolResult result = mrasExecution.executeExtractedDetail(
                 ruleId, profileId, detailSql, startTime, endTime, queryType);
         if (!result.ok()) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "明细查询失败：" + result.summary());
+            throw new IndicatorDetailException("DETAIL_QUERY_FAILED",
+                    "明细查询失败：" + result.summary(), HttpStatus.BAD_GATEWAY);
         }
 
         Map<String, Object> data = result.data();
@@ -116,7 +121,8 @@ public class IndicatorDetailQueryController {
     /** 支持 yyyy-MM-dd 或 ISO 日期时间；纯日期时结束时间取当天 23:59:59。 */
     private static LocalDateTime parseDateTime(String text, boolean endOfDay) {
         if (text == null || text.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "start/end 不能为空");
+            throw new IndicatorDetailException("DETAIL_TIME_INVALID", "start/end 不能为空",
+                    HttpStatus.BAD_REQUEST);
         }
         String normalized = text.strip().replace('T', ' ');
         try {
@@ -126,7 +132,8 @@ public class IndicatorDetailQueryController {
             }
             return LocalDateTime.parse(normalized.replace(' ', 'T'));
         } catch (DateTimeParseException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "时间格式不正确：" + text);
+            throw new IndicatorDetailException("DETAIL_TIME_INVALID", "时间格式不正确：" + text,
+                    HttpStatus.BAD_REQUEST);
         }
     }
 }

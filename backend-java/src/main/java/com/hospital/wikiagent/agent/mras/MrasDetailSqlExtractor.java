@@ -107,13 +107,12 @@ public class MrasDetailSqlExtractor {
             return DetailExtraction.unsupported("知识库中没有指标 " + indicatorCode + " 的实体页。");
         }
 
-        // 科室统计段口径与概览段一致但更干净；缺失时退回概览段。
-        String source = entity.deptStatSql();
+        // P0：只从「目标表-概览」口径提取（卡片分子/分母的真实来源），不回退科室统计 SQL。
+        // 概览常用 DISTINCT 派生表去重，科室统计多为原始表直接聚合，二者去重语义可能不等价，
+        // 回退会产生与卡片不一致的静默假阳性（如 HXZD-004-001：卡片 6/59，科室统计 30/155）。
+        String source = entity.overviewSql();
         if (source == null || source.isBlank()) {
-            source = entity.overviewSql();
-        }
-        if (source == null || source.isBlank()) {
-            return DetailExtraction.unsupported("该指标缺少科室统计/概览口径，无法生成明细。");
+            return DetailExtraction.unsupported("该指标缺少「目标表-概览」口径 SQL，无法生成与卡片同源的明细。");
         }
         String sql = MrasSqlExecutionService.stripLeadingTrailingQuotes(source);
 
@@ -137,6 +136,14 @@ public class MrasDetailSqlExtractor {
         String fromClause = sliceFromToGroupBy(aggBody);
         if (fromClause == null) {
             return DetailExtraction.unsupported("该指标聚合口径缺少 GROUP BY，无法机械转明细。");
+        }
+
+        // P0：分子需在概览 FROM/WHERE 之上追加分子判定。若顶层没有 WHERE（过滤条件位于派生表
+        // 内部，如 HXZD-004-001 的 DISTINCT 去重子查询），直接追加 AND 会生成非法 SQL；此处显式
+        // 拒绝、绝不静默返错，等 P0.5 语法感知改写（顶层无 WHERE 时改追加 WHERE）上线后再支持。
+        if (topLevelKeyword(fromClause, "WHERE", true) < 0) {
+            return DetailExtraction.unsupported(
+                    "该指标概览口径的过滤条件位于派生表内部，暂不支持安全下钻（待语法感知改写上线）。");
         }
 
         String dedupKey = distinctKey(aggBody);

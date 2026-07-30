@@ -1,6 +1,11 @@
 server:
   address: 0.0.0.0
   port: 8766
+  # 兜底：任何未被 ApiExceptionHandler 捕获的异常，默认错误响应都不得回传堆栈、异常类名或内部信息。
+  error:
+    include-stacktrace: never
+    include-exception: false
+    include-message: never
 
 # 日志同时落盘，方便排查抽取/计算链路问题（runtime/ 已在 .gitignore 内）
 logging:
