@@ -270,8 +270,14 @@ export async function listIndicators(token: string): Promise<IndicatorItem[]> {
 /** 指标当前生效口径（卡片「口径 / 核算方式」按钮数据源），字段为后端知识库原始键名 */
 export type EffectiveRule = Record<string, unknown>
 
-export async function fetchEffectiveRule(token: string, ruleId: string): Promise<EffectiveRule> {
-  const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/effective`, {
+export async function fetchEffectiveRule(
+  token: string,
+  ruleId: string,
+  profileId?: string,
+): Promise<EffectiveRule> {
+  // 传入 profileId 时按口径变体读取，让同一指标的多个口径各自返回自己的口径 / 核算方式
+  const suffix = profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''
+  const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/effective${suffix}`, {
     headers: authHeaders(token),
   })
   return readJson<EffectiveRule>(response)
@@ -297,8 +303,14 @@ export async function fetchIndicatorDetails(
   group: 'numerator' | 'denominator',
   start: string,
   end: string,
+  modelId?: string,
+  profileId?: string,
 ): Promise<IndicatorDetailResult> {
   const query = new URLSearchParams({ group, start, end })
+  // 明细 SQL 由所选模型现场合成：把用户当前选的模型透传给后端，选什么模型就用什么模型
+  if (modelId) query.set('modelId', modelId)
+  // 传入 profileId 时按口径变体查询，让同一指标的每个口径各自查各自的明细
+  if (profileId) query.set('profileId', profileId)
   const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/details?${query}`, {
     headers: authHeaders(token),
   })

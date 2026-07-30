@@ -919,7 +919,7 @@ public class CompoundAgentRuntime {
         ToolResult result = null;
         String usedDetailSql = null;
         if (detailSynthesizer != null) {
-            DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
+            DetailSqlPair pair = detailSynthesizer.synthesize(ruleId, request.modelId());
             if (pair != null) {
                 String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
                 ToolResult generated = mrasExecution.executeGeneratedDetail(

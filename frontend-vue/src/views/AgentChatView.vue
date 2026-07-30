@@ -261,6 +261,7 @@ async function exportDiagnosis(reportId?: string) {
                 v-if="message.role === 'agent' && message.batchResults?.length"
                 :results="message.batchResults"
                 :token="store.token"
+                :model-id="store.selectedModel"
               />
               <ClarificationChoices
                 v-if="message.role === 'agent' && message.clarification"

@@ -29,7 +29,7 @@ import com.hospital.wikiagent.service.SyncDataService;
 import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
 /**
- * 知识库（knowledge-index-mras）概览/科室/明细 SQL 的端到端执行服务。
+ * 知识库（knowledge-index）概览/科室/明细 SQL 的端到端执行服务。
  *
  * <p>职责边界：从 EntityPageParser 取模板 → MrasTemplateRenderer 解析模板语法 →
  * ReadOnlySqlValidator 只读校验 → SqlParameterBinder 防注入绑定 →

@@ -12,6 +12,7 @@ import {
 const props = defineProps<{
   results: BatchIndicatorResult[]
   token: string
+  modelId?: string
 }>()
 
 type TabKey = 'caliber' | 'method' | 'detail'
@@ -62,9 +63,9 @@ function groupStatus(group: CardGroup): string {
   return group.items[0]?.status ?? 'FAILED'
 }
 
-/** 口径/明细等面板只依赖 ruleId，状态按指标维度缓存 */
-function stateOf(group: CardGroup): CardState {
-  const key = group.ruleId
+/** 口径 / 核算方式 / 明细面板下沉到每个口径，状态按 ruleId + profileId 缓存 */
+function stateOf(item: BatchIndicatorResult): CardState {
+  const key = `${item.ruleId}::${item.profileId || 'default'}`
   if (!states[key]) {
     states[key] = {
       activeTab: '',
@@ -121,26 +122,27 @@ function ruleText(rule: EffectiveRule | undefined, key: string): string {
   return String(value).trim()
 }
 
-async function toggleTab(group: CardGroup, tab: TabKey) {
-  const state = stateOf(group)
+async function toggleTab(item: BatchIndicatorResult, tab: TabKey) {
+  const state = stateOf(item)
   if (state.activeTab === tab) {
     state.activeTab = ''
     return
   }
   state.activeTab = tab
   if (tab === 'caliber' || tab === 'method') {
-    await loadRule(group, state)
+    await loadRule(item, state)
   } else {
-    await loadDetail(group, state, state.detailGroup)
+    await loadDetail(item, state, state.detailGroup)
   }
 }
 
-async function loadRule(group: CardGroup, state: CardState) {
+async function loadRule(item: BatchIndicatorResult, state: CardState) {
   if (state.rule || state.ruleLoading) return
   state.ruleLoading = true
   state.ruleError = ''
   try {
-    state.rule = await fetchEffectiveRule(props.token, group.ruleId)
+    // 按口径变体读取，让同一指标的每个口径各自返回自己的口径 / 核算方式
+    state.rule = await fetchEffectiveRule(props.token, item.ruleId, item.profileId)
   } catch (error) {
     state.ruleError = error instanceof Error ? error.message : '口径读取失败。'
   } finally {
@@ -148,17 +150,16 @@ async function loadRule(group: CardGroup, state: CardState) {
   }
 }
 
-async function switchDetailGroup(group: CardGroup, detailGroup: DetailGroup) {
-  const state = stateOf(group)
+async function switchDetailGroup(item: BatchIndicatorResult, detailGroup: DetailGroup) {
+  const state = stateOf(item)
   state.detailGroup = detailGroup
-  await loadDetail(group, state, detailGroup)
+  await loadDetail(item, state, detailGroup)
 }
 
-async function loadDetail(group: CardGroup, state: CardState, detailGroup: DetailGroup) {
+async function loadDetail(item: BatchIndicatorResult, state: CardState, detailGroup: DetailGroup) {
   // 不用本地缓存：每次展开/切换都重新请求，后端明细 SQL 也是每次重新生成
   if (state.detailLoading) return
-  const timeSource = group.items.find((item) => item.statStart && item.statEnd)
-  if (!timeSource?.statStart || !timeSource?.statEnd) {
+  if (!item.statStart || !item.statEnd) {
     state.detailError = '缺少统计区间，无法查询明细。'
     return
   }
@@ -166,7 +167,7 @@ async function loadDetail(group: CardGroup, state: CardState, detailGroup: Detai
   state.detailError = ''
   try {
     state.details[detailGroup] = await fetchIndicatorDetails(
-      props.token, group.ruleId, detailGroup, timeSource.statStart, timeSource.statEnd)
+      props.token, item.ruleId, detailGroup, item.statStart, item.statEnd, props.modelId, item.profileId)
   } catch (error) {
     state.detailError = error instanceof Error ? error.message : '明细查询失败。'
   } finally {
@@ -246,115 +247,115 @@ function cellText(row: Record<string, unknown>, column: string): string {
           </p>
           <p v-if="item.errorMessage" class="indicator-error">{{ item.errorMessage }}</p>
         </div>
-      </div>
 
-      <div class="indicator-card-actions">
-        <button
-          type="button"
-          :class="{ active: stateOf(group).activeTab === 'caliber' }"
-          @click="toggleTab(group, 'caliber')"
-        >指标口径</button>
-        <button
-          type="button"
-          :class="{ active: stateOf(group).activeTab === 'method' }"
-          @click="toggleTab(group, 'method')"
-        >核算方式</button>
-        <button
-          type="button"
-          :class="{ active: stateOf(group).activeTab === 'detail' }"
-          @click="toggleTab(group, 'detail')"
-        >明细</button>
-      </div>
+        <div class="indicator-card-actions">
+          <button
+            type="button"
+            :class="{ active: stateOf(item).activeTab === 'caliber' }"
+            @click="toggleTab(item, 'caliber')"
+          >指标口径</button>
+          <button
+            type="button"
+            :class="{ active: stateOf(item).activeTab === 'method' }"
+            @click="toggleTab(item, 'method')"
+          >核算方式</button>
+          <button
+            type="button"
+            :class="{ active: stateOf(item).activeTab === 'detail' }"
+            @click="toggleTab(item, 'detail')"
+          >明细</button>
+        </div>
 
-      <!-- 指标口径 -->
-      <div v-if="stateOf(group).activeTab === 'caliber'" class="indicator-panel">
-        <p v-if="stateOf(group).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
-        <p v-else-if="stateOf(group).ruleError" class="indicator-error">{{ stateOf(group).ruleError }}</p>
-        <dl v-else class="indicator-fields">
-          <template v-for="[key, label] in caliberFields" :key="key">
-            <template v-if="ruleText(stateOf(group).rule, key)">
-              <dt>{{ label }}</dt>
-              <dd>{{ ruleText(stateOf(group).rule, key) }}</dd>
-            </template>
-          </template>
-        </dl>
-      </div>
-
-      <!-- 核算方式 -->
-      <div v-if="stateOf(group).activeTab === 'method'" class="indicator-panel">
-        <p v-if="stateOf(group).ruleLoading" class="indicator-loading">正在读取核算方式…</p>
-        <p v-else-if="stateOf(group).ruleError" class="indicator-error">{{ stateOf(group).ruleError }}</p>
-        <template v-else>
-          <dl class="indicator-fields">
-            <template v-for="[key, label] in methodFields" :key="key">
-              <template v-if="ruleText(stateOf(group).rule, key)">
+        <!-- 指标口径 -->
+        <div v-if="stateOf(item).activeTab === 'caliber'" class="indicator-panel">
+          <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
+          <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
+          <dl v-else class="indicator-fields">
+            <template v-for="[key, label] in caliberFields" :key="key">
+              <template v-if="ruleText(stateOf(item).rule, key)">
                 <dt>{{ label }}</dt>
-                <dd>{{ ruleText(stateOf(group).rule, key) }}</dd>
+                <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
               </template>
             </template>
-            <template v-if="group.items[0]?.calculationDisplay">
-              <dt>本次核算</dt>
-              <dd>{{ group.items[0].calculationDisplay }}</dd>
-            </template>
           </dl>
-          <details v-if="ruleText(stateOf(group).rule, 'standardSql')" class="indicator-sql">
-            <summary>查看核算 SQL</summary>
-            <pre>{{ ruleText(stateOf(group).rule, 'standardSql') }}</pre>
-          </details>
-        </template>
-      </div>
-
-      <!-- 明细 -->
-      <div v-if="stateOf(group).activeTab === 'detail'" class="indicator-panel">
-        <div class="indicator-detail-groups">
-          <button
-            type="button"
-            :class="{ active: stateOf(group).detailGroup === 'numerator' }"
-            @click="switchDetailGroup(group, 'numerator')"
-          >分子明细</button>
-          <button
-            type="button"
-            :class="{ active: stateOf(group).detailGroup === 'denominator' }"
-            @click="switchDetailGroup(group, 'denominator')"
-          >分母明细</button>
         </div>
-        <p v-if="stateOf(group).detailLoading" class="indicator-loading">正在查询患者明细（首次查询需生成明细 SQL，可能需要十几秒）…</p>
-        <p v-else-if="stateOf(group).detailError" class="indicator-error">{{ stateOf(group).detailError }}</p>
-        <template v-else-if="stateOf(group).details[stateOf(group).detailGroup]">
-          <p class="indicator-detail-summary">
-            共 {{ stateOf(group).details[stateOf(group).detailGroup]!.rowCount }} 条记录
-            <template v-if="stateOf(group).details[stateOf(group).detailGroup]!.truncated">（仅展示前 200 条）</template>
-          </p>
-          <p
-            v-if="stateOf(group).details[stateOf(group).detailGroup]!.sqlSource === 'mras_patient_detail'"
-            class="indicator-error"
-          >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
-          <div
-            v-if="stateOf(group).details[stateOf(group).detailGroup]!.rows.length"
-            class="indicator-detail-table"
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th v-for="column in detailColumns(stateOf(group).details[stateOf(group).detailGroup])" :key="column">{{ column }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, rowIndex) in stateOf(group).details[stateOf(group).detailGroup]!.rows" :key="rowIndex">
-                  <td v-for="column in detailColumns(stateOf(group).details[stateOf(group).detailGroup])" :key="column">{{ cellText(row, column) }}</td>
-                </tr>
-              </tbody>
-            </table>
+
+        <!-- 核算方式 -->
+        <div v-if="stateOf(item).activeTab === 'method'" class="indicator-panel">
+          <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取核算方式…</p>
+          <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
+          <template v-else>
+            <dl class="indicator-fields">
+              <template v-for="[key, label] in methodFields" :key="key">
+                <template v-if="ruleText(stateOf(item).rule, key)">
+                  <dt>{{ label }}</dt>
+                  <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
+                </template>
+              </template>
+              <template v-if="item.calculationDisplay">
+                <dt>本次核算</dt>
+                <dd>{{ item.calculationDisplay }}</dd>
+              </template>
+            </dl>
+            <details v-if="ruleText(stateOf(item).rule, 'standardSql')" class="indicator-sql">
+              <summary>查看核算 SQL</summary>
+              <pre>{{ ruleText(stateOf(item).rule, 'standardSql') }}</pre>
+            </details>
+          </template>
+        </div>
+
+        <!-- 明细 -->
+        <div v-if="stateOf(item).activeTab === 'detail'" class="indicator-panel">
+          <div class="indicator-detail-groups">
+            <button
+              type="button"
+              :class="{ active: stateOf(item).detailGroup === 'numerator' }"
+              @click="switchDetailGroup(item, 'numerator')"
+            >分子明细</button>
+            <button
+              type="button"
+              :class="{ active: stateOf(item).detailGroup === 'denominator' }"
+              @click="switchDetailGroup(item, 'denominator')"
+            >分母明细</button>
           </div>
-          <p v-else class="indicator-loading">统计区间内没有明细记录。</p>
-          <details
-            v-if="stateOf(group).details[stateOf(group).detailGroup]!.detailSql"
-            class="indicator-sql"
-          >
-            <summary>查看明细 SQL</summary>
-            <pre>{{ stateOf(group).details[stateOf(group).detailGroup]!.detailSql }}</pre>
-          </details>
-        </template>
+          <p v-if="stateOf(item).detailLoading" class="indicator-loading">正在查询患者明细（首次查询需生成明细 SQL，可能需要十几秒）…</p>
+          <p v-else-if="stateOf(item).detailError" class="indicator-error">{{ stateOf(item).detailError }}</p>
+          <template v-else-if="stateOf(item).details[stateOf(item).detailGroup]">
+            <p class="indicator-detail-summary">
+              共 {{ stateOf(item).details[stateOf(item).detailGroup]!.rowCount }} 条记录
+              <template v-if="stateOf(item).details[stateOf(item).detailGroup]!.truncated">（仅展示前 200 条）</template>
+            </p>
+            <p
+              v-if="stateOf(item).details[stateOf(item).detailGroup]!.sqlSource === 'mras_patient_detail'"
+              class="indicator-error"
+            >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
+            <div
+              v-if="stateOf(item).details[stateOf(item).detailGroup]!.rows.length"
+              class="indicator-detail-table"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ column }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, rowIndex) in stateOf(item).details[stateOf(item).detailGroup]!.rows" :key="rowIndex">
+                    <td v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ cellText(row, column) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-else class="indicator-loading">统计区间内没有明细记录。</p>
+            <details
+              v-if="stateOf(item).details[stateOf(item).detailGroup]!.detailSql"
+              class="indicator-sql"
+            >
+              <summary>查看明细 SQL</summary>
+              <pre>{{ stateOf(item).details[stateOf(item).detailGroup]!.detailSql }}</pre>
+            </details>
+          </template>
+        </div>
       </div>
     </article>
   </section>

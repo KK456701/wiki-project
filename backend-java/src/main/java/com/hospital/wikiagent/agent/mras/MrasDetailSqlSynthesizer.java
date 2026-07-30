@@ -73,9 +73,20 @@ public class MrasDetailSqlSynthesizer {
     }
 
     /**
-     * 合成指定指标的分母/分子明细 SQL；每次调用都重新生成（不缓存），合成失败返回 {@code null}（上游回退）。
+     * 合成指定指标的分母/分子明细 SQL（用系统默认模型）；保留旧签名供测试与无模型上下文调用。
      */
     public DetailSqlPair synthesize(String indicatorCode) {
+        return synthesize(indicatorCode, null);
+    }
+
+    /**
+     * 合成指定指标的分母/分子明细 SQL；每次调用都重新生成（不缓存），合成失败返回 {@code null}（上游回退）。
+     *
+     * @param indicatorCode 指标编码
+     * @param modelId       用户在界面所选模型；为空时回退系统默认模型。明细 SQL 由该模型现场生成，
+     *                      「选什么模型就用什么模型」，不再写死默认本地模型
+     */
+    public DetailSqlPair synthesize(String indicatorCode, String modelId) {
         if (indicatorCode == null || indicatorCode.isBlank()) {
             return null;
         }
@@ -83,35 +94,38 @@ public class MrasDetailSqlSynthesizer {
         if (entity == null || !entity.hasOverviewSql()) {
             return null;
         }
+        String resolvedModel = (modelId == null || modelId.isBlank())
+                ? registry.defaultModelId() : modelId.strip();
 
-        Attempt first = attempt(entity, null);
+        Attempt first = attempt(entity, null, resolvedModel);
         if (first.pair() != null) {
-            log.info("知识库明细 SQL 合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
-                    indicatorCode, first.pair().denominatorSql(), first.pair().numeratorSql());
+            log.info("知识库明细 SQL 合成成功 {}（模型 {}）\n分母明细 SQL: {}\n分子明细 SQL: {}",
+                    indicatorCode, resolvedModel, first.pair().denominatorSql(), first.pair().numeratorSql());
             return first.pair();
         }
         // 模型不可用（连不上/超时）时重试只会再白等一次超时，直接回退；只对校验失败带错误信息重试一次
         if (!first.retryable()) {
-            log.warn("知识库明细 SQL 合成失败（模型不可用，不重试）{}: {}", indicatorCode, first.error());
+            log.warn("知识库明细 SQL 合成失败（模型不可用，不重试）{}（模型 {}）: {}",
+                    indicatorCode, resolvedModel, first.error());
             return null;
         }
-        Attempt second = attempt(entity, first.error());
+        Attempt second = attempt(entity, first.error(), resolvedModel);
         if (second.pair() != null) {
-            log.info("知识库明细 SQL 重试合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
-                    indicatorCode, second.pair().denominatorSql(), second.pair().numeratorSql());
+            log.info("知识库明细 SQL 重试合成成功 {}（模型 {}）\n分母明细 SQL: {}\n分子明细 SQL: {}",
+                    indicatorCode, resolvedModel, second.pair().denominatorSql(), second.pair().numeratorSql());
             return second.pair();
         }
-        log.warn("知识库明细 SQL 合成失败 {}: {}", indicatorCode, second.error());
+        log.warn("知识库明细 SQL 合成失败 {}（模型 {}）: {}", indicatorCode, resolvedModel, second.error());
         return null;
     }
 
     /** 单次生成尝试：成功返回 pair，失败返回错误信息（供重试反馈）。 */
-    private Attempt attempt(EntityPageData entity, String previousError) {
+    private Attempt attempt(EntityPageData entity, String previousError, String modelId) {
         try {
             String systemPrompt = buildSystemPrompt();
             String userPrompt = buildUserPrompt(entity, previousError);
             ModelCompletion completion = invoker.complete(
-                    registry.defaultModelId(), systemPrompt, userPrompt, MODEL_TIMEOUT);
+                    modelId, systemPrompt, userPrompt, MODEL_TIMEOUT);
             String json = ModelJsonExtractor.firstObject(completion.content());
             JsonNode node = objectMapper.readTree(json);
             // 模型输出的 JSON 值已是干净 SQL（非知识库那种引号包裹块），不能剥首尾引号，

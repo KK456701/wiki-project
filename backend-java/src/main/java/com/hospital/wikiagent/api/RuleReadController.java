@@ -58,7 +58,8 @@ public class RuleReadController {
     public Map<String, Object> effective(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable String ruleId,
-            @RequestParam(name = "hospitalId", required = false) String requestedHospitalId) {
+            @RequestParam(name = "hospitalId", required = false) String requestedHospitalId,
+            @RequestParam(name = "profileId", required = false) String profileId) {
         HospitalPrincipal principal = principal(authorization);
         if (requestedHospitalId != null && !principal.canAccessHospital(requestedHospitalId)) {
             throw new HospitalAuthException(
@@ -66,7 +67,8 @@ public class RuleReadController {
                     "AUTH_HOSPITAL_SCOPE_DENIED",
                     HttpStatus.FORBIDDEN);
         }
-        return repository.effectiveRule(ruleId, principal.hospitalId());
+        // 传入 profileId 时按口径变体解析，让多口径卡片各自展示自己的口径 / 核算方式
+        return repository.effectiveRule(ruleId, principal.hospitalId(), profileId);
     }
 
     private HospitalPrincipal principal(String authorization) {

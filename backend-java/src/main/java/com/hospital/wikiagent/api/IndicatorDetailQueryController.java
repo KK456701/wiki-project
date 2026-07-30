@@ -57,7 +57,8 @@ public class IndicatorDetailQueryController {
             @RequestParam(defaultValue = "numerator") String group,
             @RequestParam String start,
             @RequestParam String end,
-            @RequestParam(required = false) String profileId) {
+            @RequestParam(required = false) String profileId,
+            @RequestParam(required = false) String modelId) {
         authService.authenticate(BearerTokens.require(authorization));
         if (!"numerator".equals(group) && !"denominator".equals(group)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "group 只能是 numerator 或 denominator");
@@ -73,7 +74,7 @@ public class IndicatorDetailQueryController {
         // 优先用合成的分子/分母明细 SQL（每次重新合成，不缓存）；合成或执行失败回退知识库患者明细 SQL
         ToolResult result = null;
         String usedDetailSql = null;
-        DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
+        DetailSqlPair pair = detailSynthesizer.synthesize(ruleId, modelId);
         if (pair != null) {
             String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
             ToolResult generated = mrasExecution.executeGeneratedDetail(
