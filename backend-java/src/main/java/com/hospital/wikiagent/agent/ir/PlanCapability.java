@@ -39,7 +39,7 @@ public enum PlanCapability {
     @JsonCreator
     public static PlanCapability fromValue(String value) {
         for (PlanCapability candidate : values()) {
-            if (candidate.value.equals(value)) {
+            if (IrEnumCodec.matches(candidate.value, value)) {
                 return candidate;
             }
         }

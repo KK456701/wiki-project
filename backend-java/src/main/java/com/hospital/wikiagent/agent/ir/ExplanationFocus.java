@@ -34,7 +34,7 @@ public enum ExplanationFocus {
     @JsonCreator
     public static ExplanationFocus fromValue(String value) {
         for (ExplanationFocus candidate : values()) {
-            if (candidate.value.equals(value)) {
+            if (IrEnumCodec.matches(candidate.value, value)) {
                 return candidate;
             }
         }

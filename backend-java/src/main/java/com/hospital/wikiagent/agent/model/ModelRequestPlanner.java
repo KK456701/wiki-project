@@ -109,8 +109,10 @@ public class ModelRequestPlanner {
                 userPrompt,
                 properties.getPlannerTimeout()).content();
         try {
-            AlignmentReview value = objectMapper.readValue(
-                    ModelJsonExtractor.firstObject(raw), AlignmentReview.class);
+            AlignmentReview value = objectMapper.treeToValue(
+                    ModelJsonFieldNames.toCamelCase(
+                            objectMapper.readTree(ModelJsonExtractor.firstObject(raw))),
+                    AlignmentReview.class);
             return new AlignmentReviewResult(
                     value.aligned(),
                     safe(value.reason()),
@@ -182,7 +184,9 @@ public class ModelRequestPlanner {
 
     private RequestPlan parseAndValidate(String raw) {
         try {
-            JsonNode node = objectMapper.readTree(ModelJsonExtractor.firstObject(raw));
+            // 提示词声明的字段是 snake_case，IR record 是 camelCase，先统一键的书写再反序列化。
+            JsonNode node = ModelJsonFieldNames.toCamelCase(
+                    objectMapper.readTree(ModelJsonExtractor.firstObject(raw)));
             RequestPlan value = objectMapper.treeToValue(node, RequestPlan.class);
             if (!RequestPlan.VERSION.equals(value.schemaVersion())
                     && !RequestPlan.LEGACY_VERSION.equals(value.schemaVersion())) {

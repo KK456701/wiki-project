@@ -38,7 +38,7 @@ public enum RequestedOutput {
     @JsonCreator
     public static RequestedOutput fromValue(String value) {
         for (RequestedOutput candidate : values()) {
-            if (candidate.value.equals(value)) {
+            if (IrEnumCodec.matches(candidate.value, value)) {
                 return candidate;
             }
         }

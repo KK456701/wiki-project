@@ -35,7 +35,7 @@ public enum PlanIntent {
     @JsonCreator
     public static PlanIntent fromValue(String value) {
         for (PlanIntent candidate : values()) {
-            if (candidate.value.equals(value)) {
+            if (IrEnumCodec.matches(candidate.value, value)) {
                 return candidate;
             }
         }
