@@ -56,7 +56,8 @@ public class IndicatorDetailQueryController {
             @PathVariable String ruleId,
             @RequestParam(defaultValue = "numerator") String group,
             @RequestParam String start,
-            @RequestParam String end) {
+            @RequestParam String end,
+            @RequestParam(required = false) String profileId) {
         authService.authenticate(BearerTokens.require(authorization));
         if (!"numerator".equals(group) && !"denominator".equals(group)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "group 只能是 numerator 或 denominator");
@@ -83,7 +84,7 @@ public class IndicatorDetailQueryController {
             }
         }
         if (result == null) {
-            result = mrasExecution.executePatientDetail(ruleId, startTime, endTime, null, null);
+            result = mrasExecution.executePatientDetail(ruleId, profileId, startTime, endTime, null, null);
         }
         if (!result.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "明细查询失败：" + result.summary());

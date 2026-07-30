@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
@@ -12,6 +13,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
@@ -176,5 +178,53 @@ class MrasSqlExecutionServiceTest {
     void getExplanationContextEmptyForUnknown() {
         Map<String, String> context = service.getExplanationContext("HXZD-999-999");
         assertThat(context).isEmpty();
+    }
+
+    @Test
+    void multiCaliberIndicatorReplacesTableNameInSql() {
+        // HXZD-015-001 有两个变体（_001 和 _002），是多口径指标
+        java.util.List<EntityPageData> variants = entityPageParser.getVariants("HXZD-015-001");
+        assertThat(variants).hasSizeGreaterThanOrEqualTo(2);
+
+        when(databaseQuery.execute(eq(DatabaseRole.REAL), anyString()))
+                .thenReturn(List.of(Map.of("分子", 10, "分母", 100)));
+
+        // 口径1：HXZD-015-001_001 → SQL 应查 MRAS_BUSINESS_ANTI_1
+        ToolResult result1 = service.executeOverview("HXZD-015-001", "HXZD-015-001_001",
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59), null, null);
+        assertThat(result1.ok()).isTrue();
+
+        ArgumentCaptor<String> sqlCaptor1 = ArgumentCaptor.forClass(String.class);
+        verify(databaseQuery).execute(eq(DatabaseRole.REAL), sqlCaptor1.capture());
+        assertThat(sqlCaptor1.getValue()).contains("MRAS_BUSINESS_ANTI_1");
+
+        // 口径2：HXZD-015-001_002 → SQL 应查 MRAS_BUSINESS_ANTI_2
+        ToolResult result2 = service.executeOverview("HXZD-015-001", "HXZD-015-001_002",
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59), null, null);
+        assertThat(result2.ok()).isTrue();
+
+        ArgumentCaptor<String> sqlCaptor2 = ArgumentCaptor.forClass(String.class);
+        verify(databaseQuery, org.mockito.Mockito.times(2)).execute(eq(DatabaseRole.REAL), sqlCaptor2.capture());
+        assertThat(sqlCaptor2.getAllValues().get(1)).contains("MRAS_BUSINESS_ANTI_2");
+    }
+
+    @Test
+    void singleCaliberIndicatorDoesNotReplaceTableName() {
+        // HXZD-001-001 只有一个变体（或无变体），是单口径指标
+        when(databaseQuery.execute(eq(DatabaseRole.REAL), anyString()))
+                .thenReturn(List.of(Map.of("分子", 5, "分母", 50)));
+
+        service.executeOverview("HXZD-001-001", (String) null,
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59), null, null);
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(databaseQuery).execute(eq(DatabaseRole.REAL), sqlCaptor.capture());
+        String sql = sqlCaptor.getValue();
+        // 单口径：SQL 不应该有 _1 或 _2 后缀
+        assertThat(sql).doesNotContain("_1");
+        assertThat(sql).doesNotContain("_2");
     }
 }

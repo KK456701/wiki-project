@@ -389,7 +389,7 @@ public class BatchIndicatorRuntime {
         LocalDateTime start = LocalDateTime.parse(statStart, TIME_FORMAT);
         LocalDateTime end = LocalDateTime.parse(statEnd, TIME_FORMAT);
         ToolResult toolResult = mrasExecution.executeOverview(
-                ruleId, start, end, null, null);
+                ruleId, target.profileId(), start, end, null, null);
         long durationMs = System.currentTimeMillis() - started;
         emitMrasPhaseTrace(observer, traceId, subtaskId, target, toolResult);
 
