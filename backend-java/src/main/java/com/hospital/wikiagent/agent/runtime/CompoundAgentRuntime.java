@@ -28,8 +28,8 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeSta
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.AgentModelProperties;
 import com.hospital.wikiagent.agent.model.AgentModelRegistry;
-import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer;
-import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer.DetailSqlPair;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor.DetailExtraction;
 import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SplitResult;
 import com.hospital.wikiagent.agent.runtime.CompoundRequestSplitter.SubtaskSpec;
@@ -67,7 +67,7 @@ public class CompoundAgentRuntime {
     private final BatchIndicatorRuntime batchRuntime;
     private final BatchIntentVerifier batchIntentVerifier;
     private final MrasSqlExecutionService mrasExecution;
-    private final MrasDetailSqlSynthesizer detailSynthesizer;
+    private final MrasDetailSqlExtractor detailExtractor;
     private final ExecutorService executor = Executors.newFixedThreadPool(4, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -118,7 +118,7 @@ public class CompoundAgentRuntime {
             BatchIndicatorRuntime batchRuntime,
             BatchIntentVerifier batchIntentVerifier,
             MrasSqlExecutionService mrasExecution,
-            MrasDetailSqlSynthesizer detailSynthesizer) {
+            MrasDetailSqlExtractor detailExtractor) {
         this.runner = runner;
         this.splitter = splitter;
         this.models = models;
@@ -130,7 +130,7 @@ public class CompoundAgentRuntime {
         this.batchRuntime = batchRuntime;
         this.batchIntentVerifier = batchIntentVerifier;
         this.mrasExecution = mrasExecution;
-        this.detailSynthesizer = detailSynthesizer;
+        this.detailExtractor = detailExtractor;
     }
 
     public AgentRunResult run(AgentRunRequest request) {
@@ -915,45 +915,41 @@ public class CompoundAgentRuntime {
         long started = TraceEvents.started();
         boolean denominator = detailKindDenominator(request.query());
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
-        // 优先用小模型合成的分子/分母明细 SQL；合成或执行失败则回退知识库患者明细 SQL
-        ToolResult result = null;
+        String detailLabel = denominator ? "分母明细" : "分子明细";
+        // 从概览/科室统计口径确定性提取分子/分母明细 SQL；异形指标显式报错，不降级回退患者明细
+        DetailExtraction extraction = detailExtractor.extract(ruleId, null);
+        String answer;
         String usedDetailSql = null;
-        if (detailSynthesizer != null) {
-            DetailSqlPair pair = detailSynthesizer.synthesize(ruleId, request.modelId());
-            if (pair != null) {
-                String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
-                ToolResult generated = mrasExecution.executeGeneratedDetail(
-                        ruleId, detailSql, start, end, queryType);
-                if (generated.ok()) {
-                    result = generated;
+        if (!extraction.supported()) {
+            answer = "该指标口径不支持" + detailLabel + "下钻：" + extraction.unsupportedReason();
+            TraceEvents.completed(observer, traceId, "mras_extracted_detail", "database",
+                    started, "root", Map.of("ruleId", ruleId),
+                    Map.of("ok", false, "code", "MRAS_DETAIL_UNSUPPORTED", "queryType", queryType));
+        } else {
+            String detailSql = denominator ? extraction.denominatorSql() : extraction.numeratorSql();
+            ToolResult result = mrasExecution.executeExtractedDetail(
+                    ruleId, null, detailSql, start, end, queryType);
+            TraceEvents.completed(observer, traceId, "mras_extracted_detail", "database",
+                    started, "root", Map.of("ruleId", ruleId),
+                    Map.of("ok", result.ok(), "code", result.code(), "queryType", queryType));
+            if (!result.ok()) {
+                answer = "查询" + detailLabel + "失败：" + result.summary();
+            } else {
+                Object rowCount = result.data().get("rowCount");
+                int rows = rowCount instanceof Number number ? number.intValue() : 0;
+                if (rows == 0) {
+                    answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
+                            + " 内，" + (ruleName == null ? ruleId : ruleName)
+                            + " 无样本数据，无法展示" + detailLabel + "。";
+                } else {
+                    answer = formatDetailTable(result.data(), ruleName, rows);
                     usedDetailSql = detailSql;
                 }
-            }
-        }
-        if (result == null) {
-            result = mrasExecution.executePatientDetail(ruleId, start, end, null, null);
-        }
-        TraceEvents.completed(observer, traceId, "mras_patient_detail", "database",
-                started, "root", Map.of("ruleId", ruleId),
-                Map.of("ok", result.ok(), "code", result.code(), "queryType", queryType));
-        String detailLabel = denominator ? "分母明细" : "分子明细";
-        String answer;
-        if (!result.ok()) {
-            answer = "查询" + detailLabel + "失败：" + result.summary();
-        } else {
-            Object rowCount = result.data().get("rowCount");
-            int rows = rowCount instanceof Number number ? number.intValue() : 0;
-            if (rows == 0) {
-                answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
-                        + " 内，" + (ruleName == null ? ruleId : ruleName)
-                        + " 无样本数据，无法展示" + detailLabel + "。";
-            } else {
-                answer = formatDetailTable(result.data(), ruleName, rows);
-            }
-            // 带上生成明细 SQL 一起输出
-            if (usedDetailSql != null && !usedDetailSql.isBlank()) {
-                answer = answer + "\n\n---\n\n**生成的" + detailLabel + " SQL：**\n\n```sql\n"
-                        + usedDetailSql.strip() + "\n```";
+                // 带上提取的明细 SQL 一起输出
+                if (usedDetailSql != null && !usedDetailSql.isBlank()) {
+                    answer = answer + "\n\n---\n\n**" + detailLabel + " SQL：**\n\n```sql\n"
+                            + usedDetailSql.strip() + "\n```";
+                }
             }
         }
         conversations.appendUser(conversation, request.principal(), request.query(), request.fileKey());

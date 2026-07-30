@@ -17,18 +17,19 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer;
-import com.hospital.wikiagent.agent.mras.MrasDetailSqlSynthesizer.DetailSqlPair;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor;
+import com.hospital.wikiagent.agent.mras.MrasDetailSqlExtractor.DetailExtraction;
 import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 
 /**
- * 指标结果卡片的「明细」按钮接口：按 rule_id + 统计区间直接查询分子/分母患者明细。
+ * 指标结果卡片的「明细」按钮接口：按 rule_id + 统计区间直接查询分子/分母明细。
  *
- * <p>复用会话内明细链路的同一套能力（小模型合成明细 SQL + 知识库患者明细回退），
- * 但不依赖会话上下文，前端卡片可对任意指标、任意统计区间独立调用。</p>
+ * <p>明细 SQL 由 {@link MrasDetailSqlExtractor} 从概览/科室统计口径确定性提取
+ * （逐字保留 FROM/JOIN/WHERE，仅换 SELECT*、删 GROUP BY、分子追加判定），
+ * 行数与卡片口径一致；无法机械转换的异形指标显式报错，不降级、不回退到对不上的患者明细。</p>
  */
 @RestController
 @RequestMapping("/api/kb/rules")
@@ -39,15 +40,15 @@ public class IndicatorDetailQueryController {
 
     private final HospitalAuthService authService;
     private final MrasSqlExecutionService mrasExecution;
-    private final MrasDetailSqlSynthesizer detailSynthesizer;
+    private final MrasDetailSqlExtractor detailExtractor;
 
     public IndicatorDetailQueryController(
             HospitalAuthService authService,
             MrasSqlExecutionService mrasExecution,
-            MrasDetailSqlSynthesizer detailSynthesizer) {
+            MrasDetailSqlExtractor detailExtractor) {
         this.authService = authService;
         this.mrasExecution = mrasExecution;
-        this.detailSynthesizer = detailSynthesizer;
+        this.detailExtractor = detailExtractor;
     }
 
     @GetMapping("/{ruleId}/details")
@@ -71,22 +72,15 @@ public class IndicatorDetailQueryController {
         boolean denominator = "denominator".equals(group);
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
 
-        // 优先用合成的分子/分母明细 SQL（每次重新合成，不缓存）；合成或执行失败回退知识库患者明细 SQL
-        ToolResult result = null;
-        String usedDetailSql = null;
-        DetailSqlPair pair = detailSynthesizer.synthesize(ruleId, modelId);
-        if (pair != null) {
-            String detailSql = denominator ? pair.denominatorSql() : pair.numeratorSql();
-            ToolResult generated = mrasExecution.executeGeneratedDetail(
-                    ruleId, detailSql, startTime, endTime, queryType);
-            if (generated.ok()) {
-                result = generated;
-                usedDetailSql = detailSql;
-            }
+        // 从概览/科室统计口径确定性提取分子/分母明细 SQL；异形指标无法机械转换时显式报错，不降级回退。
+        DetailExtraction extraction = detailExtractor.extract(ruleId, profileId);
+        if (!extraction.supported()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "该指标口径不支持明细下钻：" + extraction.unsupportedReason());
         }
-        if (result == null) {
-            result = mrasExecution.executePatientDetail(ruleId, profileId, startTime, endTime, null, null);
-        }
+        String detailSql = denominator ? extraction.denominatorSql() : extraction.numeratorSql();
+        ToolResult result = mrasExecution.executeExtractedDetail(
+                ruleId, profileId, detailSql, startTime, endTime, queryType);
         if (!result.ok()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "明细查询失败：" + result.summary());
         }
@@ -106,11 +100,8 @@ public class IndicatorDetailQueryController {
         } else {
             body.put("rows", rows == null ? List.of() : rows);
         }
-        // usedDetailSql 为空说明走的是知识库患者明细回退，此时分子/分母区分不生效
-        body.put("sqlSource", usedDetailSql != null ? "synthesized" : "mras_patient_detail");
-        if (usedDetailSql != null) {
-            body.put("detailSql", usedDetailSql.strip());
-        }
+        body.put("sqlSource", "mras_extracted");
+        body.put("detailSql", detailSql.strip());
         return body;
     }
 

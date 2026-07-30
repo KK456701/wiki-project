@@ -285,6 +285,58 @@ public class MrasSqlExecutionService {
     }
 
     /**
+     * 执行由 {@link MrasDetailSqlExtractor} 从概览/科室统计口径确定性提取的分子/分母明细 SQL。
+     *
+     * <p>与 {@link #executeGeneratedDetail} 的区别：提取 SQL 逐字保留了概览口径的
+     * FROM/JOIN/WHERE 及模板标记（{@code #ETC{}}/{@code #EQUALS{}}/{@code #{NOLOCK}}/
+     * 命名时间参数），必须走完整口径解析——解析多口径 profileId、按需 ETL 抽取、
+     * 多口径时把中间表名替换为口径表名（表名_N），才能让明细行数与该口径卡片对齐。</p>
+     *
+     * @param indicatorCode 指标编码
+     * @param profileId     口径变体编码（可为 null 表示主方案）
+     * @param detailSql     提取后的明细 SQL（含命名时间参数与模板标记）
+     * @param start         统计开始时间
+     * @param end           统计结束时间
+     * @param queryType     查询类型（denominator_detail / numerator_detail）
+     */
+    public ToolResult executeExtractedDetail(
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            LocalDateTime start,
+            LocalDateTime end,
+            String queryType) {
+
+        if (detailSql == null || detailSql.isBlank()) {
+            return ToolResult.failure("unavailable", "MRAS_EXTRACTED_SQL_EMPTY",
+                    "提取的明细 SQL 为空。", false);
+        }
+        CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
+        if (caliberRes == null) {
+            return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
+                    "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
+        }
+        EntityPageData entity = caliberRes.entity;
+
+        Map<String, Object> params = parameterMapper.mapParameters(start, end, null, null);
+
+        long extractStarted = System.currentTimeMillis();
+        ExtractionOutcome extraction = ensureExtracted(entity, start, end, caliberRes.caliberNo);
+        long extractionDurationMs = System.currentTimeMillis() - extractStarted;
+
+        ToolResult caliberFailure = caliberExtractionFailure(indicatorCode, caliberRes, extraction);
+        if (caliberFailure != null) {
+            return caliberFailure;
+        }
+
+        // 提取 SQL 已是干净语句（无 Markdown 前后引号），不能剥引号；口径表名替换按 caliberNo 生效。
+        return executeSql(
+                detailSql, params, indicatorCode, queryType,
+                entity.name(), entity.dimension(), false, extraction.warning(), extractionDurationMs,
+                caliberRes.caliberNo, caliberRes.baseTable);
+    }
+
+    /**
      * 获取指标的元数据上下文（定义、口径、数据来源、监测参数），供 LLM 解释用。
      */
     public Map<String, String> getExplanationContext(String indicatorCode) {
