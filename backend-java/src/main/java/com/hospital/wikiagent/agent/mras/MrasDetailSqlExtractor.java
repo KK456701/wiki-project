@@ -20,7 +20,9 @@ import org.springframework.stereotype.Component;
  * <ol>
  *   <li>把聚合列（COUNT(...) 等）整段丢弃，改成 {@code SELECT *}（列不影响行数）；</li>
  *   <li>删掉 {@code GROUP BY}（明细要行，不要按科室汇总）；</li>
- *   <li>分子明细在分母 WHERE 末尾追加 {@code AND (<判定条件>)}——判定条件即
+ *   <li>分子明细在分母 FROM/WHERE 之上追加分子判定：顶层已有 WHERE 时追加
+ *       {@code AND (<判定条件>)}，顶层无 WHERE（过滤条件在派生表内部，如 HXZD-004-001 的
+ *       DISTINCT 去重子查询）时追加 {@code WHERE (<判定条件>)}；判定条件即
  *       {@code COUNT(CASE WHEN <条件> THEN ...)} 里的 {@code <条件>}，原样复制。</li>
  * </ol>
  * FROM/JOIN/WHERE 及其中的模板标记（{@code #ETC{}}/{@code #EQUALS{}}/{@code #{NOLOCK}}/
@@ -138,21 +140,13 @@ public class MrasDetailSqlExtractor {
             return DetailExtraction.unsupported("该指标聚合口径缺少 GROUP BY，无法机械转明细。");
         }
 
-        // P0：分子需在概览 FROM/WHERE 之上追加分子判定。若顶层没有 WHERE（过滤条件位于派生表
-        // 内部，如 HXZD-004-001 的 DISTINCT 去重子查询），直接追加 AND 会生成非法 SQL；此处显式
-        // 拒绝、绝不静默返错，等 P0.5 语法感知改写（顶层无 WHERE 时改追加 WHERE）上线后再支持。
-        if (topLevelKeyword(fromClause, "WHERE", true) < 0) {
-            return DetailExtraction.unsupported(
-                    "该指标概览口径的过滤条件位于派生表内部，暂不支持安全下钻（待语法感知改写上线）。");
-        }
-
         String dedupKey = distinctKey(aggBody);
         String denominatorSql;
         String numeratorSql;
         if (dedupKey == null) {
             // 行级口径：分母 = COUNT(1)/COUNT(*)，明细直接取行。
             denominatorSql = "SELECT *\n" + fromClause;
-            numeratorSql = "SELECT *\n" + fromClause + "\nAND (" + condition + ")";
+            numeratorSql = "SELECT *\n" + appendNumeratorPredicate(fromClause, condition);
         } else {
             // 去重口径：分母 = COUNT(DISTINCT <键>)，明细按键去重到一行。
             denominatorSql = wrapDistinct(fromClause, dedupKey, null);
@@ -188,11 +182,22 @@ public class MrasDetailSqlExtractor {
         String selectCols = dot > 0 ? dedupKey.substring(0, dot) + ".*" : "*";
         String inner = extraCondition == null
                 ? fromClause
-                : fromClause + "\nAND (" + extraCondition + ")";
+                : appendNumeratorPredicate(fromClause, extraCondition);
         return "SELECT * FROM (\n"
                 + "  SELECT " + selectCols + ", ROW_NUMBER() OVER (PARTITION BY " + dedupKey
                 + " ORDER BY (SELECT NULL)) AS \"__detail_rn\"\n  "
                 + inner + "\n) __detail_dedup\nWHERE __detail_dedup.\"__detail_rn\" = 1";
+    }
+
+    /**
+     * 在概览 FROM/WHERE 之上追加分子判定：顶层已有 WHERE 时追加 {@code AND (<条件>)}；顶层无
+     * WHERE（过滤条件位于派生表内部，如 HXZD-004-001 的 {@code FROM (SELECT DISTINCT ...) event}
+     * 去重子查询）时追加 {@code WHERE (<条件>)}，避免直接拼 AND 生成 {@code ) event AND (...)}
+     * 之类的非法 SQL。判定条件本身逐字保留，不做语义改写。
+     */
+    private String appendNumeratorPredicate(String fromClause, String condition) {
+        String connector = topLevelKeyword(fromClause, "WHERE", true) < 0 ? "\nWHERE (" : "\nAND (";
+        return fromClause + connector + condition + ")";
     }
 
     /**
@@ -244,18 +249,32 @@ public class MrasDetailSqlExtractor {
 
     /**
      * 收集 CTE 体内所有 {@code COUNT(CASE WHEN <条件> THEN)} 的判定条件，按规范化内容去重。
-     * 「监测情况」行会重复出现同一条件，去重后算 1 种。
+     * 「监测情况」比率列会重复写出同一分子判定，且分子列与比率列的标量字面量引号可能不一致
+     * （如 HXZD-008-001：分子列 {@code PREOP_DISC_COMPLETE = 98175}、比率列 {@code = '98175'}），
+     * 去重键忽略大小写/空白/引号差异，使同一判定归为一条；列/运算符/取值真正不同的复合指标
+     * 仍计为多条并在上游拒绝。返回的条件文本取首次出现（即「分子」列）的原文，逐字保留。
      */
     private List<String> collectNumeratorConditions(String cteBody) {
         List<String> conditions = new ArrayList<>();
+        List<String> seenKeys = new ArrayList<>();
         Matcher matcher = NUMERATOR_CASE.matcher(cteBody);
         while (matcher.find()) {
             String cond = matcher.group(1).replaceAll("\\s+", " ").strip();
-            if (!cond.isEmpty() && !conditions.contains(cond)) {
+            if (cond.isEmpty()) {
+                continue;
+            }
+            String key = normalizeConditionKey(cond);
+            if (!seenKeys.contains(key)) {
+                seenKeys.add(key);
                 conditions.add(cond);
             }
         }
         return conditions;
+    }
+
+    /** 判定条件去重键：小写、去空白、去单引号，使仅字面量引号不同的同一判定归并为一条。 */
+    private static String normalizeConditionKey(String condition) {
+        return condition.toLowerCase(Locale.ROOT).replace("'", "").replaceAll("\\s+", "");
     }
 
     /**
