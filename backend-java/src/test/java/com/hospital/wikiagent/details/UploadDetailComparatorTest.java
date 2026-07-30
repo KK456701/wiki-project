@@ -54,8 +54,8 @@ class UploadDetailComparatorTest {
         assertThat(result.systemNumeratorCount()).isEqualTo(1);
         assertThat(result.uploadedNumeratorCount()).isEqualTo(2);
         assertThat(result.safeData())
-                .containsEntry("both_count", 2)
-                .doesNotContainKeys("matched_rows", "system_only_rows", "uploaded_only_rows");
+                .containsEntry("bothCount", 2)
+                .doesNotContainKeys("matchedRows", "systemOnlyRows", "uploadedOnlyRows");
     }
 
     @Test
@@ -94,8 +94,8 @@ class UploadDetailComparatorTest {
         assertThat(result.fieldDifferenceCount()).isEqualTo(1);
         assertThat(result.classificationDifferenceCount()).isEqualTo(1);
         assertThat(result.safeData())
-                .containsEntry("both_count", 1)
-                .doesNotContainKeys("matched_rows", "system_only_rows", "uploaded_only_rows");
+                .containsEntry("bothCount", 1)
+                .doesNotContainKeys("matchedRows", "systemOnlyRows", "uploadedOnlyRows");
     }
 
     private static SnapshotSummary summary(String ruleId) {

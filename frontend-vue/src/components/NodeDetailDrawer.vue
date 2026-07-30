@@ -13,15 +13,15 @@ const loading = ref(false)
 const error = ref('')
 const traceNode = ref<TraceNode | null>(null)
 
-const inputData = computed(() => redact(traceNode.value?.input_data ?? {}))
-const outputData = computed(() => redact(traceNode.value?.output_data ?? {}))
+const inputData = computed(() => redact(traceNode.value?.inputData ?? {}))
+const outputData = computed(() => redact(traceNode.value?.outputData ?? {}))
 const hasTraceDetails = computed(() =>
-  traceNode.value !== null && ('input_data' in traceNode.value || 'output_data' in traceNode.value),
+  traceNode.value !== null && ('inputData' in traceNode.value || 'outputData' in traceNode.value),
 )
 const hasError = computed(() =>
   props.node.status === 'failed'
-  || Boolean(traceNode.value?.error_code)
-  || Boolean(traceNode.value?.error_message),
+  || Boolean(traceNode.value?.errorCode)
+  || Boolean(traceNode.value?.errorMessage),
 )
 
 watch(
@@ -34,11 +34,11 @@ watch(
       const trace = await loadAgentRun(props.token, props.traceId)
       const nodes = Array.isArray(trace.nodes) ? trace.nodes as TraceNode[] : []
       const sameName = nodes.filter((node) =>
-        String(node.node_name || '') === props.node.nodeName
-        && String(node.subtask_id || 'root') === (props.node.subtaskId || 'root'),
+        String(node.nodeName || '') === props.node.nodeName
+        && String(node.subtaskId || 'root') === (props.node.subtaskId || 'root'),
       )
       traceNode.value = sameName[props.node.occurrence]
-        || nodes.find((node) => String(node.node_name || '') === props.node.nodeName)
+        || nodes.find((node) => String(node.nodeName || '') === props.node.nodeName)
         || fallbackNode()
       if (!hasTraceDetails.value) error.value = '该节点的详细参数尚未写入，请稍后再试。'
     } catch (reason) {
@@ -53,16 +53,16 @@ watch(
 
 function fallbackNode(): TraceNode {
   return {
-    node_name: props.node.nodeName,
-    node_type: props.node.nodeType,
-    node_title: props.node.label,
+    nodeName: props.node.nodeName,
+    nodeType: props.node.nodeType,
+    nodeTitle: props.node.label,
     status: props.node.status,
-    duration_ms: props.node.durationMs,
-    tool_name: props.node.toolName,
-    model_id: props.node.modelId,
+    durationMs: props.node.durationMs,
+    toolName: props.node.toolName,
+    modelId: props.node.modelId,
     capability: props.node.capability,
-    subtask_id: props.node.subtaskId || 'root',
-    processing_summary: '以下为运行时实时摘要；详细参数需由 Trace 接口返回。',
+    subtaskId: props.node.subtaskId || 'root',
+    processingSummary: '以下为运行时实时摘要；详细参数需由 Trace 接口返回。',
   }
 }
 
@@ -125,20 +125,20 @@ function statusText(value?: unknown): string {
         <p v-if="error" class="node-detail-warning">{{ error }}</p>
         <section class="node-detail-overview">
           <div><span>状态</span><strong :data-state="String(traceNode.status || node.status)">{{ statusText(traceNode.status) }}</strong></div>
-          <div><span>耗时</span><strong>{{ formatDuration(traceNode.duration_ms) }}</strong></div>
-          <div><span>模型 / 工具</span><strong>{{ String(traceNode.model_id || traceNode.tool_name || '—') }}</strong></div>
-          <div><span>子任务</span><strong>{{ String(traceNode.subtask_id || 'root') }}</strong></div>
+          <div><span>耗时</span><strong>{{ formatDuration(traceNode.durationMs) }}</strong></div>
+          <div><span>模型 / 工具</span><strong>{{ String(traceNode.modelId || traceNode.toolName || '—') }}</strong></div>
+          <div><span>子任务</span><strong>{{ String(traceNode.subtaskId || 'root') }}</strong></div>
         </section>
 
         <section class="node-detail-section">
           <p class="eyebrow">Overview</p>
           <h3>处理概览</h3>
-          <p>{{ String(traceNode.processing_summary || '该节点已完成受控处理。') }}</p>
+          <p>{{ String(traceNode.processingSummary || '该节点已完成受控处理。') }}</p>
           <dl>
-            <div><dt>节点标识</dt><dd><code>{{ String(traceNode.node_name || node.nodeName) }}</code></dd></div>
-            <div><dt>节点 ID</dt><dd><code>{{ String(traceNode.node_id || '—') }}</code></dd></div>
+            <div><dt>节点标识</dt><dd><code>{{ String(traceNode.nodeName || node.nodeName) }}</code></dd></div>
+            <div><dt>节点 ID</dt><dd><code>{{ String(traceNode.nodeId || '—') }}</code></dd></div>
             <div><dt>能力</dt><dd>{{ String(traceNode.capability || node.capability || '—') }}</dd></div>
-            <div><dt>数据 / 运行引用</dt><dd>{{ String(traceNode.sql_id || traceNode.run_id || traceNode.db_source || '—') }}</dd></div>
+            <div><dt>数据 / 运行引用</dt><dd>{{ String(traceNode.sqlId || traceNode.runId || traceNode.dbSource || '—') }}</dd></div>
           </dl>
         </section>
 
@@ -146,8 +146,8 @@ function statusText(value?: unknown): string {
           <p class="eyebrow">Exception</p>
           <h3>异常信息</h3>
           <dl>
-            <div><dt>错误码</dt><dd>{{ String(traceNode.error_code || '未提供') }}</dd></div>
-            <div><dt>失败原因</dt><dd>{{ String(traceNode.error_message || '节点未通过验证，请检查输入条件。') }}</dd></div>
+            <div><dt>错误码</dt><dd>{{ String(traceNode.errorCode || '未提供') }}</dd></div>
+            <div><dt>失败原因</dt><dd>{{ String(traceNode.errorMessage || '节点未通过验证，请检查输入条件。') }}</dd></div>
           </dl>
         </section>
 

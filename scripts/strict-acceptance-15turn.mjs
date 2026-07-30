@@ -41,9 +41,9 @@ const turns = [
 ];
 
 const report = {
-  started_at: new Date().toISOString(),
+  startedAt: new Date().toISOString(),
   endpoint,
-  session_id: sessionId,
+  sessionId,
   turns: [],
 };
 
@@ -57,7 +57,7 @@ for (let index = 0; index < turns.length; index += 1) {
     response = await fetch(endpoint, {
       method: 'POST',
       headers: {'content-type': 'application/json; charset=utf-8'},
-      body: JSON.stringify({query, session_id: sessionId}),
+      body: JSON.stringify({query, sessionId}),
       signal: AbortSignal.timeout(600_000),
     });
     payload = await response.json();
@@ -67,19 +67,19 @@ for (let index = 0; index < turns.length; index += 1) {
   }
   const answer = String(payload.answer || '');
   const checks = {
-    http_ok: Boolean(response?.ok),
-    final_answer: payload.stop_reason === 'final_answer',
-    no_clarification: payload.clarification == null,
-    content_contract: validate(answer),
+    httpOk: Boolean(response?.ok),
+    finalAnswer: payload.stopReason === 'final_answer',
+    noClarification: payload.clarification == null,
+    contentContract: validate(answer),
   };
   const passed = !error && Object.values(checks).every(Boolean);
   report.turns.push({
     turn: index + 1,
     query,
-    duration_ms: Math.round(performance.now() - started),
-    trace_id: payload.trace_id || '',
-    step_count: payload.step_count ?? null,
-    stop_reason: payload.stop_reason || '',
+    durationMs: Math.round(performance.now() - started),
+    traceId: payload.traceId || '',
+    stepCount: payload.stepCount ?? null,
+    stopReason: payload.stopReason || '',
     clarification: payload.clarification ?? null,
     checks,
     passed,
@@ -89,22 +89,22 @@ for (let index = 0; index < turns.length; index += 1) {
   console.log(JSON.stringify({
     turn: index + 1,
     passed,
-    duration_ms: report.turns.at(-1).duration_ms,
-    trace_id: payload.trace_id || '',
-    answer_head: answer.slice(0, 160).replace(/\s+/g, ' '),
+    durationMs: report.turns.at(-1).durationMs,
+    traceId: payload.traceId || '',
+    answerHead: answer.slice(0, 160).replace(/\s+/g, ' '),
   }));
   if (!passed) {
     break;
   }
 }
 
-report.finished_at = new Date().toISOString();
+report.finishedAt = new Date().toISOString();
 report.passed = report.turns.length === turns.length
   && report.turns.every(turn => turn.passed);
 const output = path.resolve('output', 'strict-acceptance-15turn.json');
 fs.mkdirSync(path.dirname(output), {recursive: true});
 fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
-console.log(JSON.stringify({report: output, passed: report.passed, completed_turns: report.turns.length}));
+console.log(JSON.stringify({report: output, passed: report.passed, completedTurns: report.turns.length}));
 process.exitCode = report.passed ? 0 : 1;
 
 function includes(answer, values) {

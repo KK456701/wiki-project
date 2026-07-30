@@ -79,7 +79,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("DIFFERENCE_DIAGNOSIS_COMPLETED");
-        assertThat(result.data()).containsEntry("conclusion_code", "STRUCTURE_BLOCKING");
+        assertThat(result.data()).containsEntry("conclusionCode", "STRUCTURE_BLOCKING");
         assertThat(result.data().get("layers")).asList().hasSize(2);
         verify(sql, never()).prepare(any(), any());
         verify(reports).saveDifference(
@@ -90,17 +90,17 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
     @Test
     void treatsSingleAmbiguousNumberMatchAsPossibleRatherThanConfirmed() {
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001")).thenReturn(List.of(Map.of(
-                "profile_id", "candidate-100",
+                "profileId", "candidate-100",
                 "label", "候选口径",
-                "source_level", "company",
+                "sourceLevel", "company",
                 "status", "approved",
-                "effective_from", "2025-01-01",
-                "parameter_overrides", Map.of("threshold", 10),
-                "evidence_keywords", List.of("特殊阈值"))));
+                "effectiveFrom", "2025-01-01",
+                "parameterOverrides", Map.of("threshold", 10),
+                "evidenceKeywords", List.of("特殊阈值"))));
         when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
-                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_BASE")));
         when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(ToolResult.success(
-                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_CANDIDATE")));
         when(sql.trial(any(), any()))
                 .thenReturn(trial("RUN_BASE", 98L, 200L, 49.0))
                 .thenReturn(trial("RUN_CANDIDATE", 100L, 200L, 50.0));
@@ -108,15 +108,15 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         ToolResult result = workflow().diagnose(input("用户100，系统98，分析为什么不同"), context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("conclusion_code", "SYSTEM_RESULT_VERIFIED");
+        assertThat(result.data()).containsEntry("conclusionCode", "SYSTEM_RESULT_VERIFIED");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> layers = (List<Map<String, Object>>) result.data().get("layers");
         Map<String, Object> caliber = layers.stream()
                 .filter(layer -> Integer.valueOf(4).equals(layer.get("layer")))
                 .findFirst().orElseThrow();
-        assertThat(caliber).containsEntry("cause_confirmed", false);
+        assertThat(caliber).containsEntry("causeConfirmed", false);
         assertThat(caliber.get("candidates").toString())
-                .contains("match_level=partial", "cause_likelihood=possible");
+                .contains("matchLevel=partial", "causeLikelihood=possible");
     }
 
     @Test
@@ -124,24 +124,24 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         Map<String, Object> uploaded = Map.ofEntries(
-                Map.entry("file_name", "ward-entry-summary.xlsx"),
-                Map.entry("row_count", 1),
+                Map.entry("fileName", "ward-entry-summary.xlsx"),
+                Map.entry("rowCount", 1),
                 Map.entry("columns", List.of("首次入区时间", "分子", "分母", "指标率")),
-                Map.entry("file_evidence_type", "summary"),
-                Map.entry("uploaded_rule_id", "MQSI2025_001"),
-                Map.entry("uploaded_stat_period",
+                Map.entry("fileEvidenceType", "summary"),
+                Map.entry("uploadedRuleId", "MQSI2025_001"),
+                Map.entry("uploadedStatPeriod",
                         "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
-                Map.entry("uploaded_numerator", 12),
-                Map.entry("uploaded_denominator", 234),
-                Map.entry("uploaded_rate", 5.13),
-                Map.entry("comparison_level", "summary"));
+                Map.entry("uploadedNumerator", 12),
+                Map.entry("uploadedDenominator", 234),
+                Map.entry("uploadedRate", 5.13),
+                Map.entry("comparisonLevel", "summary"));
         when(uploads.analyze(any(), any())).thenReturn(
                 ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
         when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
-                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_BASE")));
         when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
                 ToolResult.success(
-                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_CANDIDATE")));
         when(sql.trial(any(), any()))
                 .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
                 .thenReturn(trial("RUN_CANDIDATE", 12L, 235L, 5.11));
@@ -155,13 +155,13 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
-                "conclusion_code", "CALIBER_CAUSE_LIKELY");
-        assertThat(result.data().get("caliber_candidates").toString())
+                "conclusionCode", "CALIBER_CAUSE_LIKELY");
+        assertThat(result.data().get("caliberCandidates").toString())
                 .contains(
-                        "match_level=partial",
-                        "cause_likelihood=likely",
-                        "matching_dimensions=[numerator]",
-                        "mismatched_dimensions=[denominator, rate]");
+                        "matchLevel=partial",
+                        "causeLikelihood=likely",
+                        "matchingDimensions=[numerator]",
+                        "mismatchedDimensions=[denominator, rate]");
     }
 
     @Test
@@ -169,24 +169,24 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         Map<String, Object> uploaded = Map.ofEntries(
-                Map.entry("file_name", "ward-entry-summary.xlsx"),
-                Map.entry("row_count", 1),
+                Map.entry("fileName", "ward-entry-summary.xlsx"),
+                Map.entry("rowCount", 1),
                 Map.entry("columns", List.of("首次入区时间", "分子", "分母", "指标率")),
-                Map.entry("file_evidence_type", "summary"),
-                Map.entry("uploaded_rule_id", "MQSI2025_001"),
-                Map.entry("uploaded_stat_period",
+                Map.entry("fileEvidenceType", "summary"),
+                Map.entry("uploadedRuleId", "MQSI2025_001"),
+                Map.entry("uploadedStatPeriod",
                         "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
-                Map.entry("uploaded_numerator", 20),
-                Map.entry("uploaded_denominator", 400),
-                Map.entry("uploaded_rate", 5.0),
-                Map.entry("comparison_level", "summary"));
+                Map.entry("uploadedNumerator", 20),
+                Map.entry("uploadedDenominator", 400),
+                Map.entry("uploadedRate", 5.0),
+                Map.entry("comparisonLevel", "summary"));
         when(uploads.analyze(any(), any())).thenReturn(
                 ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
         when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
-                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_BASE")));
         when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
                 ToolResult.success(
-                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_CANDIDATE")));
         when(sql.trial(any(), any()))
                 .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
                 .thenReturn(trial("RUN_CANDIDATE", 12L, 235L, 5.11));
@@ -199,12 +199,12 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         ToolResult result = workflow().diagnose(input, context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("conclusion_code", "SYSTEM_RESULT_VERIFIED");
-        assertThat(result.data().get("caliber_candidates").toString())
+        assertThat(result.data()).containsEntry("conclusionCode", "SYSTEM_RESULT_VERIFIED");
+        assertThat(result.data().get("caliberCandidates").toString())
                 .contains(
-                        "match_level=none",
-                        "cause_likelihood=none",
-                        "mismatched_dimensions=[numerator, denominator, rate]");
+                        "matchLevel=none",
+                        "causeLikelihood=none",
+                        "mismatchedDimensions=[numerator, denominator, rate]");
     }
 
     @Test
@@ -213,7 +213,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
-                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
+                "conclusionCode", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers")).asList().hasSize(1);
         verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
@@ -223,14 +223,14 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
     void rejectsUploadedPeriodConflictBeforeReadingDatabaseMetadata() {
         when(uploads.analyze(any(), any())).thenReturn(ToolResult.success(
                 "UPLOAD_ANALYZED", "analyzed", Map.of(
-                        "file_name", "external.xlsx",
-                        "row_count", 100,
+                        "fileName", "external.xlsx",
+                        "rowCount", 100,
                         "columns", List.of("admission_id"),
-                        "file_evidence_type", "detail",
-                        "uploaded_rule_id", "MQSI2025_001",
-                        "uploaded_stat_period",
+                        "fileEvidenceType", "detail",
+                        "uploadedRuleId", "MQSI2025_001",
+                        "uploadedStatPeriod",
                         "2026-03-01 00:00:00 至 2026-04-01 00:00:00",
-                        "comparison_level", "row")));
+                        "comparisonLevel", "row")));
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
@@ -241,7 +241,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
-                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
+                "conclusionCode", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
         verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
@@ -251,15 +251,15 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
     void ignoresExplanatoryDateWhenCheckingUploadedPeriodEndpoints() {
         when(uploads.analyze(any(), any())).thenReturn(ToolResult.success(
                 "UPLOAD_ANALYZED", "analyzed", Map.of(
-                        "file_name", "ward-entry.xlsx",
-                        "row_count", 234,
+                        "fileName", "ward-entry.xlsx",
+                        "rowCount", 234,
                         "columns", List.of("入院流水号", "首次入区时间", "是否达到要求"),
-                        "file_evidence_type", "detail",
-                        "uploaded_rule_id", "MQSI2025_001",
-                        "uploaded_stat_period",
+                        "fileEvidenceType", "detail",
+                        "uploadedRuleId", "MQSI2025_001",
+                        "uploadedStatPeriod",
                         "2026-01-01 00:00:00 至 2026-02-01 00:00:00"
                                 + "（左闭右开，覆盖至2026-01-31自然日结束）",
-                        "comparison_level", "row")));
+                        "comparisonLevel", "row")));
         IndicatorDifferenceDiagnosisWorkflow.Input input =
                 new IndicatorDifferenceDiagnosisWorkflow.Input(
                         "MQSI2025_001", "为什么文件与系统不一致",
@@ -270,7 +270,7 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
-                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE");
+                "conclusionCode", "INSUFFICIENT_EXTERNAL_EVIDENCE");
         assertThat(result.data().get("layers").toString()).contains("FILE_PERIOD_CONFLICT");
         verify(metadata, never()).listTables(any(DatabaseRole.class), anyString(), anyString());
         verify(sql, never()).prepare(any(), any());
@@ -281,25 +281,25 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         when(rules.diagnosticProfiles("MQSI2025_001", "hospital_001"))
                 .thenReturn(List.of(wardEntryProfile()));
         Map<String, Object> uploaded = Map.ofEntries(
-                Map.entry("file_name", "ward-entry.xlsx"),
-                Map.entry("row_count", 234),
+                Map.entry("fileName", "ward-entry.xlsx"),
+                Map.entry("rowCount", 234),
                 Map.entry("columns", List.of("入院流水号", "首次入区时间", "是否达到要求")),
-                Map.entry("file_evidence_type", "detail"),
-                Map.entry("contains_detail_records", true),
-                Map.entry("uploaded_rule_id", "MQSI2025_001"),
-                Map.entry("uploaded_stat_period",
+                Map.entry("fileEvidenceType", "detail"),
+                Map.entry("containsDetailRecords", true),
+                Map.entry("uploadedRuleId", "MQSI2025_001"),
+                Map.entry("uploadedStatPeriod",
                         "2026-01-01 00:00:00 至 2026-02-01 00:00:00"),
-                Map.entry("uploaded_count", 234),
-                Map.entry("uploaded_numerator_count", 12),
-                Map.entry("comparison_level", "row"),
-                Map.entry("row_level_comparison_available", false));
+                Map.entry("uploadedCount", 234),
+                Map.entry("uploadedNumeratorCount", 12),
+                Map.entry("comparisonLevel", "row"),
+                Map.entry("rowLevelComparisonAvailable", false));
         when(uploads.analyze(any(), any())).thenReturn(
                 ToolResult.success("UPLOAD_ANALYZED", "analyzed", uploaded));
         when(sql.prepare(any(), any())).thenReturn(ToolResult.success(
-                "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_BASE")));
+                "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_BASE")));
         when(sql.prepareDiagnostic(any(), anyString(), any(), any(), any())).thenReturn(
                 ToolResult.success(
-                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sql_id", "SQL_CANDIDATE")));
+                        "SQL_OBJECT_PREPARED", "prepared", Map.of("sqlId", "SQL_CANDIDATE")));
         when(sql.trial(any(), any()))
                 .thenReturn(trial("RUN_BASE", 11L, 394L, 2.79))
                 .thenReturn(trial("RUN_CANDIDATE", 12L, 234L, 5.13));
@@ -313,11 +313,11 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data()).containsEntry(
-                "conclusion_code", "CALIBER_CAUSE_CONFIRMED");
-        assertThat(result.data().get("caliber_candidates").toString())
-                .contains("match_level=exact", "cause_likelihood=confirmed");
+                "conclusionCode", "CALIBER_CAUSE_CONFIRMED");
+        assertThat(result.data().get("caliberCandidates").toString())
+                .contains("matchLevel=exact", "causeLikelihood=confirmed");
         assertThat(result.data().get("layers").toString())
-                .contains("hospital_001_ward_entry_anchor", "file_schema_evidence=true");
+                .contains("hospital_001_ward_entry_anchor", "fileSchemaEvidence=true");
         verify(sql).prepareDiagnostic(
                 any(), anyString(), any(), any(), any());
     }
@@ -344,25 +344,26 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
             long denominator,
             double rate) {
         return ToolResult.success("TRIAL_RUN_COMPLETED", "trial", Map.of(
-                "run_id", runId,
-                "sql_id", "SQL_" + runId,
-                "rule_id", "MQSI2025_001",
-                "stat_start", "2026-01-01 00:00:00",
-                "stat_end", "2026-02-01 00:00:00",
-                "numerator_count", numerator,
-                "denominator_count", denominator,
-                "result_value", rate));
+                "runId", runId,
+                "sqlId", "SQL_" + runId,
+                "ruleId", "MQSI2025_001",
+                "statStart", "2026-01-01 00:00:00",
+                "statEnd", "2026-02-01 00:00:00",
+                "numeratorCount", numerator,
+                "denominatorCount", denominator,
+                "resultValue", rate));
     }
 
     private static Map<String, Object> rule() {
         return Map.of(
-                "rule_id", "MQSI2025_001",
-                "effective_params", Map.of("hospital_id", "hospital_001", "threshold", 48),
-                "field_contract", Map.of("business_fields", Map.of(
+                "ruleId", "MQSI2025_001",
+                "effectiveParams", Map.of("hospital_id", "hospital_001", "threshold", 48),
+                // field_contract/calculation_definition 内层是知识 Profile 透传键，保持 snake
+                "fieldContract", Map.of("business_fields", Map.of(
                         "hospital_id", Map.of("type", "code"),
                         "admission_id", Map.of("type", "code"),
                         "admit_time", Map.of("type", "datetime"))),
-                "calculation_definition", Map.of(
+                "calculationDefinition", Map.of(
                         "scope", Map.of("conditions", List.of(Map.of(
                                 "field", "admit_time", "operator", "half_open_range"))),
                         "denominator", Map.of("aggregate", Map.of("field", "admission_id"))));
@@ -372,9 +373,9 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
         return Map.of(
                 "status", "confirmed",
                 "dialect", "sqlserver",
-                "db_name", "TEST_DB",
+                "dbName", "TEST_DB",
                 "schema", "dbo",
-                "main_table", "encounter",
+                "mainTable", "encounter",
                 "fields", Map.of(
                         "hospital_id", "encounter.hospital_id",
                         "admission_id", "encounter.admission_id",
@@ -388,15 +389,16 @@ class IndicatorDifferenceDiagnosisWorkflowTest {
 
     private static Map<String, Object> wardEntryProfile() {
         return Map.of(
-                "profile_id", "hospital_001_ward_entry_anchor",
+                "profileId", "hospital_001_ward_entry_anchor",
                 "label", "首次入区时间统计及48小时口径",
-                "source_level", "hospital_history",
+                "sourceLevel", "hospital_history",
                 "status", "approved",
-                "effective_from", "2026-01-01",
-                "parameter_overrides", Map.of("threshold", 48),
-                "field_role_overrides", Map.of(
+                "effectiveFrom", "2026-01-01",
+                "parameterOverrides", Map.of("threshold", 48),
+                // field_role_overrides 内层是知识 Profile 透传键，保持 snake
+                "fieldRoleOverrides", Map.of(
                         "period_time", "ward_entry_time",
                         "admit_time", "ward_entry_time"),
-                "evidence_keywords", List.of("首次入区", "入区时间"));
+                "evidenceKeywords", List.of("首次入区", "入区时间"));
     }
 }

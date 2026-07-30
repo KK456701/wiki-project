@@ -81,7 +81,7 @@ class TerminologyGovernanceServiceTest {
                 ((Number) created.get("id")).longValue(), "hospital_001");
 
         assertThat(approved).containsEntry("approval_status", "approved");
-        assertThat(String.valueOf(approved.get("version_id"))).startsWith("TMV_");
+        assertThat(String.valueOf(approved.get("versionId"))).startsWith("TMV_");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_hospital_term_mapping_version", Integer.class)).isEqualTo(1);
     }
@@ -97,12 +97,12 @@ class TerminologyGovernanceServiceTest {
 
         Map<String, Object> first = service.publish();
         Map<String, Object> second = service.publish();
-        Map<String, Object> restored = service.restore(String.valueOf(first.get("release_id")));
+        Map<String, Object> restored = service.restore(String.valueOf(first.get("releaseId")));
 
         assertThat(first).containsEntry("reused", false);
         assertThat(second).containsEntry("reused", true)
-                .containsEntry("release_id", first.get("release_id"));
-        assertThat(restored).containsEntry("active_release_id", first.get("release_id"));
+                .containsEntry("releaseId", first.get("releaseId"));
+        assertThat(restored).containsEntry("activeReleaseId", first.get("releaseId"));
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_term_alias WHERE approval_status='approved'", Integer.class))
                 .isEqualTo(1);

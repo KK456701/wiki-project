@@ -32,7 +32,7 @@ public class SqlServerAccessService {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("enabled", properties.isEnabled());
         status.put("schema", properties.getSchema());
-        status.put("jdbc_ready", applicationContext.containsBean(JDBC_TEMPLATE_BEAN));
+        status.put("jdbcReady", applicationContext.containsBean(JDBC_TEMPLATE_BEAN));
         status.put("database", properties.getExpectedDatabase());
         return status;
     }

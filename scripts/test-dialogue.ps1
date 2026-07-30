@@ -11,7 +11,7 @@ $session = "${SessionPrefix}_" + [int][double]::Parse((Get-Date -UFormat %s))
 
 function Invoke-Round {
     param([string]$Query, [string]$Sid, [int]$Round)
-    $body = @{ query = $Query; session_id = $Sid } | ConvertTo-Json -Compress
+    $body = @{ query = $Query; sessionId = $Sid } | ConvertTo-Json -Compress
     $resp = Invoke-WebRequest -Uri "$BaseUrl/api/agent/chat/stream" -Method Post `
         -ContentType 'application/json; charset=utf-8' `
         -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 240

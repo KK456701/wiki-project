@@ -69,21 +69,21 @@ public class AnswerContractValidator {
                 return "无样本回答不得把0除以0表述成指标率";
             }
             for (String field : List.of(
-                    "numerator_count", "denominator_count", "result_value")) {
+                    "numeratorCount", "denominatorCount", "resultValue")) {
                 Object value = trial.get(field);
                 if (value != null && !containsNumber(content, value)) {
                     return "回答未保留已验证数值：" + field + "=" + value;
                 }
             }
-            if (trial.containsKey("comparison_status")) {
+            if (trial.containsKey("comparisonStatus")) {
                 if (!content.contains("双库核对")) {
                     return "双库试运行回答缺少双库核对章节";
                 }
                 for (Map<String, Object> side : List.of(
-                        objectMap(trial.get("business_result")),
-                        objectMap(trial.get("real_result")))) {
+                        objectMap(trial.get("businessResult")),
+                        objectMap(trial.get("realResult")))) {
                     for (String field : List.of(
-                            "numerator_count", "denominator_count", "result_value")) {
+                            "numeratorCount", "denominatorCount", "resultValue")) {
                         Object value = side.get(field);
                         if (value != null && !containsNumber(content, value)) {
                             return "回答未保留双库已验证数值：" + field + "=" + value;
@@ -98,8 +98,8 @@ public class AnswerContractValidator {
     }
 
     private static boolean isNoSample(Map<String, Object> trial) {
-        if (Boolean.TRUE.equals(trial.get("no_sample"))) return true;
-        Object denominator = trial.get("denominator_count");
+        if (Boolean.TRUE.equals(trial.get("noSample"))) return true;
+        Object denominator = trial.get("denominatorCount");
         if (denominator instanceof Number number) {
             return number.doubleValue() == 0.0;
         }
@@ -119,17 +119,17 @@ public class AnswerContractValidator {
             String content,
             List<VerifiedEvidence> evidence) {
         Map<String, Object> rule = latest(evidence, List.of("effective_rule"));
-        String effectiveLevel = String.valueOf(rule.getOrDefault("effective_level", ""));
+        String effectiveLevel = String.valueOf(rule.getOrDefault("effectiveLevel", ""));
         if (containsAny(content, List.of("当前采用国家口径", "当前按国家口径", "当前按国标口径"))
                 && !"national".equalsIgnoreCase(effectiveLevel)) {
             return "回答把非国家层级规则错误表述为当前国家口径";
         }
         boolean explicitComparison = evidence.stream()
                 .map(item -> item.evidence().safePayload())
-                .anyMatch(payload -> payload.containsKey("comparison_status")
-                        || payload.containsKey("comparison_metrics")
-                        || payload.containsKey("difference_dimensions")
-                        || payload.containsKey("caliber_candidates"));
+                .anyMatch(payload -> payload.containsKey("comparisonStatus")
+                        || payload.containsKey("comparisonMetrics")
+                        || payload.containsKey("differenceDimensions")
+                        || payload.containsKey("caliberCandidates"));
         if (!explicitComparison && containsAny(content, List.of(
                 "与国家口径一致", "与国标口径一致", "与国标一致",
                 "无已证实差异", "不存在口径差异"))) {

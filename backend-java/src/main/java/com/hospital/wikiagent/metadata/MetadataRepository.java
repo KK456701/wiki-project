@@ -78,18 +78,26 @@ public class MetadataRepository {
                         + "AND sync_batch_id=? AND change_type<>'full_sync' "
                         + "ORDER BY table_name,field_name,change_type",
                 hospitalId, databaseName, batchId));
+        List<Map<String, Object>> camelChanges = changes.stream().map(row -> {
+            Map<String, Object> camel = new LinkedHashMap<>();
+            camel.put("tableName", row.get("table_name"));
+            camel.put("fieldName", row.get("field_name"));
+            camel.put("changeType", row.get("change_type"));
+            camel.put("changeDesc", row.get("change_desc"));
+            return camel;
+        }).toList();
         List<FieldMapping> mappings = fieldMappings(hospitalId, sourceId, databaseName);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("hospital_id", hospitalId);
-        result.put("db_name", databaseName);
-        result.put("has_snapshot", true);
-        result.put("metadata_source", snapshotRow.get("metadata_source"));
-        result.put("batch_id", batchId);
-        result.put("synced_at", iso(snapshotRow.get("created_at")));
-        result.put("table_count", list(snapshot.get("tables")).size());
-        result.put("column_count", list(snapshot.get("columns")).size());
-        result.put("changes", changes);
-        result.put("affected_rules", affectedRules(changes, mappings));
+        result.put("hospitalId", hospitalId);
+        result.put("dbName", databaseName);
+        result.put("hasSnapshot", true);
+        result.put("metadataSource", snapshotRow.get("metadata_source"));
+        result.put("batchId", batchId);
+        result.put("syncedAt", iso(snapshotRow.get("created_at")));
+        result.put("tableCount", list(snapshot.get("tables")).size());
+        result.put("columnCount", list(snapshot.get("columns")).size());
+        result.put("changes", camelChanges);
+        result.put("affectedRules", affectedRules(camelChanges, mappings));
         return result;
     }
 
@@ -146,14 +154,14 @@ public class MetadataRepository {
 
         List<Map<String, Object>> logItems = new ArrayList<>();
         logItems.add(Map.of(
-                "table_name", "", "field_name", "", "change_type", "full_sync",
-                "change_desc", "元数据同步完成: " + snapshot.tables().size()
+                "tableName", "", "fieldName", "", "changeType", "full_sync",
+                "changeDesc", "元数据同步完成: " + snapshot.tables().size()
                         + " 张表, " + snapshot.columns().size() + " 个字段"));
         logItems.addAll(changes);
         List<Object[]> logParams = logItems.stream().map(change -> new Object[]{
-                hospitalId, databaseName, text(change.get("table_name")),
-                text(change.get("field_name")), text(change.get("change_type")),
-                text(change.get("change_desc")), batchId}).toList();
+                hospitalId, databaseName, text(change.get("tableName")),
+                text(change.get("fieldName")), text(change.get("changeType")),
+                text(change.get("changeDesc")), batchId}).toList();
         jdbc.batchUpdate("INSERT INTO med_metadata_sync_log "
                 + "(hospital_id,db_name,table_name,field_name,change_type,change_desc,sync_batch_id,sync_time) "
                 + "VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)", logParams);
@@ -163,7 +171,7 @@ public class MetadataRepository {
             List<Map<String, Object>> changes, List<FieldMapping> mappings) {
         Set<String> changed = new LinkedHashSet<>();
         for (Map<String, Object> item : changes) {
-            changed.add(key(text(item.get("table_name")), text(item.get("field_name"))));
+            changed.add(key(text(item.get("tableName")), text(item.get("fieldName"))));
         }
         Map<String, LinkedHashSet<String>> columns = new LinkedHashMap<>();
         Map<String, LinkedHashSet<String>> fields = new LinkedHashMap<>();
@@ -180,9 +188,9 @@ public class MetadataRepository {
         List<Map<String, Object>> result = new ArrayList<>();
         for (String ruleId : columns.keySet()) {
             result.add(Map.of(
-                    "rule_id", ruleId,
-                    "matched_columns", List.copyOf(columns.get(ruleId)),
-                    "business_fields", List.copyOf(fields.get(ruleId))));
+                    "ruleId", ruleId,
+                    "matchedColumns", List.copyOf(columns.get(ruleId)),
+                    "businessFields", List.copyOf(fields.get(ruleId))));
         }
         return result;
     }
@@ -190,17 +198,17 @@ public class MetadataRepository {
     private Map<String, Object> emptyOverview(
             String hospitalId, String databaseName, String sourceId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("hospital_id", hospitalId);
-        result.put("db_name", databaseName);
-        result.put("source_id", sourceId);
-        result.put("has_snapshot", false);
-        result.put("metadata_source", null);
-        result.put("batch_id", null);
-        result.put("synced_at", null);
-        result.put("table_count", 0);
-        result.put("column_count", 0);
+        result.put("hospitalId", hospitalId);
+        result.put("dbName", databaseName);
+        result.put("sourceId", sourceId);
+        result.put("hasSnapshot", false);
+        result.put("metadataSource", null);
+        result.put("batchId", null);
+        result.put("syncedAt", null);
+        result.put("tableCount", 0);
+        result.put("columnCount", 0);
         result.put("changes", List.of());
-        result.put("affected_rules", List.of());
+        result.put("affectedRules", List.of());
         return result;
     }
 

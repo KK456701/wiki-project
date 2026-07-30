@@ -19,48 +19,48 @@ const selectedNode = ref<TraceNode | null>(null)
 const nodes = computed(() => Array.isArray(trace.value?.nodes)
   ? trace.value.nodes as TraceNode[]
   : [])
-const flowEdges = computed(() => Array.isArray(trace.value?.flow_edges)
-  ? trace.value.flow_edges as Record<string, unknown>[]
+const flowEdges = computed(() => Array.isArray(trace.value?.flowEdges)
+  ? trace.value.flowEdges as Record<string, unknown>[]
   : [])
 const filteredNodes = computed(() => nodes.value.filter((node) =>
-  (typeFilter.value === 'all' || String(node.node_type || 'code') === typeFilter.value)
+  (typeFilter.value === 'all' || String(node.nodeType || 'code') === typeFilter.value)
   && (statusFilter.value === 'all' || String(node.status || '') === statusFilter.value),
 ))
-const timing = computed(() => (trace.value?.timing_summary || {}) as Record<string, number>)
+const timing = computed(() => (trace.value?.timingSummary || {}) as Record<string, number>)
 const slowest = computed(() => [...nodes.value].sort((left, right) =>
-  Number(right.duration_ms || 0) - Number(left.duration_ms || 0),
+  Number(right.durationMs || 0) - Number(left.durationMs || 0),
 ).slice(0, 3))
 const evidence = computed(() => Array.isArray(trace.value?.evidence)
   ? trace.value.evidence as Record<string, unknown>[]
   : [])
 
 const isPlannerNode = computed(() =>
-  ['planner_llm', 'plan_replan'].includes(String(selectedNode.value?.node_name || '')),
+  ['planner_llm', 'plan_replan'].includes(String(selectedNode.value?.nodeName || '')),
 )
 const isDeterministicPlanNode = computed(() =>
-  String(selectedNode.value?.node_name || '') === 'followup_plan_resolve',
+  String(selectedNode.value?.nodeName || '') === 'followup_plan_resolve',
 )
 const plannerInput = computed(() =>
-  (selectedNode.value?.input_data || {}) as Record<string, unknown>,
+  (selectedNode.value?.inputData || {}) as Record<string, unknown>,
 )
 const plannerOutput = computed(() =>
-  (selectedNode.value?.output_data || {}) as Record<string, unknown>,
+  (selectedNode.value?.outputData || {}) as Record<string, unknown>,
 )
 const selectedReadiness = computed(() =>
-  (selectedNode.value?.capability_readiness || {}) as Record<string, unknown>,
+  (selectedNode.value?.capabilityReadiness || {}) as Record<string, unknown>,
 )
 const normalizedPlan = computed(() =>
-  (plannerOutput.value.normalized_plan || plannerOutput.value.request_plan || {}) as Record<string, unknown>,
+  (plannerOutput.value.normalizedPlan || plannerOutput.value.requestPlan || {}) as Record<string, unknown>,
 )
 const compiledImpact = computed(() => {
-  const compile = nodes.value.find((node) => String(node.node_name || '') === 'plan_compile')
-  const output = (compile?.output_data || {}) as Record<string, unknown>
+  const compile = nodes.value.find((node) => String(node.nodeName || '') === 'plan_compile')
+  const output = (compile?.outputData || {}) as Record<string, unknown>
   return {
     intent: humanIntent(String(normalizedPlan.value.intent || plannerOutput.value.intent || '')),
-    outputs: Array.isArray(normalizedPlan.value.requested_outputs)
-      ? normalizedPlan.value.requested_outputs.map((item) => humanOutput(String(item)))
+    outputs: Array.isArray(normalizedPlan.value.requestedOutputs)
+      ? normalizedPlan.value.requestedOutputs.map((item) => humanOutput(String(item)))
       : [],
-    facts: Array.isArray(output.required_facts) ? output.required_facts : [],
+    facts: Array.isArray(output.requiredFacts) ? output.requiredFacts : [],
     capabilities: Array.isArray(output.capabilities) ? output.capabilities : [],
   }
 })
@@ -80,7 +80,7 @@ watch(() => props.traceId, async (traceId) => {
 }, { immediate: true })
 
 function nodeTitle(node: TraceNode): string {
-  return String(node.node_title || node.node_name || '未命名节点')
+  return String(node.nodeTitle || node.nodeName || '未命名节点')
 }
 
 function pretty(value: unknown): string {
@@ -162,10 +162,10 @@ function planValue(name: string): unknown {
       <p v-else-if="error" class="drawer-state is-error">{{ error }}</p>
       <div v-else>
         <section class="trace-overview">
-          <article><span>总耗时</span><strong>{{ Number(trace?.duration_ms || 0) }}ms</strong></article>
-          <article><span>LLM</span><strong>{{ Number(timing.llm_ms || 0) }}ms</strong></article>
-          <article><span>工具 / 数据库</span><strong>{{ Number(timing.tool_ms || 0) }}ms</strong></article>
-          <article><span>代码 / 存储</span><strong>{{ Number(timing.code_ms || 0) + Number(timing.storage_ms || 0) }}ms</strong></article>
+          <article><span>总耗时</span><strong>{{ Number(trace?.durationMs || 0) }}ms</strong></article>
+          <article><span>LLM</span><strong>{{ Number(timing.llmMs || 0) }}ms</strong></article>
+          <article><span>工具 ／ 数据库</span><strong>{{ Number(timing.toolMs || 0) }}ms</strong></article>
+          <article><span>代码 ／ 存储</span><strong>{{ Number(timing.codeMs || 0) + Number(timing.storageMs || 0) }}ms</strong></article>
         </section>
         <section class="trace-toolbar">
           <label>节点类型<select v-model="typeFilter"><option value="all">全部</option><option value="llm">LLM</option><option value="code">代码</option><option value="tool">工具</option><option value="database">数据库</option><option value="storage">存储</option></select></label>
@@ -174,9 +174,9 @@ function planValue(name: string): unknown {
         </section>
         <section v-if="slowest.length" class="trace-slowest">
           <strong>最慢节点</strong>
-          <button v-for="node in slowest" :key="`slow-${String(node.node_id)}`"
+          <button v-for="node in slowest" :key="`slow-${String(node.nodeId)}`"
             type="button" @click="selectedNode = node">
-            {{ nodeTitle(node) }} {{ Number(node.duration_ms || 0) }}ms
+            {{ nodeTitle(node) }} {{ Number(node.durationMs || 0) }}ms
           </button>
         </section>
 
@@ -185,43 +185,43 @@ function planValue(name: string): unknown {
             <TraceFlowGraph
               :nodes="filteredNodes"
               :edges="flowEdges"
-              :selected-node-id="String(selectedNode?.node_id || '')"
+              :selected-node-id="String(selectedNode?.nodeId || '')"
               @select="selectedNode = $event"
             />
             <p v-if="!filteredNodes.length" class="drawer-state">当前筛选下没有可展示的节点。</p>
           </div>
           <aside class="trace-inspector">
             <template v-if="selectedNode">
-              <p class="eyebrow">{{ String(selectedNode.node_type || 'code') }} 节点</p>
+              <p class="eyebrow">{{ String(selectedNode.nodeType || 'code') }} 节点</p>
               <h3>{{ nodeTitle(selectedNode) }}</h3>
-              <code>{{ String(selectedNode.node_name || '') }}</code>
-              <p>{{ String(selectedNode.processing_summary || '') }}</p>
+              <code>{{ String(selectedNode.nodeName || '') }}</code>
+              <p>{{ String(selectedNode.processingSummary || '') }}</p>
               <dl class="inspector-facts">
                 <div><dt>状态</dt><dd>{{ String(selectedNode.status || '-') }}</dd></div>
-                <div><dt>耗时</dt><dd>{{ Number(selectedNode.duration_ms || 0) }}ms</dd></div>
-                <div><dt>泳道</dt><dd>{{ String(selectedNode.subtask_id || 'root') }}</dd></div>
-                <div><dt>模型 / 工具</dt><dd>{{ String(selectedNode.model_id || selectedNode.tool_name || '-') }}</dd></div>
+                <div><dt>耗时</dt><dd>{{ Number(selectedNode.durationMs || 0) }}ms</dd></div>
+                <div><dt>泳道</dt><dd>{{ String(selectedNode.subtaskId || 'root') }}</dd></div>
+                <div><dt>模型 ／ 工具</dt><dd>{{ String(selectedNode.modelId || selectedNode.toolName || '-') }}</dd></div>
               </dl>
 
               <section v-if="isDeterministicPlanNode" class="planner-readable">
                 <h4>本轮未调用 LLM Planner</h4>
-                <p>{{ String(plannerInput.planner_skip_reason || '指标和目标可由会话状态唯一确定。') }}</p>
+                <p>{{ String(plannerInput.plannerSkipReason || '指标和目标可由会话状态唯一确定。') }}</p>
                 <div><strong>确定性意图</strong><span>{{ humanIntent(String(plannerOutput.intent || '')) }}</span></div>
-                <div><strong>需要输出</strong><span>{{ pretty(plannerOutput.requested_outputs) }}</span></div>
-                <div><strong>回答关注点</strong><span>{{ focusLabels(plannerOutput.explanation_focuses) }}</span></div>
+                <div><strong>需要输出</strong><span>{{ pretty(plannerOutput.requestedOutputs) }}</span></div>
+                <div><strong>回答关注点</strong><span>{{ focusLabels(plannerOutput.explanationFocuses) }}</span></div>
               </section>
 
               <section v-if="isPlannerNode" class="planner-readable">
                 <h4>Planner 计划字段</h4>
                 <div><strong>intent · 想做什么</strong><span>{{ humanIntent(String(planValue('intent') || '')) }}</span></div>
                 <div><strong>goal · 本轮目标</strong><span>{{ String(planValue('goal') || '未提供') }}</span></div>
-                <div><strong>target_indicator · 指标</strong><pre>{{ pretty(planValue('target_indicator')) }}</pre></div>
-                <div><strong>target_caliber · 替代口径</strong><pre>{{ pretty(planValue('target_caliber')) }}</pre></div>
-                <div><strong>time_expression · 统计区间</strong><pre>{{ pretty(planValue('time_expression')) }}</pre></div>
+                <div><strong>target_indicator · 指标</strong><pre>{{ pretty(planValue('targetIndicator')) }}</pre></div>
+                <div><strong>target_caliber · 替代口径</strong><pre>{{ pretty(planValue('targetCaliber')) }}</pre></div>
+                <div><strong>time_expression · 统计区间</strong><pre>{{ pretty(planValue('timeExpression')) }}</pre></div>
                 <div><strong>requested_outputs · 最终输出</strong><span>{{ compiledImpact.outputs.join('、') || '未提供' }}</span></div>
-                <div><strong>explanation_focuses · 规则解释关注点</strong><span>{{ focusLabels(planValue('explanation_focuses')) }}</span></div>
+                <div><strong>explanation_focuses · 规则解释关注点</strong><span>{{ focusLabels(planValue('explanationFocuses')) }}</span></div>
                 <div><strong>constraints · 用户限制</strong><pre>{{ pretty(planValue('constraints')) }}</pre></div>
-                <div><strong>semantic_ambiguities · 未决项</strong><pre>{{ pretty(planValue('semantic_ambiguities')) }}</pre></div>
+                <div><strong>semantic_ambiguities · 未决项</strong><pre>{{ pretty(planValue('semanticAmbiguities')) }}</pre></div>
                 <div><strong>confidence · 意图置信度</strong><span>{{ String(planValue('confidence') ?? '未提供') }}</span></div>
                 <div><strong>repaired · JSON 是否修复</strong><span>{{ plannerOutput.repaired ? '是' : '否' }}</span></div>
                 <h4>计划影响</h4>
@@ -243,15 +243,15 @@ function planValue(name: string): unknown {
 
               <details class="trace-data" :open="isPlannerNode || isDeterministicPlanNode">
                 <summary>完整输入参数</summary>
-                <pre>{{ pretty(selectedNode.input_data) }}</pre>
+                <pre>{{ pretty(selectedNode.inputData) }}</pre>
               </details>
               <details class="trace-data" :open="isPlannerNode || isDeterministicPlanNode">
                 <summary>完整输出参数</summary>
-                <pre>{{ pretty(selectedNode.output_data) }}</pre>
+                <pre>{{ pretty(selectedNode.outputData) }}</pre>
               </details>
               <p class="inspector-config">
                 能力：{{ String(selectedNode.capability || '-') }}<br>
-                FailureClass：{{ String(selectedNode.failure_class || '-') }}
+                FailureClass：{{ String(selectedNode.failureClass || '-') }}
               </p>
             </template>
             <div v-else class="inspector-empty">

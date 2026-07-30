@@ -281,56 +281,57 @@ public class PreparedIndicatorExecutor {
         String unit = null;
         String displayName = ruleName;
         if (effective != null) {
-            Map<String, Object> params = objectMap(effective.data().get("effective_params"));
+            // effectiveParams/resultContract 内层是知识 Profile 透传键，保持 snake
+            Map<String, Object> params = objectMap(effective.data().get("effectiveParams"));
             targetValue = params.get("target_value");
             targetDirection = text(params.get("target_direction"));
             Map<String, Object> resultContract =
-                    objectMap(effective.data().get("result_contract"));
+                    objectMap(effective.data().get("resultContract"));
             contractTargetValue = resultContract.get("target_value");
             targetDirection = first(
                     targetDirection, text(resultContract.get("target_direction")));
             valueType = text(resultContract.get("value_type"));
-            unit = text(effective.data().get("result_unit"));
-            String effectiveName = text(effective.data().get("rule_name"));
+            unit = text(effective.data().get("resultUnit"));
+            String effectiveName = text(effective.data().get("ruleName"));
             if (effectiveName != null) {
                 displayName = effectiveName;
             }
         }
-        Double resultValue = number(data.get("result_value"));
-        Long numerator = longValue(data.get("numerator_count"));
-        Long denominator = longValue(data.get("denominator_count"));
-        Long sampleCount = longValue(data.get("sample_count"));
-        boolean noSample = Boolean.TRUE.equals(data.get("no_sample")) || resultValue == null;
+        Double resultValue = number(data.get("resultValue"));
+        Long numerator = longValue(data.get("numeratorCount"));
+        Long denominator = longValue(data.get("denominatorCount"));
+        Long sampleCount = longValue(data.get("sampleCount"));
+        boolean noSample = Boolean.TRUE.equals(data.get("noSample")) || resultValue == null;
         if (noSample && "median_duration".equals(valueType) && sampleCount == null) {
             sampleCount = 0L;
         }
         String calculationDisplay = calculationDisplay(
                 valueType,
-                text(data.get("component_left")),
-                text(data.get("component_right")),
+                text(data.get("componentLeft")),
+                text(data.get("componentRight")),
                 sampleCount);
         Object configuredTarget = contractTargetValue != null
                 ? contractTargetValue : targetValue;
         configuredTarget = normalizeConfiguredTarget(
                 configuredTarget, valueType, unit);
-        if (Boolean.TRUE.equals(data.get("target_conflict"))) {
+        if (Boolean.TRUE.equals(data.get("targetConflict"))) {
             targetValue = "目标配置不一致";
-        } else if (data.get("target_value") != null) {
-            Double dynamicTarget = number(data.get("target_value"));
+        } else if (data.get("targetValue") != null) {
+            Double dynamicTarget = number(data.get("targetValue"));
             boolean profileFallback =
-                    "profile".equals(text(data.get("target_source")));
+                    "profile".equals(text(data.get("targetSource")));
             // 耗时类 SQL 的 TargetValue CTE 在没有配置行时可能返回 0；0 分钟不是
             // 有效运行目标，应视为缺失并回退审批 Profile 的静态目标（当前为 5 分钟）。
             targetValue = profileFallback
                     ? normalizeConfiguredTarget(
-                            data.get("target_value"), valueType, unit)
+                            data.get("targetValue"), valueType, unit)
                     : "median_duration".equals(valueType)
                     && dynamicTarget != null
                     && dynamicTarget <= 0
                     && configuredTarget != null
                     ? configuredTarget
                     : normalizeDynamicTarget(
-                            data.get("target_value"), valueType, unit);
+                            data.get("targetValue"), valueType, unit);
         } else if (targetValue == null) {
             targetValue = configuredTarget;
         } else {
@@ -343,13 +344,13 @@ public class PreparedIndicatorExecutor {
         return new IndicatorExecutionResult(
                 ruleId, displayName, status, resultValue, numerator, denominator,
                 valueType, unit, calculationDisplay, sampleCount, targetValue, targetDirection,
-                text(data.get("stat_start")), text(data.get("stat_end")),
-                text(data.get("run_id")), null, null, durationMs,
-                text(data.get("data_freshness")),
-                first(profileId, text(data.get("profile_id"))),
+                text(data.get("statStart")), text(data.get("statEnd")),
+                text(data.get("runId")), null, null, durationMs,
+                text(data.get("dataFreshness")),
+                first(profileId, text(data.get("profileId"))),
                 profileLabel,
-                text(data.get("extraction_id")),
-                text(data.get("extraction_status")),
+                text(data.get("extractionId")),
+                text(data.get("extractionStatus")),
                 eventNo);
     }
 
@@ -408,14 +409,14 @@ public class PreparedIndicatorExecutor {
             return;
         }
         if ("SQL_OBJECT_PREPARED".equals(result.code())) {
-            Object sqlId = result.data().get("sql_id");
+            Object sqlId = result.data().get("sqlId");
             if (sqlId != null && !sqlId.toString().isBlank()
                     && !state.validatedSqlIds().contains(sqlId.toString())) {
                 state.validatedSqlIds().add(sqlId.toString());
             }
         }
         if ("TRIAL_RUN_COMPLETED".equals(result.code())) {
-            Object runId = result.data().get("run_id");
+            Object runId = result.data().get("runId");
             if (runId != null && !runId.toString().isBlank()) {
                 state.lastRunId(runId.toString());
             }

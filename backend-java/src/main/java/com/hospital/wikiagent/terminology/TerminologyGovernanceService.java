@@ -69,7 +69,7 @@ public class TerminologyGovernanceService {
                 "pending", version, "admin", null, now, null);
         Map<String, Object> result = aliasById(id);
         audit("create", "term_alias", String.valueOf(id), "admin", hospital,
-                Map.of("concept_code", command.conceptCode(), "version", version));
+                Map.of("conceptCode", command.conceptCode(), "version", version));
         return result;
     }
 
@@ -124,7 +124,7 @@ public class TerminologyGovernanceService {
                 localName, localValue, "pending", parseDate(command.effectiveFrom()),
                 parseDate(command.effectiveTo()), version, "admin", null, now, null);
         audit("create", "hospital_term_mapping", String.valueOf(id), "admin", authorizedHospital,
-                Map.of("concept_code", command.conceptCode(), "version", version));
+                Map.of("conceptCode", command.conceptCode(), "version", version));
         return mappingById(id);
     }
 
@@ -146,9 +146,9 @@ public class TerminologyGovernanceService {
                 versionId, item.get("hospital_id"), item.get("concept_code"), item.get("version"),
                 json(safe(item)), "approve", item.get("created_by"), "admin", item.get("created_at"), now);
         audit("approve", "hospital_term_mapping", String.valueOf(mappingId), "admin", authorizedHospital,
-                Map.of("version_id", versionId));
+                Map.of("versionId", versionId));
         Map<String, Object> result = new LinkedHashMap<>(mappingById(mappingId));
-        result.put("version_id", versionId);
+        result.put("versionId", versionId);
         return result;
     }
 
@@ -169,7 +169,7 @@ public class TerminologyGovernanceService {
         if (!existing.isEmpty()) {
             Map<String, Object> value = existing.get(0);
             jdbc.update("UPDATE med_term_release SET status='active' WHERE release_id=?", value.get("release_id"));
-            return Map.of("release_id", value.get("release_id"), "active_release_id", value.get("release_id"),
+            return Map.of("releaseId", value.get("release_id"), "activeReleaseId", value.get("release_id"),
                     "version", value.get("version"), "status", "active", "checksum", checksum, "reused", true);
         }
         int version = jdbc.queryForObject(
@@ -182,7 +182,7 @@ public class TerminologyGovernanceService {
                 releaseId, version, "active", checksum, json(snapshot), "医学术语发布", "admin",
                 LocalDateTime.now());
         audit("publish", "term_release", releaseId, "admin", null, Map.of("version", version));
-        return Map.of("release_id", releaseId, "active_release_id", releaseId, "version", version,
+        return Map.of("releaseId", releaseId, "activeReleaseId", releaseId, "version", version,
                 "status", "active", "checksum", checksum, "reused", false);
     }
 
@@ -197,8 +197,8 @@ public class TerminologyGovernanceService {
         jdbc.update("UPDATE med_term_release SET status='history' WHERE status='active'");
         jdbc.update("UPDATE med_term_release SET status='active' WHERE release_id=?", releaseId);
         audit("restore", "term_release", releaseId, "admin", null,
-                Map.of("restored_version", release.get("version")));
-        return Map.of("active_release_id", releaseId, "status", "active");
+                Map.of("restoredVersion", release.get("version")));
+        return Map.of("activeReleaseId", releaseId, "status", "active");
     }
 
     private Map<String, Object> snapshot() {

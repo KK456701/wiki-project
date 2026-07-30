@@ -180,23 +180,23 @@ public class XlsxWorkbookWriter {
 
     private static SheetData diagnosisSummarySheet(Map<String, Object> report) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("诊断报告编号", value(report, "report_id"));
-        metadata.put("指标编号", value(report, "rule_id"));
-        metadata.put("统计开始", value(report, "stat_start"));
-        metadata.put("统计结束", value(report, "stat_end"));
-        metadata.put("结论代码", value(report, "conclusion_code"));
-        metadata.put("停止层级", value(report, "stopped_layer"));
-        metadata.put("确认原因", value(report, "user_summary"));
-        metadata.put("影响记录数", value(report, "affected_record_count"));
-        metadata.put("证据限制", value(report, "evidence_limit"));
+        metadata.put("诊断报告编号", value(report, "reportId"));
+        metadata.put("指标编号", value(report, "ruleId"));
+        metadata.put("统计开始", value(report, "statStart"));
+        metadata.put("统计结束", value(report, "statEnd"));
+        metadata.put("结论代码", value(report, "conclusionCode"));
+        metadata.put("停止层级", value(report, "stoppedLayer"));
+        metadata.put("确认原因", value(report, "userSummary"));
+        metadata.put("影响记录数", value(report, "affectedRecordCount"));
+        metadata.put("证据限制", value(report, "evidenceLimit"));
         List<List<Object>> rows = new ArrayList<>();
         for (Map<String, Object> layer : maps(report.get("layers"))) {
             rows.add(List.of(
                     value(layer, "layer"),
-                    value(layer, "node_name"),
+                    value(layer, "nodeName"),
                     value(layer, "status"),
-                    value(layer, "cause_confirmed"),
-                    value(layer, "duration_ms")));
+                    value(layer, "causeConfirmed"),
+                    value(layer, "durationMs")));
         }
         return new SheetData(
                 "诊断摘要",
@@ -211,10 +211,10 @@ public class XlsxWorkbookWriter {
             if (!"6".equals(String.valueOf(value(layer, "layer")))) continue;
             for (Map<String, Object> check : maps(layer.get("checks"))) {
                 rows.add(List.of(
-                        value(check, "check_id"),
+                        value(check, "checkId"),
                         value(check, "type"),
                         value(check, "status"),
-                        value(check, "affected_count"),
+                        value(check, "affectedCount"),
                         firstValue(check, "description", "message")));
             }
         }

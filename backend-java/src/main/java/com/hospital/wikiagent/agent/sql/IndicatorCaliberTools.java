@@ -45,7 +45,7 @@ public class IndicatorCaliberTools {
         List<Map<String, Object>> matched;
         if (input.profileId() != null) {
             matched = candidates.stream()
-                    .filter(item -> input.profileId().equals(text(item.get("profile_id"))))
+                    .filter(item -> input.profileId().equals(text(item.get("profileId"))))
                     .toList();
         } else {
             int best = candidates.stream()
@@ -81,7 +81,7 @@ public class IndicatorCaliberTools {
         }
         Map<String, Object> profile = matched.get(0);
         // 检查口径生效时间是否与请求周期重叠，给出提示
-        LocalDate effectiveFrom = date(text(profile.get("effective_from")));
+        LocalDate effectiveFrom = date(text(profile.get("effectiveFrom")));
         LocalDate requestedEnd = date(input.statEndTime());
         String warning = null;
         if (effectiveFrom != null && requestedEnd != null && !requestedEnd.isAfter(effectiveFrom)) {
@@ -89,17 +89,17 @@ public class IndicatorCaliberTools {
         }
         AgentRunState state = context.runState();
         state.currentCaliber(
-                text(profile.get("profile_id")),
+                text(profile.get("profileId")),
                 text(profile.get("label")));
         Map<String, Object> data = new LinkedHashMap<>(safeProfile(profile));
-        data.put("rule_id", input.ruleId());
+        data.put("ruleId", input.ruleId());
         appendCurrentRule(data, input.ruleId(), context);
-        if (input.statStartTime() != null) data.put("stat_start", input.statStartTime());
-        if (input.statEndTime() != null) data.put("stat_end", input.statEndTime());
-        if (warning != null) data.put("effective_period_warning", warning);
+        if (input.statStartTime() != null) data.put("statStart", input.statStartTime());
+        if (input.statEndTime() != null) data.put("statEnd", input.statEndTime());
+        if (warning != null) data.put("effectivePeriodWarning", warning);
         return ToolResult.success(
                 "CALIBER_PROFILE_RESOLVED",
-                "\u5df2\u786e\u8ba4\u5019\u9009\u53e3\u5f84\uff1a\u201c" + data.get("caliber_label") + "\u201d\u3002"
+                "\u5df2\u786e\u8ba4\u5019\u9009\u53e3\u5f84\uff1a\u201c" + data.get("caliberLabel") + "\u201d\u3002"
                         + (warning != null ? " " + warning : ""),
                 data);
     }
@@ -118,8 +118,8 @@ public class IndicatorCaliberTools {
                 new IndicatorSqlTools.PrepareInput(
                         input.ruleId(), input.statStartTime(), input.statEndTime()),
                 input.profileId(),
-                objectMap(profile.get("parameter_overrides")),
-                objectMap(profile.get("field_role_overrides")),
+                objectMap(profile.get("parameterOverrides")),
+                objectMap(profile.get("fieldRoleOverrides")),
                 context);
         if (!prepared.ok()) return prepared;
         Map<String, Object> data = new LinkedHashMap<>(prepared.data());
@@ -147,11 +147,11 @@ public class IndicatorCaliberTools {
                 new IndicatorSqlTools.TrialInput(input.sqlId()), context);
         if (!trial.ok()) return trial;
         Map<String, Object> profile = requireProfile(
-                text(trial.data().get("rule_id")),
+                text(trial.data().get("ruleId")),
                 input.profileId(),
                 context,
-                text(trial.data().get("stat_start")),
-                text(trial.data().get("stat_end")));
+                text(trial.data().get("statStart")),
+                text(trial.data().get("statEnd")));
         if (profile.isEmpty()) {
             return ToolResult.failure(
                     "validation_failed",
@@ -161,8 +161,8 @@ public class IndicatorCaliberTools {
         }
         Map<String, Object> data = new LinkedHashMap<>(trial.data());
         data.putAll(safeProfile(profile));
-        appendCurrentRule(data, text(trial.data().get("rule_id")), context);
-        data.put("caliber_sql_id", input.sqlId());
+        appendCurrentRule(data, text(trial.data().get("ruleId")), context);
+        data.put("caliberSqlId", input.sqlId());
         return ToolResult.success(
                 "CALIBER_TRIAL_RUN_COMPLETED",
                 "候选口径只读试运行完成，已获得聚合结果。",
@@ -179,7 +179,7 @@ public class IndicatorCaliberTools {
             return Map.of();
         }
         return eligibleProfiles(ruleId, context.agentContext().hospitalId(), start, end).stream()
-                .filter(item -> profileId.equals(text(item.get("profile_id"))))
+                .filter(item -> profileId.equals(text(item.get("profileId"))))
                 .findFirst()
                 .orElse(Map.of());
     }
@@ -193,7 +193,7 @@ public class IndicatorCaliberTools {
         LocalDate endDate = date(end);
         return rules.caliberProfiles(ruleId, hospitalId).stream()
                 .filter(profile -> applies(profile, startDate, endDate))
-                .sorted(Comparator.comparing(item -> text(item.get("profile_id"))))
+                .sorted(Comparator.comparing(item -> text(item.get("profileId"))))
                 .toList();
     }
 
@@ -205,7 +205,7 @@ public class IndicatorCaliberTools {
      */
     private List<Map<String, Object>> allProfiles(String ruleId, String hospitalId) {
         return rules.caliberProfiles(ruleId, hospitalId).stream()
-                .sorted(Comparator.comparing(item -> text(item.get("profile_id"))))
+                .sorted(Comparator.comparing(item -> text(item.get("profileId"))))
                 .toList();
     }
 
@@ -213,25 +213,25 @@ public class IndicatorCaliberTools {
             Map<String, Object> profile,
             LocalDate start,
             LocalDate end) {
-        LocalDate effectiveFrom = date(text(profile.get("effective_from")));
-        LocalDate effectiveTo = date(text(profile.get("effective_to")));
+        LocalDate effectiveFrom = date(text(profile.get("effectiveFrom")));
+        LocalDate effectiveTo = date(text(profile.get("effectiveTo")));
         if (start != null && effectiveTo != null && !start.isBefore(effectiveTo)) return false;
         return end == null || effectiveFrom == null || end.isAfter(effectiveFrom);
     }
 
     private Map<String, Object> safeProfile(Map<String, Object> profile) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("caliber_profile_id", text(profile.get("profile_id")));
-        result.put("caliber_label", text(profile.get("label")));
-        result.put("caliber_version", text(profile.get("source_version")));
-        result.put("caliber_source_level", text(profile.get("source_level")));
-        result.put("caliber_definition", text(profile.get("caliber_definition")));
-        result.put("caliber_numerator_rule", text(profile.get("numerator_rule")));
-        result.put("caliber_denominator_rule", text(profile.get("denominator_rule")));
-        result.put("period_anchor_label", text(profile.get("period_anchor_label")));
-        result.put("elapsed_anchor_label", text(profile.get("elapsed_anchor_label")));
-        result.put("field_role_overrides", objectMap(profile.get("field_role_overrides")));
-        result.put("difference_dimensions", stringList(profile.get("difference_dimensions")));
+        result.put("caliberProfileId", text(profile.get("profileId")));
+        result.put("caliberLabel", text(profile.get("label")));
+        result.put("caliberVersion", text(profile.get("sourceVersion")));
+        result.put("caliberSourceLevel", text(profile.get("sourceLevel")));
+        result.put("caliberDefinition", text(profile.get("caliberDefinition")));
+        result.put("caliberNumeratorRule", text(profile.get("numeratorRule")));
+        result.put("caliberDenominatorRule", text(profile.get("denominatorRule")));
+        result.put("periodAnchorLabel", text(profile.get("periodAnchorLabel")));
+        result.put("elapsedAnchorLabel", text(profile.get("elapsedAnchorLabel")));
+        result.put("fieldRoleOverrides", objectMap(profile.get("fieldRoleOverrides")));
+        result.put("differenceDimensions", stringList(profile.get("differenceDimensions")));
         return result;
     }
 
@@ -245,10 +245,10 @@ public class IndicatorCaliberTools {
             ToolExecutionContext context) {
         Map<String, Object> current = rules.effectiveRule(
                 ruleId, context.agentContext().hospitalId());
-        target.put("current_rule_id", ruleId);
-        target.put("current_rule_name", text(current.get("rule_name")));
-        target.put("current_rule_version", firstText(
-                current.get("hospital_version"), current.get("version")));
+        target.put("currentRuleId", ruleId);
+        target.put("currentRuleName", text(current.get("ruleName")));
+        target.put("currentRuleVersion", firstText(
+                current.get("hospitalVersion"), current.get("version")));
     }
 
     private static int score(Map<String, Object> profile, String raw) {
@@ -257,8 +257,8 @@ public class IndicatorCaliberTools {
         List<String> names = new ArrayList<>();
         names.add(text(profile.get("label")));
         names.addAll(stringList(profile.get("aliases")));
-        names.addAll(stringList(profile.get("evidence_keywords")));
-        names.addAll(stringList(profile.get("difference_dimensions")));
+        names.addAll(stringList(profile.get("evidenceKeywords")));
+        names.addAll(stringList(profile.get("differenceDimensions")));
         int score = 0;
         for (String name : names) {
             String candidate = normalize(name);

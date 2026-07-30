@@ -7,11 +7,11 @@ export interface HospitalUser {
 
 interface LoginWireResponse {
   token: string
-  user_id: string
-  account_id: string
-  hospital_id: string
+  userId: string
+  accountId: string
+  hospitalId: string
   permissions: string[]
-  must_change_password: boolean
+  mustChangePassword: boolean
 }
 
 export interface AgentModel {
@@ -25,7 +25,7 @@ export interface AgentCapabilities {
   model: string
   models: AgentModel[]
   streaming: boolean
-  max_steps: number
+  maxSteps: number
   orchestration?: string
 }
 
@@ -55,56 +55,56 @@ export interface AgentClarificationWire {
   kind: string
   title: string
   question: string
-  help_text: string
-  selection_mode: 'single' | 'multiple'
+  helpText: string
+  selectionMode: 'single' | 'multiple'
   options: AgentClarificationOption[]
-  allow_free_text: boolean
-  free_text_placeholder: string
-  resume_prefix: string
+  allowFreeText: boolean
+  freeTextPlaceholder: string
+  resumePrefix: string
 }
 
 export interface AgentEvent {
   event: string
-  trace_id: string
+  traceId: string
   step?: number
-  step_count?: number
-  tool_name?: string
+  stepCount?: number
+  toolName?: string
   status?: string
   code?: string
   message?: string
-  stop_reason?: string
-  duration_ms?: number
+  stopReason?: string
+  durationMs?: number
   reused?: boolean
   retryable?: boolean
-  node_name?: string
-  node_type?: 'llm' | 'code' | 'tool' | 'database' | 'storage' | string
+  nodeName?: string
+  nodeType?: 'llm' | 'code' | 'tool' | 'database' | 'storage' | string
   capability?: string
-  model_id?: string
-  subtask_id?: string
+  modelId?: string
+  subtaskId?: string
   clarification?: AgentClarificationWire
-  rule_id?: string
-  rule_name?: string
-  profile_id?: string
-  profile_label?: string
+  ruleId?: string
+  ruleName?: string
+  profileId?: string
+  profileLabel?: string
   done?: number
   total?: number
-  result_value?: number
-  numerator_count?: number
-  denominator_count?: number
+  resultValue?: number
+  numeratorCount?: number
+  denominatorCount?: number
   unit?: string
-  calculation_display?: string
-  stat_start?: string
-  stat_end?: string
-  run_id?: string
-  data_freshness?: string
-  error_code?: string
-  error_message?: string
+  calculationDisplay?: string
+  statStart?: string
+  statEnd?: string
+  runId?: string
+  dataFreshness?: string
+  errorCode?: string
+  errorMessage?: string
 }
 
 export interface UploadResult {
-  file_key: string
-  file_name: string
-  size_bytes: number
+  fileKey: string
+  fileName: string
+  sizeBytes: number
 }
 
 export interface DetailColumn {
@@ -114,136 +114,136 @@ export interface DetailColumn {
 }
 
 export interface DetailSnapshot {
-  snapshot_id: string
-  run_id: string
-  hospital_id: string
-  rule_id: string
-  rule_name: string
-  effective_level: string
-  national_version?: string
-  hospital_version?: number
-  stat_start: string
-  stat_end: string
-  denominator_count: number
-  numerator_count: number
-  unmatched_count: number
+  snapshotId: string
+  runId: string
+  hospitalId: string
+  ruleId: string
+  ruleName: string
+  effectiveLevel: string
+  nationalVersion?: string
+  hospitalVersion?: number
+  statStart: string
+  statEnd: string
+  denominatorCount: number
+  numeratorCount: number
+  unmatchedCount: number
   columns: DetailColumn[]
-  created_at: string
-  expires_at: string
+  createdAt: string
+  expiresAt: string
   reused: boolean
-  source_database: string
-  source_tables: string[]
+  sourceDatabase: string
+  sourceTables: string[]
 }
 
 export interface DetailPage {
-  snapshot_id: string
-  run_id: string
+  snapshotId: string
+  runId: string
   group: 'denominator' | 'numerator' | 'unmatched'
   page: number
-  page_size: number
+  pageSize: number
   total: number
   items: Array<Record<string, unknown>>
 }
 
 export interface IndicatorExport {
-  export_id: string
-  run_id: string
-  hospital_id: string
-  rule_id: string
-  file_name: string
-  row_count: number
+  exportId: string
+  runId: string
+  hospitalId: string
+  ruleId: string
+  fileName: string
+  rowCount: number
   status: string
-  created_at: string
-  expires_at: string
-  download_count: number
+  createdAt: string
+  expiresAt: string
+  downloadCount: number
 }
 
 export interface AgentRunSummary {
-  trace_id: string
-  session_id?: string
+  traceId: string
+  sessionId?: string
   intent?: string
-  final_status?: string
-  error_count?: number
-  fallback_count?: number
-  started_at?: string
-  ended_at?: string
-  duration_ms?: number
+  finalStatus?: string
+  errorCount?: number
+  fallbackCount?: number
+  startedAt?: string
+  endedAt?: string
+  durationMs?: number
 }
 
 export interface AgentRunMetrics {
-  hospital_id: string
-  request_count: number
-  success_rate: number
-  incomplete_rate: number
-  latency_ms: { average: number; p50: number; p95: number; p99: number }
-  status_counts: Record<string, number>
-  trend: Array<{ date: string; requests: number; planner_ms: number; final_answer_ms: number }>
-  tools: Array<{ tool_name: string; calls: number; failures: number; duration_ms: number }>
-  models: Array<{ model_id: string; calls: number; timeouts: number; duration_ms: number; input_tokens: number; output_tokens: number }>
-  repeated_call_stop_rate: number
-  replan_rate: number
-  compound_request_count: number
-  compound_average_duration_ms: number
+  hospitalId: string
+  requestCount: number
+  successRate: number
+  incompleteRate: number
+  latencyMs: { average: number; p50: number; p95: number; p99: number }
+  statusCounts: Record<string, number>
+  trend: Array<{ date: string; requests: number; plannerMs: number; finalAnswerMs: number }>
+  tools: Array<{ toolName: string; calls: number; failures: number; durationMs: number }>
+  models: Array<{ modelId: string; calls: number; timeouts: number; durationMs: number; inputTokens: number; outputTokens: number }>
+  repeatedCallStopRate: number
+  replanRate: number
+  compoundRequestCount: number
+  compoundAverageDurationMs: number
   warnings: Array<{ code: string; message: string }>
   thresholds: Record<string, number>
 }
 
 export interface MetadataChange {
-  table_name: string
-  field_name: string
-  change_type: string
-  change_desc: string
+  tableName: string
+  fieldName: string
+  changeType: string
+  changeDesc: string
 }
 
 export interface MetadataAffectedRule {
-  rule_id: string
-  matched_columns: string[]
-  business_fields: string[]
+  ruleId: string
+  matchedColumns: string[]
+  businessFields: string[]
 }
 
 export interface MetadataOverview {
-  hospital_id: string
-  db_name: string
-  source_id?: string
-  has_snapshot: boolean
-  metadata_source?: string
-  batch_id?: string
-  synced_at?: string
-  table_count: number
-  column_count: number
+  hospitalId: string
+  dbName: string
+  sourceId?: string
+  hasSnapshot: boolean
+  metadataSource?: string
+  batchId?: string
+  syncedAt?: string
+  tableCount: number
+  columnCount: number
   changes: MetadataChange[]
-  affected_rules: MetadataAffectedRule[]
-  trace_id?: string
+  affectedRules: MetadataAffectedRule[]
+  traceId?: string
 }
 
 export interface TerminologyConcept {
-  concept_code: string
-  canonical_name: string
-  concept_type: string
+  conceptCode: string
+  canonicalName: string
+  conceptType: string
   definition: string
-  standard_code?: string
-  source_level: string
-  source_reference: string
-  alias_count?: number
-  aliases_preview?: string[]
+  standardCode?: string
+  sourceLevel: string
+  sourceReference: string
+  aliasCount?: number
+  aliasesPreview?: string[]
 }
 
 export interface TerminologyConceptDetail extends TerminologyConcept {
-  hospital_id: string
+  hospitalId: string
   aliases: Array<Record<string, unknown>>
-  rule_links: Array<Record<string, unknown>>
-  hospital_mappings: Array<Record<string, unknown>>
-  active_release: Record<string, unknown>
+  ruleLinks: Array<Record<string, unknown>>
+  hospitalMappings: Array<Record<string, unknown>>
+  activeRelease: Record<string, unknown>
 }
 
 export interface TerminologyNormalization {
-  original_text: string
-  normalized_text: string
+  originalText: string
+  normalizedText: string
   matches: Array<Record<string, unknown>>
   ambiguities: Array<Record<string, unknown>>
-  release_version: string
-  duration_ms: number
-  sql_eligible: boolean
+  releaseVersion: string
+  durationMs: number
+  sqlEligible: boolean
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -264,18 +264,18 @@ export async function loginHospital(accountId: string, password: string): Promis
   const response = await fetch('/api/auth/hospital/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ account_id: accountId, password }),
+    body: JSON.stringify({ accountId, password }),
   })
   const data = await readJson<LoginWireResponse>(response)
-  if (data.must_change_password) {
+  if (data.mustChangePassword) {
     throw new Error('该账号需要先在现有页面修改初始密码，再进入迁移版页面。')
   }
   return {
     token: data.token,
     user: {
-      userId: data.user_id,
-      accountId: data.account_id,
-      hospitalId: data.hospital_id,
+      userId: data.userId,
+      accountId: data.accountId,
+      hospitalId: data.hospitalId,
       permissions: data.permissions || [],
     },
   }
@@ -295,8 +295,8 @@ export async function loadCapabilities(token: string): Promise<AgentCapabilities
 }
 
 export interface IndicatorItem {
-  rule_id: string
-  rule_name: string
+  ruleId: string
+  ruleName: string
 }
 
 /** 获取全部活跃指标（供引导面板渲染指标多选列表） */
@@ -316,16 +316,16 @@ export async function fetchEffectiveRule(token: string, ruleId: string): Promise
 }
 
 export interface IndicatorDetailResult {
-  rule_id: string
-  rule_name?: string
+  ruleId: string
+  ruleName?: string
   group: 'numerator' | 'denominator'
-  stat_start: string
-  stat_end: string
-  row_count: number
+  statStart: string
+  statEnd: string
+  rowCount: number
   rows: Record<string, unknown>[]
   truncated?: boolean
-  sql_source: string
-  detail_sql?: string
+  sqlSource: string
+  detailSql?: string
 }
 
 /** 按指标 + 统计区间直接查询分子/分母患者明细（卡片「明细」按钮） */
@@ -364,7 +364,7 @@ export async function loadAgentRun(token: string, traceId: string): Promise<Reco
 export async function loadAgentRuns(
   token: string,
   filters: Record<string, string> = {},
-): Promise<{ hospital_id: string; count: number; items: AgentRunSummary[] }> {
+): Promise<{ hospitalId: string; count: number; items: AgentRunSummary[] }> {
   const query = new URLSearchParams(filters)
   const response = await fetch(`/api/agent/runs${query.size ? `?${query}` : ''}`, {
     headers: authHeaders(token),
@@ -387,7 +387,7 @@ export async function loadMetadataOverview(
   token: string,
   hospitalId: string,
 ): Promise<MetadataOverview> {
-  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const query = new URLSearchParams({ hospitalId })
   const response = await fetch(`/api/metadata/overview?${query}`, {
     headers: authHeaders(token),
   })
@@ -401,7 +401,7 @@ export async function syncMetadata(
   const response = await fetch('/api/metadata/sync', {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hospital_id: hospitalId, db_name: '', source: 'dbhub' }),
+    body: JSON.stringify({ hospitalId, dbName: '', source: 'dbhub' }),
   })
   return readJson<MetadataOverview>(response)
 }
@@ -412,8 +412,8 @@ export async function loadTerminologyConcepts(
 ): Promise<{ items: TerminologyConcept[]; total: number }> {
   const query = new URLSearchParams()
   if (filters.query) query.set('query', filters.query)
-  if (filters.conceptType) query.set('concept_type', filters.conceptType)
-  if (filters.ruleId) query.set('rule_id', filters.ruleId)
+  if (filters.conceptType) query.set('conceptType', filters.conceptType)
+  if (filters.ruleId) query.set('ruleId', filters.ruleId)
   const response = await fetch(`/api/terminology/concepts${query.size ? `?${query}` : ''}`, {
     headers: authHeaders(token),
   })
@@ -425,7 +425,7 @@ export async function loadTerminologyConcept(
   conceptCode: string,
   hospitalId: string,
 ): Promise<TerminologyConceptDetail> {
-  const query = new URLSearchParams({ hospital_id: hospitalId })
+  const query = new URLSearchParams({ hospitalId })
   const response = await fetch(
     `/api/terminology/concepts/${encodeURIComponent(conceptCode)}?${query}`,
     { headers: authHeaders(token) },
@@ -441,7 +441,7 @@ export async function testTerminologyRecognition(
   const response = await fetch('/api/terminology/test', {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hospital_id: hospitalId, text }),
+    body: JSON.stringify({ hospitalId, text }),
   })
   return readJson(response)
 }
@@ -492,7 +492,7 @@ export async function approveTerminologyAlias(
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/aliases/${aliasId}/approve`, {
     method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
-    body: JSON.stringify({ actor_id: 'admin' }),
+    body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
@@ -512,7 +512,7 @@ export async function approveTerminologyMapping(
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/hospital-mappings/${mappingId}/approve`, {
     method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
-    body: JSON.stringify({ actor_id: 'admin' }),
+    body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
@@ -520,7 +520,7 @@ export async function approveTerminologyMapping(
 export async function publishTerminology(adminToken: string): Promise<Record<string, unknown>> {
   const response = await fetch('/api/terminology/releases/publish', {
     method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actor_id: 'admin' }),
+    body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
@@ -530,7 +530,7 @@ export async function restoreTerminology(
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/releases/${encodeURIComponent(releaseId)}/restore`, {
     method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ actor_id: 'admin' }),
+    body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
@@ -550,7 +550,7 @@ export async function loadIndicatorDetailPage(
   page = 1,
   pageSize = 50,
 ): Promise<DetailPage> {
-  const query = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
   const response = await fetch(
     `/api/sql-runs/${encodeURIComponent(runId)}/details/${group}?${query}`,
     { headers: authHeaders(token) },
@@ -582,7 +582,7 @@ export async function createUploadComparisonExport(
     {
       method: 'POST',
       headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmed, file_token: fileToken }),
+      body: JSON.stringify({ confirmed, fileToken }),
     },
   )
   return readJson<IndicatorExport>(response)
@@ -608,7 +608,7 @@ export async function downloadIndicatorExport(
   token: string,
   value: IndicatorExport,
 ): Promise<void> {
-  const response = await fetch(`/api/indicator-exports/${encodeURIComponent(value.export_id)}/download`, {
+  const response = await fetch(`/api/indicator-exports/${encodeURIComponent(value.exportId)}/download`, {
     headers: authHeaders(token),
   })
   if (!response.ok) await readJson(response)
@@ -617,7 +617,7 @@ export async function downloadIndicatorExport(
   try {
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = value.file_name
+    anchor.download = value.fileName
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
@@ -650,10 +650,10 @@ export async function streamAgent(
 ): Promise<void> {
   const body: Record<string, string> = {
     query: input.query,
-    session_id: input.sessionId,
+    sessionId: input.sessionId,
   }
-  if (input.modelId) body.model_id = input.modelId
-  if (input.fileKey) body.file_key = input.fileKey
+  if (input.modelId) body.modelId = input.modelId
+  if (input.fileKey) body.fileKey = input.fileKey
   const response = await fetch('/api/agent/chat/stream', {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
@@ -685,23 +685,23 @@ export async function streamAgent(
 // ─── 会话管理 ───────────────────────────────────────────────────────────────────
 
 export interface SessionSummary {
-  session_id: string
+  sessionId: string
   title: string
-  last_message_at: string
-  message_count: number
+  lastMessageAt: string
+  messageCount: number
 }
 
 export interface SessionMessage {
   role: string
   content: string
-  rule_id?: string
-  rule_name?: string
-  stat_start?: string
-  stat_end?: string
-  run_id?: string
-  created_at: string
+  ruleId?: string
+  ruleName?: string
+  statStart?: string
+  statEnd?: string
+  runId?: string
+  createdAt: string
   /** 批量指标卡片载荷（与 SSE batch_indicator_result 同形态），供恢复会话时重建卡片 */
-  batch_results?: Array<Record<string, unknown>> | null
+  batchResults?: Array<Record<string, unknown>> | null
 }
 
 /** 创建新会话，后端生成 session_id */
@@ -710,8 +710,8 @@ export async function createSession(token: string): Promise<string> {
     method: 'POST',
     headers: authHeaders(token),
   })
-  const payload = await readJson<{ session_id: string }>(response)
-  return payload.session_id
+  const payload = await readJson<{ sessionId: string }>(response)
+  return payload.sessionId
 }
 
 /** 获取当前用户的历史会话列表 */

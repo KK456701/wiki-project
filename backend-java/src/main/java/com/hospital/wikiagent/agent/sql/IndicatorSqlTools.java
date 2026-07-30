@@ -83,27 +83,27 @@ public class IndicatorSqlTools {
         Map<String, Object> mapping = rules.fieldMapping(input.ruleId(), context.agentContext().hospitalId());
         Inspection inspection = inspection(rule, mapping);
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("rule_id", input.ruleId());
-        data.put("hospital_id", context.agentContext().hospitalId());
+        data.put("ruleId", input.ruleId());
+        data.put("hospitalId", context.agentContext().hospitalId());
         data.put("status", mapping.get("status"));
-        data.put("mapping_status", mapping.get("status"));
+        data.put("mappingStatus", mapping.get("status"));
         data.put("dialect", mapping.get("dialect"));
-        data.put("main_table", mapping.get("main_table"));
-        data.put("mapped_fields", inspection.mappedFields());
-        data.put("required_business_fields", inspection.requiredFields());
-        data.put("missing_mappings", inspection.missingMappings());
-        data.put("unconfirmed_mappings", inspection.unconfirmedMappings());
-        data.put("missing_columns", inspection.missingColumns());
-        data.put("type_mismatches", inspection.typeMismatches());
-        data.put("missing_relations", inspection.missingRelations());
-        data.put("mapping_items", safeItems(listOfMaps(mapping.get("items"))));
+        data.put("mainTable", mapping.get("mainTable"));
+        data.put("mappedFields", inspection.mappedFields());
+        data.put("requiredBusinessFields", inspection.requiredFields());
+        data.put("missingMappings", inspection.missingMappings());
+        data.put("unconfirmedMappings", inspection.unconfirmedMappings());
+        data.put("missingColumns", inspection.missingColumns());
+        data.put("typeMismatches", inspection.typeMismatches());
+        data.put("missingRelations", inspection.missingRelations());
+        data.put("mappingItems", safeItems(listOfMaps(mapping.get("items"))));
         data.put("relations", safeRelations(listOfMaps(mapping.get("relations"))));
-        data.put("query_profile", mapping.get("query_profile"));
-        data.put("sql_status", rule.getOrDefault("sql_status", "unavailable"));
-        data.put("profile_id", rule.get("profile_id"));
-        data.put("execution_status", rule.get("execution_status"));
-        data.put("execution_blockers", rule.get("execution_blockers"));
-        String summary = !"executable".equals(text(rule.get("execution_status")))
+        data.put("queryProfile", mapping.get("queryProfile"));
+        data.put("sqlStatus", rule.getOrDefault("sqlStatus", "unavailable"));
+        data.put("profileId", rule.get("profileId"));
+        data.put("executionStatus", rule.get("executionStatus"));
+        data.put("executionBlockers", rule.get("executionBlockers"));
+        String summary = !"executable".equals(text(rule.get("executionStatus")))
                 ? "当前口径仅支持规则解释，尚未开放数据库执行。"
                 : inspection.ready()
                         ? "指标实施映射已确认。"
@@ -184,9 +184,9 @@ public class IndicatorSqlTools {
         Map<String, Object> rule = rules.effectiveRule(
                 input.ruleId(), context.agentContext().hospitalId(), diagnosticProfileId);
         boolean fullyExecutable =
-                "executable".equals(text(rule.get("execution_status")));
+                "executable".equals(text(rule.get("executionStatus")));
         boolean overviewStaticRuntime =
-                Boolean.TRUE.equals(rule.get("overview_runtime_eligible"));
+                Boolean.TRUE.equals(rule.get("overviewRuntimeEligible"));
         if (!fullyExecutable) {
             /*
              * “给我 SQL”与“执行 SQL”是两种不同能力。对于 documentation_only
@@ -201,10 +201,10 @@ public class IndicatorSqlTools {
             }
             if (!overviewStaticRuntime) {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("rule_id", input.ruleId());
-                data.put("profile_id", rule.get("profile_id"));
-                data.put("execution_status", rule.get("execution_status"));
-                data.put("execution_blockers", rule.get("execution_blockers"));
+                data.put("ruleId", input.ruleId());
+                data.put("profileId", rule.get("profileId"));
+                data.put("executionStatus", rule.get("executionStatus"));
+                data.put("executionBlockers", rule.get("executionBlockers"));
                 return failure("unavailable", "PROFILE_NOT_EXECUTABLE",
                         "当前口径仅支持定义和公式解释，尚未具备可安全试算的概览 SQL 与结果列契约。",
                         false, data);
@@ -222,15 +222,15 @@ public class IndicatorSqlTools {
         Inspection inspection = inspection(rule, mapping);
         if (!overviewStaticRuntime && !inspection.ready()) {
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("missing_mappings", inspection.missingMappings());
-            data.put("unconfirmed_mappings", inspection.unconfirmedMappings());
-            data.put("missing_columns", inspection.missingColumns());
-            data.put("type_mismatches", inspection.typeMismatches());
-            data.put("missing_relations", inspection.missingRelations());
+            data.put("missingMappings", inspection.missingMappings());
+            data.put("unconfirmedMappings", inspection.unconfirmedMappings());
+            data.put("missingColumns", inspection.missingColumns());
+            data.put("typeMismatches", inspection.typeMismatches());
+            data.put("missingRelations", inspection.missingRelations());
             return failure("validation_failed", "FIELD_PRECHECK_FAILED",
                     "字段映射或元数据预检查未通过，暂不能准备 SQL。", false, data);
         }
-        String template = text(rule.get("standard_sql"));
+        String template = text(rule.get("standardSql"));
         if (template.isBlank()) {
             return failure("validation_failed", "SQL_TEMPLATE_UNAVAILABLE", "当前生效规则没有可用 SQL 模板。", false);
         }
@@ -238,19 +238,19 @@ public class IndicatorSqlTools {
         String sql;
         try {
             sql = normalizeKnownSqlArtifacts(renderer.render(
-                    template, objectMap(mapping.get("fields")), text(mapping.get("main_table"))));
+                    template, objectMap(mapping.get("fields")), text(mapping.get("mainTable"))));
         } catch (RuntimeException exception) {
             return failure("validation_failed", "SQL_TEMPLATE_RENDER_FAILED", "SQL 模板无法根据已确认映射完成渲染。", false);
         }
         ReadOnlySqlValidator.ValidationResult validation = overviewStaticRuntime
                 ? validator.validateReadOnly(sql)
-                : validator.validate(sql, text(mapping.get("main_table")));
+                : validator.validate(sql, text(mapping.get("mainTable")));
         if (!validation.ok()) {
             return failure("validation_failed", "SQL_VALIDATION_FAILED",
                     "生成的 SQL 未通过只读安全校验，不能进入试运行。", false);
         }
 
-        Map<String, Object> params = objectMap(rule.get("effective_params"));
+        Map<String, Object> params = objectMap(rule.get("effectiveParams"));
         if (!params.keySet().containsAll(parameterOverrides.keySet())) {
             return failure("validation_failed", "DIAGNOSIS_PROFILE_PARAMETER_INVALID",
                     "候选口径包含当前规则未声明的参数。", false);
@@ -272,11 +272,11 @@ public class IndicatorSqlTools {
             return failure("forbidden", exception.code(), exception.getMessage(), false);
         }
         Map<String, Object> diagnosticExecution = new LinkedHashMap<>();
-        diagnosticExecution.put("profile_id", rule.get("profile_id"));
-        diagnosticExecution.put("overview_static_runtime", overviewStaticRuntime);
+        diagnosticExecution.put("profileId", rule.get("profileId"));
+        diagnosticExecution.put("overviewStaticRuntime", overviewStaticRuntime);
         if (diagnosticProfileId != null) {
-            diagnosticExecution.put("diagnostic_profile_id", diagnosticProfileId);
-            diagnosticExecution.put("field_role_overrides", fieldRoleOverrides);
+            diagnosticExecution.put("diagnosticProfileId", diagnosticProfileId);
+            diagnosticExecution.put("fieldRoleOverrides", fieldRoleOverrides);
         }
         Map<String, Object> snapshot = contextSnapshot(
                 rule, mapping, params, statStart, statEnd, sourceId, diagnosticExecution);
@@ -300,33 +300,33 @@ public class IndicatorSqlTools {
             state.validatedSqlIds().add(sqlId);
         }
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("sql_id", sqlId);
-        data.put("rule_id", input.ruleId());
-        data.put("profile_id", rule.get("profile_id"));
-        data.put("hospital_id", context.agentContext().hospitalId());
-        data.put("source_role", sourceRole(sourceId));
-        data.put("db_source_id", sourceId);
-        data.put("context_digest", digest);
+        data.put("sqlId", sqlId);
+        data.put("ruleId", input.ruleId());
+        data.put("profileId", rule.get("profileId"));
+        data.put("hospitalId", context.agentContext().hospitalId());
+        data.put("sourceRole", sourceRole(sourceId));
+        data.put("dbSourceId", sourceId);
+        data.put("contextDigest", digest);
         data.put("dialect", sqlObject.dialect());
-        data.put("validation_status",
+        data.put("validationStatus",
                 overviewStaticRuntime ? "overview_static_validated" : "validated");
-        data.put("sql_preview", sql);
+        data.put("sqlPreview", sql);
         Map<String, Object> displayParameters = new LinkedHashMap<>(params);
         displayParameters.put("hospital_id", context.agentContext().hospitalId());
         displayParameters.put("start_time", statStart);
         displayParameters.put("end_time", statEnd);
         data.put("parameters", displayParameters);
-        data.put("stat_start", statStart);
-        data.put("stat_end", statEnd);
-        data.put("sql_bundle", Map.of(
-                "release_id", text(rule.get("knowledge_release_id")),
-                "rule_id", input.ruleId(),
-                "profile_id", text(rule.get("profile_id")),
-                "sql_hashes", objectMap(objectMap(snapshot.get("effective_rule"))
-                        .get("sql_bundle_hashes"))));
-        data.put("expires_at", sqlObject.expiresAt().toString());
+        data.put("statStart", statStart);
+        data.put("statEnd", statEnd);
+        data.put("sqlBundle", Map.of(
+                "releaseId", text(rule.get("knowledgeReleaseId")),
+                "ruleId", input.ruleId(),
+                "profileId", text(rule.get("profileId")),
+                "sqlHashes", objectMap(objectMap(snapshot.get("effectiveRule"))
+                        .get("sqlBundleHashes"))));
+        data.put("expiresAt", sqlObject.expiresAt().toString());
         if (diagnosticProfileId != null) {
-            data.put("diagnostic_profile_id", diagnosticProfileId);
+            data.put("diagnosticProfileId", diagnosticProfileId);
         }
         return ToolResult.success(
                 "SQL_OBJECT_PREPARED", "SQL 已完成确定性生成和只读安全校验，可进行受控试运行。", data);
@@ -345,7 +345,7 @@ public class IndicatorSqlTools {
             LocalDateTime end,
             Map<String, Object> rule,
             ToolExecutionContext context) {
-        String template = text(rule.get("standard_sql"));
+        String template = text(rule.get("standardSql"));
         if (template.isBlank()) {
             return failure("unavailable", "SQL_TEMPLATE_UNAVAILABLE",
                     "当前口径没有可展示的知识库 SQL 模板。", false);
@@ -355,7 +355,7 @@ public class IndicatorSqlTools {
         String sql;
         try {
             sql = normalizeKnownSqlArtifacts(renderer.render(
-                    template, objectMap(mapping.get("fields")), text(mapping.get("main_table"))));
+                    template, objectMap(mapping.get("fields")), text(mapping.get("mainTable"))));
         } catch (RuntimeException exception) {
             return failure("validation_failed", "SQL_REFERENCE_RENDER_FAILED",
                     "知识库 SQL 仍包含无法解析的模板字段，暂不能安全展示。", false);
@@ -363,11 +363,11 @@ public class IndicatorSqlTools {
         ReadOnlySqlValidator.ValidationResult validation = validator.validateReadOnly(sql);
         if (!validation.ok()) {
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("rule_id", input.ruleId());
-            data.put("profile_id", rule.get("profile_id"));
-            data.put("execution_status", rule.get("execution_status"));
-            data.put("execution_blockers", rule.get("execution_blockers"));
-            data.put("static_validation_message", validation.message());
+            data.put("ruleId", input.ruleId());
+            data.put("profileId", rule.get("profileId"));
+            data.put("executionStatus", rule.get("executionStatus"));
+            data.put("executionBlockers", rule.get("executionBlockers"));
+            data.put("staticValidationMessage", validation.message());
             return failure("validation_failed", "SQL_REFERENCE_VALIDATION_FAILED",
                     "知识库 SQL 未通过只读静态检查，已阻止展示。", false, data);
         }
@@ -375,22 +375,22 @@ public class IndicatorSqlTools {
         String statStart = start.format(SQL_TIME);
         String statEnd = end.format(SQL_TIME);
         Map<String, Object> displayParameters = new LinkedHashMap<>(
-                objectMap(rule.get("effective_params")));
+                objectMap(rule.get("effectiveParams")));
         displayParameters.put("hospital_id", context.agentContext().hospitalId());
         displayParameters.put("start_time", statStart);
         displayParameters.put("end_time", statEnd);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("rule_id", input.ruleId());
-        data.put("profile_id", rule.get("profile_id"));
-        data.put("execution_status", rule.get("execution_status"));
-        data.put("execution_blockers", rule.get("execution_blockers"));
-        data.put("reference_only", true);
-        data.put("validation_status", "static_validated");
-        data.put("sql_preview", sql);
+        data.put("ruleId", input.ruleId());
+        data.put("profileId", rule.get("profileId"));
+        data.put("executionStatus", rule.get("executionStatus"));
+        data.put("executionBlockers", rule.get("executionBlockers"));
+        data.put("referenceOnly", true);
+        data.put("validationStatus", "static_validated");
+        data.put("sqlPreview", sql);
         data.put("parameters", displayParameters);
-        data.put("stat_start", statStart);
-        data.put("stat_end", statEnd);
+        data.put("statStart", statStart);
+        data.put("statEnd", statEnd);
         return ToolResult.success(
                 "SQL_REFERENCE_PREPARED",
                 "已读取并完成知识库概览 SQL 的只读静态检查；本次仅展示，不执行数据库。",
@@ -436,8 +436,8 @@ public class IndicatorSqlTools {
         }
 
         Map<String, Object> storedExecution =
-                objectMap(sql.contextSnapshot().get("execution_context"));
-        String profileId = text(storedExecution.get("profile_id"));
+                objectMap(sql.contextSnapshot().get("executionContext"));
+        String profileId = text(storedExecution.get("profileId"));
         Map<String, Object> currentRule = rules.effectiveRule(
                 sql.ruleId(), context.agentContext().hospitalId(), profileId);
         Map<String, Object> currentMapping = withExecutionDefaults(
@@ -445,13 +445,13 @@ public class IndicatorSqlTools {
         try {
             currentMapping = applyDiagnosticFieldRoleOverrides(
                     currentMapping,
-                    objectMap(storedExecution.get("field_role_overrides")));
+                    objectMap(storedExecution.get("fieldRoleOverrides")));
         } catch (IllegalArgumentException exception) {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
                     "候选口径字段角色已失效，请重新准备 SQL 后再试运行。", false);
         }
         boolean overviewStaticRuntime =
-                Boolean.TRUE.equals(storedExecution.get("overview_static_runtime"));
+                Boolean.TRUE.equals(storedExecution.get("overviewStaticRuntime"));
         Inspection inspection = inspection(currentRule, currentMapping);
         if (!overviewStaticRuntime && !inspection.ready()) {
             return failure("validation_failed", "SQL_CONTEXT_STALE",
@@ -466,7 +466,7 @@ public class IndicatorSqlTools {
         }
         ReadOnlySqlValidator.ValidationResult revalidation = overviewStaticRuntime
                 ? validator.validateReadOnly(sql.sqlText())
-                : validator.validate(sql.sqlText(), text(currentMapping.get("main_table")));
+                : validator.validate(sql.sqlText(), text(currentMapping.get("mainTable")));
         if (!revalidation.ok()) {
             return failure("validation_failed", "SQL_REVALIDATION_FAILED", "SQL 在试运行前未通过二次只读安全校验。", false);
         }
@@ -516,7 +516,7 @@ public class IndicatorSqlTools {
             }
             long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
             Map<String, Object> first = rows.isEmpty() ? Map.of() : rows.get(0);
-            Map<String, Object> resultMapping = objectMap(currentRule.get("result_mapping"));
+            Map<String, Object> resultMapping = objectMap(currentRule.get("resultMapping"));
             String resultColumn = first(
                     text(resultMapping.get("index_value")), "index_value");
             String numeratorColumn = first(
@@ -544,23 +544,23 @@ public class IndicatorSqlTools {
             state.lastRunId(runId);
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("sql_id", sql.sqlId());
-            data.put("run_id", runId);
+            data.put("sqlId", sql.sqlId());
+            data.put("runId", runId);
             data.put("status", status);
-            data.put("result_value", resultValue);
-            data.put("numerator_count", numerator);
-            data.put("denominator_count", denominator);
-            data.put("no_sample", denominator != null && denominator == 0);
-            data.put("duration_ms", durationMs);
+            data.put("resultValue", resultValue);
+            data.put("numeratorCount", numerator);
+            data.put("denominatorCount", denominator);
+            data.put("noSample", denominator != null && denominator == 0);
+            data.put("durationMs", durationMs);
             data.put("source", businessQuery.sourceId());
             data.put("hospital_id", context.agentContext().hospitalId());
-            data.put("source_role", sourceRole(sql.dbSourceId()));
-            data.put("db_source_id", sql.dbSourceId());
-            data.put("rule_id", sql.ruleId());
-            data.put("profile_id", profileId);
-            data.put("context_digest", sql.contextDigest());
-            data.put("stat_start", sql.statStart());
-            data.put("stat_end", sql.statEnd());
+            data.put("sourceRole", sourceRole(sql.dbSourceId()));
+            data.put("dbSourceId", sql.dbSourceId());
+            data.put("ruleId", sql.ruleId());
+            data.put("profileId", profileId);
+            data.put("contextDigest", sql.contextDigest());
+            data.put("statStart", sql.statStart());
+            data.put("statEnd", sql.statEnd());
             return ToolResult.success("TRIAL_RUN_COMPLETED",
                     "success".equals(status) ? "只读试运行完成，已获得聚合结果。"
                             : "只读试运行完成，当前统计区间没有可用样本。",
@@ -580,7 +580,7 @@ public class IndicatorSqlTools {
     private Inspection inspection(Map<String, Object> rule, Map<String, Object> mapping) {
         Set<String> required = new LinkedHashSet<>();
         Map<String, Object> businessFields = objectMap(
-                objectMap(rule.get("field_contract")).get("business_fields"));
+                objectMap(rule.get("fieldContract")).get("business_fields"));
         required.addAll(businessFields.keySet());
         /*
          * 新版知识发布流程会在目标医院同时完成 business/real 两个数据源的元数据和
@@ -593,14 +593,14 @@ public class IndicatorSqlTools {
         List<String> missing = required.stream().filter(value -> !mapped.contains(value)).sorted().toList();
         List<String> unconfirmed = listOfMaps(mapping.get("items")).stream()
                 .filter(item -> !"confirmed".equals(text(item.get("status"))))
-                .map(item -> text(item.get("business_field"))).filter(value -> !value.isBlank()).distinct().sorted().toList();
+                .map(item -> text(item.get("businessField"))).filter(value -> !value.isBlank()).distinct().sorted().toList();
         List<String> missingColumns = new ArrayList<>();
         List<String> typeMismatches = new ArrayList<>();
-        for (Map<String, Object> item : listOfMaps(mapping.get("metadata_items"))) {
-            String businessField = text(item.get("business_field"));
+        for (Map<String, Object> item : listOfMaps(mapping.get("metadataItems"))) {
+            String businessField = text(item.get("businessField"));
             if (!required.contains(businessField)) continue;
-            String mappedColumn = text(item.get("table_name")) + "." + text(item.get("column_name"));
-            String actual = text(item.get("metadata_data_type")).toLowerCase(Locale.ROOT);
+            String mappedColumn = text(item.get("tableName")) + "." + text(item.get("columnName"));
+            String actual = text(item.get("metadataDataType")).toLowerCase(Locale.ROOT);
             if (actual.isBlank()) {
                 if (!publishedDualContractVerified) {
                     missingColumns.add(mappedColumn);
@@ -618,7 +618,7 @@ public class IndicatorSqlTools {
             String[] parts = value.split("\\.");
             if (parts.length >= 2) physicalTables.add(parts[parts.length - 2]);
         }
-        String mainTable = text(mapping.get("main_table"));
+        String mainTable = text(mapping.get("mainTable"));
         List<String> missingRelations = new ArrayList<>();
         List<Map<String, Object>> relations = listOfMaps(mapping.get("relations"));
         for (String other : physicalTables) {
@@ -638,7 +638,7 @@ public class IndicatorSqlTools {
     }
 
     private static boolean publishedDualContractVerified(Map<String, Object> rule) {
-        Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
+        Map<String, Object> contract = objectMap(rule.get("dualDatabaseContract"));
         if (!Boolean.TRUE.equals(contract.get("schema_compatible"))) {
             return false;
         }
@@ -687,26 +687,26 @@ public class IndicatorSqlTools {
         Map<String, Object> ruleSnapshot = new LinkedHashMap<>(rule);
         Map<String, String> sqlHashes = new LinkedHashMap<>();
         for (String key : List.of(
-                "standard_sql",
-                "source_extract_sql",
-                "department_detail_sql",
-                "patient_detail_sql")) {
+                "standardSql",
+                "sourceExtractSql",
+                "departmentDetailSql",
+                "patientDetailSql")) {
             String value = text(ruleSnapshot.remove(key));
             if (!value.isBlank()) {
                 sqlHashes.put(key, sha256(value));
             }
         }
-        ruleSnapshot.put("sql_bundle_hashes", sqlHashes);
+        ruleSnapshot.put("sqlBundleHashes", sqlHashes);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("effective_rule", ruleSnapshot);
-        result.put("field_mapping", mapping);
-        result.put("execution_context", executionContext == null
+        result.put("effectiveRule", ruleSnapshot);
+        result.put("fieldMapping", mapping);
+        result.put("executionContext", executionContext == null
                 ? Map.of() : Map.copyOf(executionContext));
         result.put("params", params);
-        result.put("stat_start", start);
-        result.put("stat_end", end);
-        result.put("source_role", sourceRole(sourceId));
-        result.put("db_source_id", sourceId);
+        result.put("statStart", start);
+        result.put("statEnd", end);
+        result.put("sourceRole", sourceRole(sourceId));
+        result.put("dbSourceId", sourceId);
         return result;
     }
 
@@ -811,7 +811,7 @@ public class IndicatorSqlTools {
     }
 
     private static List<Map<String, Object>> safeItems(List<Map<String, Object>> items) {
-        return allow(items, Set.of("business_field", "table_name", "column_name", "data_type", "status"));
+        return allow(items, Set.of("businessField", "tableName", "columnName", "dataType", "status"));
     }
 
     private static List<Map<String, Object>> safeRelations(List<Map<String, Object>> items) {

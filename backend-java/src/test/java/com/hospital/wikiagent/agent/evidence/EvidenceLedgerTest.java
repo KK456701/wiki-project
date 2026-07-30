@@ -31,19 +31,19 @@ class EvidenceLedgerTest {
         state.currentRuleId("MQSI2025_005");
         AgentRuntimeContext context = context("hospital_001");
         ToolResult raw = ToolResult.success("SQL_PREPARED", "已生成 SQL", Map.of(
-                "rule_id", "MQSI2025_005",
-                "sql_id", "SQL_001",
-                "stat_start", "2026-01-01T00:00",
-                "stat_end", "2026-04-01T00:00:00.123456789",
+                "ruleId", "MQSI2025_005",
+                "sqlId", "SQL_001",
+                "statStart", "2026-01-01T00:00",
+                "statEnd", "2026-04-01T00:00:00.123456789",
                 "sql", "SELECT patient_id FROM secret"));
 
         ToolResult recorded = ledger.recordToolResult(
-                "prepare_indicator_sql", Map.of("rule_id", "MQSI2025_005"),
+                "prepare_indicator_sql", Map.of("ruleId", "MQSI2025_005"),
                 raw, context, state);
         EvidenceEnvelope envelope = store.loadEvidence(recorded.evidenceIds().get(0)).orElseThrow();
 
         assertThat(envelope.factType()).isEqualTo("sql_validation");
-        assertThat(envelope.safePayload()).containsEntry("sql_id", "SQL_001");
+        assertThat(envelope.safePayload()).containsEntry("sqlId", "SQL_001");
         assertThat(envelope.safePayload()).doesNotContainKey("sql");
         assertThat(envelope.confidentiality()).isEqualTo("sensitive_reference");
 
@@ -70,18 +70,18 @@ class EvidenceLedgerTest {
                 "TRIAL_RUN_COMPLETED",
                 "双库完成",
                 Map.of(
-                        "rule_id", "HXZD-001-001",
-                        "run_id", "RUN_COMPOSITE_1",
-                        "comparison_status", "mismatched",
-                        "business_result", Map.of(
-                                "run_id", "RUN_BUSINESS_1",
-                                "numerator_count", 10,
-                                "denominator_count", 100),
-                        "real_result", Map.of(
-                                "run_id", "RUN_REAL_1",
-                                "numerator_count", 9,
-                                "denominator_count", 100),
-                        "patient_rows", List.of(Map.of("patient_id", "secret"))));
+                        "ruleId", "HXZD-001-001",
+                        "runId", "RUN_COMPOSITE_1",
+                        "comparisonStatus", "mismatched",
+                        "businessResult", Map.of(
+                                "runId", "RUN_BUSINESS_1",
+                                "numeratorCount", 10,
+                                "denominatorCount", 100),
+                        "realResult", Map.of(
+                                "runId", "RUN_REAL_1",
+                                "numeratorCount", 9,
+                                "denominatorCount", 100),
+                        "patientRows", List.of(Map.of("patient_id", "secret"))));
 
         ToolResult recorded = ledger.recordToolResult(
                 "trial_run_indicator_sql", Map.of(), raw,
@@ -99,7 +99,7 @@ class EvidenceLedgerTest {
                         "real_overview_result",
                         "dual_result_comparison");
         assertThat(store.loadEvidence(recorded.evidenceIds().get(0)).orElseThrow()
-                .safePayload()).doesNotContainKey("patient_rows");
+                .safePayload()).doesNotContainKey("patientRows");
     }
 
     private static AgentRuntimeContext context(String hospitalId) {

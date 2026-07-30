@@ -19,7 +19,7 @@ const overview = ref<MetadataOverview | null>(null)
 const changeGroups = computed(() => {
   const groups = new Map<string, number>()
   for (const item of overview.value?.changes || []) {
-    groups.set(item.change_type, (groups.get(item.change_type) || 0) + 1)
+    groups.set(item.changeType, (groups.get(item.changeType) || 0) + 1)
   }
   return [...groups.entries()].map(([type, count]) => ({ type, count }))
 })
@@ -92,7 +92,7 @@ function time(value?: string) {
 
     <section class="metadata-context">
       <div><span>当前医院</span><strong>{{ store.user?.hospitalId }}</strong></div>
-      <div><span>业务库</span><strong>{{ overview?.db_name || '读取配置中' }}</strong></div>
+      <div><span>业务库</span><strong>{{ overview?.dbName || '读取配置中' }}</strong></div>
       <div><span>采集边界</span><strong>全表目录 + 映射字段</strong></div>
       <button type="button" :disabled="loading" @click="refresh">{{ loading ? '加载中…' : '刷新概览' }}</button>
     </section>
@@ -100,22 +100,22 @@ function time(value?: string) {
     <p v-if="error" class="runs-error metadata-error">{{ error }}</p>
 
     <section class="metadata-metrics">
-      <article><span>数据库表</span><strong>{{ overview?.table_count || 0 }}</strong><small>INFORMATION_SCHEMA.TABLES</small></article>
-      <article><span>映射字段</span><strong>{{ overview?.column_count || 0 }}</strong><small>仅采集指标依赖表字段</small></article>
+      <article><span>数据库表</span><strong>{{ overview?.tableCount || 0 }}</strong><small>INFORMATION_SCHEMA.TABLES</small></article>
+      <article><span>映射字段</span><strong>{{ overview?.columnCount || 0 }}</strong><small>仅采集指标依赖表字段</small></article>
       <article><span>结构变化</span><strong>{{ overview?.changes.length || 0 }}</strong><small>相对上一次快照</small></article>
-      <article><span>受影响指标</span><strong>{{ overview?.affected_rules.length || 0 }}</strong><small>按字段映射确定性关联</small></article>
+      <article><span>受影响指标</span><strong>{{ overview?.affectedRules.length || 0 }}</strong><small>按字段映射确定性关联</small></article>
     </section>
 
-    <section class="metadata-status" :data-ready="overview?.has_snapshot">
+    <section class="metadata-status" :data-ready="overview?.hasSnapshot">
       <div>
         <p class="eyebrow">Latest snapshot</p>
-        <h2>{{ overview?.has_snapshot ? '本院元数据快照已就绪' : '尚未建立本院元数据快照' }}</h2>
-        <p>{{ overview?.has_snapshot ? `最近同步于 ${time(overview?.synced_at)}` : '首次同步后才会显示结构变化和受影响指标。' }}</p>
+        <h2>{{ overview?.hasSnapshot ? '本院元数据快照已就绪' : '尚未建立本院元数据快照' }}</h2>
+        <p>{{ overview?.hasSnapshot ? `最近同步于 ${time(overview?.syncedAt)}` : '首次同步后才会显示结构变化和受影响指标。' }}</p>
       </div>
       <dl>
-        <div><dt>批次</dt><dd>{{ overview?.batch_id || '-' }}</dd></div>
-        <div><dt>来源</dt><dd>{{ overview?.metadata_source || 'DBHub' }}</dd></div>
-        <div><dt>Trace</dt><dd>{{ overview?.trace_id || '-' }}</dd></div>
+        <div><dt>批次</dt><dd>{{ overview?.batchId || '-' }}</dd></div>
+        <div><dt>来源</dt><dd>{{ overview?.metadataSource || 'DBHub' }}</dd></div>
+        <div><dt>Trace</dt><dd>{{ overview?.traceId || '-' }}</dd></div>
       </dl>
     </section>
 
@@ -132,9 +132,9 @@ function time(value?: string) {
           <table>
             <thead><tr><th>类型</th><th>表</th><th>字段</th><th>变化说明</th></tr></thead>
             <tbody>
-              <tr v-for="item in overview?.changes || []" :key="`${item.change_type}-${item.table_name}-${item.field_name}`">
-                <td><span class="change-badge" :data-type="item.change_type">{{ changeLabel(item.change_type) }}</span></td>
-                <td><code>{{ item.table_name || '-' }}</code></td><td><code>{{ item.field_name || '-' }}</code></td><td>{{ item.change_desc }}</td>
+              <tr v-for="item in overview?.changes || []" :key="`${item.changeType}-${item.tableName}-${item.fieldName}`">
+                <td><span class="change-badge" :data-type="item.changeType">{{ changeLabel(item.changeType) }}</span></td>
+                <td><code>{{ item.tableName || '-' }}</code></td><td><code>{{ item.fieldName || '-' }}</code></td><td>{{ item.changeDesc }}</td>
               </tr>
               <tr v-if="!overview?.changes.length"><td colspan="4">当前快照没有检测到结构变化。</td></tr>
             </tbody>
@@ -143,14 +143,14 @@ function time(value?: string) {
       </article>
 
       <article class="metadata-panel affected-panel">
-        <header><div><p class="eyebrow">Impact map</p><h2>受影响指标</h2></div><span>{{ overview?.affected_rules.length || 0 }} 项</span></header>
+        <header><div><p class="eyebrow">Impact map</p><h2>受影响指标</h2></div><span>{{ overview?.affectedRules.length || 0 }} 项</span></header>
         <div class="affected-list">
-          <article v-for="item in overview?.affected_rules || []" :key="item.rule_id">
-            <strong>{{ item.rule_id }}</strong>
-            <p>业务字段：{{ item.business_fields.join('、') || '-' }}</p>
-            <small>数据库字段：{{ item.matched_columns.join('、') || '-' }}</small>
+          <article v-for="item in overview?.affectedRules || []" :key="item.ruleId">
+            <strong>{{ item.ruleId }}</strong>
+            <p>业务字段：{{ item.businessFields.join('、') || '-' }}</p>
+            <small>数据库字段：{{ item.matchedColumns.join('、') || '-' }}</small>
           </article>
-          <p v-if="!overview?.affected_rules.length">没有指标字段映射受到本次结构变化影响。</p>
+          <p v-if="!overview?.affectedRules.length">没有指标字段映射受到本次结构变化影响。</p>
         </div>
       </article>
     </section>

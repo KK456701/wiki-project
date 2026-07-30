@@ -48,9 +48,9 @@ class IndicatorCaliberToolsTest {
                 .thenReturn(List.of(profile()));
         when(rules.effectiveRule("MQSI2025_001", "hospital_001"))
                 .thenReturn(Map.of(
-                        "rule_id", "MQSI2025_001",
-                        "rule_name", "患者入院48小时内转科的比例",
-                        "hospital_version", 4));
+                        "ruleId", "MQSI2025_001",
+                        "ruleName", "患者入院48小时内转科的比例",
+                        "hospitalVersion", 4));
     }
 
     @Test
@@ -65,10 +65,10 @@ class IndicatorCaliberToolsTest {
         assertThat(result.code()).isEqualTo("CALIBER_PROFILE_RESOLVED");
         assertThat(result.data())
                 .containsEntry(
-                        "caliber_profile_id",
+                        "caliberProfileId",
                         "hospital_001_ward_entry_anchor")
-                .containsEntry("period_anchor_label", "首次入区时间")
-                .containsEntry("current_rule_version", "4");
+                .containsEntry("periodAnchorLabel", "首次入区时间")
+                .containsEntry("currentRuleVersion", "4");
         assertThat(state.currentCaliberProfileId())
                 .isEqualTo("hospital_001_ward_entry_anchor");
     }
@@ -88,10 +88,10 @@ class IndicatorCaliberToolsTest {
                         "SQL_OBJECT_PREPARED",
                         "prepared",
                         Map.of(
-                                "sql_id", "SQL_001",
-                                "rule_id", "MQSI2025_001",
-                                "stat_start", "2026-01-01 00:00:00",
-                                "stat_end", "2026-07-23 00:00:00")));
+                                "sqlId", "SQL_001",
+                                "ruleId", "MQSI2025_001",
+                                "statStart", "2026-01-01 00:00:00",
+                                "statEnd", "2026-07-23 00:00:00")));
 
         ToolResult prepared = tools.prepare(
                 new IndicatorCaliberTools.PrepareInput(
@@ -105,14 +105,14 @@ class IndicatorCaliberToolsTest {
                         "TRIAL_RUN_COMPLETED",
                         "trial",
                         Map.of(
-                                "sql_id", "SQL_001",
-                                "run_id", "RUN_001",
-                                "rule_id", "MQSI2025_001",
-                                "stat_start", "2026-01-01T00:00:00",
-                                "stat_end", "2026-07-23T00:00:00",
-                                "numerator_count", 8,
-                                "denominator_count", 120,
-                                "result_value", 6.67)));
+                                "sqlId", "SQL_001",
+                                "runId", "RUN_001",
+                                "ruleId", "MQSI2025_001",
+                                "statStart", "2026-01-01T00:00:00",
+                                "statEnd", "2026-07-23T00:00:00",
+                                "numeratorCount", 8,
+                                "denominatorCount", 120,
+                                "resultValue", 6.67)));
 
         ToolResult trial = tools.trial(
                 new IndicatorCaliberTools.TrialInput("SQL_001", profileId),
@@ -121,9 +121,9 @@ class IndicatorCaliberToolsTest {
         assertThat(trial.ok()).isTrue();
         assertThat(trial.code()).isEqualTo("CALIBER_TRIAL_RUN_COMPLETED");
         assertThat(trial.data())
-                .containsEntry("caliber_sql_id", "SQL_001")
-                .containsEntry("caliber_profile_id", profileId)
-                .containsEntry("numerator_count", 8);
+                .containsEntry("caliberSqlId", "SQL_001")
+                .containsEntry("caliberProfileId", profileId)
+                .containsEntry("numeratorCount", 8);
     }
 
     @Test
@@ -140,23 +140,24 @@ class IndicatorCaliberToolsTest {
 
     private static Map<String, Object> profile() {
         return Map.ofEntries(
-                Map.entry("profile_id", "hospital_001_ward_entry_anchor"),
+                Map.entry("profileId", "hospital_001_ward_entry_anchor"),
                 Map.entry("label", "首次入区时间统计及48小时口径"),
                 Map.entry("aliases", List.of("入区", "首次入区")),
-                Map.entry("source_level", "hospital_history"),
-                Map.entry("source_version", "2026-07"),
+                Map.entry("sourceLevel", "hospital_history"),
+                Map.entry("sourceVersion", "2026-07"),
                 Map.entry("status", "approved"),
-                Map.entry("effective_from", "2026-01-01"),
-                Map.entry("caliber_definition", "按首次入区时间统计。"),
-                Map.entry("numerator_rule", "首次入区后48小时内非ICU转科人次数。"),
-                Map.entry("denominator_rule", "同期首次入区患者人次数。"),
-                Map.entry("period_anchor_label", "首次入区时间"),
-                Map.entry("elapsed_anchor_label", "首次入区时间"),
-                Map.entry("field_role_overrides", Map.of(
+                Map.entry("effectiveFrom", "2026-01-01"),
+                Map.entry("caliberDefinition", "按首次入区时间统计。"),
+                Map.entry("numeratorRule", "首次入区后48小时内非ICU转科人次数。"),
+                Map.entry("denominatorRule", "同期首次入区患者人次数。"),
+                Map.entry("periodAnchorLabel", "首次入区时间"),
+                Map.entry("elapsedAnchorLabel", "首次入区时间"),
+                // 字段角色/参数覆盖内层是知识 Profile 透传键，保持 snake
+                Map.entry("fieldRoleOverrides", Map.of(
                         "period_time", "ward_entry_time",
                         "admit_time", "ward_entry_time")),
-                Map.entry("parameter_overrides", Map.of(
+                Map.entry("parameterOverrides", Map.of(
                         "transfer_minutes_threshold", 2880)),
-                Map.entry("difference_dimensions", List.of("统计时间锚点")));
+                Map.entry("differenceDimensions", List.of("统计时间锚点")));
     }
 }

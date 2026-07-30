@@ -44,22 +44,22 @@ class TerminologyServiceTest {
         assertThat(response).containsEntry("total", 1);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> items = (List<Map<String, Object>>) response.get("items");
-        assertThat(items.get(0)).containsEntry("concept_code", "TERM_URGENT")
-                .containsEntry("alias_count", 1);
+        assertThat(items.get(0)).containsEntry("conceptCode", "TERM_URGENT")
+                .containsEntry("aliasCount", 1);
     }
 
     @Test
     void normalizesLongestApprovedTermAndReportsSqlEligibility() {
         Map<String, Object> result = service.normalize("请查急会诊到位率", "hospital_001");
 
-        assertThat(result).containsEntry("normalized_text", "请查急会诊及时到位率")
-                .containsEntry("release_version", "TERMREL_001")
-                .containsEntry("sql_eligible", true);
+        assertThat(result).containsEntry("normalizedText", "请查急会诊及时到位率")
+                .containsEntry("releaseVersion", "TERMREL_001")
+                .containsEntry("sqlEligible", true);
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> matches = (List<Map<String, Object>>) result.get("matches");
         assertThat(matches).singleElement().satisfies(item -> assertThat(item)
                 .containsEntry("source", "company")
-                .containsEntry("concept_code", "TERM_URGENT"));
+                .containsEntry("conceptCode", "TERM_URGENT"));
     }
 
     @Test
@@ -69,7 +69,7 @@ class TerminologyServiceTest {
 
         Map<String, Object> result = service.normalize("急会诊到位率", "hospital_001");
 
-        assertThat(result).containsEntry("sql_eligible", false);
+        assertThat(result).containsEntry("sqlEligible", false);
         assertThat((List<?>) result.get("matches")).isEmpty();
         assertThat((List<?>) result.get("ambiguities")).hasSize(1);
     }

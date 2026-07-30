@@ -90,11 +90,12 @@ class BatchIndicatorRuntimeTest {
                 .thenReturn("BJOB_test");
         when(rules.caliberProfiles(anyString(), anyString()))
                 .thenAnswer(invocation -> List.of(Map.of(
-                        "profile_id", invocation.getArgument(0) + "-default")));
+                        "profileId", invocation.getArgument(0) + "-default")));
         when(rules.effectiveRule(anyString(), anyString(), anyString()))
                 .thenAnswer(invocation -> Map.of(
-                        "profile_name", "默认口径",
-                        "extraction_contract", Map.of("event_no", "CORE_DEFAULT")));
+                        "profileName", "默认口径",
+                        // extraction_contract 内层是知识 Profile 透传键，保持 snake
+                        "extractionContract", Map.of("event_no", "CORE_DEFAULT")));
     }
 
     @Test
@@ -136,10 +137,10 @@ class BatchIndicatorRuntimeTest {
                 .filter(event -> "agent_start".equals(event.get("event")))
                 .findFirst().orElseThrow();
         assertThat(start.get("batch")).isEqualTo(true);
-        assertThat(start.get("subtask_count")).isEqualTo(35);
+        assertThat(start.get("subtaskCount")).isEqualTo(35);
         assertThat(events.stream()
                 .filter(event -> "trace_node".equals(event.get("event")))
-                .filter(event -> "batch_indicator".equals(event.get("node_name")))
+                .filter(event -> "batch_indicator".equals(event.get("nodeName")))
                 .count()).isEqualTo(3);
     }
 
@@ -169,15 +170,15 @@ class BatchIndicatorRuntimeTest {
     @Test
     void singleIndicatorExpandsToEveryApprovedProfile() {
         when(rules.caliberProfiles(eq("R1"), eq("hospital_001"))).thenReturn(List.of(
-                Map.of("profile_id", "R1-default"),
-                Map.of("profile_id", "R1-candidate")));
+                Map.of("profileId", "R1-default"),
+                Map.of("profileId", "R1-candidate")));
         when(rules.effectiveRule(eq("R1"), eq("hospital_001"), anyString()))
                 .thenAnswer(invocation -> {
                     String profileId = invocation.getArgument(2);
                     return Map.of(
-                            "profile_name", profileId.equals("R1-default")
+                            "profileName", profileId.equals("R1-default")
                                     ? "默认口径" : "候选口径",
-                            "extraction_contract", Map.of("event_no", "CORE_TEST"));
+                            "extractionContract", Map.of("event_no", "CORE_TEST"));
                 });
         when(executor.execute(
                 eq("R1"), eq("指标一"), anyString(), anyString(), eq("CORE_TEST"),
@@ -356,7 +357,7 @@ class BatchIndicatorRuntimeTest {
     private void stubIndicators(String... ruleIds) {
         List<Map<String, String>> indicators = new ArrayList<>();
         for (String ruleId : ruleIds) {
-            indicators.add(Map.of("rule_id", ruleId, "rule_name", nameFor(ruleId)));
+            indicators.add(Map.of("ruleId", ruleId, "ruleName", nameFor(ruleId)));
         }
         when(rules.activeIndicatorNames(anyString(), anyInt())).thenReturn(indicators);
     }

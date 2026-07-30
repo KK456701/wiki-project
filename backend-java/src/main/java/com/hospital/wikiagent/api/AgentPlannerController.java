@@ -57,12 +57,12 @@ public class AgentPlannerController {
                 request.structuredState(), request.recentHistory()));
         return Map.of(
                 "status", "shadow_only",
-                "model_id", result.modelId(),
+                "modelId", result.modelId(),
                 "repaired", result.repaired(),
-                "request_plan", result.plan(),
+                "requestPlan", result.plan(),
                 "validation", validator.validate(result.plan()),
-                "compiled_plan", compiler.compile(result.plan()),
-                "tools_executed", false);
+                "compiledPlan", compiler.compile(result.plan()),
+                "toolsExecuted", false);
     }
 
     public record PlanRequest(

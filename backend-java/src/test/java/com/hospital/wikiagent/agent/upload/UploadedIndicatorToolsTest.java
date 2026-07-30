@@ -60,12 +60,12 @@ class UploadedIndicatorToolsTest {
         state.currentUploadFileKey(upload.fileKey());
         state.lastToolResults().add(ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "完成", Map.of(
-                        "rule_id", "MQSI2025_001",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-07-22 00:00:00",
-                        "numerator_count", 11,
-                        "denominator_count", 389,
-                        "result_value", 2.83)));
+                        "ruleId", "MQSI2025_001",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-07-22 00:00:00",
+                        "numeratorCount", 11,
+                        "denominatorCount", 389,
+                        "resultValue", 2.83)));
 
         ToolResult result = fixture.tools().analyze(
                 new UploadedIndicatorTools.Input(upload.fileKey()),
@@ -74,20 +74,20 @@ class UploadedIndicatorToolsTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("UPLOAD_ANALYZED");
         assertThat(result.data())
-                .containsEntry("uploaded_numerator", 30.0)
-                .containsEntry("uploaded_denominator", 522.0)
-                .containsEntry("uploaded_rate", 5.75)
-                .containsEntry("system_numerator", 11.0)
-                .containsEntry("system_denominator", 389.0)
-                .containsEntry("system_rate", 2.83)
-                .containsEntry("comparison_level", "aggregate")
-                .containsEntry("different_count", 3)
-                .containsEntry("row_level_comparison_available", false)
-                .containsEntry("cause_analysis_available", false);
-        assertThat(result.data().get("cause_analysis_note").toString())
+                .containsEntry("uploadedNumerator", 30.0)
+                .containsEntry("uploadedDenominator", 522.0)
+                .containsEntry("uploadedRate", 5.75)
+                .containsEntry("systemNumerator", 11.0)
+                .containsEntry("systemDenominator", 389.0)
+                .containsEntry("systemRate", 2.83)
+                .containsEntry("comparisonLevel", "aggregate")
+                .containsEntry("differentCount", 3)
+                .containsEntry("rowLevelComparisonAvailable", false)
+                .containsEntry("causeAnalysisAvailable", false);
+        assertThat(result.data().get("causeAnalysisNote").toString())
                 .contains("不能推测重复记录", "ICU");
-        assertThat((List<?>) result.data().get("comparison_metrics")).hasSize(3);
-        assertThat(result.data()).doesNotContainKeys("rows", "patient_rows");
+        assertThat((List<?>) result.data().get("comparisonMetrics")).hasSize(3);
+        assertThat(result.data()).doesNotContainKeys("rows", "patientRows");
     }
 
     @Test
@@ -108,8 +108,8 @@ class UploadedIndicatorToolsTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_level", "none")
-                .containsEntry("comparison_status", "system_result_missing")
+                .containsEntry("comparisonLevel", "none")
+                .containsEntry("comparisonStatus", "system_result_missing")
                 .doesNotContainKeys("system_numerator", "system_denominator", "system_rate");
     }
 
@@ -151,27 +151,27 @@ class UploadedIndicatorToolsTest {
         state.currentUploadFileKey(upload.fileKey());
         state.lastToolResults().add(ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "完成", Map.of(
-                        "run_id", "RUN_1", "rule_id", "MQSI2025_005",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-04-01 00:00:00",
-                        "numerator_count", 1, "denominator_count", 2,
-                        "result_value", 50)));
+                        "runId", "RUN_1", "ruleId", "MQSI2025_005",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-04-01 00:00:00",
+                        "numeratorCount", 1, "denominatorCount", 2,
+                        "resultValue", 50)));
 
         ToolResult result = tools.analyze(
                 new UploadedIndicatorTools.Input(upload.fileKey()),
                 execution(state, "hospital_001"));
 
         assertThat(result.data())
-                .containsEntry("comparison_level", "row")
-                .containsEntry("row_level_comparison_available", true)
-                .containsEntry("both_count", 2)
-                .containsEntry("system_only_count", 0)
-                .containsEntry("uploaded_only_count", 0)
-                .doesNotContainKeys("matched_rows", "system_only_rows", "uploaded_only_rows");
-        Map<?, ?> safeComparison = (Map<?, ?>) result.data().get("row_comparison");
-        assertThat(safeComparison.containsKey("matched_rows")).isFalse();
-        assertThat(safeComparison.containsKey("system_only_rows")).isFalse();
-        assertThat(safeComparison.containsKey("uploaded_only_rows")).isFalse();
+                .containsEntry("comparisonLevel", "row")
+                .containsEntry("rowLevelComparisonAvailable", true)
+                .containsEntry("bothCount", 2)
+                .containsEntry("systemOnlyCount", 0)
+                .containsEntry("uploadedOnlyCount", 0)
+                .doesNotContainKeys("matchedRows", "systemOnlyRows", "uploadedOnlyRows");
+        Map<?, ?> safeComparison = (Map<?, ?>) result.data().get("rowComparison");
+        assertThat(safeComparison.containsKey("matchedRows")).isFalse();
+        assertThat(safeComparison.containsKey("systemOnlyRows")).isFalse();
+        assertThat(safeComparison.containsKey("uploadedOnlyRows")).isFalse();
     }
 
     @Test

@@ -228,6 +228,7 @@ public class MrasSqlExecutionService {
             return Map.of();
         }
         Map<String, String> context = new LinkedHashMap<>();
+        // LLM 解释上下文键名保持 snake，与提示词模板约定一致，不随对外契约驼峰化
         context.put("indicator_code", entity.code());
         context.put("indicator_name", entity.name());
         context.put("definition", entity.definition());
@@ -312,20 +313,20 @@ public class MrasSqlExecutionService {
 
         // 第五步：解析结果
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("indicator_code", indicatorCode);
-        data.put("indicator_name", indicatorName);
+        data.put("indicatorCode", indicatorCode);
+        data.put("indicatorName", indicatorName);
         data.put("dimension", dimension);
-        data.put("query_type", queryType);
-        data.put("duration_ms", durationMs);
+        data.put("queryType", queryType);
+        data.put("durationMs", durationMs);
         if (extractionDurationMs >= 0) {
             // 抽取与 SQL 执行分开计时，供上层 trace 节点正确归属耗时
-            data.put("extraction_duration_ms", extractionDurationMs);
+            data.put("extractionDurationMs", extractionDurationMs);
         }
-        data.put("sql_source", "mras");
-        data.put("row_count", rows.size());
+        data.put("sqlSource", "mras");
+        data.put("rowCount", rows.size());
         if (extractionWarning != null) {
             // 抽取失败时结果基于中间表旧数据，必须随结果提醒用户
-            data.put("extraction_warning", extractionWarning);
+            data.put("extractionWarning", extractionWarning);
         }
 
         if ("overview".equals(queryType)) {
@@ -437,14 +438,14 @@ public class MrasSqlExecutionService {
         String targetDirection = resolveTargetDirection(indicatorCode);
         if (targetDirection != null) {
             // 达标判定方向来自实体页“指标导向”，随结果透传给批量聚合层
-            data.put("target_direction", targetDirection);
+            data.put("targetDirection", targetDirection);
         }
         if (rows.isEmpty()) {
             data.put("status", "empty");
-            data.put("result_value", null);
-            data.put("numerator_count", 0L);
-            data.put("denominator_count", 0L);
-            data.put("no_sample", true);
+            data.put("resultValue", null);
+            data.put("numeratorCount", 0L);
+            data.put("denominatorCount", 0L);
+            data.put("noSample", true);
             return;
         }
         Map<String, Object> first = rows.get(0);
@@ -462,6 +463,7 @@ public class MrasSqlExecutionService {
             targetValue = scaleRatioToPercent(targetValue);
         }
         if (numerator == null) {
+            // 兜底读英文列别名：这里是 SQL 结果行的列名，保持 snake
             numerator = getLong(first, "numerator_count");
         }
         if (denominator == null) {
@@ -474,16 +476,16 @@ public class MrasSqlExecutionService {
                     .multiply(BigDecimal.valueOf(100));
         }
 
-        data.put("numerator_count", numerator);
-        data.put("denominator_count", denominator);
-        data.put("result_value", resultValue);
-        data.put("target_value", targetValue);
-        data.put("qualified_label", qualified);
+        data.put("numeratorCount", numerator);
+        data.put("denominatorCount", denominator);
+        data.put("resultValue", resultValue);
+        data.put("targetValue", targetValue);
+        data.put("qualifiedLabel", qualified);
         // 分母为 0，或聚合行全为 NULL（统计区间内无任何样本进入聚合，如
         // SUM over 空集）都视为无样本，避免误报 SUCCESS 却没有任何数值。
-        data.put("no_sample", (denominator != null && denominator == 0)
+        data.put("noSample", (denominator != null && denominator == 0)
                 || (numerator == null && denominator == null && resultValue == null));
-        data.put("raw_first_row", first);
+        data.put("rawFirstRow", first);
     }
 
     /**

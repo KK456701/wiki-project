@@ -87,7 +87,7 @@ public class PlanGoalAlignmentValidator {
                     plan.targetIndicator().ruleId(), hospitalId, query);
             if (candidates.size() == 1) {
                 Map<String, Object> candidate = candidates.get(0);
-                String profileId = text(candidate.get("profile_id"));
+                String profileId = text(candidate.get("profileId"));
                 boolean correctIntent = plan.intent() == PlanIntent.INDICATOR_CALIBER_SIMULATION;
                 boolean correctProfile = profileId.equals(plan.targetCaliber().profileId())
                         || profileId.equals(text(plan.targetCaliber().profileId()));
@@ -173,7 +173,7 @@ public class PlanGoalAlignmentValidator {
         if (decision == null || profileId == null || profileId.isBlank()) return null;
         boolean wantsSql = containsAny(normalize(userQuery), "sql", "脚本");
         return decision.candidates().stream()
-                .filter(item -> profileId.equals(text(item.get("profile_id"))))
+                .filter(item -> profileId.equals(text(item.get("profileId"))))
                 .findFirst()
                 .map(profile -> correctedCaliberPlan(
                         original, profile, !wantsSql && hasPeriod(original), wantsSql))
@@ -186,7 +186,7 @@ public class PlanGoalAlignmentValidator {
             boolean withTrial,
             boolean withSql) {
         String label = text(candidate.get("label"));
-        String profileId = text(candidate.get("profile_id"));
+        String profileId = text(candidate.get("profileId"));
         List<RequestedOutput> outputs = withSql
                 ? List.of(
                         RequestedOutput.CALIBER_EXPLANATION,
@@ -263,7 +263,7 @@ public class PlanGoalAlignmentValidator {
             }
         }
         scored.sort(Comparator.comparingInt(ScoredProfile::score).reversed()
-                .thenComparing(value -> text(value.profile().get("profile_id"))));
+                .thenComparing(value -> text(value.profile().get("profileId"))));
         if (scored.isEmpty()) {
             return List.of();
         }
@@ -282,10 +282,10 @@ public class PlanGoalAlignmentValidator {
         int score = 0;
         List<String> names = new ArrayList<>();
         add(names, profile.get("label"));
-        add(names, profile.get("profile_name"));
+        add(names, profile.get("profileName"));
         addAll(names, profile.get("aliases"));
-        addAll(names, profile.get("evidence_keywords"));
-        addAll(names, profile.get("difference_dimensions"));
+        addAll(names, profile.get("evidenceKeywords"));
+        addAll(names, profile.get("differenceDimensions"));
         for (String name : names) {
             String candidate = normalize(name);
             if (candidate.isBlank()) continue;

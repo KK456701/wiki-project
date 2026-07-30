@@ -491,17 +491,17 @@ public class AgentConversationMemory {
                 continue;
             }
             Map<String, Object> data = result.data();
-            if (text(data.get("rule_id")) != null
-                    && (ruleId == null || ruleId.equals(text(data.get("rule_id"))))) {
-                ruleId = text(data.get("rule_id"));
-                ruleName = first(text(data.get("rule_name")), ruleName);
+            if (text(data.get("ruleId")) != null
+                    && (ruleId == null || ruleId.equals(text(data.get("ruleId"))))) {
+                ruleId = text(data.get("ruleId"));
+                ruleName = first(text(data.get("ruleName")), ruleName);
             }
             caliberProfileId = first(
-                    text(data.get("caliber_profile_id")), caliberProfileId);
-            caliberLabel = first(text(data.get("caliber_label")), caliberLabel);
-            statStart = first(text(data.get("stat_start")), text(data.get("stat_start_time")), statStart);
-            statEnd = first(text(data.get("stat_end")), text(data.get("stat_end_time")), statEnd);
-            runId = first(text(data.get("run_id")), runId);
+                    text(data.get("caliberProfileId")), caliberProfileId);
+            caliberLabel = first(text(data.get("caliberLabel")), caliberLabel);
+            statStart = first(text(data.get("statStart")), text(data.get("statStartTime")), statStart);
+            statEnd = first(text(data.get("statEnd")), text(data.get("statEndTime")), statEnd);
+            runId = first(text(data.get("runId")), runId);
         }
         return new ContextValues(
                 ruleId, ruleName, caliberProfileId, caliberLabel,
@@ -666,20 +666,20 @@ public class AgentConversationMemory {
             return "无摘要";
         }
         StringBuilder sb = new StringBuilder();
-        appendIfPresent(sb, payload, "numerator_count", "分子");
-        appendIfPresent(sb, payload, "denominator_count", "分母");
-        appendIfPresent(sb, payload, "result_value", "结果");
-        appendIfPresent(sb, payload, "sample_count", "样本");
-        appendIfPresent(sb, payload, "sql_id", "sql_id");
-        appendIfPresent(sb, payload, "sql_status", "状态");
-        appendIfPresent(sb, payload, "stat_start", "开始");
-        appendIfPresent(sb, payload, "stat_end", "结束");
-        appendIfPresent(sb, payload, "stat_start_time", "开始");
-        appendIfPresent(sb, payload, "stat_end_time", "结束");
-        appendIfPresent(sb, payload, "caliber_label", "口径");
-        appendIfPresent(sb, payload, "rule_name", "指标");
-        appendIfPresent(sb, payload, "diagnose_status", "诊断状态");
-        appendIfPresent(sb, payload, "user_summary", "摘要");
+        appendIfPresent(sb, payload, "numeratorCount", "分子");
+        appendIfPresent(sb, payload, "denominatorCount", "分母");
+        appendIfPresent(sb, payload, "resultValue", "结果");
+        appendIfPresent(sb, payload, "sampleCount", "样本");
+        appendIfPresent(sb, payload, "sqlId", "sqlId");
+        appendIfPresent(sb, payload, "sqlStatus", "状态");
+        appendIfPresent(sb, payload, "statStart", "开始");
+        appendIfPresent(sb, payload, "statEnd", "结束");
+        appendIfPresent(sb, payload, "statStartTime", "开始");
+        appendIfPresent(sb, payload, "statEndTime", "结束");
+        appendIfPresent(sb, payload, "caliberLabel", "口径");
+        appendIfPresent(sb, payload, "ruleName", "指标");
+        appendIfPresent(sb, payload, "diagnoseStatus", "诊断状态");
+        appendIfPresent(sb, payload, "userSummary", "摘要");
         if (sb.isEmpty()) {
             // 没有命中已知字段时，取前 3 个键值对
             int count = 0;

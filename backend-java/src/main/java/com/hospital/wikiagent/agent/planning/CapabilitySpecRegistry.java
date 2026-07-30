@@ -295,16 +295,16 @@ public class CapabilitySpecRegistry {
 
     private static Map<String, Object> ruleReference(
             PlanningExecution execution, AgentRunState state, String userMessage) {
-        return Map.of("rule_id", resolveRuleId(execution, state));
+        return Map.of("ruleId", resolveRuleId(execution, state));
     }
 
     private static Map<String, Object> effectiveRuleReference(
             PlanningExecution execution, AgentRunState state, String userMessage) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("rule_id", resolveRuleId(execution, state));
+        values.put("ruleId", resolveRuleId(execution, state));
         if (execution.requestPlan().targetCaliber().profileId() != null) {
             values.put(
-                    "profile_id",
+                    "profileId",
                     execution.requestPlan().targetCaliber().profileId());
         }
         return values;
@@ -318,12 +318,12 @@ public class CapabilitySpecRegistry {
                     "STAT_PERIOD_MISSING", "请明确需要统计的开始时间和结束时间。", true);
         }
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("rule_id", resolveRuleId(execution, state));
-        values.put("stat_start_time", period.startTime().toString());
-        values.put("stat_end_time", period.endTime().toString());
+        values.put("ruleId", resolveRuleId(execution, state));
+        values.put("statStartTime", period.startTime().toString());
+        values.put("statEndTime", period.endTime().toString());
         if (execution.requestPlan().targetCaliber().profileId() != null) {
             values.put(
-                    "profile_id",
+                    "profileId",
                     execution.requestPlan().targetCaliber().profileId());
         }
         return values;
@@ -335,22 +335,22 @@ public class CapabilitySpecRegistry {
             throw new CapabilityDispatchException(
                     "VALIDATED_SQL_ID_MISSING", "当前没有可试运行的已校验 SQL，请重新准备 SQL。");
         }
-        return Map.of("sql_id", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1));
+        return Map.of("sqlId", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1));
     }
 
     private static Map<String, Object> caliberResolveArguments(
             PlanningExecution execution, AgentRunState state, String userMessage) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("rule_id", resolveRuleId(execution, state));
+        values.put("ruleId", resolveRuleId(execution, state));
         String raw = execution.requestPlan().targetCaliber().rawText();
-        values.put("raw_caliber", raw.isBlank() ? userMessage : raw);
+        values.put("rawCaliber", raw.isBlank() ? userMessage : raw);
         if (execution.requestPlan().targetCaliber().profileId() != null) {
-            values.put("profile_id", execution.requestPlan().targetCaliber().profileId());
+            values.put("profileId", execution.requestPlan().targetCaliber().profileId());
         }
         PlanValidation.ResolvedTimeRange period = execution.validation().resolvedTime();
         if (period != null) {
-            values.put("stat_start_time", period.startTime().toString());
-            values.put("stat_end_time", period.endTime().toString());
+            values.put("statStartTime", period.startTime().toString());
+            values.put("statEndTime", period.endTime().toString());
         }
         return values;
     }
@@ -367,10 +367,10 @@ public class CapabilitySpecRegistry {
                     "CALIBER_PROFILE_MISSING", "当前尚未确认唯一候选口径。", true);
         }
         return Map.of(
-                "rule_id", resolveRuleId(execution, state),
-                "profile_id", state.currentCaliberProfileId(),
-                "stat_start_time", period.startTime().toString(),
-                "stat_end_time", period.endTime().toString());
+                "ruleId", resolveRuleId(execution, state),
+                "profileId", state.currentCaliberProfileId(),
+                "statStartTime", period.startTime().toString(),
+                "statEndTime", period.endTime().toString());
     }
 
     private static Map<String, Object> caliberTrialArguments(
@@ -380,19 +380,19 @@ public class CapabilitySpecRegistry {
                     "CALIBER_SQL_ID_MISSING", "当前没有可试运行的候选口径 SQL。");
         }
         return Map.of(
-                "sql_id", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1),
-                "profile_id", state.currentCaliberProfileId());
+                "sqlId", state.validatedSqlIds().get(state.validatedSqlIds().size() - 1),
+                "profileId", state.currentCaliberProfileId());
     }
 
     private static Map<String, Object> diagnosisArguments(
             PlanningExecution execution, AgentRunState state, String userMessage) {
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("rule_id", resolveRuleId(execution, state));
-        values.put("issue_description", userMessage == null || userMessage.isBlank()
+        values.put("ruleId", resolveRuleId(execution, state));
+        values.put("issueDescription", userMessage == null || userMessage.isBlank()
                 ? "请排查当前指标异常。"
                 : userMessage.strip());
         if (execution.validation().resolvedTime() != null) {
-            values.put("stat_period",
+            values.put("statPeriod",
                     execution.validation().resolvedTime().startTime() + "~"
                             + execution.validation().resolvedTime().endTime());
         }
@@ -411,14 +411,14 @@ public class CapabilitySpecRegistry {
                     "STAT_PERIOD_MISSING", "请明确双方对比使用的开始时间和结束时间。", true);
         }
         Map<String, Object> values = new LinkedHashMap<>();
-        values.put("rule_id", resolveRuleId(execution, state));
-        values.put("issue_description", userMessage == null || userMessage.isBlank()
+        values.put("ruleId", resolveRuleId(execution, state));
+        values.put("issueDescription", userMessage == null || userMessage.isBlank()
                 ? "请排查双方指标结果差异。"
                 : userMessage.strip());
-        values.put("stat_start_time", period.startTime().toString());
-        values.put("stat_end_time", period.endTime().toString());
+        values.put("statStartTime", period.startTime().toString());
+        values.put("statEndTime", period.endTime().toString());
         if (state.currentUploadFileKey() != null) {
-            values.put("file_key", state.currentUploadFileKey());
+            values.put("fileKey", state.currentUploadFileKey());
         }
         return values;
     }
@@ -430,8 +430,8 @@ public class CapabilitySpecRegistry {
                     "CHANGE_DESCRIPTION_MISSING", "请说明希望调整的本院指标口径。", true);
         }
         return Map.of(
-                "rule_id", resolveRuleId(execution, state),
-                "change_description", userMessage.strip());
+                "ruleId", resolveRuleId(execution, state),
+                "changeDescription", userMessage.strip());
     }
 
     private static Map<String, Object> uploadArguments(
@@ -440,7 +440,7 @@ public class CapabilitySpecRegistry {
             throw new CapabilityDispatchException(
                     "UPLOAD_FILE_KEY_MISSING", "请先上传需要分析的 Excel 文件。", true);
         }
-        return Map.of("file_key", state.currentUploadFileKey());
+        return Map.of("fileKey", state.currentUploadFileKey());
     }
 
     private static String resolveRuleId(PlanningExecution execution, AgentRunState state) {
@@ -449,7 +449,7 @@ public class CapabilitySpecRegistry {
         }
         for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
             ToolResult result = state.lastToolResults().get(index);
-            Object value = result.data().get("resolved_rule_id");
+            Object value = result.data().get("resolvedRuleId");
             if (result.ok() && value != null && !value.toString().isBlank()) {
                 return value.toString();
             }

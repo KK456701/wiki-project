@@ -34,8 +34,6 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
 class IndicatorDiagnosisToolsTest {
     private JdbcTemplate jdbc;
@@ -53,9 +51,7 @@ class IndicatorDiagnosisToolsTest {
                 .addScript("classpath:test-runtime-schema.sql")
                 .build();
         jdbc = new JdbcTemplate(database);
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         rules = mock(RuleReadRepository.class);
         when(rules.effectiveRule(anyString(), anyString())).thenReturn(executableRule());
         when(rules.effectiveRule(anyString(), anyString(), isNull()))
@@ -93,8 +89,8 @@ class IndicatorDiagnosisToolsTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("INDICATOR_DIAGNOSED");
-        assertThat(result.data()).containsEntry("diagnose_status", "warning");
-        assertThat(result.data()).containsKeys("confirmed_findings", "evidence_limit");
+        assertThat(result.data()).containsEntry("diagnoseStatus", "warning");
+        assertThat(result.data()).containsKeys("confirmedFindings", "evidenceLimit");
         assertThat(result.data().get("layers")).asList().hasSize(4);
         assertThat(business.sql).isNotEmpty().allMatch(sql -> sql.startsWith("SELECT"));
         assertThat(business.sql).noneMatch(sql -> sql.contains("patient_id"));
@@ -105,25 +101,25 @@ class IndicatorDiagnosisToolsTest {
     void stopsAtStructureLayerWhenLatestMetadataColumnIsMissing() {
         Map<String, Object> mapping = new LinkedHashMap<>(confirmedMapping());
         List<Map<String, Object>> metadata = new ArrayList<>(
-                (List<Map<String, Object>>) mapping.get("metadata_items"));
-        metadata.replaceAll(item -> "arrive_time".equals(item.get("business_field"))
+                (List<Map<String, Object>>) mapping.get("metadataItems"));
+        metadata.replaceAll(item -> "arrive_time".equals(item.get("businessField"))
                 ? Map.of(
-                        "business_field", "arrive_time",
-                        "table_name", "consult_record",
-                        "column_name", "arrive_time",
-                        "data_type", "datetime",
-                        "mapping_data_type", "datetime",
-                        "metadata_data_type", "",
+                        "businessField", "arrive_time",
+                        "tableName", "consult_record",
+                        "columnName", "arrive_time",
+                        "dataType", "datetime",
+                        "mappingDataType", "datetime",
+                        "metadataDataType", "",
                         "status", "confirmed")
                 : item);
-        mapping.put("metadata_items", metadata);
+        mapping.put("metadataItems", metadata);
         when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
 
         ToolResult result = diagnosis.diagnose(
                 new IndicatorDiagnosisTools.Input("HXZD-003-001", "排查字段问题", null), context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("diagnose_status", "failed");
+        assertThat(result.data()).containsEntry("diagnoseStatus", "failed");
         assertThat(result.data().get("layers")).asList().hasSize(1);
         assertThat(result.data().get("summary").toString()).contains("最新元数据中缺少字段");
         assertThat(business.sql).isEmpty();
@@ -139,7 +135,7 @@ class IndicatorDiagnosisToolsTest {
                         "2026-01-01T00:00~2026-02-01T00:00"), context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("diagnose_status", "failed");
+        assertThat(result.data()).containsEntry("diagnoseStatus", "failed");
         assertThat(result.data().get("summary").toString())
                 .contains("只读试运行失败")
                 .doesNotContain("password", "internal");
@@ -148,16 +144,16 @@ class IndicatorDiagnosisToolsTest {
     @Test
     void treatsMissingOptionalMainTableAsLimitedDiagnosisInsteadOfFailure() {
         Map<String, Object> rule = new LinkedHashMap<>(executableRule());
-        rule.put("field_contract", Map.of("business_fields", Map.of()));
+        rule.put("fieldContract", Map.of("business_fields", Map.of()));
         when(rules.effectiveRule(anyString(), anyString())).thenReturn(rule);
         Map<String, Object> mapping = new LinkedHashMap<>();
         mapping.put("status", "missing");
         mapping.put("dialect", "sqlserver");
         mapping.put("schema", "");
-        mapping.put("main_table", "");
+        mapping.put("mainTable", "");
         mapping.put("fields", Map.of());
         mapping.put("items", List.of());
-        mapping.put("metadata_items", List.of());
+        mapping.put("metadataItems", List.of());
         mapping.put("relations", List.of());
         when(rules.fieldMapping(anyString(), anyString())).thenReturn(mapping);
 
@@ -167,7 +163,7 @@ class IndicatorDiagnosisToolsTest {
                         "2026-01-01T00:00~2026-02-01T00:00"), context);
 
         assertThat(result.ok()).isTrue();
-        assertThat(result.data()).containsEntry("diagnose_status", "warning");
+        assertThat(result.data()).containsEntry("diagnoseStatus", "warning");
         assertThat(result.data().get("summary").toString())
                 .contains("检查受限")
                 .doesNotContain("主表标识无效");
@@ -180,20 +176,20 @@ class IndicatorDiagnosisToolsTest {
                 WHERE hospital_id=:hospital_id AND request_time>=:start_time AND request_time<:end_time
                 """;
         return Map.ofEntries(
-                Map.entry("rule_id", "HXZD-003-001"),
-                Map.entry("rule_name", "急会诊及时到位率"),
-                Map.entry("profile_id", "company-default"),
+                Map.entry("ruleId", "HXZD-003-001"),
+                Map.entry("ruleName", "急会诊及时到位率"),
+                Map.entry("profileId", "company-default"),
                 Map.entry("definition", "急会诊及时到位次数占总次数比例。"),
                 Map.entry("formula", "分子 ÷ 分母 × 100%"),
-                Map.entry("execution_status", "executable"),
-                Map.entry("standard_sql", sql),
-                Map.entry("field_contract", Map.of("business_fields", Map.of(
+                Map.entry("executionStatus", "executable"),
+                Map.entry("standardSql", sql),
+                Map.entry("fieldContract", Map.of("business_fields", Map.of(
                         "hospital_id", Map.of("required", true, "type", "code"),
                         "request_time", Map.of("required", true, "type", "datetime"),
                         "arrive_time", Map.of("required", true, "type", "datetime"),
                         "consult_type", Map.of("required", true, "type", "code")))),
-                Map.entry("effective_params", Map.of("consult_type_value", "急会诊")),
-                Map.entry("overridden_fields", List.of()));
+                Map.entry("effectiveParams", Map.of("consult_type_value", "急会诊")),
+                Map.entry("overriddenFields", List.of()));
     }
 
     private static Map<String, Object> confirmedMapping() {
@@ -206,25 +202,25 @@ class IndicatorDiagnosisToolsTest {
                 "status", "confirmed",
                 "dialect", "sqlserver",
                 "schema", "dbo",
-                "main_table", "consult_record",
+                "mainTable", "consult_record",
                 "fields", Map.of(
                         "hospital_id", "consult_record.hospital_id",
                         "request_time", "consult_record.request_time",
                         "arrive_time", "consult_record.arrive_time",
                         "consult_type", "consult_record.consult_type"),
                 "items", items,
-                "metadata_items", items,
+                "metadataItems", items,
                 "relations", List.of());
     }
 
     private static Map<String, Object> mappingItem(String field, String type) {
         return Map.of(
-                "business_field", field,
-                "table_name", "consult_record",
-                "column_name", field,
-                "data_type", type,
-                "mapping_data_type", type,
-                "metadata_data_type", type,
+                "businessField", field,
+                "tableName", "consult_record",
+                "columnName", field,
+                "dataType", type,
+                "mappingDataType", type,
+                "metadataDataType", type,
                 "status", "confirmed");
     }
 

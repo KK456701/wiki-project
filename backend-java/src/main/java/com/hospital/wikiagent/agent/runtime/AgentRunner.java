@@ -229,11 +229,11 @@ public class AgentRunner {
                 conversation, request.principal(), request.query(), request.fileKey());
         String sessionId = conversation.sessionId();
         String subtaskId = requestId.contains(":subtask:") ? requestId : id("SUB_");
-        emit(observer, "agent_start", traceId, 0, Map.of("status", "running", "session_id", sessionId));
+        emit(observer, "agent_start", traceId, 0, Map.of("status", "running", "sessionId", sessionId));
         TraceEvents.completed(observer, traceId, "memory_load", "storage", memoryStarted,
-                subtaskId, Map.of("session_id", safe(request.sessionId())), Map.of(
-                        "history_length", request.recentHistory().length(),
-                        "structured_state_length", request.structuredState().length()));
+                subtaskId, Map.of("sessionId", safe(request.sessionId())), Map.of(
+                        "historyLength", request.recentHistory().length(),
+                        "structuredStateLength", request.structuredState().length()));
         if (requestsRemovedImplementationValidation(request.query())) {
             // “全面实施验收”已从产品范围永久删除。这里在 Planner 之前短路，
             // 防止模型把旧意图改写成普通诊断或自行拼接已删除的工具链。
@@ -260,8 +260,8 @@ public class AgentRunner {
             emit(observer, "agent_message", traceId, 0,
                     Map.of("message", answer, "status", "completed"));
             emit(observer, "agent_done", traceId, 0, Map.of(
-                    "stop_reason", "final_answer", "status", "completed",
-                    "step_count", 0));
+                    "stopReason", "final_answer", "status", "completed",
+                    "stepCount", 0));
             return new AgentRunResult(
                     answer, "final_answer", traceId, sessionId,
                     0, unsupportedPlan, null);
@@ -300,18 +300,18 @@ public class AgentRunner {
                         TraceEvents.completed(observer, traceId, "followup_llm_escalation", "llm",
                                 followupStarted, subtaskId, eventValues(
                                         "query", request.query(),
-                                        "deterministic_intent", followupPlan.intent().name(),
-                                        "llm_intent", llmVerification.plan().intent().name(),
-                                        "deterministic_confidence", followupPlan.confidence()),
+                                        "deterministicIntent", followupPlan.intent().name(),
+                                        "llmIntent", llmVerification.plan().intent().name(),
+                                        "deterministicConfidence", followupPlan.confidence()),
                                 Map.of("decision", "LLM 意图与规则不一致，采用 LLM 结果"));
                         modelPlan = llmVerification;
                     } else {
                         TraceEvents.completed(observer, traceId, "followup_llm_escalation", "llm",
                                 followupStarted, subtaskId, eventValues(
                                         "query", request.query(),
-                                        "deterministic_intent", followupPlan.intent().name(),
-                                        "llm_intent", llmVerification.plan().intent().name(),
-                                        "deterministic_confidence", followupPlan.confidence()),
+                                        "deterministicIntent", followupPlan.intent().name(),
+                                        "llmIntent", llmVerification.plan().intent().name(),
+                                        "deterministicConfidence", followupPlan.confidence()),
                                 Map.of("decision", "LLM 确认规则结果，继续走确定性路径"));
                         modelPlan = new PlannerResult(
                                 followupPlan, "deterministic-followup-verified",
@@ -341,14 +341,14 @@ public class AgentRunner {
                 TraceEvents.completed(observer, traceId, "followup_plan_resolve", "code",
                         followupStarted, subtaskId, eventValues(
                                 "query", request.query(),
-                                "planner_invoked", false,
-                                "planner_skip_reason", skipReason,
-                                "context_rule_id", followupPlan.targetIndicator().ruleId(),
-                                "context_stat_start", followupPlan.timeExpression().startTime(),
-                                "context_stat_end", followupPlan.timeExpression().endTime()), Map.of(
+                                "plannerInvoked", false,
+                                "plannerSkipReason", skipReason,
+                                "contextRuleId", followupPlan.targetIndicator().ruleId(),
+                                "contextStatStart", followupPlan.timeExpression().startTime(),
+                                "contextStatEnd", followupPlan.timeExpression().endTime()), Map.of(
                                 "intent", followupPlan.intent().name(),
-                                "requested_outputs", followupPlan.requestedOutputs(),
-                                "explanation_focuses", followupPlan.explanationFocuses(),
+                                "requestedOutputs", followupPlan.requestedOutputs(),
+                                "explanationFocuses", followupPlan.explanationFocuses(),
                                 "decision", "未调用 LLM Planner"));
             }
         } else {
@@ -361,15 +361,15 @@ public class AgentRunner {
                         request.structuredState(), request.recentHistory()));
                 TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
                         subtaskId, plannerTraceInput(request, modelPlan), eventValues(
-                                "raw_content", modelPlan.rawContent(),
-                                "request_plan", tracePlan(modelPlan.plan()),
-                                "normalized_plan", tracePlan(modelPlan.plan()),
+                                "rawContent", modelPlan.rawContent(),
+                                "requestPlan", tracePlan(modelPlan.plan()),
+                                "normalizedPlan", tracePlan(modelPlan.plan()),
                                 "repaired", modelPlan.repaired()),
-                        "model_id", modelPlan.modelId());
+                        "modelId", modelPlan.modelId());
             } catch (RuntimeException exception) {
                 TraceEvents.failed(observer, traceId, "planner_llm", "llm", plannerStarted,
                         subtaskId, "PLANNER_FAILED", exception.getMessage(),
-                        "model_id", request.modelId());
+                        "modelId", request.modelId());
                 throw exception;
             }
         }
@@ -422,17 +422,17 @@ public class AgentRunner {
                     clarificationStarted, subtaskId, Map.of(
                             "confidence", enrichedPlan.confidence(),
                             "threshold", threshold),
-                    Map.of("options_count", clarification.options().size(),
-                            "clarification_kind", indicatorUnresolved ? "indicator" : "intent"));
+                    Map.of("optionsCount", clarification.options().size(),
+                            "clarificationKind", indicatorUnresolved ? "indicator" : "intent"));
             emit(observer, "clarification_required", traceId, 0, eventValues(
                     "message", clarificationMessage,
                     "code", indicatorUnresolved ? "INDICATOR_NOT_FOUND" : "LOW_CONFIDENCE_INTENT",
-                    "fallback_category", "USER_CLARIFICATION",
+                    "fallbackCategory", "USER_CLARIFICATION",
                     "clarification", clarification,
-                    "stop_reason", "clarification"));
+                    "stopReason", "clarification"));
             emit(observer, "agent_done", traceId, 0, Map.of(
-                    "stop_reason", "clarification", "status", "incomplete",
-                    "step_count", 0));
+                    "stopReason", "clarification", "status", "incomplete",
+                    "stepCount", 0));
             return new AgentRunResult(
                     clarificationMessage, "clarification", traceId, sessionId,
                     0, enrichedPlan, null, clarification);
@@ -447,17 +447,17 @@ public class AgentRunner {
             String pluralMessage = "您提到了多个指标，请先选择要处理的指标：";
             TraceEvents.completed(observer, traceId, "multiple_indicator_clarification", "code",
                     pluralStarted, subtaskId, Map.of(),
-                    Map.of("options_count", pluralClarification.options().size(),
-                            "clarification_kind", "indicator_multiple"));
+                    Map.of("optionsCount", pluralClarification.options().size(),
+                            "clarificationKind", "indicator_multiple"));
             emit(observer, "clarification_required", traceId, 0, eventValues(
                     "message", pluralMessage,
                     "code", "INDICATOR_MULTIPLE_REFERENCE",
-                    "fallback_category", "USER_CLARIFICATION",
+                    "fallbackCategory", "USER_CLARIFICATION",
                     "clarification", pluralClarification,
-                    "stop_reason", "clarification"));
+                    "stopReason", "clarification"));
             emit(observer, "agent_done", traceId, 0, Map.of(
-                    "stop_reason", "clarification", "status", "incomplete",
-                    "step_count", 0));
+                    "stopReason", "clarification", "status", "incomplete",
+                    "stepCount", 0));
             return new AgentRunResult(
                     pluralMessage, "clarification", traceId, sessionId,
                     0, enrichedPlan, null, pluralClarification);
@@ -481,7 +481,7 @@ public class AgentRunner {
                     progress.durationMs(),
                     subtaskId,
                     Map.of(
-                            "workflow_version", dualDatabaseStage
+                            "workflowVersion", dualDatabaseStage
                                     ? "dual-database-indicator-workflow-v1"
                                     : "indicator-difference-diagnosis-v1"),
                     progress.safeOutput(),
@@ -508,9 +508,9 @@ public class AgentRunner {
         CompiledPlanIR compiled = compiler.compile(planned.plan());
         TraceEvents.completed(observer, traceId, "plan_compile", "code", compileStarted,
                 subtaskId, Map.of("intent", planned.plan().intent().name()), Map.of(
-                        "plan_id", compiled.planId(), "node_count", compiled.nodes().size(),
-                        "ir_version", CompiledPlanIR.VERSION,
-                        "required_facts", compiled.requiredFacts(),
+                        "planId", compiled.planId(), "nodeCount", compiled.nodes().size(),
+                        "irVersion", CompiledPlanIR.VERSION,
+                        "requiredFacts", compiled.requiredFacts(),
                         "capabilities", compiled.nodes().stream()
                                 .map(node -> node.capability().value()).toList()));
         long validationStarted = TraceEvents.started();
@@ -520,7 +520,7 @@ public class AgentRunner {
                 ? validator.validateBatch(planned.plan())
                 : validator.validate(planned.plan());
         TraceEvents.completed(observer, traceId, "plan_validate", "code", validationStarted,
-                subtaskId, Map.of("plan_id", compiled.planId()), Map.of(
+                subtaskId, Map.of("planId", compiled.planId()), Map.of(
                         "valid", validation.ok(),
                         "code", validation.code()));
         PlanningExecution execution = new PlanningExecution(
@@ -562,8 +562,8 @@ public class AgentRunner {
             ControllerDecision decision = controller.nextDecision(compiled, validation, state);
             TraceEvents.completed(observer, traceId, "state_controller", "code",
                     controllerStarted, subtaskId, Map.of(
-                            "evidence_count", state.evidenceIds().size(),
-                            "step_count", state.stepCount()), eventValues(
+                            "evidenceCount", state.evidenceIds().size(),
+                            "stepCount", state.stepCount()), eventValues(
                             "action", decision.action().name(),
                             "capability", decision.capability()),
                     "capability", decision.capability());
@@ -591,9 +591,9 @@ public class AgentRunner {
                 TraceEvents.completed(observer, traceId, "deterministic_tool_dispatch", "code",
                         dispatchStarted, subtaskId, Map.of(
                                 "capability", decision.capability()), Map.of(
-                                "tool_name", call.name(),
-                                "argument_names", call.arguments().keySet()),
-                        "capability", decision.capability(), "tool_name", call.name());
+                                "toolName", call.name(),
+                                "argumentNames", call.arguments().keySet()),
+                        "capability", decision.capability(), "toolName", call.name());
             } catch (CapabilityDispatchException exception) {
                 TraceEvents.failed(observer, traceId, "deterministic_tool_dispatch", "code",
                         dispatchStarted, subtaskId, exception.code(), exception.getMessage(),
@@ -618,36 +618,36 @@ public class AgentRunner {
             }
             state.incrementStep();
             emit(observer, "tool_call", traceId, state.stepCount(), Map.of(
-                    "tool_name", call.name(), "status", "running"));
+                    "toolName", call.name(), "status", "running"));
             long started = System.nanoTime();
             ToolResult result = gateway.execute(
                     call.name(), call.arguments(), context, state).join();
             long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
             emit(observer, "tool_result", traceId, state.stepCount(), eventValues(
-                    "tool_name", call.name(),
+                    "toolName", call.name(),
                     "status", result.status(),
                     "code", result.code(),
                     "message", result.summary(),
                     "retryable", result.retryable(),
                     "reused", result.cacheReused(),
-                    "duration_ms", durationMs));
+                    "durationMs", durationMs));
             long toolStartedEpoch = System.currentTimeMillis() - durationMs;
             if (result.ok()) {
                 TraceEvents.completed(observer, traceId, "tool_result", "tool",
                         toolStartedEpoch, subtaskId, Map.of(
-                                "tool_name", call.name(),
-                                "argument_names", call.arguments().keySet()), Map.of(
+                                "toolName", call.name(),
+                                "argumentNames", call.arguments().keySet()), Map.of(
                                 "code", result.code(), "summary", result.summary(),
                                 "data", result.data()),
-                        "tool_name", call.name(), "capability", decision.capability(),
-                        "cache_reused", result.cacheReused(),
-                        "rule_id", state.currentRuleId());
+                        "toolName", call.name(), "capability", decision.capability(),
+                        "cacheReused", result.cacheReused(),
+                        "ruleId", state.currentRuleId());
             } else {
                 TraceEvents.failed(observer, traceId, "tool_result", "tool",
                         toolStartedEpoch, subtaskId, result.code(), result.summary(),
-                        "tool_name", call.name(), "capability", decision.capability(),
-                        "cache_reused", result.cacheReused(),
-                        "rule_id", state.currentRuleId());
+                        "toolName", call.name(), "capability", decision.capability(),
+                        "cacheReused", result.cacheReused(),
+                        "ruleId", state.currentRuleId());
             }
             updateState(state, result);
             if (!result.ok()) {
@@ -709,10 +709,10 @@ public class AgentRunner {
                         "query", request.query(),
                         "intent", current.plan().intent().name()), Map.of(
                         "status", decision.status().name(),
-                        "failure_code", decision.failureCode(),
+                        "failureCode", decision.failureCode(),
                         "reason", decision.reason(),
-                        "candidate_profiles", safeCandidateProfiles(decision)),
-                "failure_class", decision.aligned()
+                        "candidateProfiles", safeCandidateProfiles(decision)),
+                "failureClass", decision.aligned()
                         ? "" : FailureClass.TASK_TYPE_ERROR.value());
         if (decision.aligned()) return current;
 
@@ -730,11 +730,11 @@ public class AgentRunner {
                         observer, traceId, "plan_alignment_review_llm", "llm",
                         reviewStarted, state.subtaskId(), Map.of(
                                 "intent", current.plan().intent().name(),
-                                "candidate_profiles", safeCandidateProfiles(decision)), Map.of(
+                                "candidateProfiles", safeCandidateProfiles(decision)), Map.of(
                                 "aligned", review.aligned(),
                                 "reason", review.reason(),
-                                "suggested_profile_id", review.suggestedProfileId()),
-                        "model_id", review.modelId());
+                                "suggestedProfileId", review.suggestedProfileId()),
+                        "modelId", review.modelId());
                 if (review.aligned()) return current;
                 reviewedCorrection = alignmentValidator.correctionForReviewedProfile(
                         current.plan(), decision, review.suggestedProfileId(), request.query());
@@ -749,7 +749,7 @@ public class AgentRunner {
                         reviewStarted, state.subtaskId(),
                         "PLAN_ALIGNMENT_REVIEW_FAILED",
                         exception.getMessage(),
-                        "model_id", request.modelId());
+                        "modelId", request.modelId());
                 // 审核模型不可用时不能把可疑计划当作正确；后续由 Replanner 或明确兜底处理。
             }
         }
@@ -769,7 +769,7 @@ public class AgentRunner {
                             "intent", alternative.plan().intent().name()), Map.of(
                             "status", revalidated.status().name(),
                             "reason", revalidated.reason()),
-                    "failure_class", revalidated.aligned()
+                    "failureClass", revalidated.aligned()
                             ? "" : FailureClass.TASK_TYPE_ERROR.value());
             if (revalidated.aligned()) {
                 return alternative;
@@ -784,9 +784,9 @@ public class AgentRunner {
             TraceEvents.completed(
                     observer, traceId, "plan_alignment_deterministic_fallback", "code",
                     fallbackStarted, state.subtaskId(), Map.of(
-                            "failure_reason", decision.reason()), Map.of(
+                            "failureReason", decision.reason()), Map.of(
                             "intent", fallback.intent().name(),
-                            "target_caliber",
+                            "targetCaliber",
                             safe(text(fallback.targetCaliber().profileId()))));
             return new PlannerResult(
                     fallback,
@@ -815,9 +815,9 @@ public class AgentRunner {
     private static List<Map<String, Object>> safeCandidateProfiles(AlignmentDecision decision) {
         if (decision == null) return List.of();
         return decision.candidates().stream().map(item -> Map.<String, Object>of(
-                "profile_id", safe(text(item.get("profile_id"))),
+                "profileId", safe(text(item.get("profileId"))),
                 "label", safe(text(item.get("label"))),
-                "source_version", safe(text(item.get("source_version"))))).toList();
+                "sourceVersion", safe(text(item.get("sourceVersion"))))).toList();
     }
 
     @SafeVarargs
@@ -849,11 +849,11 @@ public class AgentRunner {
         FailureRoute route = failureRouter.route(state, failureCode);
         TraceEvents.completed(observer, traceId, "failure_router", "code", routeStarted,
                 state.subtaskId(), Map.of(
-                        "failure_code", route.failureCode(),
-                        "failure_class", route.failureClass().value(),
-                        "replan_count", state.replanCount()), Map.of(
+                        "failureCode", route.failureCode(),
+                        "failureClass", route.failureClass().value(),
+                        "replanCount", state.replanCount()), Map.of(
                         "action", route.action().name()),
-                "failure_class", route.failureClass().value());
+                "failureClass", route.failureClass().value());
         if (!route.shouldReplan()) return null;
 
         String failedPlanId = precompilePlanId(current.plan());
@@ -885,31 +885,31 @@ public class AgentRunner {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
                         state.subtaskId(), "REPLAN_REPEATED_FAILED_PATH",
                         "重规划重复了已经失败的计划方向。",
-                        "model_id", raw.modelId(),
-                        "failure_class", FailureClass.classify(failureCode).value());
+                        "modelId", raw.modelId(),
+                        "failureClass", FailureClass.classify(failureCode).value());
                 return null;
             }
             PlannerResult planned = new PlannerResult(
                     plan, raw.rawContent(), raw.modelId(), raw.repaired());
             TraceEvents.completed(observer, traceId, "plan_replan", "llm", started,
                     state.subtaskId(), Map.of(
-                            "original_plan_id", failedPlanId,
-                            "failure_code", failureCode,
-                            "failure_reason", failureReason,
-                            "known_evidence_ids", state.evidenceIds()), eventValues(
-                            "raw_content", raw.rawContent(),
-                            "candidate_plan_id", alternativeId,
-                            "request_plan", tracePlan(plan),
-                            "replan_count", state.replanCount()),
-                    "model_id", raw.modelId(),
-                    "failure_class", FailureClass.classify(failureCode).value(),
-                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+                            "originalPlanId", failedPlanId,
+                            "failureCode", failureCode,
+                            "failureReason", failureReason,
+                            "knownEvidenceIds", state.evidenceIds()), eventValues(
+                            "rawContent", raw.rawContent(),
+                            "candidatePlanId", alternativeId,
+                            "requestPlan", tracePlan(plan),
+                            "replanCount", state.replanCount()),
+                    "modelId", raw.modelId(),
+                    "failureClass", FailureClass.classify(failureCode).value(),
+                    "maxReplanCount", ReplanPolicy.MAX_REPLAN_COUNT);
             return planned;
         } catch (RuntimeException exception) {
             TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
                     state.subtaskId(), "REPLAN_FAILED", exception.getMessage(),
-                    "failure_class", FailureClass.classify(failureCode).value(),
-                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+                    "failureClass", FailureClass.classify(failureCode).value(),
+                    "maxReplanCount", ReplanPolicy.MAX_REPLAN_COUNT);
             return null;
         }
     }
@@ -933,11 +933,11 @@ public class AgentRunner {
         FailureRoute route = failureRouter.route(state, failureCode);
         TraceEvents.completed(observer, traceId, "failure_router", "code", routeStarted,
                 state.subtaskId(), Map.of(
-                        "failure_code", route.failureCode(),
-                        "failure_class", route.failureClass().value(),
-                        "replan_count", state.replanCount()), Map.of(
+                        "failureCode", route.failureCode(),
+                        "failureClass", route.failureClass().value(),
+                        "replanCount", state.replanCount()), Map.of(
                         "action", route.action().name()),
-                "failure_class", route.failureClass().value());
+                "failureClass", route.failureClass().value());
         if (!route.shouldReplan()) return null;
         failureRouter.recordReplan(state, compiled.planId());
         long started = TraceEvents.started();
@@ -968,8 +968,8 @@ public class AgentRunner {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
                         state.subtaskId(), "REPLAN_REPEATED_FAILED_PATH",
                         "重规划重复了已经失败的计划方向。",
-                        "model_id", raw.modelId(),
-                        "failure_class", FailureClass.classify(failureCode).value());
+                        "modelId", raw.modelId(),
+                        "failureClass", FailureClass.classify(failureCode).value());
                 return null;
             }
             PlanValidation alternativeValidation = validator.validate(plan);
@@ -977,24 +977,24 @@ public class AgentRunner {
                     plan, alternative, alternativeValidation, capabilities);
             TraceEvents.completed(observer, traceId, "plan_replan", "llm", started,
                     state.subtaskId(), Map.of(
-                            "original_plan_id", compiled.planId(),
-                            "failure_code", failureCode,
-                            "failure_reason", failureReason,
-                            "known_evidence_ids", state.evidenceIds()), eventValues(
-                            "raw_content", raw.rawContent(),
-                            "plan_id", alternative.planId(),
-                            "request_plan", tracePlan(plan),
-                            "replan_count", state.replanCount(),
+                            "originalPlanId", compiled.planId(),
+                            "failureCode", failureCode,
+                            "failureReason", failureReason,
+                            "knownEvidenceIds", state.evidenceIds()), eventValues(
+                            "rawContent", raw.rawContent(),
+                            "planId", alternative.planId(),
+                            "requestPlan", tracePlan(plan),
+                            "replanCount", state.replanCount(),
                             "valid", alternativeValidation.ok()),
-                    "model_id", raw.modelId(),
-                    "failure_class", FailureClass.classify(failureCode).value(),
-                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+                    "modelId", raw.modelId(),
+                    "failureClass", FailureClass.classify(failureCode).value(),
+                    "maxReplanCount", ReplanPolicy.MAX_REPLAN_COUNT);
             return new ReplanOutcome(planned, execution);
         } catch (RuntimeException exception) {
             TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
                     state.subtaskId(), "REPLAN_FAILED", exception.getMessage(),
-                    "failure_class", FailureClass.classify(failureCode).value(),
-                    "max_replan_count", ReplanPolicy.MAX_REPLAN_COUNT);
+                    "failureClass", FailureClass.classify(failureCode).value(),
+                    "maxReplanCount", ReplanPolicy.MAX_REPLAN_COUNT);
             return null;
         }
     }
@@ -1028,9 +1028,9 @@ public class AgentRunner {
         String currentRuleVersion = currentRuleEvidence == null
                 ? null
                 : first(
-                        text(currentRuleEvidence.data().get("hospital_version")),
+                        text(currentRuleEvidence.data().get("hospitalVersion")),
                         text(currentRuleEvidence.data().get("version")),
-                        text(currentRuleEvidence.data().get("national_version")));
+                        text(currentRuleEvidence.data().get("nationalVersion")));
         long verifyStarted = TraceEvents.started();
         List<com.hospital.wikiagent.agent.evidence.VerifiedEvidence> evidence = verifier.verifyMany(
                 state.evidenceIds(), context,
@@ -1039,9 +1039,9 @@ public class AgentRunner {
                         state.currentCaliberProfileId(), currentRuleVersion, currentResults));
         TraceEvents.completed(observer, traceId, "plan_verify", "code", verifyStarted,
                 state.subtaskId(), Map.of(
-                        "evidence_ids", state.evidenceIds()), eventValues(
-                        "verified_count", evidence.size(), "rule_id", state.currentRuleId()),
-                "rule_id", state.currentRuleId(), "sql_id", sqlId);
+                        "evidenceIds", state.evidenceIds()), eventValues(
+                        "verifiedCount", evidence.size(), "ruleId", state.currentRuleId()),
+                "ruleId", state.currentRuleId(), "sqlId", sqlId);
         // 模板选择只依赖已校验的计划，不允许模型自行挑选版式。即使下方某些高风险报告
         // 使用确定性代码渲染，Trace 也记录与该意图对应的模板编号和版本。
         var selectedTemplate = finalAnswer.selectTemplate(
@@ -1086,9 +1086,9 @@ public class AgentRunner {
             long answerStarted = TraceEvents.started();
             TraceEvents.completed(observer, traceId, deterministicNode, "code",
                     answerStarted, state.subtaskId(), Map.of(
-                            "verified_evidence_count", evidence.size()), Map.of(
-                            "answer_length", deterministicAnswer.length()),
-                    "workflow_version", switch (deterministicNode) {
+                            "verifiedEvidenceCount", evidence.size()), Map.of(
+                            "answerLength", deterministicAnswer.length()),
+                    "workflowVersion", switch (deterministicNode) {
                         case "prepared_sql_answer" -> "prepared-sql-answer-v2";
                         case "difference_diagnosis_answer" -> "indicator-difference-diagnosis-v1";
                         case "caliber_options_answer" -> "caliber-options-answer-v1";
@@ -1096,20 +1096,20 @@ public class AgentRunner {
                         case "rule_explanation_answer" -> "rule-explanation-answer-v1";
                         default -> "deterministic-answer-v1";
                     },
-                    "answer_template_id", selectedTemplate.id(),
-                    "answer_template_version", selectedTemplate.version(),
-                    "answer_template_mode", "deterministic");
+                    "answerTemplateId", selectedTemplate.id(),
+                    "answerTemplateVersion", selectedTemplate.version(),
+                    "answerTemplateMode", "deterministic");
             long guardStarted = TraceEvents.started();
             String answerContent = appendExportMarker(deterministicAnswer, state, request.principal());
             TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
-                    state.subtaskId(), Map.of("answer_length", deterministicAnswer.length()), Map.of(
-                            "accepted", true, "export_marker_added",
+                    state.subtaskId(), Map.of("answerLength", deterministicAnswer.length()), Map.of(
+                            "accepted", true, "exportMarkerAdded",
                             !answerContent.equals(deterministicAnswer)));
             emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
                     "message", answerContent, "status", "completed"));
             emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
-                    "stop_reason", "final_answer", "status", "completed",
-                    "step_count", state.stepCount()));
+                    "stopReason", "final_answer", "status", "completed",
+                    "stepCount", state.stepCount()));
             return new AgentRunResult(
                     answerContent, "final_answer", traceId, sessionId,
                     state.stepCount(), plan, compiled);
@@ -1127,29 +1127,29 @@ public class AgentRunner {
         TraceEvents.completed(observer, traceId, "final_answer_llm", "llm", finalStarted,
                 state.subtaskId(), Map.of(
                         "query", request.query(),
-                        "verified_evidence_count", evidence.size(),
-                        "explanation_focuses", plan.explanationFocuses(),
-                        "answer_template_id", answer.templateId(),
-                        "answer_template_version", answer.templateVersion()),
+                        "verifiedEvidenceCount", evidence.size(),
+                        "explanationFocuses", plan.explanationFocuses(),
+                        "answerTemplateId", answer.templateId(),
+                        "answerTemplateVersion", answer.templateVersion()),
                 Map.of(
-                        "answer_length", answer.content().length(),
+                        "answerLength", answer.content().length(),
                         "corrected", answer.corrected(),
-                        "answer_contract_validated", answer.contractValidated()),
-                "model_id", answer.modelId(),
-                "deterministic_fallback", answer.deterministicFallback(),
-                "answer_template_id", answer.templateId(),
-                "answer_template_version", answer.templateVersion());
+                        "answerContractValidated", answer.contractValidated()),
+                "modelId", answer.modelId(),
+                "deterministicFallback", answer.deterministicFallback(),
+                "answerTemplateId", answer.templateId(),
+                "answerTemplateVersion", answer.templateVersion());
         long guardStarted = TraceEvents.started();
         String answerContent = appendExportMarker(answer.content(), state, request.principal());
         TraceEvents.completed(observer, traceId, "response_guard", "code", guardStarted,
-                state.subtaskId(), Map.of("answer_length", answer.content().length()), Map.of(
-                        "accepted", true, "export_marker_added",
+                state.subtaskId(), Map.of("answerLength", answer.content().length()), Map.of(
+                        "accepted", true, "exportMarkerAdded",
                         !answerContent.equals(answer.content())));
         emit(observer, "assistant_message", traceId, state.stepCount(), Map.of(
                 "message", answerContent, "status", "completed"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
-                "stop_reason", "final_answer", "status", "completed",
-                "step_count", state.stepCount()));
+                "stopReason", "final_answer", "status", "completed",
+                "stepCount", state.stepCount()));
         return new AgentRunResult(
                 answerContent, "final_answer", traceId, sessionId,
                 state.stepCount(), plan, compiled);
@@ -1172,13 +1172,13 @@ public class AgentRunner {
                 request.query());
         emit(observer, "clarification_required", traceId, state.stepCount(), eventValues(
                 "message", decision.message(), "code", decision.code(),
-                "fallback_category", decision.fallbackCategory() == null
+                "fallbackCategory", decision.fallbackCategory() == null
                         ? null : decision.fallbackCategory().name(),
                 "clarification", clarification,
-                "stop_reason", "clarification"));
+                "stopReason", "clarification"));
         emit(observer, "agent_done", traceId, state.stepCount(), Map.of(
-                "stop_reason", "clarification", "status", "incomplete",
-                "step_count", state.stepCount()));
+                "stopReason", "clarification", "status", "incomplete",
+                "stepCount", state.stepCount()));
         return new AgentRunResult(
                 decision.message(), "clarification", traceId, sessionId,
                 state.stepCount(), plan, compiled, clarification);
@@ -1194,8 +1194,8 @@ public class AgentRunner {
             String message,
             String code) {
         emit(observer, "agent_error", traceId, state.stepCount(), Map.of(
-                "message", message, "failure_code", code,
-                "stop_reason", "tool_error", "status", "failed"));
+                "message", message, "failureCode", code,
+                "stopReason", "tool_error", "status", "failed"));
         return new AgentRunResult(
                 message, "tool_error", traceId, sessionId,
                 state.stepCount(), plan, compiled);
@@ -1206,14 +1206,14 @@ public class AgentRunner {
             return;
         }
         if ("RULE_SEARCHED".equals(result.code())) {
-            Object ruleId = result.data().get("resolved_rule_id");
+            Object ruleId = result.data().get("resolvedRuleId");
             if (ruleId != null && !ruleId.toString().isBlank()) {
                 state.currentRuleId(ruleId.toString());
             }
         }
         if ("SQL_OBJECT_PREPARED".equals(result.code())
                 || "CALIBER_SQL_PREPARED".equals(result.code())) {
-            Object sqlId = result.data().get("sql_id");
+            Object sqlId = result.data().get("sqlId");
             if (sqlId != null && !sqlId.toString().isBlank()
                     && !state.validatedSqlIds().contains(sqlId.toString())) {
                 state.validatedSqlIds().add(sqlId.toString());
@@ -1221,19 +1221,19 @@ public class AgentRunner {
         }
         if ("INDICATOR_DIAGNOSED".equals(result.code())
                 || "DIFFERENCE_DIAGNOSIS_COMPLETED".equals(result.code())) {
-            Object reportId = result.data().get("report_id");
+            Object reportId = result.data().get("reportId");
             if (reportId != null && !reportId.toString().isBlank()) {
                 state.lastDiagnosisId(reportId.toString());
             }
         }
         if ("CALIBER_PROFILE_RESOLVED".equals(result.code())) {
             state.currentCaliber(
-                    text(result.data().get("caliber_profile_id")),
-                    text(result.data().get("caliber_label")));
+                    text(result.data().get("caliberProfileId")),
+                    text(result.data().get("caliberLabel")));
         }
         if ("TRIAL_RUN_COMPLETED".equals(result.code())
                 || "CALIBER_TRIAL_RUN_COMPLETED".equals(result.code())) {
-            Object runId = result.data().get("run_id");
+            Object runId = result.data().get("runId");
             if (runId != null && !runId.toString().isBlank()) {
                 state.lastRunId(runId.toString());
             }
@@ -1275,12 +1275,12 @@ public class AgentRunner {
                             conversation.statEnd())));
         }
         TraceEvents.completed(observer, traceId, "memory_save", "storage", started,
-                subtaskId, Map.of("session_id", conversation.sessionId()), Map.of(
-                        "answer_length", answer == null ? 0 : answer.length(),
-                        "evidence_count", state.evidenceIds().size(),
-                        "rule_id", safe(state.currentRuleId()),
-                        "stat_start", safe(state.statStart()),
-                        "stat_end", safe(state.statEnd())));
+                subtaskId, Map.of("sessionId", conversation.sessionId()), Map.of(
+                        "answerLength", answer == null ? 0 : answer.length(),
+                        "evidenceCount", state.evidenceIds().size(),
+                        "ruleId", safe(state.currentRuleId()),
+                        "statStart", safe(state.statStart()),
+                        "statEnd", safe(state.statEnd())));
     }
 
     private static AgentRunRequest withConversationContext(
@@ -2002,21 +2002,21 @@ public class AgentRunner {
         }
         if (report == null) return null;
         Map<String, Object> data = report.data();
-        Map<String, Object> baseline = data.get("baseline_result") instanceof Map<?, ?> raw
+        Map<String, Object> baseline = data.get("baselineResult") instanceof Map<?, ?> raw
                 ? (Map<String, Object>) raw : Map.of();
-        Map<String, Object> external = data.get("external_evidence") instanceof Map<?, ?> raw
+        Map<String, Object> external = data.get("externalEvidence") instanceof Map<?, ?> raw
                 ? (Map<String, Object>) raw : Map.of();
         StringBuilder answer = new StringBuilder("# 指标结果差异诊断\n\n");
-        answer.append("- 报告编号：").append(data.getOrDefault("report_id", "—")).append('\n');
-        answer.append("- 统计区间：").append(data.getOrDefault("stat_start", "—"))
-                .append(" 至 ").append(data.getOrDefault("stat_end", "—")).append('\n');
-        answer.append("- 结论代码：").append(data.getOrDefault("conclusion_code", "—")).append('\n');
-        answer.append("- 停止层级：第 ").append(data.getOrDefault("stopped_layer", "—")).append(" 层\n\n");
+        answer.append("- 报告编号：").append(data.getOrDefault("reportId", "—")).append('\n');
+        answer.append("- 统计区间：").append(data.getOrDefault("statStart", "—"))
+                .append(" 至 ").append(data.getOrDefault("statEnd", "—")).append('\n');
+        answer.append("- 结论代码：").append(data.getOrDefault("conclusionCode", "—")).append('\n');
+        answer.append("- 停止层级：第 ").append(data.getOrDefault("stoppedLayer", "—")).append(" 层\n\n");
         if (!baseline.isEmpty()) {
             answer.append("## 当前生效口径结果\n\n")
-                    .append("- 分子：").append(baseline.getOrDefault("numerator_count", "—")).append('\n')
-                    .append("- 分母：").append(baseline.getOrDefault("denominator_count", "—")).append('\n')
-                    .append("- 指标值：").append(baseline.getOrDefault("result_value", "—")).append("%\n\n");
+                    .append("- 分子：").append(baseline.getOrDefault("numeratorCount", "—")).append('\n')
+                    .append("- 分母：").append(baseline.getOrDefault("denominatorCount", "—")).append('\n')
+                    .append("- 指标值：").append(baseline.getOrDefault("resultValue", "—")).append("%\n\n");
         }
         if (!external.isEmpty()) {
             answer.append("## 用户或文件结果\n\n")
@@ -2024,15 +2024,15 @@ public class AgentRunner {
                     .append("- 分母：").append(external.getOrDefault("denominator", "未提供")).append('\n')
                     .append("- 指标值：").append(external.getOrDefault("rate", "未提供")).append("\n\n");
         }
-        appendCaliberCandidates(answer, data.get("caliber_candidates"));
+        appendCaliberCandidates(answer, data.get("caliberCandidates"));
         answer.append("## 诊断结论\n\n")
-                .append(data.getOrDefault("user_summary", "诊断已完成。")).append('\n');
-        if (data.get("confirmed_findings") instanceof List<?> findings && !findings.isEmpty()) {
+                .append(data.getOrDefault("userSummary", "诊断已完成。")).append('\n');
+        if (data.get("confirmedFindings") instanceof List<?> findings && !findings.isEmpty()) {
             answer.append("\n已确认事实：\n\n");
             findings.forEach(item -> answer.append("- ").append(markdown(item)).append('\n'));
         }
         answer.append("\n证据限制：")
-                .append(data.getOrDefault("evidence_limit",
+                .append(data.getOrDefault("evidenceLimit",
                         "未发现系统异常不等于用户结果必然错误。"));
         return answer.toString();
     }
@@ -2052,24 +2052,24 @@ public class AgentRunner {
         for (Object raw : candidates) {
             if (!(raw instanceof Map<?, ?> candidate)) continue;
             answer.append("| ").append(markdown(candidate.get("label")))
-                    .append(" | ").append(markdown(candidateValue(candidate, "numerator_count")))
-                    .append(" | ").append(markdown(candidateValue(candidate, "denominator_count")))
-                    .append(" | ").append(markdown(candidateValue(candidate, "result_value")))
-                    .append("% | ").append(candidateMatchLabel(candidate.get("match_level")))
-                    .append(" | ").append(candidateLikelihoodLabel(candidate.get("cause_likelihood")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "numeratorCount")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "denominatorCount")))
+                    .append(" | ").append(markdown(candidateValue(candidate, "resultValue")))
+                    .append("% | ").append(candidateMatchLabel(candidate.get("matchLevel")))
+                    .append(" | ").append(candidateLikelihoodLabel(candidate.get("causeLikelihood")))
                     .append(" |\n");
         }
         answer.append('\n');
         for (Object raw : candidates) {
             if (!(raw instanceof Map<?, ?> candidate)) continue;
-            Object matching = candidate.get("matching_dimensions");
-            Object mismatched = candidate.get("mismatched_dimensions");
+            Object matching = candidate.get("matchingDimensions");
+            Object mismatched = candidate.get("mismatchedDimensions");
             if (!(matching instanceof List<?> matched) || matched.isEmpty()) continue;
             answer.append("- ").append(markdown(candidate.get("label")))
                     .append("：已匹配 ").append(candidateDimensions(matched));
             if (mismatched instanceof List<?> missed && !missed.isEmpty()) {
                 answer.append("；仍有差异 ").append(candidateDimensions(missed));
-                if (candidate.get("metric_differences") instanceof List<?> differences
+                if (candidate.get("metricDifferences") instanceof List<?> differences
                         && !differences.isEmpty()) {
                     answer.append("（");
                     boolean first = true;
@@ -2078,9 +2078,9 @@ public class AgentRunner {
                         if (!first) answer.append("；");
                         answer.append(candidateDimensionLabel(difference.get("dimension")))
                                 .append("：候选 ")
-                                .append(markdown(difference.get("candidate_value")))
+                                .append(markdown(difference.get("candidateValue")))
                                 .append("，用户/文件 ")
-                                .append(markdown(difference.get("external_value")))
+                                .append(markdown(difference.get("externalValue")))
                                 .append("，差值 ")
                                 .append(markdown(difference.get("delta")));
                         first = false;
@@ -2148,36 +2148,36 @@ public class AgentRunner {
             }
         }
         if (prepared == null) return null;
-        Object sql = prepared.data().get("sql_preview");
+        Object sql = prepared.data().get("sqlPreview");
         if (sql == null || String.valueOf(sql).isBlank()) return null;
         ToolResult effectiveRule = latestSuccessful(state, "EFFECTIVE_RULE_FOUND",
-                text(prepared.data().get("rule_id")));
+                text(prepared.data().get("ruleId")));
         Map<String, Object> rule = effectiveRule == null ? Map.of() : effectiveRule.data();
         String indicatorName = first(
-                text(prepared.data().get("rule_name")),
-                text(rule.get("rule_name")),
+                text(prepared.data().get("ruleName")),
+                text(rule.get("ruleName")),
                 plan.targetIndicator().rawName(),
-                text(prepared.data().get("rule_id")));
+                text(prepared.data().get("ruleId")));
         String profileName = first(
-                text(prepared.data().get("profile_name")),
-                text(rule.get("profile_name")),
+                text(prepared.data().get("profileName")),
+                text(rule.get("profileName")),
                 "当前默认口径");
         String profileId = first(
-                text(prepared.data().get("profile_id")),
-                text(rule.get("profile_id")),
+                text(prepared.data().get("profileId")),
+                text(rule.get("profileId")),
                 "—");
         StringBuilder answer = new StringBuilder();
         answer.append("# ").append(indicatorName).append(" · 概览 SQL\n\n")
                 .append("- 当前 Profile：").append(profileName)
                 .append("（").append(profileId).append("）\n\n");
-        boolean referenceOnly = Boolean.TRUE.equals(prepared.data().get("reference_only"));
+        boolean referenceOnly = Boolean.TRUE.equals(prepared.data().get("referenceOnly"));
         answer.append("## 概览 SQL\n\n```sql\n")
                 .append(sql).append("\n```\n\n");
         if (!referenceOnly) {
-            answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+            answer.append("- SQL 对象：").append(prepared.data().get("sqlId")).append('\n');
         }
-        answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
-                .append(" 至 ").append(prepared.data().get("stat_end")).append("（左闭右开）\n");
+        answer.append("- 统计区间：").append(prepared.data().get("statStart"))
+                .append(" 至 ").append(prepared.data().get("statEnd")).append("（左闭右开）\n");
         answer.append("- 参数：").append(prepared.data().getOrDefault("parameters", Map.of())).append('\n');
         if (state.statPeriodDefaulted()) {
             answer.append("\n> 未指定统计时间，已默认用本月至今生成 SQL；"
@@ -2203,13 +2203,13 @@ public class AgentRunner {
         ToolResult catalog = latestSuccessful(
                 state, "CALIBER_OPTIONS_FOUND", state.currentRuleId());
         if (catalog == null) return null;
-        List<Map<String, Object>> options = mapList(catalog.data().get("caliber_options"));
+        List<Map<String, Object>> options = mapList(catalog.data().get("caliberOptions"));
         Map<String, Object> current = options.stream()
-                .filter(item -> Boolean.TRUE.equals(item.get("is_current")))
+                .filter(item -> Boolean.TRUE.equals(item.get("isCurrent")))
                 .findFirst()
                 .orElse(options.isEmpty() ? Map.of() : options.get(0));
         String ruleName = first(
-                text(catalog.data().get("rule_name")),
+                text(catalog.data().get("ruleName")),
                 plan.targetIndicator().rawName(),
                 state.currentRuleId());
         StringBuilder answer = new StringBuilder();
@@ -2218,38 +2218,38 @@ public class AgentRunner {
         appendProfileOption(answer, current, "当前默认口径");
 
         List<Map<String, Object>> alternatives = options.stream()
-                .filter(item -> !Boolean.TRUE.equals(item.get("is_current")))
+                .filter(item -> !Boolean.TRUE.equals(item.get("isCurrent")))
                 .toList();
         answer.append("\n## 其他口径\n\n");
         if (alternatives.isEmpty()) {
             answer.append("当前只有一种口径，没有其他已发布候选。\n");
         } else {
             for (Map<String, Object> option : alternatives) {
-                String status = text(option.get("option_status"));
+                String status = text(option.get("optionStatus"));
                 String statusLabel = switch (status == null ? "" : status) {
                     case "trial_available" -> "可试算候选";
                     case "explanation_only" -> "仅可解释候选";
                     default -> "草稿 / 未实现";
                 };
                 answer.append("### ").append(first(
-                                text(option.get("profile_name")),
-                                text(option.get("profile_id"))))
+                                text(option.get("profileName")),
+                                text(option.get("profileId"))))
                         .append("\n\n")
-                        .append("- 编号：").append(option.get("profile_id")).append('\n')
+                        .append("- 编号：").append(option.get("profileId")).append('\n')
                         .append("- 状态：").append(statusLabel).append('\n')
                         .append("- 统计时间字段：")
-                        .append(businessTimeLabel(option.get("time_dimension"))).append('\n');
+                        .append(businessTimeLabel(option.get("timeDimension"))).append('\n');
                 if (!"trial_available".equals(status)) {
                     answer.append("- 暂不可试算原因：")
                             .append(first(
-                                    text(option.get("unavailable_reason")),
+                                    text(option.get("unavailableReason")),
                                     "尚未通过候选试算门禁"))
                             .append('\n');
                 }
                 answer.append('\n');
             }
             if (alternatives.stream().anyMatch(item ->
-                    "trial_available".equals(text(item.get("option_status"))))) {
+                    "trial_available".equals(text(item.get("optionStatus"))))) {
                 answer.append("> 你可以直接说“按「候选口径名称」计算”，"
                         + "系统会在不超过一个月的区间内对业务库和真实库受控试算。");
             }
@@ -2262,13 +2262,13 @@ public class AgentRunner {
             Map<String, Object> profile,
             String fallbackName) {
         answer.append("- 名称：").append(first(
-                        text(profile.get("profile_name")), fallbackName))
+                        text(profile.get("profileName")), fallbackName))
                 .append('\n')
                 .append("- 编号：").append(first(
-                        text(profile.get("profile_id")), "—"))
+                        text(profile.get("profileId")), "—"))
                 .append('\n')
                 .append("- 统计时间字段：")
-                .append(businessTimeLabel(profile.get("time_dimension")))
+                .append(businessTimeLabel(profile.get("timeDimension")))
                 .append('\n');
     }
 
@@ -2300,7 +2300,7 @@ public class AgentRunner {
         ToolResult profile = latestSuccessful(
                 state, "CALIBER_PROFILE_RESOLVED", state.currentRuleId());
         if (profile == null) return null;
-        String profileId = text(profile.data().get("caliber_profile_id"));
+        String profileId = text(profile.data().get("caliberProfileId"));
         if (profileId == null || !profileId.equals(state.currentCaliberProfileId())) {
             return "候选口径结果未通过 profile 一致性校验，本轮不输出模拟数值。";
         }
@@ -2316,24 +2316,24 @@ public class AgentRunner {
         if (wantsTrial && trial == null) return null;
         if (wantsPreparedSql && prepared == null) return null;
         if (prepared != null
-                && (!profileId.equals(text(prepared.data().get("caliber_profile_id")))
+                && (!profileId.equals(text(prepared.data().get("caliberProfileId")))
                         || !java.util.Objects.equals(
-                                text(profile.data().get("caliber_version")),
-                                text(prepared.data().get("caliber_version"))))) {
+                                text(profile.data().get("caliberVersion")),
+                                text(prepared.data().get("caliberVersion"))))) {
             return "候选口径 SQL 未通过 profile 一致性校验，本轮不输出 SQL。";
         }
         if (trial != null) {
-            String trialProfileId = text(trial.data().get("caliber_profile_id"));
-            String trialProfileVersion = text(trial.data().get("caliber_version"));
-            String resolvedProfileVersion = text(profile.data().get("caliber_version"));
-            String sqlId = text(trial.data().get("sql_id"));
-            String caliberSqlId = text(trial.data().get("caliber_sql_id"));
+            String trialProfileId = text(trial.data().get("caliberProfileId"));
+            String trialProfileVersion = text(trial.data().get("caliberVersion"));
+            String resolvedProfileVersion = text(profile.data().get("caliberVersion"));
+            String sqlId = text(trial.data().get("sqlId"));
+            String caliberSqlId = text(trial.data().get("caliberSqlId"));
             if (!profileId.equals(trialProfileId)
                     || !java.util.Objects.equals(
                             resolvedProfileVersion, trialProfileVersion)
                     || sqlId == null || !sqlId.equals(caliberSqlId)
-                    || !sameTime(state.statStart(), text(trial.data().get("stat_start")))
-                    || !sameTime(state.statEnd(), text(trial.data().get("stat_end")))) {
+                    || !sameTime(state.statStart(), text(trial.data().get("statStart")))
+                    || !sameTime(state.statEnd(), text(trial.data().get("statEnd")))) {
                 return "候选口径结果未通过规则、周期或 SQL 证据链校验，本轮不输出模拟数值。";
             }
         }
@@ -2346,36 +2346,36 @@ public class AgentRunner {
         answer.append("> 这是一项候选/假设口径试算，不是本院当前生效规则，")
                 .append("不会修改或发布医院正式口径。\n\n");
         appendCaliber(answer, "指标", first(
-                text(values.get("rule_name")), plan.targetIndicator().rawName()));
-        appendCaliber(answer, "候选口径", values.get("caliber_label"));
-        appendCaliber(answer, "候选 profile", values.get("caliber_profile_id"));
-        appendCaliber(answer, "候选版本", values.get("caliber_version"));
-        appendCaliber(answer, "口径定义", values.get("caliber_definition"));
-        appendCaliber(answer, "统计周期时间字段", values.get("period_anchor_label"));
-        appendCaliber(answer, "48 小时耗时起点", values.get("elapsed_anchor_label"));
-        appendCaliber(answer, "分子口径", values.get("caliber_numerator_rule"));
-        appendCaliber(answer, "分母口径", values.get("caliber_denominator_rule"));
+                text(values.get("ruleName")), plan.targetIndicator().rawName()));
+        appendCaliber(answer, "候选口径", values.get("caliberLabel"));
+        appendCaliber(answer, "候选 profile", values.get("caliberProfileId"));
+        appendCaliber(answer, "候选版本", values.get("caliberVersion"));
+        appendCaliber(answer, "口径定义", values.get("caliberDefinition"));
+        appendCaliber(answer, "统计周期时间字段", values.get("periodAnchorLabel"));
+        appendCaliber(answer, "48 小时耗时起点", values.get("elapsedAnchorLabel"));
+        appendCaliber(answer, "分子口径", values.get("caliberNumeratorRule"));
+        appendCaliber(answer, "分母口径", values.get("caliberDenominatorRule"));
         if (trial != null) {
             answer.append("\n## 只读试运行结果\n\n");
-            answer.append("- 统计区间：").append(values.get("stat_start"))
-                    .append(" 至 ").append(values.get("stat_end"))
+            answer.append("- 统计区间：").append(values.get("statStart"))
+                    .append(" 至 ").append(values.get("statEnd"))
                     .append("（左闭右开）\n");
-            answer.append("- 分子：").append(values.getOrDefault("numerator_count", "—"))
+            answer.append("- 分子：").append(values.getOrDefault("numeratorCount", "—"))
                     .append('\n');
-            answer.append("- 分母：").append(values.getOrDefault("denominator_count", "—"))
+            answer.append("- 分母：").append(values.getOrDefault("denominatorCount", "—"))
                     .append('\n');
-            answer.append("- 指标率：").append(values.getOrDefault("result_value", "—"))
+            answer.append("- 指标率：").append(values.getOrDefault("resultValue", "—"))
                     .append("%\n");
-            answer.append("- SQL 对象：").append(values.get("sql_id")).append('\n');
-            answer.append("- 运行对象：").append(values.get("run_id")).append('\n');
+            answer.append("- SQL 对象：").append(values.get("sqlId")).append('\n');
+            answer.append("- 运行对象：").append(values.get("runId")).append('\n');
         } else if (prepared != null) {
             answer.append("\n## 已校验候选口径 SQL\n\n```sql\n")
-                    .append(prepared.data().get("sql_preview"))
+                    .append(prepared.data().get("sqlPreview"))
                     .append("\n```\n\n");
-            answer.append("- 统计区间：").append(prepared.data().get("stat_start"))
-                    .append(" 至 ").append(prepared.data().get("stat_end"))
+            answer.append("- 统计区间：").append(prepared.data().get("statStart"))
+                    .append(" 至 ").append(prepared.data().get("statEnd"))
                     .append("（左闭右开）\n");
-            answer.append("- SQL 对象：").append(prepared.data().get("sql_id")).append('\n');
+            answer.append("- SQL 对象：").append(prepared.data().get("sqlId")).append('\n');
             answer.append("- 参数：")
                     .append(prepared.data().getOrDefault("parameters", Map.of()))
                     .append('\n');
@@ -2393,7 +2393,7 @@ public class AgentRunner {
         for (int index = state.lastToolResults().size() - 1; index >= 0; index--) {
             ToolResult candidate = state.lastToolResults().get(index);
             if (!candidate.ok() || !code.equals(candidate.code())) continue;
-            String candidateRuleId = text(candidate.data().get("rule_id"));
+            String candidateRuleId = text(candidate.data().get("ruleId"));
             if (expectedRuleId == null || expectedRuleId.equals(candidateRuleId)) {
                 return candidate;
             }
@@ -2476,7 +2476,7 @@ public class AgentRunner {
             Map<String, Object> values) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event", event);
-        payload.put("trace_id", traceId);
+        payload.put("traceId", traceId);
         payload.put("step", step);
         payload.putAll(values);
         observer.onEvent(Map.copyOf(payload));
@@ -2504,34 +2504,34 @@ public class AgentRunner {
             PlannerResult result) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("query", request.query());
-        value.put("structured_state", request.structuredState());
-        value.put("recent_history", request.recentHistory());
+        value.put("structuredState", request.structuredState());
+        value.put("recentHistory", request.recentHistory());
         if (result.requestAudit() != null) {
-            value.put("current_date", result.requestAudit().currentDate());
-            value.put("system_prompt", result.requestAudit().systemPrompt());
-            value.put("user_prompt", result.requestAudit().userPrompt());
+            value.put("currentDate", result.requestAudit().currentDate());
+            value.put("systemPrompt", result.requestAudit().systemPrompt());
+            value.put("userPrompt", result.requestAudit().userPrompt());
             value.put("messages", result.requestAudit().messages());
-            value.put("model_id", result.requestAudit().modelId());
-            value.put("timeout_ms", result.requestAudit().timeoutMs());
-            value.put("prompt_version", result.requestAudit().promptVersion());
-            value.put("planner_version", result.requestAudit().plannerVersion());
-            value.put("repair_attempt", result.requestAudit().repairAttempt());
+            value.put("modelId", result.requestAudit().modelId());
+            value.put("timeoutMs", result.requestAudit().timeoutMs());
+            value.put("promptVersion", result.requestAudit().promptVersion());
+            value.put("plannerVersion", result.requestAudit().plannerVersion());
+            value.put("repairAttempt", result.requestAudit().repairAttempt());
         }
         return value;
     }
 
     private static Map<String, Object> tracePlan(RequestPlan plan) {
         Map<String, Object> targetIndicator = new LinkedHashMap<>();
-        targetIndicator.put("raw_name", plan.targetIndicator().rawName());
-        targetIndicator.put("rule_id", plan.targetIndicator().ruleId());
+        targetIndicator.put("rawName", plan.targetIndicator().rawName());
+        targetIndicator.put("ruleId", plan.targetIndicator().ruleId());
         Map<String, Object> targetCaliber = new LinkedHashMap<>();
-        targetCaliber.put("raw_text", plan.targetCaliber().rawText());
-        targetCaliber.put("profile_id", plan.targetCaliber().profileId());
+        targetCaliber.put("rawText", plan.targetCaliber().rawText());
+        targetCaliber.put("profileId", plan.targetCaliber().profileId());
 
         Map<String, Object> timeExpression = new LinkedHashMap<>();
-        timeExpression.put("raw_text", plan.timeExpression().rawText());
-        timeExpression.put("start_time", plan.timeExpression().startTime());
-        timeExpression.put("end_time", plan.timeExpression().endTime());
+        timeExpression.put("rawText", plan.timeExpression().rawText());
+        timeExpression.put("startTime", plan.timeExpression().startTime());
+        timeExpression.put("endTime", plan.timeExpression().endTime());
 
         List<Map<String, Object>> ambiguities = plan.semanticAmbiguities().stream()
                 .map(ambiguity -> {
@@ -2543,17 +2543,17 @@ public class AgentRunner {
                 .toList();
 
         Map<String, Object> value = new LinkedHashMap<>();
-        value.put("schema_version", plan.schemaVersion());
+        value.put("schemaVersion", plan.schemaVersion());
         value.put("intent", plan.intent().name());
         value.put("goal", plan.goal());
-        value.put("target_indicator", targetIndicator);
-        value.put("target_caliber", targetCaliber);
-        value.put("time_expression", timeExpression);
-        value.put("requested_outputs", plan.requestedOutputs().stream().map(Enum::name).toList());
-        value.put("explanation_focuses",
+        value.put("targetIndicator", targetIndicator);
+        value.put("targetCaliber", targetCaliber);
+        value.put("timeExpression", timeExpression);
+        value.put("requestedOutputs", plan.requestedOutputs().stream().map(Enum::name).toList());
+        value.put("explanationFocuses",
                 plan.explanationFocuses().stream().map(Enum::name).toList());
         value.put("constraints", plan.constraints());
-        value.put("semantic_ambiguities", ambiguities);
+        value.put("semanticAmbiguities", ambiguities);
         value.put("confidence", plan.confidence());
         return value;
     }
@@ -2599,7 +2599,7 @@ public class AgentRunner {
             ToolResult candidate = state.lastToolResults().get(index);
             String reportId = candidate.ok()
                     ? String.valueOf(candidate.data().getOrDefault(
-                            "diagnosis_report_id", ""))
+                            "diagnosisReportId", ""))
                     : "";
             if (!reportId.isBlank() && !principal.mustChangePassword()
                     && principal.permissions().contains("indicator_detail_export")) {
@@ -2615,7 +2615,7 @@ public class AgentRunner {
             if (!candidate.ok() || !"DIFFERENCE_DIAGNOSIS_COMPLETED".equals(candidate.code())) {
                 continue;
             }
-            String reportId = String.valueOf(candidate.data().getOrDefault("report_id", ""));
+            String reportId = String.valueOf(candidate.data().getOrDefault("reportId", ""));
             if (!reportId.isBlank() && !principal.mustChangePassword()
                     && principal.permissions().contains("indicator_detail_export")) {
                 String marker = "{{diagnosis_export:" + reportId + "}}";
@@ -2635,7 +2635,7 @@ public class AgentRunner {
             }
         }
         if (uploadAnalysis != null) {
-            if (Boolean.TRUE.equals(uploadAnalysis.data().get("row_level_comparison_available"))
+            if (Boolean.TRUE.equals(uploadAnalysis.data().get("rowLevelComparisonAvailable"))
                     && state.lastRunId() != null && state.currentUploadFileKey() != null
                     && !principal.mustChangePassword()
                     && principal.permissions().contains("indicator_detail_export")) {

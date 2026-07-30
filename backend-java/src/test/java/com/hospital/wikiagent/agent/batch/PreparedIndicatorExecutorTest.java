@@ -78,7 +78,7 @@ class PreparedIndicatorExecutorTest {
 
         effectiveResult = effectiveRule(RULE_ID, RULE_NAME, 95, ">=", "percent");
         prepareResult = ToolResult.success(
-                "SQL_OBJECT_PREPARED", "SQL 已准备。", Map.of("sql_id", "SQL_1"));
+                "SQL_OBJECT_PREPARED", "SQL 已准备。", Map.of("sqlId", "SQL_1"));
         trialResult = trialRun(92.5, 185L, 200L, false);
 
         when(verifier.verifyMany(any(), any(), any())).thenReturn(List.of());
@@ -152,10 +152,10 @@ class PreparedIndicatorExecutorTest {
                 RULE_ID, RULE_NAME, 5, "<=", "minutes", "median_duration");
         trialResult = ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "无样本。", Map.of(
-                        "run_id", "RUN_EMPTY",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-02-01 00:00:00",
-                        "no_sample", true));
+                        "runId", "RUN_EMPTY",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-02-01 00:00:00",
+                        "noSample", true));
 
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
@@ -171,12 +171,12 @@ class PreparedIndicatorExecutorTest {
                 RULE_ID, RULE_NAME, 5, "<=", "minutes", "median_duration");
         trialResult = ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
-                        "run_id", "RUN_MEDIAN",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-02-01 00:00:00",
-                        "result_value", 4.5,
-                        "sample_count", 12,
-                        "target_value", 0));
+                        "runId", "RUN_MEDIAN",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-02-01 00:00:00",
+                        "resultValue", 4.5,
+                        "sampleCount", 12,
+                        "targetValue", 0));
 
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
@@ -190,13 +190,13 @@ class PreparedIndicatorExecutorTest {
                 RULE_ID, RULE_NAME, 0.95, ">=", "percent", "percentage");
         trialResult = ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
-                        "run_id", "RUN_PERCENT",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-02-01 00:00:00",
-                        "result_value", 96.0,
-                        "numerator_count", 96,
-                        "denominator_count", 100,
-                        "target_value", 0.95));
+                        "runId", "RUN_PERCENT",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-02-01 00:00:00",
+                        "resultValue", 96.0,
+                        "numeratorCount", 96,
+                        "denominatorCount", 100,
+                        "targetValue", 0.95));
 
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
@@ -211,14 +211,14 @@ class PreparedIndicatorExecutorTest {
                 RULE_ID, RULE_NAME, 95, ">=", "percent", "percentage");
         trialResult = ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
-                        "run_id", "RUN_PROFILE_TARGET",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-02-01 00:00:00",
-                        "result_value", 96.0,
-                        "numerator_count", 96,
-                        "denominator_count", 100,
-                        "target_value", 95,
-                        "target_source", "profile"));
+                        "runId", "RUN_PROFILE_TARGET",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-02-01 00:00:00",
+                        "resultValue", 96.0,
+                        "numeratorCount", 96,
+                        "denominatorCount", 100,
+                        "targetValue", 95,
+                        "targetSource", "profile"));
 
         IndicatorExecutionResult result =
                 executor.execute(RULE_ID, RULE_NAME, "SUB_1", TIME_TEXT, context);
@@ -230,15 +230,15 @@ class PreparedIndicatorExecutorTest {
     void explicitProfileIsBoundIntoRuleAndSqlPreparation() {
         trialResult = ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "试运行完成。", Map.of(
-                        "run_id", "RUN_PROFILE",
-                        "profile_id", "PROFILE_2",
-                        "extraction_id", "EXT_PROFILE_2",
-                        "extraction_status", "COMPLETED",
-                        "stat_start", "2026-01-01 00:00:00",
-                        "stat_end", "2026-02-01 00:00:00",
-                        "result_value", 92.5,
-                        "numerator_count", 185,
-                        "denominator_count", 200));
+                        "runId", "RUN_PROFILE",
+                        "profileId", "PROFILE_2",
+                        "extractionId", "EXT_PROFILE_2",
+                        "extractionStatus", "COMPLETED",
+                        "statStart", "2026-01-01 00:00:00",
+                        "statEnd", "2026-02-01 00:00:00",
+                        "resultValue", 92.5,
+                        "numeratorCount", 185,
+                        "denominatorCount", 200));
 
         IndicatorExecutionResult result = executor.execute(
                 RULE_ID, RULE_NAME,
@@ -251,8 +251,8 @@ class PreparedIndicatorExecutorTest {
         assertThat(result.profileLabel()).isEqualTo("第二口径");
         assertThat(result.extractionId()).isEqualTo("EXT_PROFILE_2");
         assertThat(result.eventNo()).isEqualTo("CORE_TEST");
-        assertThat(toolArguments.get(0)).containsEntry("profile_id", "PROFILE_2");
-        assertThat(toolArguments.get(1)).containsEntry("profile_id", "PROFILE_2");
+        assertThat(toolArguments.get(0)).containsEntry("profileId", "PROFILE_2");
+        assertThat(toolArguments.get(1)).containsEntry("profileId", "PROFILE_2");
     }
 
     @Test
@@ -287,7 +287,7 @@ class PreparedIndicatorExecutorTest {
                     toolArguments.add(Map.copyOf(arguments));
                     ToolResult result = switch (toolName) {
                         case "get_effective_rule" -> {
-                            effectiveRuleIds.add(arguments.get("rule_id"));
+                            effectiveRuleIds.add(arguments.get("ruleId"));
                             yield effectiveResult;
                         }
                         case "prepare_indicator_sql" -> prepareResult;
@@ -315,15 +315,16 @@ class PreparedIndicatorExecutorTest {
             String unit,
             String valueType) {
         Map<String, Object> params = new LinkedHashMap<>();
+        // effective_params/result_contract 内层是知识 Profile 透传键，保持 snake
         params.put("target_value", targetValue);
         params.put("target_direction", direction);
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("rule_id", ruleId);
-        data.put("rule_name", ruleName);
-        data.put("effective_params", params);
-        data.put("result_unit", unit);
+        data.put("ruleId", ruleId);
+        data.put("ruleName", ruleName);
+        data.put("effectiveParams", params);
+        data.put("resultUnit", unit);
         if (valueType != null) {
-            data.put("result_contract", Map.of("value_type", valueType));
+            data.put("resultContract", Map.of("value_type", valueType));
         }
         return ToolResult.success("EFFECTIVE_RULE_FOUND", "已找到生效规则。", data);
     }
@@ -331,21 +332,21 @@ class PreparedIndicatorExecutorTest {
     private static ToolResult trialRun(
             Double resultValue, Long numerator, Long denominator, boolean noSample) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("sql_id", "SQL_1");
-        data.put("run_id", "RUN_1");
-        data.put("rule_id", RULE_ID);
-        data.put("no_sample", noSample);
+        data.put("sqlId", "SQL_1");
+        data.put("runId", "RUN_1");
+        data.put("ruleId", RULE_ID);
+        data.put("noSample", noSample);
         if (resultValue != null) {
-            data.put("result_value", resultValue);
+            data.put("resultValue", resultValue);
         }
         if (numerator != null) {
-            data.put("numerator_count", numerator);
+            data.put("numeratorCount", numerator);
         }
         if (denominator != null) {
-            data.put("denominator_count", denominator);
+            data.put("denominatorCount", denominator);
         }
-        data.put("stat_start", "2026-01-01 00:00:00");
-        data.put("stat_end", "2026-02-01 00:00:00");
+        data.put("statStart", "2026-01-01 00:00:00");
+        data.put("statEnd", "2026-02-01 00:00:00");
         return ToolResult.success("TRIAL_RUN_COMPLETED", "试运行完成。", data);
     }
 

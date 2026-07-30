@@ -121,7 +121,7 @@ public class ToolRegistry {
                     }
                     return ToolResult.success(
                             "EFFECTIVE_RULE_FOUND",
-                            "已读取 " + data.getOrDefault("rule_name", arguments.ruleId()) + " 的生效规则。",
+                            "已读取 " + data.getOrDefault("ruleName", arguments.ruleId()) + " 的生效规则。",
                             data);
                 }));
         register(values, new AgentTool(
@@ -139,11 +139,11 @@ public class ToolRegistry {
                     List<Map<String, Object>> options = rules.caliberCatalog(
                             arguments.ruleId(), context.agentContext().hospitalId());
                     Map<String, Object> data = new LinkedHashMap<>();
-                    data.put("rule_id", arguments.ruleId());
-                    data.put("rule_name", effective.get("rule_name"));
-                    data.put("current_profile_id", effective.get("profile_id"));
-                    data.put("current_profile_name", effective.get("profile_name"));
-                    data.put("caliber_options", options);
+                    data.put("ruleId", arguments.ruleId());
+                    data.put("ruleName", effective.get("ruleName"));
+                    data.put("currentProfileId", effective.get("profileId"));
+                    data.put("currentProfileName", effective.get("profileName"));
+                    data.put("caliberOptions", options);
                     return ToolResult.success(
                             "CALIBER_OPTIONS_FOUND",
                             options.size() <= 1

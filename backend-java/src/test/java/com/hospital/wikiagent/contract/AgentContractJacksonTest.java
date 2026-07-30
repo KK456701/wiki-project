@@ -23,13 +23,13 @@ class AgentContractJacksonTest {
     private ObjectMapper objectMapper;
 
     @Test
-    void readsAndWritesFrozenSnakeCaseFields() throws Exception {
+    void readsAndWritesCamelCaseFields() throws Exception {
         AgentChatRequest request = objectMapper.readValue("""
                 {
                   "query": "查询指标",
-                  "session_id": "session-1",
-                  "model_id": "deepseek-v4-pro",
-                  "file_key": "hospital_001_无标题.xlsx"
+                  "sessionId": "session-1",
+                  "modelId": "deepseek-v4-pro",
+                  "fileKey": "hospital_001_无标题.xlsx"
                 }
                 """, AgentChatRequest.class);
         String response = objectMapper.writeValueAsString(
@@ -54,25 +54,25 @@ class AgentContractJacksonTest {
                 "继续原问题："));
 
         assertThat(request.sessionId()).isEqualTo("session-1");
-        assertThat(response).contains("\"stop_reason\"", "\"trace_id\"", "\"step_count\"");
-        assertThat(upload).contains("\"file_key\"", "\"file_name\"", "\"size_bytes\"");
+        assertThat(response).contains("\"stopReason\"", "\"traceId\"", "\"stepCount\"");
+        assertThat(upload).contains("\"fileKey\"", "\"fileName\"", "\"sizeBytes\"");
         assertThat(clarification).contains(
-                "\"help_text\"",
-                "\"selection_mode\":\"single\"",
-                "\"allow_free_text\":true",
-                "\"resume_prefix\"");
+                "\"helpText\"",
+                "\"selectionMode\":\"single\"",
+                "\"allowFreeText\":true",
+                "\"resumePrefix\"");
     }
 
     @Test
     void rejectsUnknownIdentityField() {
         assertThatThrownBy(() -> objectMapper.readValue(
-                "{\"query\":\"查询指标\",\"hospital_id\":\"other\"}",
+                "{\"query\":\"查询指标\",\"hospitalId\":\"other\"}",
                 AgentChatRequest.class))
-                .hasMessageContaining("hospital_id");
+                .hasMessageContaining("hospitalId");
     }
 
     @Test
-    void planIrUsesFrozenSnakeCaseAndBusinessEnumValues() throws Exception {
+    void planIrUsesCamelCaseKeysAndBusinessEnumValues() throws Exception {
         RequestPlan plan = new RequestPlan(
                 null,
                 PlanIntent.INDICATOR_TRIAL_RUN,
@@ -87,10 +87,10 @@ class AgentContractJacksonTest {
         RequestPlan restored = objectMapper.readValue(payload, RequestPlan.class);
 
         assertThat(payload).contains(
-                "\"schema_version\":\"request-plan-v3\"",
+                "\"schemaVersion\":\"request-plan-v3\"",
                 "\"indicator_trial_run\"",
-                "\"target_indicator\"",
-                "\"explanation_focuses\":[\"overview\"]",
+                "\"targetIndicator\"",
+                "\"explanationFocuses\":[\"overview\"]",
                 "\"trial_result\"");
         assertThat(restored.intent()).isEqualTo(PlanIntent.INDICATOR_TRIAL_RUN);
         assertThat(restored.targetIndicator().ruleId()).isEqualTo("MQSI2025_005");
@@ -100,15 +100,15 @@ class AgentContractJacksonTest {
     void defaultsMissingExplanationFocusAndReadsLegacyV2Plan() throws Exception {
         RequestPlan restored = objectMapper.readValue("""
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "解释指标分子",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "target_caliber": {},
-                  "time_expression": {},
-                  "requested_outputs": ["explanation"],
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "targetCaliber": {},
+                  "timeExpression": {},
+                  "requestedOutputs": ["explanation"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 1.0
                 }
                 """, RequestPlan.class);

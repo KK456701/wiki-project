@@ -159,6 +159,7 @@ public class FinalAnswerComposer {
 
     private String buildUserPrompt(FinalAnswerInput input, AnswerTemplate template) {
         List<Map<String, Object>> evidence = input.evidence().stream().map(item -> {
+            // LLM 提示词载荷键保持 snake，与提示词模板约定一致
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("evidence_id", item.evidence().evidenceId());
             value.put("fact_type", item.evidence().factType());
@@ -206,9 +207,9 @@ public class FinalAnswerComposer {
         Map<String, Object> sql = latest(evidence, "sql_validation");
         if (!caliberTrial.isEmpty()) trial = caliberTrial;
         if (!trial.isEmpty()) {
-            String name = firstText(trial.get("rule_name"), rule.get("rule_name"), "该指标");
+            String name = firstText(trial.get("ruleName"), rule.get("ruleName"), "该指标");
             boolean noSample = isNoSample(trial);
-            String resultDisplay = noSample ? "不适用" : percent(trial.get("result_value"));
+            String resultDisplay = noSample ? "不适用" : percent(trial.get("resultValue"));
             StringBuilder value = new StringBuilder("# ").append(name).append(" · 统计结果\n\n")
                     .append("> **结论速览**  \n> ")
                     .append(noSample ? "统计区间内无样本，指标率不适用" : "指标率为 **" + resultDisplay + "**")
@@ -217,85 +218,85 @@ public class FinalAnswerComposer {
                     .append("## 结果速览\n\n")
                     .append("| 统计项 | 结果 |\n|---|---:|\n")
                     .append("| 统计区间 | ").append(period(trial)).append(" |\n")
-                    .append("| 分子 | ").append(firstText(trial.get("numerator_count"), "—")).append(" |\n")
-                    .append("| 分母 | ").append(firstText(trial.get("denominator_count"), "—")).append(" |\n")
+                    .append("| 分子 | ").append(firstText(trial.get("numeratorCount"), "—")).append(" |\n")
+                    .append("| 分母 | ").append(firstText(trial.get("denominatorCount"), "—")).append(" |\n")
                     .append("| 指标率 | **").append(resultDisplay).append("** |\n\n")
                     .append(dualComparisonSection(trial))
                     .append("## 计算口径\n\n");
-            Map<String, Object> calculation = objectMap(rule.get("calculation_definition"));
+            Map<String, Object> calculation = objectMap(rule.get("calculationDefinition"));
             append(value, "计算公式", rule.get("formula"));
             append(value, "分子口径", firstText(
-                    calculation.get("numerator_caliber"),
-                    rule.get("numerator_rule")));
+                    calculation.get("numeratorCaliber"),
+                    rule.get("numeratorRule")));
             append(value, "分母口径", firstText(
-                    calculation.get("denominator_caliber"),
-                    rule.get("denominator_rule")));
+                    calculation.get("denominatorCaliber"),
+                    rule.get("denominatorRule")));
             append(value, "统计时间字段", timeDimensionLabel(
-                    calculation.get("time_dimension")));
-            append(value, "去重键", calculation.get("dedup_key"));
+                    calculation.get("timeDimension")));
+            append(value, "去重键", calculation.get("dedupKey"));
             value.append("\n## 数据依据\n\n");
-            append(value, "规则版本", firstText(trial.get("hospital_version"), rule.get("hospital_version")));
-            append(value, "试运行对象", trial.get("run_id"));
+            append(value, "规则版本", firstText(trial.get("hospitalVersion"), rule.get("hospitalVersion")));
+            append(value, "试运行对象", trial.get("runId"));
             return value.toString().strip();
         }
         if (!upload.isEmpty()) {
             StringBuilder value = new StringBuilder("上传文件分析结果如下：\n\n");
-            append(value, "文件", firstText(upload.get("file_name"), upload.get("file_key")));
-            append(value, "工作表数量", upload.get("sheet_count"));
-            append(value, "数据行数", upload.get("row_count"));
+            append(value, "文件", firstText(upload.get("fileName"), upload.get("fileKey")));
+            append(value, "工作表数量", upload.get("sheetCount"));
+            append(value, "数据行数", upload.get("rowCount"));
             append(value, "分析摘要", upload.get("summary"));
-            append(value, "对比状态", upload.get("comparison_status"));
-            append(value, "已确认差异", upload.get("confirmed_findings"));
+            append(value, "对比状态", upload.get("comparisonStatus"));
+            append(value, "已确认差异", upload.get("confirmedFindings"));
             return value.toString().strip();
         }
         if (!diagnosis.isEmpty()) {
             StringBuilder value = new StringBuilder("# 指标异常诊断\n\n")
                     .append("## 当前计算和口径\n\n");
-            append(value, "统计区间", diagnosis.get("stat_period"));
-            append(value, "抽取状态", diagnosis.get("extraction_status"));
-            append(value, "数据新鲜度", diagnosis.get("data_freshness"));
+            append(value, "统计区间", diagnosis.get("statPeriod"));
+            append(value, "抽取状态", diagnosis.get("extractionStatus"));
+            append(value, "数据新鲜度", diagnosis.get("dataFreshness"));
             value.append("\n## 已确认发现\n\n");
-            append(value, "诊断状态", diagnosis.get("diagnose_status"));
-            append(value, "已确认发现", diagnosis.get("confirmed_findings"));
+            append(value, "诊断状态", diagnosis.get("diagnoseStatus"));
+            append(value, "已确认发现", diagnosis.get("confirmedFindings"));
             value.append("\n## 可能原因及置信度\n\n")
                     .append("当前确定性证据不足以给出额外原因推断。\n")
                     .append("\n## 尚不能确认的事项\n\n");
-            append(value, "证据边界", diagnosis.get("evidence_limit"));
+            append(value, "证据边界", diagnosis.get("evidenceLimit"));
             value.append("\n## 建议的下一步核对方式\n\n")
                     .append("请根据上述证据缺口补充对应明细或外部预期结果。\n")
                     .append("\n## 证据与对象编号\n\n");
-            append(value, "运行号", diagnosis.get("run_id"));
+            append(value, "运行号", diagnosis.get("runId"));
             append(value, "诊断报告号", firstText(
-                    diagnosis.get("diagnosis_report_id"), diagnosis.get("report_id")));
+                    diagnosis.get("diagnosisReportId"), diagnosis.get("reportId")));
             return value.toString().strip();
         }
         if (!difference.isEmpty()) {
             StringBuilder value = new StringBuilder("# 指标结果差异诊断\n\n")
                     .append("## 双方结果\n\n");
-            append(value, "当前口径结果", difference.get("baseline_result"));
-            append(value, "用户或文件结果", difference.get("external_evidence"));
+            append(value, "当前口径结果", difference.get("baselineResult"));
+            append(value, "用户或文件结果", difference.get("externalEvidence"));
             value.append("\n## 候选口径试算\n\n");
-            append(value, "候选结果", difference.get("caliber_candidates"));
+            append(value, "候选结果", difference.get("caliberCandidates"));
             value.append("\n## 诊断结论\n\n");
-            append(value, "结论代码", difference.get("conclusion_code"));
-            append(value, "停止层级", difference.get("stopped_layer"));
-            append(value, "结论", difference.get("user_summary"));
+            append(value, "结论代码", difference.get("conclusionCode"));
+            append(value, "停止层级", difference.get("stoppedLayer"));
+            append(value, "结论", difference.get("userSummary"));
             value.append("\n## 证据限制\n\n")
-                    .append(firstText(difference.get("evidence_limit"),
+                    .append(firstText(difference.get("evidenceLimit"),
                             "当前证据只能支持上述结论。"));
             return value.toString().strip();
         }
         if (!preview.isEmpty()) {
             StringBuilder value = new StringBuilder("规则变更预览如下（尚未写入或发布）：\n\n");
-            append(value, "当前生效口径", preview.get("current_effective"));
+            append(value, "当前生效口径", preview.get("currentEffective"));
             append(value, "拟变更内容", preview.get("requested"));
-            append(value, "字段变化", preview.get("field_changes"));
+            append(value, "字段变化", preview.get("fieldChanges"));
             append(value, "影响", preview.get("impact"));
             return value.toString().strip();
         }
         if (!sql.isEmpty()) {
             StringBuilder value = new StringBuilder("受控 SQL 已生成并通过只读安全校验。\n\n");
-            append(value, "SQL 对象", sql.get("sql_id"));
+            append(value, "SQL 对象", sql.get("sqlId"));
             append(value, "统计区间", period(sql));
             return value.toString().strip();
         }
@@ -309,34 +310,34 @@ public class FinalAnswerComposer {
         List<ExplanationFocus> focuses = requestedFocuses == null || requestedFocuses.isEmpty()
                 ? List.of(ExplanationFocus.OVERVIEW)
                 : requestedFocuses;
-        String name = firstText(rule.get("rule_name"), "该指标");
-        Map<String, Object> calculation = objectMap(rule.get("calculation_definition"));
+        String name = firstText(rule.get("ruleName"), "该指标");
+        Map<String, Object> calculation = objectMap(rule.get("calculationDefinition"));
         String definition = firstText(rule.get("definition"), "当前证据未提供");
         String formula = firstText(rule.get("formula"), "当前证据未提供");
         String numerator = firstText(
-                calculation.get("numerator_caliber"),
+                calculation.get("numeratorCaliber"),
                 calculation.get("numerator"),
-                rule.get("numerator_rule"),
+                rule.get("numeratorRule"),
                 "当前证据未提供");
         String denominator = firstText(
-                calculation.get("denominator_caliber"),
+                calculation.get("denominatorCaliber"),
                 calculation.get("denominator"),
-                rule.get("denominator_rule"),
+                rule.get("denominatorRule"),
                 "当前证据未提供");
         String timeDimension = firstText(
-                timeDimensionLabel(calculation.get("time_dimension")),
-                timeDimensionLabel(rule.get("period_time_field")),
-                timeDimensionLabel(rule.get("period_time")),
+                timeDimensionLabel(calculation.get("timeDimension")),
+                timeDimensionLabel(rule.get("periodTimeField")),
+                timeDimensionLabel(rule.get("periodTime")),
                 "当前证据未提供");
         String deduplication = firstText(
-                calculation.get("dedup_key"),
-                rule.get("distinct_key"),
+                calculation.get("dedupKey"),
+                rule.get("distinctKey"),
                 rule.get("deduplication"),
                 "当前证据未提供");
         String exclusions = firstText(
                 calculation.get("exclusions"),
-                rule.get("exclude_rule"),
-                rule.get("exclusion_rule"),
+                rule.get("excludeRule"),
+                rule.get("exclusionRule"),
                 "当前证据未提供");
         if (focuses.contains(ExplanationFocus.OVERVIEW)) {
             return new StringBuilder("# ").append(name).append("\n\n")
@@ -346,12 +347,12 @@ public class FinalAnswerComposer {
                     .append("| 项目 | 内容 |\n|---|---|\n")
                     .append("| 指标定义 | ").append(definition).append(" |\n")
                     .append("| 规则编号 | ").append(firstText(
-                            rule.get("rule_id"), "当前证据未提供")).append(" |\n")
+                            rule.get("ruleId"), "当前证据未提供")).append(" |\n")
                     .append("| 规则版本 | ").append(firstText(
-                            rule.get("hospital_version"), rule.get("version"),
-                            rule.get("national_version"), "当前证据未提供")).append(" |\n")
+                            rule.get("hospitalVersion"), rule.get("version"),
+                            rule.get("nationalVersion"), "当前证据未提供")).append(" |\n")
                     .append("| 生效层级 | ").append(effectiveLevelLabel(
-                            rule.get("effective_level"))).append(" |\n\n")
+                            rule.get("effectiveLevel"))).append(" |\n\n")
                     .append("## 计算口径\n\n")
                     .append("- 计算公式：").append(formula).append("\n")
                     .append("- 分子口径：").append(numerator).append("\n")
@@ -373,12 +374,12 @@ public class FinalAnswerComposer {
                 case DEDUPLICATION -> deduplication;
                 case EXCLUSIONS -> exclusions;
                 case VERSION_SCOPE -> "规则编号："
-                        + firstText(rule.get("rule_id"), "当前证据未提供")
+                        + firstText(rule.get("ruleId"), "当前证据未提供")
                         + "；规则版本："
-                        + firstText(rule.get("hospital_version"), rule.get("version"),
-                                rule.get("national_version"), "当前证据未提供")
+                        + firstText(rule.get("hospitalVersion"), rule.get("version"),
+                                rule.get("nationalVersion"), "当前证据未提供")
                         + "；生效层级："
-                        + effectiveLevelLabel(rule.get("effective_level")) + "。";
+                        + effectiveLevelLabel(rule.get("effectiveLevel")) + "。";
                 case OVERVIEW -> "";
             }).append("\n\n");
         }
@@ -394,26 +395,26 @@ public class FinalAnswerComposer {
     }
 
     private static String dualComparisonSection(Map<String, Object> trial) {
-        String status = firstText(trial.get("comparison_status"), "");
+        String status = firstText(trial.get("comparisonStatus"), "");
         if (status.isBlank()) return "";
-        Map<String, Object> business = objectMap(trial.get("business_result"));
-        Map<String, Object> real = objectMap(trial.get("real_result"));
+        Map<String, Object> business = objectMap(trial.get("businessResult"));
+        Map<String, Object> real = objectMap(trial.get("realResult"));
         StringBuilder value = new StringBuilder("## 双库核对\n\n")
                 .append("| 数据源 | 分子 | 分母 | 指标率 |\n")
                 .append("|---|---:|---:|---:|\n")
-                .append("| 业务库 | ").append(firstText(business.get("numerator_count"), "—"))
-                .append(" | ").append(firstText(business.get("denominator_count"), "—"))
+                .append("| 业务库 | ").append(firstText(business.get("numeratorCount"), "—"))
+                .append(" | ").append(firstText(business.get("denominatorCount"), "—"))
                 .append(" | ").append(isNoSample(business)
-                        ? "不适用" : percent(business.get("result_value"))).append(" |\n")
-                .append("| 真实库 | ").append(firstText(real.get("numerator_count"), "—"))
-                .append(" | ").append(firstText(real.get("denominator_count"), "—"))
+                        ? "不适用" : percent(business.get("resultValue"))).append(" |\n")
+                .append("| 真实库 | ").append(firstText(real.get("numeratorCount"), "—"))
+                .append(" | ").append(firstText(real.get("denominatorCount"), "—"))
                 .append(" | ").append(isNoSample(real)
-                        ? "不适用" : percent(real.get("result_value"))).append(" |\n\n");
+                        ? "不适用" : percent(real.get("resultValue"))).append(" |\n\n");
         if ("matched".equals(status)) {
             value.append("> 双库分子、分母完全一致。\n\n");
         } else {
             value.append("> 双库概览的分子或分母不一致。");
-            Map<String, Object> diagnosis = objectMap(trial.get("dual_difference_diagnosis"));
+            Map<String, Object> diagnosis = objectMap(trial.get("dualDifferenceDiagnosis"));
             if ("completed".equals(firstText(diagnosis.get("status"), ""))) {
                 value.append("已完成受控的科室和患者明细核对。\n\n");
             } else {
@@ -424,8 +425,8 @@ public class FinalAnswerComposer {
     }
 
     private static boolean isNoSample(Map<String, Object> value) {
-        if (Boolean.TRUE.equals(value.get("no_sample"))) return true;
-        Object denominator = value.get("denominator_count");
+        if (Boolean.TRUE.equals(value.get("noSample"))) return true;
+        Object denominator = value.get("denominatorCount");
         if (denominator instanceof Number number) {
             return number.doubleValue() == 0.0;
         }
@@ -454,8 +455,8 @@ public class FinalAnswerComposer {
     }
 
     private static String period(Map<String, Object> value) {
-        String start = firstText(value.get("stat_start"), value.get("stat_start_time"));
-        String end = firstText(value.get("stat_end"), value.get("stat_end_time"));
+        String start = firstText(value.get("statStart"), value.get("statStartTime"));
+        String end = firstText(value.get("statEnd"), value.get("statEndTime"));
         return start.isBlank() && end.isBlank() ? "" : start + " 至 " + end + "（左闭右开）";
     }
 

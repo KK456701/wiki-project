@@ -116,27 +116,27 @@ public class AgentTraceService {
         List<Map<String, Object>> enhanced = new ArrayList<>();
         for (Map<String, Object> node : nodes) {
             Map<String, Object> value = new LinkedHashMap<>(node);
-            String name = text(value.get("node_name"));
-            FlowStage stage = flowStage(name, text(value.get("node_type")));
-            value.put("node_title", title(name));
-            value.put("processing_summary", processing(name));
-            value.put("flow_stage", stage.id());
-            value.put("flow_stage_title", stage.title());
-            value.put("flow_stage_order", stage.order());
-            value.put("input_data", decode(text(value.get("input_summary"))));
-            Object outputData = decode(text(value.get("output_summary")));
-            value.put("output_data", outputData);
+            String name = text(value.get("nodeName"));
+            FlowStage stage = flowStage(name, text(value.get("nodeType")));
+            value.put("nodeTitle", title(name));
+            value.put("processingSummary", processing(name));
+            value.put("flowStage", stage.id());
+            value.put("flowStageTitle", stage.title());
+            value.put("flowStageOrder", stage.order());
+            value.put("inputData", decode(text(value.get("inputSummary"))));
+            Object outputData = decode(text(value.get("outputSummary")));
+            value.put("outputData", outputData);
             Map<String, Object> readiness = capabilityReadiness(outputData);
             if (!readiness.isEmpty()) {
-                value.put("capability_readiness", readiness);
+                value.put("capabilityReadiness", readiness);
             }
             enhanced.add(value);
         }
         trace.put("nodes", enhanced);
-        trace.put("flow_edges", flowEdges(enhanced));
+        trace.put("flowEdges", flowEdges(enhanced));
         trace.put("evidence", repository.evidence(traceId, principal.hospitalId()));
-        trace.put("trace_version", VERSION);
-        trace.put("timing_summary", timing(enhanced));
+        trace.put("traceVersion", VERSION);
+        trace.put("timingSummary", timing(enhanced));
         return trace;
     }
 
@@ -249,27 +249,27 @@ public class AgentTraceService {
     private static Map<String, Object> capabilityReadiness(Object raw) {
         Map<String, Object> data = evidenceMap(raw);
         if (data.isEmpty()) return Map.of();
-        boolean relevant = data.containsKey("execution_status")
-                || data.containsKey("overview_runtime_eligible")
-                || data.containsKey("sql_status")
-                || data.containsKey("sql_capabilities");
+        boolean relevant = data.containsKey("executionStatus")
+                || data.containsKey("overviewRuntimeEligible")
+                || data.containsKey("sqlStatus")
+                || data.containsKey("sqlCapabilities");
         if (!relevant) return Map.of();
-        Map<String, Object> sqlCapabilities = mapValue(data.get("sql_capabilities"));
-        Map<String, Object> department = mapValue(sqlCapabilities.get("department_detail"));
+        Map<String, Object> sqlCapabilities = mapValue(data.get("sqlCapabilities"));
+        Map<String, Object> department = mapValue(sqlCapabilities.get("departmentDetail"));
         if (department.isEmpty()) department = mapValue(sqlCapabilities.get("department"));
-        Map<String, Object> patient = mapValue(sqlCapabilities.get("patient_detail"));
+        Map<String, Object> patient = mapValue(sqlCapabilities.get("patientDetail"));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("知识治理状态", first(
                 first(
-                        text(data.get("governance_status")),
-                        text(data.get("execution_status"))),
+                        text(data.get("governanceStatus")),
+                        text(data.get("executionStatus"))),
                 "未提供"));
-        String sqlStatus = text(data.get("sql_status"));
+        String sqlStatus = text(data.get("sqlStatus"));
         result.put("SQL展示能力", (sqlStatus != null && !"unavailable".equals(sqlStatus))
-                || Boolean.TRUE.equals(data.get("reference_only")));
+                || Boolean.TRUE.equals(data.get("referenceOnly")));
         result.put("双库概览试算能力",
-                Boolean.TRUE.equals(data.get("overview_runtime_eligible"))
-                        || "available".equals(text(data.get("sql_status"))));
+                Boolean.TRUE.equals(data.get("overviewRuntimeEligible"))
+                        || "available".equals(text(data.get("sqlStatus"))));
         result.put("科室明细诊断能力", validatedCapability(department));
         result.put("患者明细诊断能力", validatedCapability(patient));
         return result;
@@ -291,12 +291,12 @@ public class AgentTraceService {
         if (!(raw instanceof Map<?, ?> source)) return Map.of();
         Map<String, Object> map = new LinkedHashMap<>();
         source.forEach((key, value) -> map.put(String.valueOf(key), value));
-        if (map.containsKey("execution_status")
-                || map.containsKey("overview_runtime_eligible")
-                || map.containsKey("sql_capabilities")) {
+        if (map.containsKey("executionStatus")
+                || map.containsKey("overviewRuntimeEligible")
+                || map.containsKey("sqlCapabilities")) {
             return map;
         }
-        for (String key : List.of("result", "data", "effective_rule")) {
+        for (String key : List.of("result", "data", "effectiveRule")) {
             Map<String, Object> nested = evidenceMap(map.get(key));
             if (!nested.isEmpty()) return nested;
         }
@@ -321,19 +321,19 @@ public class AgentTraceService {
     private static List<Map<String, Object>> flowEdges(List<Map<String, Object>> nodes) {
         List<Map<String, Object>> result = new ArrayList<>();
         java.util.Set<String> nodeIds = nodes.stream()
-                .map(node -> text(node.get("node_id")))
+                .map(node -> text(node.get("nodeId")))
                 .filter(id -> id != null && !id.isBlank())
                 .collect(java.util.stream.Collectors.toSet());
         java.util.Set<String> pairs = new java.util.LinkedHashSet<>();
         for (Map<String, Object> node : nodes) {
-            String from = text(node.get("parent_node_id"));
-            String to = text(node.get("node_id"));
+            String from = text(node.get("parentNodeId"));
+            String to = text(node.get("nodeId"));
             if (from == null || to == null || !nodeIds.contains(from)) continue;
             addFlowEdge(result, pairs, from, to, "parent", "");
         }
         Map<String, List<Map<String, Object>>> lanes = new LinkedHashMap<>();
         for (Map<String, Object> node : nodes) {
-            String lane = first(text(node.get("subtask_id")), "root");
+            String lane = first(text(node.get("subtaskId")), "root");
             lanes.computeIfAbsent(lane, ignored -> new ArrayList<>()).add(node);
         }
         for (List<Map<String, Object>> lane : lanes.values()) {
@@ -341,16 +341,16 @@ public class AgentTraceService {
                     .comparingLong((Map<String, Object> node) ->
                             longValue(node.get("sequence"), Long.MAX_VALUE))
                     .thenComparingLong(node ->
-                            longValue(node.get("started_offset_ms"), Long.MAX_VALUE)));
+                            longValue(node.get("startedOffsetMs"), Long.MAX_VALUE)));
             Map<String, Integer> occurrences = new LinkedHashMap<>();
             for (int index = 0; index < lane.size(); index++) {
                 Map<String, Object> target = lane.get(index);
-                String nodeName = first(text(target.get("node_name")), "node");
+                String nodeName = first(text(target.get("nodeName")), "node");
                 int occurrence = occurrences.merge(nodeName, 1, Integer::sum);
                 if (index == 0) continue;
                 Map<String, Object> source = lane.get(index - 1);
-                String from = text(source.get("node_id"));
-                String to = text(target.get("node_id"));
+                String from = text(source.get("nodeId"));
+                String to = text(target.get("nodeId"));
                 if (from == null || to == null) continue;
                 String edgeType = edgeType(source, target);
                 String label = occurrence > 1 ? "循环 " + occurrence : "";
@@ -370,16 +370,16 @@ public class AgentTraceService {
         String key = from + "→" + to;
         if (!pairs.add(key)) return;
         target.add(eventValues(
-                "from_node_id", from,
-                "to_node_id", to,
-                "edge_type", edgeType,
+                "fromNodeId", from,
+                "toNodeId", to,
+                "edgeType", edgeType,
                 "label", label));
     }
 
     private static String edgeType(
             Map<String, Object> source,
             Map<String, Object> target) {
-        String targetName = first(text(target.get("node_name")), "");
+        String targetName = first(text(target.get("nodeName")), "");
         if (targetName.contains("replan")) return "replan";
         if (List.of("failed", "error").contains(text(target.get("status")))
                 || List.of("failed", "error").contains(text(source.get("status")))) {
@@ -394,7 +394,7 @@ public class AgentTraceService {
                 filters.status(), filters.modelId(), filters.toolName(), filters.failureClass(),
                 filters.limit());
         return Map.of(
-                "hospital_id", principal.hospitalId(),
+                "hospitalId", principal.hospitalId(),
                 "count", runs.size(),
                 "items", runs);
     }
@@ -403,10 +403,10 @@ public class AgentTraceService {
         List<Map<String, Object>> runs = repository.list(
                 principal.hospitalId(), filters.startedAfter(), filters.startedBefore(),
                 filters.status(), filters.modelId(), filters.toolName(), filters.failureClass(), 500);
-        List<String> traceIds = runs.stream().map(value -> text(value.get("trace_id")))
+        List<String> traceIds = runs.stream().map(value -> text(value.get("traceId")))
                 .filter(java.util.Objects::nonNull).toList();
         List<Map<String, Object>> nodes = repository.nodesFor(traceIds);
-        List<Long> durations = runs.stream().map(value -> longValue(value.get("duration_ms"), 0))
+        List<Long> durations = runs.stream().map(value -> longValue(value.get("durationMs"), 0))
                 .sorted().toList();
         Map<String, Integer> statuses = new LinkedHashMap<>();
         Map<String, MutableStats> tools = new LinkedHashMap<>();
@@ -417,46 +417,46 @@ public class AgentTraceService {
         java.util.Set<String> repeated = new java.util.HashSet<>();
         int slowRequests = 0;
         for (Map<String, Object> run : runs) {
-            String status = first(text(run.get("final_status")), "unknown");
+            String status = first(text(run.get("finalStatus")), "unknown");
             statuses.merge(status, 1, Integer::sum);
-            if (longValue(run.get("duration_ms"), 0) >= properties.getTraceSlowRequestMs()) slowRequests++;
-            String day = day(run.get("started_at"));
+            if (longValue(run.get("durationMs"), 0) >= properties.getTraceSlowRequestMs()) slowRequests++;
+            String day = day(run.get("startedAt"));
             trend.computeIfAbsent(day, ignored -> trendRow()).merge("requests", 1L, Long::sum);
         }
         int llmCalls = 0;
         int llmTimeouts = 0;
         int slowLlmCalls = 0;
         for (Map<String, Object> node : nodes) {
-            String traceId = text(node.get("trace_id"));
-            String name = first(text(node.get("node_name")), "");
-            String day = day(node.get("started_at"));
-            long duration = longValue(node.get("duration_ms"), 0);
+            String traceId = text(node.get("traceId"));
+            String name = first(text(node.get("nodeName")), "");
+            String day = day(node.get("startedAt"));
+            long duration = longValue(node.get("durationMs"), 0);
             Map<String, Long> daily = trend.computeIfAbsent(day, ignored -> trendRow());
-            if ("planner_llm".equals(name)) daily.merge("planner_ms", duration, Long::sum);
+            if ("planner_llm".equals(name)) daily.merge("plannerMs", duration, Long::sum);
             if (List.of("final_answer_llm", "executor_llm").contains(name)) {
-                daily.merge("final_answer_ms", duration, Long::sum);
+                daily.merge("finalAnswerMs", duration, Long::sum);
             }
             if ("plan_replan".equals(name)) replans.add(traceId);
-            if ("AGENT_REPEATED_TOOL_CALL".equals(text(node.get("error_code")))) repeated.add(traceId);
+            if ("AGENT_REPEATED_TOOL_CALL".equals(text(node.get("errorCode")))) repeated.add(traceId);
             subtasks.computeIfAbsent(traceId, ignored -> new java.util.HashSet<>())
-                    .add(first(text(node.get("subtask_id")), "root"));
-            String tool = text(node.get("tool_name"));
+                    .add(first(text(node.get("subtaskId")), "root"));
+            String tool = text(node.get("toolName"));
             if (tool != null && !tool.isBlank() && "tool_result".equals(name)) {
                 MutableStats value = tools.computeIfAbsent(tool, ignored -> new MutableStats());
                 value.calls++;
                 value.durationMs += duration;
                 if (List.of("failed", "error").contains(text(node.get("status")))) value.failures++;
             }
-            String model = first(text(node.get("model_id")), text(node.get("llm_model")));
-            if (model != null && !model.isBlank() && "llm".equals(text(node.get("node_type")))) {
+            String model = first(text(node.get("modelId")), text(node.get("llmModel")));
+            if (model != null && !model.isBlank() && "llm".equals(text(node.get("nodeType")))) {
                 MutableStats value = models.computeIfAbsent(model, ignored -> new MutableStats());
                 value.calls++;
                 value.durationMs += duration;
-                value.inputTokens += longValue(node.get("input_tokens"), 0);
-                value.outputTokens += longValue(node.get("output_tokens"), 0);
+                value.inputTokens += longValue(node.get("inputTokens"), 0);
+                value.outputTokens += longValue(node.get("outputTokens"), 0);
                 llmCalls++;
                 if (duration >= properties.getTraceSlowLlmMs()) slowLlmCalls++;
-                if ("TIMEOUT".equals(text(node.get("failure_class")))) {
+                if ("TIMEOUT".equals(text(node.get("failureClass")))) {
                     value.timeouts++;
                     llmTimeouts++;
                 }
@@ -468,7 +468,7 @@ public class AgentTraceService {
                 .filter(entry -> entry.getValue().stream().filter(value -> !"root".equals(value)).count() > 1)
                 .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toSet());
         Map<String, Long> durationByTrace = runs.stream().collect(java.util.stream.Collectors.toMap(
-                value -> text(value.get("trace_id")), value -> longValue(value.get("duration_ms"), 0),
+                value -> text(value.get("traceId")), value -> longValue(value.get("durationMs"), 0),
                 (left, right) -> left));
         double toolFailureRate = tools.values().stream().mapToInt(value -> value.failures).sum()
                 / (double) Math.max(1, tools.values().stream().mapToInt(value -> value.calls).sum());
@@ -479,29 +479,29 @@ public class AgentTraceService {
         if (toolFailureRate >= properties.getTraceToolFailureWarningRate()) warnings.add(warning("TOOL_FAILURE_RATE", "工具失败率达到 " + percent(toolFailureRate) + "。"));
         if (timeoutRate >= properties.getTraceTimeoutWarningRate()) warnings.add(warning("MODEL_TIMEOUT_RATE", "模型超时率达到 " + percent(timeoutRate) + "。"));
         return eventValues(
-                "hospital_id", principal.hospitalId(),
-                "request_count", total,
-                "success_rate", ratio(statuses.getOrDefault("success", 0), total),
-                "incomplete_rate", ratio(total - statuses.getOrDefault("success", 0), total),
-                "latency_ms", Map.of("average", average, "p50", percentile(durations, .50),
+                "hospitalId", principal.hospitalId(),
+                "requestCount", total,
+                "successRate", ratio(statuses.getOrDefault("success", 0), total),
+                "incompleteRate", ratio(total - statuses.getOrDefault("success", 0), total),
+                "latencyMs", Map.of("average", average, "p50", percentile(durations, .50),
                         "p95", percentile(durations, .95), "p99", percentile(durations, .99)),
-                "status_counts", statuses,
+                "statusCounts", statuses,
                 "trend", trend.entrySet().stream().map(entry -> eventValues(
                         "date", entry.getKey(), "requests", entry.getValue().get("requests"),
-                        "planner_ms", entry.getValue().get("planner_ms"),
-                        "final_answer_ms", entry.getValue().get("final_answer_ms"))).toList(),
-                "tools", stats(tools, "tool_name"), "models", stats(models, "model_id"),
-                "repeated_call_stop_rate", ratio(repeated.size(), total),
-                "replan_rate", ratio(replans.size(), total),
-                "compound_request_count", compound.size(),
-                "compound_average_duration_ms", compound.isEmpty() ? 0 : Math.round(
+                        "plannerMs", entry.getValue().get("plannerMs"),
+                        "finalAnswerMs", entry.getValue().get("finalAnswerMs"))).toList(),
+                "tools", stats(tools, "toolName"), "models", stats(models, "modelId"),
+                "repeatedCallStopRate", ratio(repeated.size(), total),
+                "replanRate", ratio(replans.size(), total),
+                "compoundRequestCount", compound.size(),
+                "compoundAverageDurationMs", compound.isEmpty() ? 0 : Math.round(
                         compound.stream().mapToLong(value -> durationByTrace.getOrDefault(value, 0L)).average().orElse(0)),
                 "warnings", warnings,
                 "thresholds", Map.of(
-                        "slow_request_ms", properties.getTraceSlowRequestMs(),
-                        "slow_llm_ms", properties.getTraceSlowLlmMs(),
-                        "tool_failure_warning_rate", properties.getTraceToolFailureWarningRate(),
-                        "timeout_warning_rate", properties.getTraceTimeoutWarningRate()));
+                        "slowRequestMs", properties.getTraceSlowRequestMs(),
+                        "slowLlmMs", properties.getTraceSlowLlmMs(),
+                        "toolFailureWarningRate", properties.getTraceToolFailureWarningRate(),
+                        "timeoutWarningRate", properties.getTraceTimeoutWarningRate()));
     }
 
     private void finish(
@@ -518,29 +518,29 @@ public class AgentTraceService {
     }
 
     private void recordNode(String traceId, Map<String, Object> event) {
-        long ended = longValue(event.get("ended_at_epoch_ms"), System.currentTimeMillis());
-        long duration = Math.max(0, longValue(event.get("duration_ms"), 0));
-        long started = longValue(event.get("started_at_epoch_ms"), ended - duration);
+        long ended = longValue(event.get("endedAtEpochMs"), System.currentTimeMillis());
+        long duration = Math.max(0, longValue(event.get("durationMs"), 0));
+        long started = longValue(event.get("startedAtEpochMs"), ended - duration);
         long traceStart = starts.getOrDefault(traceId, started);
         AtomicInteger sequence = sequences.computeIfAbsent(traceId, ignored -> new AtomicInteger());
-        String errorCode = text(event.get("error_code"));
+        String errorCode = text(event.get("errorCode"));
         try {
             repository.node(new AgentTraceRepository.TraceNode(
-                    traceId, first(text(event.get("node_id")), id("NODE_")),
-                    first(text(event.get("node_name")), "unknown"),
-                    first(text(event.get("node_type")), "code"),
+                    traceId, first(text(event.get("nodeId")), id("NODE_")),
+                    first(text(event.get("nodeName")), "unknown"),
+                    first(text(event.get("nodeType")), "code"),
                     first(text(event.get("status")), "success"),
                     safeJson(event.get("input")), safeJson(event.get("output")),
-                    errorCode, shorten(text(event.get("error_message")), 2000),
-                    text(event.get("tool_name")), text(event.get("db_source")),
-                    text(event.get("sql_id")), text(event.get("run_id")),
-                    text(event.get("rule_id")), text(event.get("model_id")),
-                    at(started), at(ended), duration, text(event.get("parent_node_id")),
-                    first(text(event.get("subtask_id")), "root"), sequence.incrementAndGet(),
+                    errorCode, shorten(text(event.get("errorMessage")), 2000),
+                    text(event.get("toolName")), text(event.get("dbSource")),
+                    text(event.get("sqlId")), text(event.get("runId")),
+                    text(event.get("ruleId")), text(event.get("modelId")),
+                    at(started), at(ended), duration, text(event.get("parentNodeId")),
+                    first(text(event.get("subtaskId")), "root"), sequence.incrementAndGet(),
                     Math.max(0, started - traceStart), duration,
-                    text(event.get("capability")), first(text(event.get("failure_class")), classify(errorCode)),
-                    integer(event.get("input_tokens")), integer(event.get("output_tokens")),
-                    Boolean.TRUE.equals(event.get("cache_reused")), integer(event.get("retry_count"), 0)));
+                    text(event.get("capability")), first(text(event.get("failureClass")), classify(errorCode)),
+                    integer(event.get("inputTokens")), integer(event.get("outputTokens")),
+                    Boolean.TRUE.equals(event.get("cacheReused")), integer(event.get("retryCount"), 0)));
         } catch (RuntimeException ignored) {
             // Trace 写入失败不能影响回答。
         }
@@ -584,19 +584,19 @@ public class AgentTraceService {
      * 用户通过“查看链路”读取，既满足实时反馈，也避免同一份大上下文在 SSE 中反复发送。</p>
      */
     private static Map<String, Object> stageUpdate(String traceId, Map<String, Object> event) {
-        String nodeName = text(event.get("node_name"));
+        String nodeName = text(event.get("nodeName"));
         Map<String, Object> value = eventValues(
                 "event", "stage_update",
-                "trace_id", traceId,
-                "node_name", nodeName,
-                "node_type", first(text(event.get("node_type")), "code"),
+                "traceId", traceId,
+                "nodeName", nodeName,
+                "nodeType", first(text(event.get("nodeType")), "code"),
                 "status", first(text(event.get("status")), "success"),
                 "message", title(nodeName),
-                "duration_ms", longValue(event.get("duration_ms"), 0),
-                "tool_name", text(event.get("tool_name")),
+                "durationMs", longValue(event.get("durationMs"), 0),
+                "toolName", text(event.get("toolName")),
                 "capability", text(event.get("capability")),
-                "model_id", text(event.get("model_id")),
-                "subtask_id", text(event.get("subtask_id")));
+                "modelId", text(event.get("modelId")),
+                "subtaskId", text(event.get("subtaskId")));
         return Map.copyOf(value);
     }
 
@@ -612,15 +612,15 @@ public class AgentTraceService {
     private static Map<String, Object> timing(List<Map<String, Object>> nodes) {
         long llm = 0, tool = 0, code = 0, storage = 0;
         for (Map<String, Object> node : nodes) {
-            long duration = longValue(node.get("duration_ms"), 0);
-            switch (text(node.get("node_type"))) {
+            long duration = longValue(node.get("durationMs"), 0);
+            switch (text(node.get("nodeType"))) {
                 case "llm" -> llm += duration;
                 case "tool", "database" -> tool += duration;
                 case "storage" -> storage += duration;
                 default -> code += duration;
             }
         }
-        return Map.of("llm_ms", llm, "tool_ms", tool, "code_ms", code, "storage_ms", storage);
+        return Map.of("llmMs", llm, "toolMs", tool, "codeMs", code, "storageMs", storage);
     }
 
     public static LocalDateTime parseTime(String value) {
@@ -637,16 +637,16 @@ public class AgentTraceService {
         return values.entrySet().stream().map(entry -> eventValues(
                 nameKey, entry.getKey(), "calls", entry.getValue().calls,
                 "failures", entry.getValue().failures, "timeouts", entry.getValue().timeouts,
-                "duration_ms", entry.getValue().durationMs,
-                "input_tokens", entry.getValue().inputTokens,
-                "output_tokens", entry.getValue().outputTokens)).toList();
+                "durationMs", entry.getValue().durationMs,
+                "inputTokens", entry.getValue().inputTokens,
+                "outputTokens", entry.getValue().outputTokens)).toList();
     }
 
     private static Map<String, Long> trendRow() {
         Map<String, Long> value = new LinkedHashMap<>();
         value.put("requests", 0L);
-        value.put("planner_ms", 0L);
-        value.put("final_answer_ms", 0L);
+        value.put("plannerMs", 0L);
+        value.put("finalAnswerMs", 0L);
         return value;
     }
 
@@ -792,10 +792,15 @@ public class AgentTraceService {
     }
 
     private static boolean sensitiveKey(String key) {
+        // key 已先 toLowerCase：驼峰键会变成无分隔符小写（sqlPreview -> sqlpreview），
+        // 因此黑名单同时覆盖 snake 与驼峰两种写法，脱敏能力不因改造回退。
         return key.contains("password") || key.contains("secret")
-                || List.of("authorization", "api_key", "token", "access_token", "refresh_token",
-                        "sql", "sql_text", "sql_preview", "raw_sql", "generated_sql", "raw_rows", "rows",
-                        "patient_rows").contains(key);
+                || List.of("authorization", "api_key", "apikey", "token",
+                        "access_token", "accesstoken", "refresh_token", "refreshtoken",
+                        "sql", "sql_text", "sqltext", "sql_preview", "sqlpreview",
+                        "raw_sql", "rawsql", "generated_sql", "generatedsql",
+                        "raw_rows", "rawrows", "rows",
+                        "patient_rows", "patientrows").contains(key);
     }
 
     private static LocalDateTime at(long epochMs) {

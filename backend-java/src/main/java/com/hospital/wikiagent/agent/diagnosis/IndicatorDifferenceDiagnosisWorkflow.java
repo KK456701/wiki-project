@@ -151,36 +151,36 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
         Map<String, Object> caliber = caliberLayer(execution);
         addLayer(execution, caliber);
-        if (Boolean.TRUE.equals(caliber.get("cause_confirmed"))) {
+        if (Boolean.TRUE.equals(caliber.get("causeConfirmed"))) {
             return finish(execution, "CALIBER_CAUSE_CONFIRMED", 4,
                     text(caliber.get("conclusion")));
         }
 
         Map<String, Object> recordSet = recordSetLayer(execution);
         addLayer(execution, recordSet);
-        if (Boolean.TRUE.equals(recordSet.get("cause_confirmed"))
-                && Boolean.TRUE.equals(recordSet.get("difference_fully_explained"))) {
+        if (Boolean.TRUE.equals(recordSet.get("causeConfirmed"))
+                && Boolean.TRUE.equals(recordSet.get("differenceFullyExplained"))) {
             return finish(execution, "RECORD_SET_DIFF_CONFIRMED", 5,
                     text(recordSet.get("conclusion")));
         }
 
         Map<String, Object> quality = qualityLayer(execution);
         addLayer(execution, quality);
-        if (Boolean.TRUE.equals(quality.get("cause_confirmed"))) {
+        if (Boolean.TRUE.equals(quality.get("causeConfirmed"))) {
             return finish(execution, "DATA_QUALITY_CAUSE_CONFIRMED", 6,
                     text(quality.get("conclusion")));
         }
-        if (Boolean.TRUE.equals(recordSet.get("cause_confirmed"))) {
+        if (Boolean.TRUE.equals(recordSet.get("causeConfirmed"))) {
             return finish(execution, "RECORD_SET_DIFF_CONFIRMED", 6,
                     text(recordSet.get("conclusion")));
         }
-        if (Boolean.TRUE.equals(caliber.get("cause_likely"))) {
+        if (Boolean.TRUE.equals(caliber.get("causeLikely"))) {
             return finish(execution, "CALIBER_CAUSE_LIKELY", 6,
-                    text(caliber.get("likely_conclusion")));
+                    text(caliber.get("likelyConclusion")));
         }
 
         boolean externalEvidence = hasExternalValues(execution) || rowLevelAvailable(execution.uploadComparison);
-        boolean unresolvedQualityAnomaly = longValue(quality.get("affected_record_count")) > 0;
+        boolean unresolvedQualityAnomaly = longValue(quality.get("affectedRecordCount")) > 0;
         String conclusionCode = externalEvidence && !unresolvedQualityAnomaly
                 ? "SYSTEM_RESULT_VERIFIED"
                 : "INSUFFICIENT_EXTERNAL_EVIDENCE";
@@ -196,22 +196,22 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         long started = System.nanoTime();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("layer", 1);
-        data.put("node_name", "诊断范围预检");
+        data.put("nodeName", "诊断范围预检");
         data.put("status", "passed");
-        data.put("rule_id", execution.input.ruleId());
-        data.put("hospital_id", execution.context.agentContext().hospitalId());
-        data.put("stat_start", execution.input.statStartTime());
-        data.put("stat_end", execution.input.statEndTime());
-        data.put("period_field", periodBusinessField(execution.rule));
-        data.put("deduplication_key", deduplicationField(execution.rule));
-        data.put("claimed_values", claimedValues(execution.input.issueDescription()));
+        data.put("ruleId", execution.input.ruleId());
+        data.put("hospitalId", execution.context.agentContext().hospitalId());
+        data.put("statStart", execution.input.statStartTime());
+        data.put("statEnd", execution.input.statEndTime());
+        data.put("periodField", periodBusinessField(execution.rule));
+        data.put("deduplicationKey", deduplicationField(execution.rule));
+        data.put("claimedValues", claimedValues(execution.input.issueDescription()));
 
         if (execution.input.fileKey() == null) {
-            data.put("file_evidence", "not_provided");
+            data.put("fileEvidence", "not_provided");
             if (claimedValues(execution.input.issueDescription()).isEmpty()) {
                 data.put("status", "blocked");
                 data.put("blocking", true);
-                data.put("reason_code", "EXTERNAL_RESULT_MISSING");
+                data.put("reasonCode", "EXTERNAL_RESULT_MISSING");
                 data.put("message", "请提供用户侧分子、分母、指标率或可核对的 Excel 文件。");
             }
         } else {
@@ -220,29 +220,29 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             if (!inspected.ok()) {
                 data.put("status", "blocked");
                 data.put("blocking", true);
-                data.put("reason_code", inspected.code());
+                data.put("reasonCode", inspected.code());
                 data.put("message", inspected.summary());
             } else {
                 execution.initialUploadInspection = inspected;
-                data.put("file_evidence", Map.of(
-                        "file_key", execution.input.fileKey(),
-                        "file_name", inspected.data().getOrDefault("file_name", ""),
-                        "row_count", inspected.data().getOrDefault("row_count", 0),
+                data.put("fileEvidence", Map.of(
+                        "fileKey", execution.input.fileKey(),
+                        "fileName", inspected.data().getOrDefault("fileName", ""),
+                        "rowCount", inspected.data().getOrDefault("rowCount", 0),
                         "columns", inspected.data().getOrDefault("columns", List.of()),
-                        "file_evidence_type", inspected.data().getOrDefault("file_evidence_type", "unknown"),
-                        "uploaded_rule_id", inspected.data().getOrDefault("uploaded_rule_id", ""),
-                        "uploaded_stat_period", inspected.data().getOrDefault("uploaded_stat_period", ""),
-                        "comparison_level", inspected.data().getOrDefault("comparison_level", "none")));
-                String fileRuleId = text(inspected.data().get("uploaded_rule_id"));
+                        "fileEvidenceType", inspected.data().getOrDefault("fileEvidenceType", "unknown"),
+                        "uploadedRuleId", inspected.data().getOrDefault("uploadedRuleId", ""),
+                        "uploadedStatPeriod", inspected.data().getOrDefault("uploadedStatPeriod", ""),
+                        "comparisonLevel", inspected.data().getOrDefault("comparisonLevel", "none")));
+                String fileRuleId = text(inspected.data().get("uploadedRuleId"));
                 if (!fileRuleId.isBlank() && !execution.input.ruleId().equalsIgnoreCase(fileRuleId)) {
                     data.put("status", "blocked");
                     data.put("blocking", true);
-                    data.put("reason_code", "FILE_INDICATOR_MISMATCH");
+                    data.put("reasonCode", "FILE_INDICATOR_MISMATCH");
                     data.put("message", "上传文件指标编号与当前指标不一致。");
                 }
             }
         }
-        data.put("duration_ms", elapsedMs(started));
+        data.put("durationMs", elapsedMs(started));
         return Map.copyOf(data);
     }
 
@@ -255,7 +255,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         List<Map<String, Object>> checks = new ArrayList<>();
         Map<String, Object> fields = objectMap(execution.mapping.get("fields"));
         Map<String, Object> contracts = objectMap(
-                objectMap(execution.rule.get("field_contract")).get("business_fields"));
+                objectMap(execution.rule.get("fieldContract")).get("business_fields"));
         DbHubProperties.Source businessSource = dbHub.businessSource();
         String database = businessSource.getDatabaseName();
         String schema = businessSource.getSchemaName();
@@ -342,22 +342,22 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             return prepared;
         }
         ToolResult trial = sqlTools.trial(
-                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sql_id"))),
+                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sqlId"))),
                 execution.context);
         Map<String, Object> layer = new LinkedHashMap<>(layer(
                 3, "执行当前口径", trial.ok() ? "passed" : "failed",
                 !trial.ok(), false,
                 List.of(check(trial.code(), trial.ok() ? "pass" : "fail", trial.summary())),
                 elapsedMs(started)));
-        layer.put("sql_id", prepared.data().get("sql_id"));
+        layer.put("sqlId", prepared.data().get("sqlId"));
         if (trial.ok()) {
-            layer.put("run_id", trial.data().get("run_id"));
-            layer.put("result_value", trial.data().get("result_value"));
-            layer.put("numerator_count", trial.data().get("numerator_count"));
-            layer.put("denominator_count", trial.data().get("denominator_count"));
+            layer.put("runId", trial.data().get("runId"));
+            layer.put("resultValue", trial.data().get("resultValue"));
+            layer.put("numeratorCount", trial.data().get("numeratorCount"));
+            layer.put("denominatorCount", trial.data().get("denominatorCount"));
             execution.baseline = trial;
-            execution.baselineSqlId = text(prepared.data().get("sql_id"));
-            execution.baselineRunId = text(trial.data().get("run_id"));
+            execution.baselineSqlId = text(prepared.data().get("sqlId"));
+            execution.baselineRunId = text(trial.data().get("runId"));
         }
         execution.baselineLayer = Map.copyOf(layer);
         return trial;
@@ -379,7 +379,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             DiagnosticExecution execution,
             ToolResult fileEvidence) {
         if (fileEvidence == null) return Map.of();
-        String uploadedPeriod = text(fileEvidence.data().get("uploaded_stat_period"));
+        String uploadedPeriod = text(fileEvidence.data().get("uploadedStatPeriod"));
         if (uploadedPeriod.isBlank()) return Map.of();
         List<LocalDate> dates = periodDates(uploadedPeriod);
         if (dates.size() < 2) return Map.of();
@@ -405,8 +405,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         List<Map<String, Object>> profiles = rules.diagnosticProfiles(
                 execution.input.ruleId(), execution.context.agentContext().hospitalId()).stream()
                 .filter(profile -> appliesToPeriod(profile, execution.start.toLocalDate(), execution.end.toLocalDate()))
-                .filter(profile -> !Boolean.TRUE.equals(profile.get("baseline_equivalent")))
-                .sorted(Comparator.comparing(profile -> caliberPriority(text(profile.get("source_level")))))
+                .filter(profile -> !Boolean.TRUE.equals(profile.get("baselineEquivalent")))
+                .sorted(Comparator.comparing(profile -> caliberPriority(text(profile.get("sourceLevel")))))
                 .limit(MAX_CALIBER_CANDIDATES)
                 .toList();
 
@@ -417,17 +417,17 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         for (Map<String, Object> profile : profiles) {
             Map<String, Object> candidate = runCandidate(profile, execution);
             candidates.add(candidate);
-            if (Boolean.TRUE.equals(candidate.get("cause_confirmed"))) {
+            if (Boolean.TRUE.equals(candidate.get("causeConfirmed"))) {
                 causeConfirmed = true;
                 conclusion = "已确认用户结果与候选口径“"
                         + text(profile.get("label")) + "”一致，且用户描述或逐条记录证据支持该口径差异。";
                 break;
             }
-            if (!causeLikely && Boolean.TRUE.equals(candidate.get("cause_likely"))) {
+            if (!causeLikely && Boolean.TRUE.equals(candidate.get("causeLikely"))) {
                 causeLikely = true;
                 likelyConclusion = "候选口径“" + text(profile.get("label"))
                         + "”与用户结果部分一致，且口径描述或文件字段支持该方向；"
-                        + "仍有" + dimensionLabels(strings(candidate.get("mismatched_dimensions")))
+                        + "仍有" + dimensionLabels(strings(candidate.get("mismatchedDimensions")))
                         + "差异需要继续核对。";
             }
         }
@@ -436,13 +436,13 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 4, "试运行候选口径",
                 causeConfirmed ? "confirmed" : causeLikely ? "likely" : "completed",
                 false, causeConfirmed, List.of(), elapsedMs(started)));
-        result.put("candidate_limit", MAX_CALIBER_CANDIDATES);
-        result.put("candidate_count", candidates.size());
+        result.put("candidateLimit", MAX_CALIBER_CANDIDATES);
+        result.put("candidateCount", candidates.size());
         result.put("candidates", candidates);
-        result.put("cause_confirmed", causeConfirmed);
-        result.put("cause_likely", causeLikely);
+        result.put("causeConfirmed", causeConfirmed);
+        result.put("causeLikely", causeLikely);
         if (!conclusion.isBlank()) result.put("conclusion", conclusion);
-        if (!likelyConclusion.isBlank()) result.put("likely_conclusion", likelyConclusion);
+        if (!likelyConclusion.isBlank()) result.put("likelyConclusion", likelyConclusion);
         return Map.copyOf(result);
     }
 
@@ -450,12 +450,12 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             Map<String, Object> profile,
             DiagnosticExecution execution) {
         Map<String, Object> result = new LinkedHashMap<>();
-        String profileId = text(profile.get("profile_id"));
-        result.put("profile_id", profileId);
+        String profileId = text(profile.get("profileId"));
+        result.put("profileId", profileId);
         result.put("label", profile.getOrDefault("label", profileId));
-        result.put("source_level", profile.getOrDefault("source_level", ""));
-        result.put("source_version", profile.getOrDefault("source_version", ""));
-        result.put("difference_dimensions", profile.getOrDefault("difference_dimensions", List.of()));
+        result.put("sourceLevel", profile.getOrDefault("sourceLevel", ""));
+        result.put("sourceVersion", profile.getOrDefault("sourceVersion", ""));
+        result.put("differenceDimensions", profile.getOrDefault("differenceDimensions", List.of()));
 
         ToolResult prepared = sqlTools.prepareDiagnostic(
                 new IndicatorSqlTools.PrepareInput(
@@ -463,8 +463,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                         execution.input.statStartTime(),
                         execution.input.statEndTime()),
                 profileId,
-                objectMap(profile.get("parameter_overrides")),
-                objectMap(profile.get("field_role_overrides")),
+                objectMap(profile.get("parameterOverrides")),
+                objectMap(profile.get("fieldRoleOverrides")),
                 execution.context);
         if (!prepared.ok()) {
             result.put("executable", false);
@@ -473,7 +473,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             return Map.copyOf(result);
         }
         ToolResult trial = sqlTools.trial(
-                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sql_id"))),
+                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sqlId"))),
                 execution.context);
         if (!trial.ok()) {
             result.put("executable", true);
@@ -483,26 +483,26 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         }
         result.put("executable", true);
         result.put("status", "completed");
-        result.put("sql_id", prepared.data().get("sql_id"));
-        result.put("run_id", trial.data().get("run_id"));
-        result.put("result_value", trial.data().get("result_value"));
-        result.put("numerator_count", trial.data().get("numerator_count"));
-        result.put("denominator_count", trial.data().get("denominator_count"));
+        result.put("sqlId", prepared.data().get("sqlId"));
+        result.put("runId", trial.data().get("runId"));
+        result.put("resultValue", trial.data().get("resultValue"));
+        result.put("numeratorCount", trial.data().get("numeratorCount"));
+        result.put("denominatorCount", trial.data().get("denominatorCount"));
 
         CandidateMatch match = compareCandidateToExternal(trial.data(), execution);
         boolean differsFromBaseline = differs(trial.data(), execution.baseline.data());
         boolean keywordEvidence = keywordsMatch(
-                profile.get("evidence_keywords"), execution.input.issueDescription());
+                profile.get("evidenceKeywords"), execution.input.issueDescription());
         boolean fileSchemaEvidence = execution.initialUploadInspection != null
                 && keywordsMatch(
-                        profile.get("evidence_keywords"),
+                        profile.get("evidenceKeywords"),
                         String.valueOf(execution.initialUploadInspection.data().getOrDefault(
                                 "columns", List.of())));
         boolean rowEvidence = false;
         if (execution.input.fileKey() != null && detailExport(execution.initialUploadInspection)) {
             ToolResult comparison = analyzeUploadAgainst(trial, execution);
             rowEvidence = rowSetsEqual(comparison.data());
-            result.put("row_evidence", safeRowSummary(comparison.data()));
+            result.put("rowEvidence", safeRowSummary(comparison.data()));
         }
         boolean semanticEvidence = keywordEvidence || fileSchemaEvidence;
         boolean confirmed = differsFromBaseline
@@ -522,25 +522,25 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 : likely
                         ? "likely"
                         : "partial".equals(match.level()) ? "possible" : "none";
-        result.put("match_level", match.level());
-        result.put("matching_dimensions", match.matchingDimensions());
-        result.put("mismatched_dimensions", match.mismatchedDimensions());
-        result.put("metric_differences", match.metricDifferences());
-        result.put("external_result_match", "exact".equals(match.level()));
-        result.put("external_partial_match", "partial".equals(match.level()));
-        result.put("differs_from_baseline", differsFromBaseline);
-        result.put("keyword_evidence", keywordEvidence);
-        result.put("file_schema_evidence", fileSchemaEvidence);
-        result.put("row_evidence_confirmed", rowEvidence);
-        result.put("cause_confirmed", confirmed);
-        result.put("cause_likely", likely);
-        result.put("cause_likelihood", causeLikelihood);
+        result.put("matchLevel", match.level());
+        result.put("matchingDimensions", match.matchingDimensions());
+        result.put("mismatchedDimensions", match.mismatchedDimensions());
+        result.put("metricDifferences", match.metricDifferences());
+        result.put("externalResultMatch", "exact".equals(match.level()));
+        result.put("externalPartialMatch", "partial".equals(match.level()));
+        result.put("differsFromBaseline", differsFromBaseline);
+        result.put("keywordEvidence", keywordEvidence);
+        result.put("fileSchemaEvidence", fileSchemaEvidence);
+        result.put("rowEvidenceConfirmed", rowEvidence);
+        result.put("causeConfirmed", confirmed);
+        result.put("causeLikely", likely);
+        result.put("causeLikelihood", causeLikelihood);
         if (likely) {
-            result.put("evidence_limit",
+            result.put("evidenceLimit",
                     "候选口径与外部结果部分一致，且存在口径语义证据；"
                             + "未匹配维度仍需通过逐条记录或数据质量检查解释。");
         } else if ("partial".equals(match.level())) {
-            result.put("evidence_limit",
+            result.put("evidenceLimit",
                     "候选结果只命中部分数值，且证据不足；不能仅凭单个或未标注数值相同确认原因。");
         }
         return Map.copyOf(result);
@@ -563,28 +563,28 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                     elapsedMs(started));
         }
 
-        long both = longValue(data.get("both_count"));
-        long systemOnly = longValue(data.get("system_only_count"));
-        long uploadedOnly = longValue(data.get("uploaded_only_count"));
-        long fieldDiff = longValue(data.get("field_difference_count"));
-        long decisionDiff = longValue(data.get("decision_difference_count"));
+        long both = longValue(data.get("bothCount"));
+        long systemOnly = longValue(data.get("systemOnlyCount"));
+        long uploadedOnly = longValue(data.get("uploadedOnlyCount"));
+        long fieldDiff = longValue(data.get("fieldDifferenceCount"));
+        long decisionDiff = longValue(data.get("decisionDifferenceCount"));
         // 字段差异和达标判定差异可能发生在同一条已匹配记录上，使用最大值避免重复计数。
         long differences = systemOnly + uploadedOnly + Math.max(fieldDiff, decisionDiff);
-        List<String> findings = strings(data.get("confirmed_findings"));
+        List<String> findings = strings(data.get("confirmedFindings"));
         boolean confirmed = differences > 0;
         boolean fullyExplained = recordDifferencesReconcileAggregates(data);
         Map<String, Object> result = new LinkedHashMap<>(layer(
                 5, "核对记录集合", confirmed ? "confirmed" : "passed",
                 false, confirmed, List.of(), elapsedMs(started)));
-        result.put("both_count", both);
-        result.put("system_only_count", systemOnly);
-        result.put("uploaded_only_count", uploadedOnly);
-        result.put("field_difference_count", fieldDiff);
-        result.put("decision_difference_count", decisionDiff);
-        result.put("affected_record_count", differences);
-        result.put("confirmed_findings", findings);
-        result.put("cause_confirmed", confirmed);
-        result.put("difference_fully_explained", confirmed && fullyExplained);
+        result.put("bothCount", both);
+        result.put("systemOnlyCount", systemOnly);
+        result.put("uploadedOnlyCount", uploadedOnly);
+        result.put("fieldDifferenceCount", fieldDiff);
+        result.put("decisionDifferenceCount", decisionDiff);
+        result.put("affectedRecordCount", differences);
+        result.put("confirmedFindings", findings);
+        result.put("causeConfirmed", confirmed);
+        result.put("differenceFullyExplained", confirmed && fullyExplained);
         result.put("conclusion", confirmed
                 ? "已通过逐条标识确认双方记录集合或达标判定存在差异，共影响至少 "
                         + differences + " 条记录"
@@ -598,18 +598,18 @@ public class IndicatorDifferenceDiagnosisWorkflow {
      * 用集合差和达标分类差重新计算汇总差值，防止仅凭“发现若干不同记录”就提前短路。
      */
     private static boolean recordDifferencesReconcileAggregates(Map<String, Object> data) {
-        long systemCount = longValue(data.get("system_count"));
-        long uploadedCount = longValue(data.get("uploaded_count"));
-        long systemOnly = longValue(data.get("system_only_count"));
-        long uploadedOnly = longValue(data.get("uploaded_only_count"));
+        long systemCount = longValue(data.get("systemCount"));
+        long uploadedCount = longValue(data.get("uploadedCount"));
+        long systemOnly = longValue(data.get("systemOnlyCount"));
+        long uploadedOnly = longValue(data.get("uploadedOnlyCount"));
         boolean denominatorExplained =
                 systemCount - uploadedCount == systemOnly - uploadedOnly;
 
-        long systemNumerator = longValue(data.get("system_numerator_count"));
-        long uploadedNumerator = longValue(data.get("uploaded_numerator_count"));
-        long systemOnlyNumerator = longValue(data.get("system_only_numerator_count"));
-        long uploadedOnlyNumerator = longValue(data.get("uploaded_only_numerator_count"));
-        long classificationDiff = longValue(data.get("classification_difference_count"));
+        long systemNumerator = longValue(data.get("systemNumeratorCount"));
+        long uploadedNumerator = longValue(data.get("uploadedNumeratorCount"));
+        long systemOnlyNumerator = longValue(data.get("systemOnlyNumeratorCount"));
+        long uploadedOnlyNumerator = longValue(data.get("uploadedOnlyNumeratorCount"));
+        long classificationDiff = longValue(data.get("classificationDifferenceCount"));
         // 没有分类方向时，只能在不存在分类差异时证明分子差值被单边记录完整解释。
         boolean numeratorExplained = classificationDiff == 0
                 && systemNumerator - uploadedNumerator
@@ -629,7 +629,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             Map<String, Object> checkResult = executeQualityRule(qualityRule, execution);
             checks.add(checkResult);
             if ("confirmed".equals(checkResult.get("status"))) {
-                affected += longValue(checkResult.get("affected_count"));
+                affected += longValue(checkResult.get("affectedCount"));
             }
         }
         boolean hasAnomaly = affected > 0;
@@ -637,9 +637,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         Map<String, Object> result = new LinkedHashMap<>(layer(
                 6, "检查数据质量", hasAnomaly ? "warning" : "passed",
                 false, linkedToDifference, checks, elapsedMs(started)));
-        result.put("quality_rule_count", checks.size());
-        result.put("affected_record_count", affected);
-        result.put("cause_confirmed", linkedToDifference);
+        result.put("qualityRuleCount", checks.size());
+        result.put("affectedRecordCount", affected);
+        result.put("causeConfirmed", linkedToDifference);
         result.put("conclusion", linkedToDifference
                 ? "已确认逐条差异与受控数据质量异常相交，共影响 " + affected + " 条记录。"
                 : hasAnomaly
@@ -670,7 +670,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         }
         if (sql.isBlank()) {
             return Map.of(
-                    "check_id", id,
+                    "checkId", id,
                     "type", type,
                     "status", "not_executable",
                     "message", "质量规则包含未知类型、未知字段或缺少安全关联，未执行。");
@@ -679,14 +679,14 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             List<Map<String, Object>> rows = businessQuery.execute(sql);
             long count = rows.isEmpty() ? 0 : longValue(valueIgnoreCaseObject(rows.get(0), "issue_count"));
             return Map.of(
-                    "check_id", id,
+                    "checkId", id,
                     "type", type,
                     "status", count > 0 ? "confirmed" : "passed",
-                    "affected_count", count,
+                    "affectedCount", count,
                     "description", text(qualityRule.get("description")));
         } catch (RuntimeException exception) {
             return Map.of(
-                    "check_id", id,
+                    "checkId", id,
                     "type", type,
                     "status", "failed",
                     "message", "质量检查无法通过 DBHub 完成。");
@@ -738,7 +738,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
     private QueryScope queryScope(DiagnosticExecution execution, Collection<String> checkedFields) {
         PhysicalField main = new PhysicalField(
-                text(execution.mapping.get("main_table")), "");
+                text(execution.mapping.get("mainTable")), "");
         if (!safeIdentifier(main.table())) throw new IllegalArgumentException("主表无效");
         Set<String> tables = new LinkedHashSet<>();
         tables.add(main.table());
@@ -772,7 +772,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
         PhysicalField hospital = requireField("hospital_id", execution.mapping);
         PhysicalField period = requireField(periodBusinessField(execution.rule), execution.mapping);
-        Map<String, Object> params = objectMap(execution.rule.get("effective_params"));
+        Map<String, Object> params = objectMap(execution.rule.get("effectiveParams"));
         Object hospitalValue = firstPresent(
                 params.get("hospital_scope_value"),
                 params.get("hospital_soid"),
@@ -797,9 +797,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         };
         execution.context.runState().reportProgress(new AgentRunState.WorkflowProgress(
                 "difference_diagnosis_layer_" + number,
-                text(layer.get("node_name")),
+                text(layer.get("nodeName")),
                 traceStatus,
-                longValue(layer.get("duration_ms")),
+                longValue(layer.get("durationMs")),
                 layer));
     }
 
@@ -816,11 +816,11 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         // 不同层的异常集合可能重叠。报告没有患者级集合交集时取最大确认值，不能相加后
         // 夸大影响记录数。
         long affected = execution.layers.stream()
-                .mapToLong(layer -> longValue(layer.get("affected_record_count")))
+                .mapToLong(layer -> longValue(layer.get("affectedRecordCount")))
                 .max()
                 .orElse(0);
         List<String> confirmedFindings = execution.layers.stream()
-                .flatMap(layer -> strings(layer.get("confirmed_findings")).stream())
+                .flatMap(layer -> strings(layer.get("confirmedFindings")).stream())
                 .distinct()
                 .toList();
         Map<String, Object> caliberLayer = execution.layers.stream()
@@ -829,31 +829,31 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 .orElse(Map.of());
 
         Map<String, Object> report = new LinkedHashMap<>();
-        report.put("report_schema_version", "difference-diagnosis-report-v2");
-        report.put("report_id", reportId);
-        report.put("rule_id", execution.input.ruleId());
-        report.put("hospital_id", execution.context.agentContext().hospitalId());
-        report.put("stat_start", execution.input.statStartTime());
-        report.put("stat_end", execution.input.statEndTime());
-        report.put("conclusion_code", conclusionCode);
-        report.put("diagnose_status", conclusionStatus(conclusionCode));
-        report.put("stopped_layer", stoppedLayer);
-        report.put("user_summary", conclusion);
-        report.put("cause_confirmed", conclusionCode.endsWith("_CAUSE_CONFIRMED")
+        report.put("reportSchemaVersion", "difference-diagnosis-report-v2");
+        report.put("reportId", reportId);
+        report.put("ruleId", execution.input.ruleId());
+        report.put("hospitalId", execution.context.agentContext().hospitalId());
+        report.put("statStart", execution.input.statStartTime());
+        report.put("statEnd", execution.input.statEndTime());
+        report.put("conclusionCode", conclusionCode);
+        report.put("diagnoseStatus", conclusionStatus(conclusionCode));
+        report.put("stoppedLayer", stoppedLayer);
+        report.put("userSummary", conclusion);
+        report.put("causeConfirmed", conclusionCode.endsWith("_CAUSE_CONFIRMED")
                 || "RECORD_SET_DIFF_CONFIRMED".equals(conclusionCode));
-        report.put("affected_record_count", affected);
-        report.put("confirmed_findings", confirmedFindings);
-        report.put("baseline_result", baseline);
-        report.put("external_evidence", external);
+        report.put("affectedRecordCount", affected);
+        report.put("confirmedFindings", confirmedFindings);
+        report.put("baselineResult", baseline);
+        report.put("externalEvidence", external);
         // 提升到报告顶层，供最终回答和前端直接展示候选试算，不需要解析内部层级结构。
-        report.put("caliber_candidates", listOfMaps(caliberLayer.get("candidates")));
-        report.put("caliber_cause_likely",
-                Boolean.TRUE.equals(caliberLayer.get("cause_likely")));
-        report.put("file_key", execution.input.fileKey() == null ? "" : execution.input.fileKey());
-        report.put("baseline_run_id", execution.baselineRunId == null ? "" : execution.baselineRunId);
-        report.put("baseline_sql_id", execution.baselineSqlId == null ? "" : execution.baselineSqlId);
+        report.put("caliberCandidates", listOfMaps(caliberLayer.get("candidates")));
+        report.put("caliberCauseLikely",
+                Boolean.TRUE.equals(caliberLayer.get("causeLikely")));
+        report.put("fileKey", execution.input.fileKey() == null ? "" : execution.input.fileKey());
+        report.put("baselineRunId", execution.baselineRunId == null ? "" : execution.baselineRunId);
+        report.put("baselineSqlId", execution.baselineSqlId == null ? "" : execution.baselineSqlId);
         report.put("layers", List.copyOf(execution.layers));
-        report.put("evidence_limit",
+        report.put("evidenceLimit",
                 "未发现系统异常时仅表示当前证据下系统结果内部一致，不代表用户结果必然错误。");
 
         try {
@@ -884,10 +884,10 @@ public class IndicatorDifferenceDiagnosisWorkflow {
                 "success",
                 0,
                 Map.of(
-                        "report_id", reportId,
-                        "conclusion_code", conclusionCode,
-                        "stopped_layer", stoppedLayer,
-                        "user_summary", conclusion)));
+                        "reportId", reportId,
+                        "conclusionCode", conclusionCode,
+                        "stoppedLayer", stoppedLayer,
+                        "userSummary", conclusion)));
         return ToolResult.success(
                 "DIFFERENCE_DIAGNOSIS_COMPLETED",
                 "指标差异分层诊断已完成。",
@@ -927,12 +927,12 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             long durationMs) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("layer", number);
-        result.put("node_name", name);
+        result.put("nodeName", name);
         result.put("status", status);
         result.put("blocking", blocking);
-        result.put("cause_confirmed", causeConfirmed);
+        result.put("causeConfirmed", causeConfirmed);
         result.put("checks", checks);
-        result.put("duration_ms", durationMs);
+        result.put("durationMs", durationMs);
         return Map.copyOf(result);
     }
 
@@ -944,8 +944,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         Map<String, Object> result = new LinkedHashMap<>();
         Matcher user = USER_VALUE.matcher(text == null ? "" : text);
         Matcher system = SYSTEM_VALUE.matcher(text == null ? "" : text);
-        if (user.find()) result.put("user_value", number(user.group(1)));
-        if (system.find()) result.put("system_value", number(system.group(1)));
+        if (user.find()) result.put("userValue", number(user.group(1)));
+        if (system.find()) result.put("systemValue", number(system.group(1)));
         return Map.copyOf(result);
     }
 
@@ -966,9 +966,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         if (external.containsKey("numerator") || external.containsKey("denominator")
                 || external.containsKey("rate")) {
             Map<String, String> dimensions = new LinkedHashMap<>();
-            dimensions.put("numerator", "numerator_count");
-            dimensions.put("denominator", "denominator_count");
-            dimensions.put("rate", "result_value");
+            dimensions.put("numerator", "numeratorCount");
+            dimensions.put("denominator", "denominatorCount");
+            dimensions.put("rate", "resultValue");
             for (Map.Entry<String, String> metric : dimensions.entrySet()) {
                 if (!external.containsKey(metric.getKey())) continue;
                 Object candidateValue = candidate.get(metric.getValue());
@@ -989,12 +989,12 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             return new CandidateMatch(
                     level, List.copyOf(matching), List.copyOf(mismatched), List.copyOf(differences));
         }
-        Object claim = external.get("claimed_user_value");
+        Object claim = external.get("claimedUserValue");
         if (claim != null) {
             Map<String, Object> dimensions = new LinkedHashMap<>();
-            dimensions.put("numerator", candidate.get("numerator_count"));
-            dimensions.put("denominator", candidate.get("denominator_count"));
-            dimensions.put("rate", candidate.get("result_value"));
+            dimensions.put("numerator", candidate.get("numeratorCount"));
+            dimensions.put("denominator", candidate.get("denominatorCount"));
+            dimensions.put("rate", candidate.get("resultValue"));
             for (Map.Entry<String, Object> metric : dimensions.entrySet()) {
                 if (metric.getValue() != null && same(metric.getValue(), claim)) {
                     matching.add(metric.getKey());
@@ -1014,8 +1014,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             Object externalValue) {
         Map<String, Object> difference = new LinkedHashMap<>();
         difference.put("dimension", dimension);
-        difference.put("candidate_value", candidateValue == null ? "" : candidateValue);
-        difference.put("external_value", externalValue == null ? "" : externalValue);
+        difference.put("candidateValue", candidateValue == null ? "" : candidateValue);
+        difference.put("externalValue", externalValue == null ? "" : externalValue);
         if (candidateValue != null && externalValue != null) {
             difference.put("delta", BigDecimal.valueOf(
                             doubleValue(candidateValue) - doubleValue(externalValue))
@@ -1062,9 +1062,9 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             List<Map<String, Object>> metricDifferences) {}
 
     private static boolean differs(Map<String, Object> left, Map<String, Object> right) {
-        return !same(left.get("numerator_count"), right.get("numerator_count"))
-                || !same(left.get("denominator_count"), right.get("denominator_count"))
-                || !same(left.get("result_value"), right.get("result_value"));
+        return !same(left.get("numeratorCount"), right.get("numeratorCount"))
+                || !same(left.get("denominatorCount"), right.get("denominatorCount"))
+                || !same(left.get("resultValue"), right.get("resultValue"));
     }
 
     private static boolean same(Object left, Object right) {
@@ -1080,13 +1080,13 @@ public class IndicatorDifferenceDiagnosisWorkflow {
         Map<String, Object> result = new LinkedHashMap<>();
         if (execution.uploadComparison != null) {
             Object numerator = firstPresent(
-                    execution.uploadComparison.data().get("uploaded_numerator"),
-                    execution.uploadComparison.data().get("uploaded_numerator_count"));
+                    execution.uploadComparison.data().get("uploadedNumerator"),
+                    execution.uploadComparison.data().get("uploadedNumeratorCount"));
             Object denominator = firstPresent(
-                    execution.uploadComparison.data().get("uploaded_denominator"),
-                    execution.uploadComparison.data().get("uploaded_count"));
+                    execution.uploadComparison.data().get("uploadedDenominator"),
+                    execution.uploadComparison.data().get("uploadedCount"));
             Object rate = firstPresent(
-                    execution.uploadComparison.data().get("uploaded_rate"));
+                    execution.uploadComparison.data().get("uploadedRate"));
             if (text(rate).isBlank()
                     && !text(numerator).isBlank()
                     && !text(denominator).isBlank()
@@ -1099,11 +1099,11 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             put(result, "numerator", numerator);
             put(result, "denominator", denominator);
             put(result, "rate", rate);
-            put(result, "stat_period", execution.uploadComparison.data().get("uploaded_stat_period"));
+            put(result, "statPeriod", execution.uploadComparison.data().get("uploadedStatPeriod"));
             if (!result.isEmpty()) result.put("source", "uploaded_file");
         } else {
             Map<String, Object> claims = claimedValues(execution.input.issueDescription());
-            put(result, "claimed_user_value", claims.get("user_value"));
+            put(result, "claimedUserValue", claims.get("userValue"));
             if (!claims.isEmpty()) result.put("source", "user_statement");
         }
         return Map.copyOf(result);
@@ -1112,8 +1112,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
     private static Map<String, Object> safeTrial(Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String key : List.of(
-                "run_id", "sql_id", "rule_id", "stat_start", "stat_end",
-                "result_value", "numerator_count", "denominator_count", "source")) {
+                "runId", "sqlId", "ruleId", "statStart", "statEnd",
+                "resultValue", "numeratorCount", "denominatorCount", "source")) {
             put(result, key, source.get(key));
         }
         return Map.copyOf(result);
@@ -1122,8 +1122,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
     private static Map<String, Object> safeRowSummary(Map<String, Object> data) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String key : List.of(
-                "row_level_comparison_available", "both_count", "system_only_count",
-                "uploaded_only_count", "field_difference_count", "decision_difference_count")) {
+                "rowLevelComparisonAvailable", "bothCount", "systemOnlyCount",
+                "uploadedOnlyCount", "fieldDifferenceCount", "decisionDifferenceCount")) {
             put(result, key, data.get(key));
         }
         return Map.copyOf(result);
@@ -1131,29 +1131,29 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
     private static boolean rowLevelAvailable(ToolResult comparison) {
         return comparison != null
-                && Boolean.TRUE.equals(comparison.data().get("row_level_comparison_available"));
+                && Boolean.TRUE.equals(comparison.data().get("rowLevelComparisonAvailable"));
     }
 
     private static boolean rowSetsEqual(Map<String, Object> data) {
-        return Boolean.TRUE.equals(data.get("row_level_comparison_available"))
-                && longValue(data.get("system_only_count")) == 0
-                && longValue(data.get("uploaded_only_count")) == 0
-                && longValue(data.get("field_difference_count")) == 0
-                && longValue(data.get("decision_difference_count")) == 0;
+        return Boolean.TRUE.equals(data.get("rowLevelComparisonAvailable"))
+                && longValue(data.get("systemOnlyCount")) == 0
+                && longValue(data.get("uploadedOnlyCount")) == 0
+                && longValue(data.get("fieldDifferenceCount")) == 0
+                && longValue(data.get("decisionDifferenceCount")) == 0;
     }
 
     private static boolean detailExport(ToolResult inspection) {
         return inspection != null
-                && (Boolean.TRUE.equals(inspection.data().get("contains_detail_records"))
-                        || Boolean.TRUE.equals(inspection.data().get("row_level_comparison_available"))
-                        || "detail".equals(inspection.data().get("comparison_level")));
+                && (Boolean.TRUE.equals(inspection.data().get("containsDetailRecords"))
+                        || Boolean.TRUE.equals(inspection.data().get("rowLevelComparisonAvailable"))
+                        || "detail".equals(inspection.data().get("comparisonLevel")));
     }
 
     private static boolean qualityEvidenceLinksToRows(ToolResult comparison) {
         if (!rowLevelAvailable(comparison)) return false;
         // 当前上传比较结果只提供记录集合与字段差异汇总，没有质量异常行和差异行的
         // 结构化交集对象。文字中出现“重复/空值”等词不能作为因果证据，因此保守返回 false。
-        return Boolean.TRUE.equals(comparison.data().get("quality_difference_intersection_confirmed"));
+        return Boolean.TRUE.equals(comparison.data().get("qualityDifferenceIntersectionConfirmed"));
     }
 
     private static boolean keywordsMatch(Object values, String issue) {
@@ -1168,8 +1168,8 @@ public class IndicatorDifferenceDiagnosisWorkflow {
             LocalDate start,
             LocalDate endExclusive) {
         try {
-            String from = text(profile.get("effective_from"));
-            String to = text(profile.get("effective_to"));
+            String from = text(profile.get("effectiveFrom"));
+            String to = text(profile.get("effectiveTo"));
             LocalDate effectiveFrom = from.isBlank() ? LocalDate.MIN : LocalDate.parse(from);
             LocalDate effectiveTo = to.isBlank() ? LocalDate.MAX : LocalDate.parse(to);
             return effectiveFrom.isBefore(endExclusive) && !effectiveTo.isBefore(start);
@@ -1189,7 +1189,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
     private static String periodBusinessField(Map<String, Object> rule) {
         for (Map<String, Object> condition : listOfMaps(
-                objectMap(objectMap(rule.get("calculation_definition")).get("scope")).get("conditions"))) {
+                objectMap(objectMap(rule.get("calculationDefinition")).get("scope")).get("conditions"))) {
             if ("half_open_range".equals(text(condition.get("operator")))) {
                 return text(condition.get("field"));
             }
@@ -1199,7 +1199,7 @@ public class IndicatorDifferenceDiagnosisWorkflow {
 
     private static String deduplicationField(Map<String, Object> rule) {
         Map<String, Object> denominator = objectMap(
-                objectMap(rule.get("calculation_definition")).get("denominator"));
+                objectMap(rule.get("calculationDefinition")).get("denominator"));
         return text(objectMap(denominator.get("aggregate")).get("field"));
     }
 

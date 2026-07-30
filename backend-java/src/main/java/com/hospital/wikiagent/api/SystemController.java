@@ -20,7 +20,7 @@ public class SystemController {
         return Map.of(
                 "status", "ok",
                 "runtime", "java",
-                "agent_orchestration", "compiled_plan");
+                "agentOrchestration", "compiled_plan");
     }
 
     /** 返回当前唯一生产运行时，替代迁移阶段使用的双栈状态接口。 */
@@ -29,8 +29,8 @@ public class SystemController {
         return Map.of(
                 "runtime", "java",
                 "frontend", "vue3",
-                "rule_source", "wiki",
-                "runtime_store", "sqlite",
-                "business_database_access", "dbhub");
+                "ruleSource", "wiki",
+                "runtimeStore", "sqlite",
+                "businessDatabaseAccess", "dbhub");
     }
 }

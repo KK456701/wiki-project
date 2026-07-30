@@ -466,16 +466,16 @@ public class IndicatorDetailService {
             List<Map<String, Object>> rows,
             Instant createdAt) throws IOException {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("run_id", context.runId());
-        metadata.put("hospital_id", context.hospitalId());
-        metadata.put("rule_id", context.ruleId());
-        metadata.put("rule_name", context.ruleName());
-        metadata.put("stat_start", context.statStart());
-        metadata.put("stat_end", context.statEnd());
-        metadata.put("created_at", createdAt.toString());
-        metadata.put("denominator_count", rows.size());
-        metadata.put("numerator_count", rows.stream().filter(IndicatorDetailService::meets).count());
-        metadata.put("unmatched_count", rows.stream().filter(row -> !meets(row)).count());
+        metadata.put("runId", context.runId());
+        metadata.put("hospitalId", context.hospitalId());
+        metadata.put("ruleId", context.ruleId());
+        metadata.put("ruleName", context.ruleName());
+        metadata.put("statStart", context.statStart());
+        metadata.put("statEnd", context.statEnd());
+        metadata.put("createdAt", createdAt.toString());
+        metadata.put("denominatorCount", rows.size());
+        metadata.put("numeratorCount", rows.stream().filter(IndicatorDetailService::meets).count());
+        metadata.put("unmatchedCount", rows.stream().filter(row -> !meets(row)).count());
         metadata.put("columns", columns);
         try (var output = new GZIPOutputStream(Files.newOutputStream(path));
                 var writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8))) {

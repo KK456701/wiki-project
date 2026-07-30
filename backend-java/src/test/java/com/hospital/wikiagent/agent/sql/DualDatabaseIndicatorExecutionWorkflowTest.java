@@ -75,10 +75,10 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("calculation_mode", "real_database_only")
-                .containsEntry("numerator_count", 11L)
-                .containsEntry("denominator_count", 394L)
-                .doesNotContainKeys("business_result", "comparison_status");
+                .containsEntry("calculationMode", "real_database_only")
+                .containsEntry("numeratorCount", 11L)
+                .containsEntry("denominatorCount", 394L)
+                .doesNotContainKeys("businessResult", "comparisonStatus");
         assertThat(extraction.calls).isEqualTo(1);
         assertThat(extraction.lastRequest.hospitalSoid()).isEqualTo(991827L);
         assertThat(database.calls).containsExactly("real:overview");
@@ -107,7 +107,7 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     @Test
     void requiredExtractionWithMissingSourceSqlStopsBeforeGatewayAndDatabases() {
         Map<String, Object> missingSource = rule(true);
-        missingSource.put("source_extract_sql", "");
+        missingSource.put("sourceExtractSql", "");
 
         ToolResult result = workflow.execute(
                 preparedSql(), missingSource, executable("overview"), parameters(), context());
@@ -121,8 +121,8 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     @Test
     void fixedTableDomainDoesNotRequireEventSourceSql() {
         Map<String, Object> tableDomain = rule(true);
-        tableDomain.put("source_extract_sql", "");
-        tableDomain.put("extraction_contract", Map.of("route", "TABLE_DOMAIN"));
+        tableDomain.put("sourceExtractSql", "");
+        tableDomain.put("extractionContract", Map.of("route", "TABLE_DOMAIN"));
 
         ToolResult result = workflow.execute(
                 preparedSql(), tableDomain, executable("overview"), parameters(), context());
@@ -162,8 +162,8 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("numerator_count", 0L)
-                .containsEntry("denominator_count", 0L);
+                .containsEntry("numeratorCount", 0L)
+                .containsEntry("denominatorCount", 0L);
         assertThat(database.calls).containsExactly("real:overview");
     }
 
@@ -196,11 +196,12 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     void reportsPublishedOverviewMappingErrorsWithoutRetryingDatabase() {
         Map<String, Object> invalidRule = rule(true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(invalidRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(invalidRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
+                // mapping 的键是契约名，保持 snake
                 "numerator_count", "missing_numerator",
                 "denominator_count", "missing_denominator"));
-        invalidRule.put("dual_database_contract", contract);
+        invalidRule.put("dualDatabaseContract", contract);
 
         ToolResult result = workflow.execute(
                 preparedSql(), invalidRule, executable("overview"), parameters(), context());
@@ -215,6 +216,7 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         database.businessOverview = overview(1, 2);
         database.realOverview = overview(2, 4);
         database.department.put(DatabaseRole.BUSINESS, List.of(
+                // dept stub 行键是 SQL 列别名，保持 snake
                 Map.of("dept_id", "A", "numerator_count", 1),
                 Map.of("dept_id", "B", "numerator_count", 0)));
         database.department.put(DatabaseRole.REAL, List.of(
@@ -233,20 +235,20 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
                 preparedSql(), rule(true), executable("overview"), parameters(), context);
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
-        assertThat(result.data()).containsEntry("comparison_status", "mismatched");
-        assertThat(String.valueOf(result.data().get("diagnosis_report_id")))
+        assertThat(result.data()).containsEntry("comparisonStatus", "mismatched");
+        assertThat(String.valueOf(result.data().get("diagnosisReportId")))
                 .startsWith("DDR_");
         assertThat(extraction.calls).isEqualTo(1);
         assertThat(database.calls).containsExactly(
                 "business:overview", "real:overview",
                 "business:department", "real:department",
                 "business:patient", "real:patient");
-        Map<String, Object> diagnosis = map(result.data().get("dual_difference_diagnosis"));
+        Map<String, Object> diagnosis = map(result.data().get("dualDifferenceDiagnosis"));
         assertThat(diagnosis).containsEntry("status", "completed");
-        assertThat(map(diagnosis.get("patient_comparison")))
-                .containsEntry("business_only_count", 1L)
-                .containsEntry("real_only_count", 1L)
-                .containsEntry("different_count", 1L);
+        assertThat(map(diagnosis.get("patientComparison")))
+                .containsEntry("businessOnlyCount", 1L)
+                .containsEntry("realOnlyCount", 1L)
+                .containsEntry("differentCount", 1L);
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_index_diagnose_report", Integer.class))
                 .isEqualTo(1);
@@ -266,7 +268,7 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     @Test
     void staticValidatedOverviewUsesOnlyRealDatabase() {
         Map<String, Object> staticRule = rule(false);
-        staticRule.put("overview_runtime_eligible", true);
+        staticRule.put("overviewRuntimeEligible", true);
         database.businessOverview = overview(3, 68);
         database.realOverview = overview(3, 68);
 
@@ -275,20 +277,20 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("numerator_count", 3L)
-                .containsEntry("denominator_count", 68L);
+                .containsEntry("numeratorCount", 3L)
+                .containsEntry("denominatorCount", 68L);
         assertThat(database.calls).containsExactly("real:overview");
     }
 
     @Test
     void scalarMetricCanBeComparedWithoutInventingNumeratorAndDenominator() {
         Map<String, Object> scalarRule = rule(false);
-        scalarRule.put("overview_runtime_eligible", true);
+        scalarRule.put("overviewRuntimeEligible", true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(scalarRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
                 "index_value", "median_minutes"));
-        scalarRule.put("dual_database_contract", contract);
+        scalarRule.put("dualDatabaseContract", contract);
         database.businessOverview = List.of(Map.of("median_minutes", 18.5));
         database.realOverview = List.of(Map.of("median_minutes", 18.50));
 
@@ -297,19 +299,19 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("result_value", 18.50)
-                .doesNotContainKeys("numerator_count", "denominator_count");
+                .containsEntry("resultValue", 18.50)
+                .doesNotContainKeys("numeratorCount", "denominatorCount");
     }
 
     @Test
     void scalarMetricWithNullValuesIsReportedAsNoSample() {
         Map<String, Object> scalarRule = rule(false);
-        scalarRule.put("overview_runtime_eligible", true);
+        scalarRule.put("overviewRuntimeEligible", true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(scalarRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
                 "index_value", "median_minutes"));
-        scalarRule.put("dual_database_contract", contract);
+        scalarRule.put("dualDatabaseContract", contract);
         Map<String, Object> emptyScalar = new LinkedHashMap<>();
         emptyScalar.put("median_minutes", null);
         database.businessOverview = List.of(emptyScalar);
@@ -320,25 +322,27 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("no_sample", true)
-                .containsEntry("result_value", null)
-                .doesNotContainKeys("numerator_count", "denominator_count");
+                .containsEntry("noSample", true)
+                .containsEntry("resultValue", null)
+                .doesNotContainKeys("numeratorCount", "denominatorCount");
     }
 
     @Test
     void scalarMetricWithNoOverviewRowIsReportedAsNoSample() {
         Map<String, Object> scalarRule = rule(false);
-        scalarRule.put("overview_runtime_eligible", true);
+        scalarRule.put("overviewRuntimeEligible", true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(scalarRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
+                // mapping 的键是契约名，保持 snake
                 "index_value", "median_minutes",
                 "sample_count", "sample_count",
                 "target_value", "target_value"));
+        // result_contract 内层是知识 Profile 透传键，保持 snake
         contract.put("result_contract", Map.of(
                 "target_value", 5,
                 "target_direction", "<="));
-        scalarRule.put("dual_database_contract", contract);
+        scalarRule.put("dualDatabaseContract", contract);
         database.realOverview = List.of();
 
         ToolResult result = workflow.execute(
@@ -346,26 +350,28 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("no_sample", true)
-                .containsEntry("result_value", null)
-                .containsEntry("target_value", 5)
-                .containsEntry("target_source", "profile")
-                .doesNotContainKeys("numerator_count", "denominator_count");
+                .containsEntry("noSample", true)
+                .containsEntry("resultValue", null)
+                .containsEntry("targetValue", 5)
+                .containsEntry("targetSource", "profile")
+                .doesNotContainKeys("numeratorCount", "denominatorCount");
     }
 
     @Test
     void scalarResultContractCarriesComponentsSampleAndTarget() {
         Map<String, Object> scalarRule = rule(false);
-        scalarRule.put("overview_runtime_eligible", true);
+        scalarRule.put("overviewRuntimeEligible", true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(scalarRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
+                // mapping 的键是契约名，保持 snake；值是 SQL 列别名，也保持 snake
                 "index_value", "index_value",
                 "component_left", "left_rate",
                 "component_right", "right_rate",
                 "sample_count", "sample_count",
                 "target_value", "target_value"));
-        scalarRule.put("dual_database_contract", contract);
+        scalarRule.put("dualDatabaseContract", contract);
+        // row 是 JDBC stub 返回的 SQL 行，键是列别名，保持 snake
         Map<String, Object> row = Map.of(
                 "index_value", 2.0,
                 "left_rate", "2.00%",
@@ -380,11 +386,11 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("result_value", 2.0)
-                .containsEntry("component_left", "2.00%")
-                .containsEntry("component_right", "1.00%")
-                .containsEntry("sample_count", 12L)
-                .containsEntry("target_value", 5);
+                .containsEntry("resultValue", 2.0)
+                .containsEntry("componentLeft", "2.00%")
+                .containsEntry("componentRight", "1.00%")
+                .containsEntry("sampleCount", 12L)
+                .containsEntry("targetValue", 5);
     }
 
     @Test
@@ -394,13 +400,14 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         context.runState().lastIntent("indicator_diagnosis");
         Map<String, Object> scalarRule = rule(true);
         Map<String, Object> contract =
-                new LinkedHashMap<>(map(scalarRule.get("dual_database_contract")));
+                new LinkedHashMap<>(map(scalarRule.get("dualDatabaseContract")));
         contract.put("overview_result_mapping", Map.of(
                 "numerator_count", "numerator_count",
                 "denominator_count", "denominator_count",
                 "target_value", "target_value"));
-        scalarRule.put("dual_database_contract", contract);
+        scalarRule.put("dualDatabaseContract", contract);
         database.businessOverview = List.of(Map.of(
+                // JDBC 行键是 SQL 列别名，保持 snake
                 "numerator_count", 95, "denominator_count", 100, "target_value", 90));
         database.realOverview = List.of(Map.of(
                 "numerator_count", 95, "denominator_count", 100, "target_value", 92));
@@ -410,10 +417,10 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
 
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.data())
-                .containsEntry("comparison_status", "mismatched")
-                .containsEntry("result_comparison_status", "matched")
-                .containsEntry("target_comparison_status", "conflict")
-                .containsEntry("target_conflict", true)
+                .containsEntry("comparisonStatus", "mismatched")
+                .containsEntry("resultComparisonStatus", "matched")
+                .containsEntry("targetComparisonStatus", "conflict")
+                .containsEntry("targetConflict", true)
                 .doesNotContainKey("target_value");
         assertThat(database.calls).contains(
                 "business:department", "real:department",
@@ -448,10 +455,10 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         assertThat(result.ok()).withFailMessage(result.toString()).isTrue();
         assertThat(result.summary()).contains("已按用户要求继续完成明细诊断");
         assertThat(result.data())
-                .containsEntry("comparison_status", "matched")
-                .containsEntry("extraction_status", "SKIPPED_DISABLED")
-                .containsEntry("data_freshness", "existing_snapshot_not_refreshed")
-                .containsKey("diagnosis_report_id");
+                .containsEntry("comparisonStatus", "matched")
+                .containsEntry("extractionStatus", "SKIPPED_DISABLED")
+                .containsEntry("dataFreshness", "existing_snapshot_not_refreshed")
+                .containsKey("diagnosisReportId");
         assertThat(database.calls).containsExactly(
                 "business:overview", "real:overview",
                 "business:department", "real:department",
@@ -509,14 +516,15 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
         contract.put("allowed_compare_fields", List.of(
                 "numerator_count", "is_numerator"));
         Map<String, Object> rule = new LinkedHashMap<>();
-        rule.put("profile_id", "PROFILE-1");
-        rule.put("knowledge_release_id", "KB-test");
-        rule.put("source_extract_sql", sql("source"));
-        rule.put("department_detail_sql", sql("department"));
-        rule.put("patient_detail_sql", sql("patient"));
-        rule.put("overview_runtime_eligible", compatible);
-        rule.put("extraction_contract", Map.of("route", "EVENT"));
-        rule.put("dual_database_contract", contract);
+        rule.put("profileId", "PROFILE-1");
+        rule.put("knowledgeReleaseId", "KB-test");
+        rule.put("sourceExtractSql", sql("source"));
+        rule.put("departmentDetailSql", sql("department"));
+        rule.put("patientDetailSql", sql("patient"));
+        rule.put("overviewRuntimeEligible", compatible);
+        // extractionContract 内层是知识 Profile 透传键（route），保持 snake
+        rule.put("extractionContract", Map.of("route", "EVENT"));
+        rule.put("dualDatabaseContract", contract);
         return rule;
     }
 
@@ -553,6 +561,7 @@ class DualDatabaseIndicatorExecutionWorkflowTest {
     }
 
     private static List<Map<String, Object>> overview(long numerator, long denominator) {
+        // stub JDBC 行键是 SQL 列别名，保持 snake
         return List.of(Map.of(
                 "numerator_count", numerator,
                 "denominator_count", denominator));

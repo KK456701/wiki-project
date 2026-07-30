@@ -35,65 +35,65 @@ class AgentTraceServiceTest {
 
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("event", "trace_node");
-        event.put("node_name", "tool_result");
-        event.put("node_type", "tool");
+        event.put("nodeName", "tool_result");
+        event.put("nodeType", "tool");
         event.put("status", "success");
-        event.put("duration_ms", 12);
-        event.put("tool_name", "prepare_indicator_sql");
+        event.put("durationMs", 12);
+        event.put("toolName", "prepare_indicator_sql");
         String longHistory = "历史上下文".repeat(900) + "__完整输入末尾__";
         event.put("input", Map.of(
-                "rule_id", "MQSI2025_005",
+                "ruleId", "MQSI2025_005",
                 "history", longHistory,
                 "sql", "SELECT secret"));
         event.put("output", Map.of(
-                "token", "secret-token", "sql_id", "SQL_001",
-                "sql_preview", "SELECT private_table"));
+                "token", "secret-token", "sqlId", "SQL_001",
+                "sqlPreview", "SELECT private_table"));
         AtomicReference<Map<String, Object>> forwarded = new AtomicReference<>();
         AgentRunObserver observer = service.observer("TRACE_001", forwarded::set);
         observer.onEvent(event);
         assertThat(forwarded.get())
                 .containsEntry("event", "stage_update")
                 .containsEntry("message", "执行并观察工具结果")
-                .containsEntry("tool_name", "prepare_indicator_sql")
+                .containsEntry("toolName", "prepare_indicator_sql")
                 .doesNotContainKeys("input", "output");
         assertThat(String.valueOf(forwarded.get()))
                 .doesNotContain("SELECT secret")
                 .doesNotContain("secret-token");
         Map<String, Object> second = new LinkedHashMap<>();
         second.put("event", "trace_node");
-        second.put("node_name", "final_answer_llm");
-        second.put("node_type", "llm");
+        second.put("nodeName", "final_answer_llm");
+        second.put("nodeType", "llm");
         second.put("status", "success");
-        second.put("duration_ms", 8);
+        second.put("durationMs", 8);
         second.put("input", Map.of("messages", java.util.List.of()));
-        second.put("output", Map.of("answer_length", 12));
+        second.put("output", Map.of("answerLength", 12));
         observer.onEvent(second);
         service.finish("TRACE_001", new AgentRunResult(
                 "已完成", "final_answer", "TRACE_001", "SESSION_001", 1, null, null));
 
         Map<String, Object> trace = service.get("TRACE_001", hospital);
-        assertThat(trace.get("final_status")).isEqualTo("success");
+        assertThat(trace.get("finalStatus")).isEqualTo("success");
         @SuppressWarnings("unchecked")
         Map<String, Object> node = ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(0);
-        assertThat(node.get("node_title")).isEqualTo("执行并观察工具结果");
+        assertThat(node.get("nodeTitle")).isEqualTo("执行并观察工具结果");
         assertThat(node)
-                .containsEntry("flow_stage", "execution")
-                .containsEntry("flow_stage_title", "工具与数据库执行")
-                .containsEntry("flow_stage_order", 4);
-        assertThat(String.valueOf(node.get("input_data"))).contains("[已脱敏]")
+                .containsEntry("flowStage", "execution")
+                .containsEntry("flowStageTitle", "工具与数据库执行")
+                .containsEntry("flowStageOrder", 4);
+        assertThat(String.valueOf(node.get("inputData"))).contains("[已脱敏]")
                 .contains("__完整输入末尾__")
                 .doesNotContain("SELECT secret");
-        assertThat(String.valueOf(node.get("output_data"))).doesNotContain("secret-token");
-        assertThat(String.valueOf(node.get("output_data"))).doesNotContain("private_table");
-        assertThat(String.valueOf(node.get("output_data"))).contains("SQL_001");
-        assertThat(String.valueOf(trace.get("flow_edges")))
-                .contains("from_node_id", "to_node_id", "sequence");
+        assertThat(String.valueOf(node.get("outputData"))).doesNotContain("secret-token");
+        assertThat(String.valueOf(node.get("outputData"))).doesNotContain("private_table");
+        assertThat(String.valueOf(node.get("outputData"))).contains("SQL_001");
+        assertThat(String.valueOf(trace.get("flowEdges")))
+                .contains("fromNodeId", "toNodeId", "sequence");
         @SuppressWarnings("unchecked")
         Map<String, Object> answerNode =
                 ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(1);
         assertThat(answerNode)
-                .containsEntry("flow_stage", "answer")
-                .containsEntry("flow_stage_order", 6);
+                .containsEntry("flowStage", "answer")
+                .containsEntry("flowStageOrder", 6);
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);
 
@@ -101,8 +101,8 @@ class AgentTraceServiceTest {
                 null, null, null, null, null, null, 100);
         assertThat(service.list(hospital, filters)).containsEntry("count", 1);
         Map<String, Object> metrics = service.metrics(hospital, filters);
-        assertThat(metrics).containsEntry("request_count", 1)
-                .containsEntry("success_rate", 1.0);
+        assertThat(metrics).containsEntry("requestCount", 1)
+                .containsEntry("successRate", 1.0);
         assertThat(String.valueOf(metrics.get("tools"))).contains("prepare_indicator_sql");
         assertThat(service.list(principal("hospital_002"), filters)).containsEntry("count", 0);
         assertThat(new AgentTraceRepository(jdbc).prune(java.time.LocalDateTime.now().plusDays(1)))

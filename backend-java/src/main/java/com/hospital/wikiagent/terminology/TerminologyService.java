@@ -49,10 +49,17 @@ public class TerminologyService {
                     value -> value.toLowerCase(Locale.ROOT).contains(needle))) continue;
             if (!blank(conceptType) && !text(concept.get("concept_type")).equals(conceptType)) continue;
             if (!blank(ruleId) && !linked.contains(code)) continue;
-            Map<String, Object> value = new LinkedHashMap<>(concept);
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("conceptCode", code);
+            value.put("canonicalName", text(concept.get("canonical_name")));
+            value.put("conceptType", text(concept.get("concept_type")));
+            value.put("definition", text(concept.get("definition")));
+            value.put("standardCode", text(concept.get("standard_code")));
+            value.put("sourceLevel", text(concept.get("source_level")));
+            value.put("sourceReference", text(concept.get("source_reference")));
             List<String> conceptAliases = aliasNames.getOrDefault(code, List.of());
-            value.put("alias_count", conceptAliases.size());
-            value.put("aliases_preview", conceptAliases.stream().limit(3).toList());
+            value.put("aliasCount", conceptAliases.size());
+            value.put("aliasesPreview", conceptAliases.stream().limit(3).toList());
             items.add(value);
         }
         return Map.of("items", List.copyOf(items), "total", items.size());
@@ -61,17 +68,34 @@ public class TerminologyService {
     public Map<String, Object> concept(String conceptCode, String hospitalId) {
         Map<String, Object> concept = repository.concept(conceptCode);
         if (concept.isEmpty()) throw new TerminologyNotFoundException("未找到该标准概念。");
-        Map<String, Object> result = new LinkedHashMap<>(concept);
-        result.put("aliases", repository.conceptAliases(conceptCode, hospitalId));
-        result.put("rule_links", repository.conceptRuleLinks(conceptCode));
-        result.put("hospital_id", hospitalId);
-        result.put("hospital_mappings", repository.hospitalMappings(hospitalId, conceptCode));
-        result.put("active_release", repository.activeRelease());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("conceptCode", text(concept.get("concept_code")));
+        result.put("canonicalName", text(concept.get("canonical_name")));
+        result.put("conceptType", text(concept.get("concept_type")));
+        result.put("definition", text(concept.get("definition")));
+        result.put("standardCode", text(concept.get("standard_code")));
+        result.put("sourceLevel", text(concept.get("source_level")));
+        result.put("sourceReference", text(concept.get("source_reference")));
+        result.put("aliases", remapKeys(repository.conceptAliases(conceptCode, hospitalId),
+                Map.of("alias_text", "aliasText", "relation_type", "relationType",
+                        "retrieval_enabled", "retrievalEnabled", "sql_safe", "sqlSafe",
+                        "approval_status", "approvalStatus")));
+        result.put("ruleLinks", remapKeys(repository.conceptRuleLinks(conceptCode),
+                Map.of("index_code", "indexCode", "usage_section", "usageSection",
+                        "business_field_key", "businessFieldKey")));
+        result.put("hospitalId", hospitalId);
+        result.put("hospitalMappings", remapKeys(repository.hospitalMappings(hospitalId, conceptCode),
+                Map.of("code_system", "codeSystem", "local_code", "localCode",
+                        "local_name", "localName", "local_value", "localValue",
+                        "approval_status", "approvalStatus")));
+        result.put("activeRelease", repository.activeRelease());
         return result;
     }
 
     public List<Map<String, Object>> releases() {
-        return repository.releases();
+        return remapKeys(repository.releases(), Map.of(
+                "release_id", "releaseId", "change_summary", "changeSummary",
+                "published_by", "publishedBy", "published_at", "publishedAt"));
     }
 
     public Map<String, Object> normalize(String original, String hospitalId) {
@@ -136,13 +160,13 @@ public class TerminologyService {
         }
         Map<String, Object> release = repository.activeRelease();
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("original_text", input);
-        result.put("normalized_text", normalized);
+        result.put("originalText", input);
+        result.put("normalizedText", normalized);
         result.put("matches", matches);
         result.put("ambiguities", selection.ambiguities());
-        result.put("release_version", release.isEmpty() ? "unreleased" : text(release.get("release_id")));
-        result.put("duration_ms", Math.max(0, System.currentTimeMillis() - started));
-        result.put("sql_eligible", !matches.isEmpty() && selection.ambiguities().isEmpty() && !unsafe);
+        result.put("releaseVersion", release.isEmpty() ? "unreleased" : text(release.get("release_id")));
+        result.put("durationMs", Math.max(0, System.currentTimeMillis() - started));
+        result.put("sqlEligible", !matches.isEmpty() && selection.ambiguities().isEmpty() && !unsafe);
         return result;
     }
 
@@ -208,7 +232,7 @@ public class TerminologyService {
                 String ambiguityKey = candidate.start() + ":" + candidate.end() + ":" + sorted;
                 if (ambiguityKeys.add(ambiguityKey)) {
                     ambiguities.add(Map.of("text", text.substring(candidate.start(), candidate.end()),
-                            "concept_codes", sorted));
+                            "conceptCodes", sorted));
                 }
                 continue;
             }
@@ -225,11 +249,20 @@ public class TerminologyService {
     }
 
     private static Map<String, Object> match(String matchedText, Entry value) {
-        return Map.of("matched_text", matchedText, "concept_code", value.conceptCode(),
-                "canonical_name", value.canonicalName(), "relation_type", value.relationType(),
-                "retrieval_enabled", value.retrievalEnabled(), "sql_safe", value.sqlSafe(),
-                "source", value.source(), "linked_rule_ids", value.ruleIds(),
-                "business_field_keys", value.businessFields());
+        return Map.of("matchedText", matchedText, "conceptCode", value.conceptCode(),
+                "canonicalName", value.canonicalName(), "relationType", value.relationType(),
+                "retrievalEnabled", value.retrievalEnabled(), "sqlSafe", value.sqlSafe(),
+                "source", value.source(), "linkedRuleIds", value.ruleIds(),
+                "businessFieldKeys", value.businessFields());
+    }
+
+    private static List<Map<String, Object>> remapKeys(
+            List<Map<String, Object>> rows, Map<String, String> mapping) {
+        return rows.stream().map(row -> {
+            Map<String, Object> remapped = new LinkedHashMap<>();
+            row.forEach((key, value) -> remapped.put(mapping.getOrDefault(key, key), value));
+            return remapped;
+        }).toList();
     }
 
     private static boolean truth(Object value) {

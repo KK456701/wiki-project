@@ -88,9 +88,9 @@ class AgentConversationMemoryTest {
         state.statPeriod("2026-01-01 00:00:00", "2026-07-22 00:00:00");
         state.lastToolResults().add(ToolResult.success(
                 "TRIAL_RUN_COMPLETED", "完成", Map.of(
-                        "rule_id", "MQSI2025_001",
-                        "rule_name", "患者入院48小时内转科的比例",
-                        "run_id", "RUN_001")));
+                        "ruleId", "MQSI2025_001",
+                        "ruleName", "患者入院48小时内转科的比例",
+                        "runId", "RUN_001")));
         memory.appendAssistant(first, principal, "结果为2.83%", state);
 
         var restored = memory.open(principal, "session_001");
@@ -127,12 +127,12 @@ class AgentConversationMemoryTest {
         var conversation = memory.open(principal, "session_batch");
         memory.appendUser(conversation, principal, "计算两个指标的结果", null);
         List<Map<String, Object>> cards = List.of(
-                Map.of("rule_id", "HXZD-009-003",
-                        "rule_name", "科主任主持死亡病例讨论率",
+                Map.of("ruleId", "HXZD-009-003",
+                        "ruleName", "科主任主持死亡病例讨论率",
                         "status", "SUCCESS", "done", 1, "total", 2,
-                        "result_value", 6.25),
-                Map.of("rule_id", "MQSI2025_001",
-                        "rule_name", "48小时内转科比例",
+                        "resultValue", 6.25),
+                Map.of("ruleId", "MQSI2025_001",
+                        "ruleName", "48小时内转科比例",
                         "status", "SUCCESS", "done", 2, "total", 2));
         memory.appendAssistant(
                 conversation, principal, "批量汇总文本", new AgentRunState(), cards);
@@ -145,9 +145,9 @@ class AgentConversationMemoryTest {
         var assistant = messages.get(1);
         assertThat(assistant.batchResults()).hasSize(2);
         assertThat(assistant.batchResults().stream()
-                .map(card -> card.get("rule_id")))
+                .map(card -> card.get("ruleId")))
                 .containsExactly("HXZD-009-003", "MQSI2025_001");
-        assertThat(assistant.batchResults().get(0).get("result_value"))
+        assertThat(assistant.batchResults().get(0).get("resultValue"))
                 .isEqualTo(6.25);
     }
 
@@ -314,8 +314,8 @@ class AgentConversationMemoryTest {
                             hospitalId, ruleId, "2025", "2026-01-01", "2026-07-01",
                             "trial_run_indicator_sql", "RUN_001", "fp1", "fp2",
                             "internal", Instant.now(), null, null,
-                            Map.of("numerator_count", 35, "denominator_count", 40,
-                                    "result_value", "87.5%")));
+                            Map.of("numeratorCount", 35, "denominatorCount", 40,
+                                    "resultValue", "87.5%")));
                 }
                 return List.of();
             }

@@ -98,9 +98,9 @@ public class AgentRunController {
                 try {
                     send(emitter, Map.of(
                             "event", "agent_error",
-                            "trace_id", traceId,
+                            "traceId", traceId,
                             "message", "Java Agent 运行失败。",
-                            "stop_reason", "runtime_error",
+                            "stopReason", "runtime_error",
                             "status", "failed"));
                     emitter.complete();
                 } catch (RuntimeException sendFailure) {

@@ -101,22 +101,22 @@ function display(value: unknown): string {
         <div>
           <p class="eyebrow">Verified run · {{ runId }}</p>
           <h2>指标明细核对</h2>
-          <p v-if="summary">{{ summary.rule_name }} · {{ summary.stat_start }} 至 {{ summary.stat_end }}</p>
+          <p v-if="summary">{{ summary.ruleName }} · {{ summary.statStart }} 至 {{ summary.statEnd }}</p>
         </div>
         <button class="drawer-close" type="button" aria-label="关闭" @click="emit('close')">×</button>
       </header>
 
       <div v-if="summary" class="detail-summary">
-        <article><span>统计范围</span><strong>{{ summary.denominator_count }}</strong></article>
-        <article><span>达到要求</span><strong>{{ summary.numerator_count }}</strong></article>
-        <article><span>未达到要求</span><strong>{{ summary.unmatched_count }}</strong></article>
-        <article><span>口径版本</span><strong>{{ summary.effective_level === 'hospital' ? `本院 v${summary.hospital_version}` : `标准 v${summary.national_version}` }}</strong></article>
+        <article><span>统计范围</span><strong>{{ summary.denominatorCount }}</strong></article>
+        <article><span>达到要求</span><strong>{{ summary.numeratorCount }}</strong></article>
+        <article><span>未达到要求</span><strong>{{ summary.unmatchedCount }}</strong></article>
+        <article><span>口径版本</span><strong>{{ summary.effectiveLevel === 'hospital' ? `本院 v${summary.hospitalVersion}` : `标准 v${summary.nationalVersion}` }}</strong></article>
       </div>
 
       <div v-if="summary" class="detail-source">
-        <span>数据源：{{ summary.source_database || '已配置业务库' }}</span>
-        <span>表：{{ summary.source_tables.join('、') }}</span>
-        <span>快照到期：{{ summary.expires_at }}</span>
+        <span>数据源：{{ summary.sourceDatabase || '已配置业务库' }}</span>
+        <span>表：{{ summary.sourceTables.join('、') }}</span>
+        <span>快照到期：{{ summary.expiresAt }}</span>
       </div>
 
       <nav v-if="summary" class="detail-tabs" aria-label="明细分组">

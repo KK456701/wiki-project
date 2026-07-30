@@ -203,8 +203,8 @@ public class ClarificationPromptFactory {
         for (Option option : recommended) options.putIfAbsent(option.id(), option);
         for (Option option : stateCandidates(state)) options.putIfAbsent(option.id(), option);
         for (Map<String, String> item : activeIndicators(hospitalId)) {
-            String ruleId = safe(item.get("rule_id"));
-            String ruleName = safe(item.get("rule_name"));
+            String ruleId = safe(item.get("ruleId"));
+            String ruleName = safe(item.get("ruleName"));
             if (ruleId.isBlank() || ruleName.isBlank()) continue;
             options.putIfAbsent("indicator:" + ruleId, new Option(
                     "indicator:" + ruleId,
@@ -292,7 +292,7 @@ public class ClarificationPromptFactory {
         for (Option option : caliberStateCandidates(state)) options.putIfAbsent(option.id(), option);
         if (!ruleId.isBlank()) {
             for (Map<String, Object> profile : caliberProfiles(ruleId, hospitalId)) {
-                String profileId = safe(profile.get("profile_id"));
+                String profileId = safe(profile.get("profileId"));
                 String label = first(safe(profile.get("label")), profileId);
                 if (profileId.isBlank()) continue;
                 options.putIfAbsent("caliber:" + profileId, new Option(
@@ -384,8 +384,8 @@ public class ClarificationPromptFactory {
             if (!(raw instanceof List<?> values)) continue;
             for (Object item : values) {
                 if (!(item instanceof Map<?, ?> candidate)) continue;
-                String id = first(safe(candidate.get("rule_id")), safe(candidate.get("index_code")));
-                String label = first(safe(candidate.get("rule_name")), safe(candidate.get("index_name")), id);
+                String id = first(safe(candidate.get("ruleId")), safe(candidate.get("indexCode")));
+                String label = first(safe(candidate.get("ruleName")), safe(candidate.get("indexName")), id);
                 if (id.isBlank()) continue;
                 options.add(new Option(
                         "indicator:" + id, label, label + "（" + id + "）",
@@ -423,8 +423,8 @@ public class ClarificationPromptFactory {
             if (!(raw instanceof List<?> values)) continue;
             for (Object item : values) {
                 if (!(item instanceof Map<?, ?> candidate)) continue;
-                String id = safe(candidate.get("caliber_profile_id"));
-                String label = first(safe(candidate.get("caliber_label")), id);
+                String id = safe(candidate.get("caliberProfileId"));
+                String label = first(safe(candidate.get("caliberLabel")), id);
                 if (!id.isBlank()) {
                     options.add(new Option(
                             "caliber:" + id, label, label,

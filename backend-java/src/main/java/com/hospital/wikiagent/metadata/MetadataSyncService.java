@@ -47,8 +47,8 @@ public class MetadataSyncService {
         DatabaseTarget target = database(requestedDatabase);
         Map<String, Object> result = new LinkedHashMap<>(repository.overview(
                 principal.hospitalId(), target.databaseName(), target.source().getSourceId()));
-        result.put("source_id", target.source().getSourceId());
-        result.put("source_role", target.role().value());
+        result.put("sourceId", target.source().getSourceId());
+        result.put("sourceRole", target.role().value());
         return java.util.Collections.unmodifiableMap(result);
     }
 
@@ -84,11 +84,11 @@ public class MetadataSyncService {
             long duration = Math.max(0, System.currentTimeMillis() - started);
             traces.recordStandaloneNode(traceId, node(
                     "metadata_sync_dbhub", "database", "success", started, duration,
-                    Map.of("source_id", target.source().getSourceId(),
-                            "source_role", target.role().value(), "database", databaseName,
-                            "mapped_table_count", mappedTables(mappings).size()),
-                    Map.of("batch_id", batchId, "table_count", current.tables().size(),
-                            "column_count", current.columns().size(), "change_count", changes.size())));
+                    Map.of("sourceId", target.source().getSourceId(),
+                            "sourceRole", target.role().value(), "database", databaseName,
+                            "mappedTableCount", mappedTables(mappings).size()),
+                    Map.of("batchId", batchId, "tableCount", current.tables().size(),
+                            "columnCount", current.columns().size(), "changeCount", changes.size())));
             Map<String, Object> result = response(
                     principal.hospitalId(), databaseName, batchId, current, changes, affected, traceId);
             traces.finishStandalone(traceId, "success", "metadata_sync",
@@ -98,8 +98,8 @@ public class MetadataSyncService {
             long duration = Math.max(0, System.currentTimeMillis() - started);
             traces.recordStandaloneNode(traceId, node(
                     "metadata_sync_dbhub", "database", "failed", started, duration,
-                    Map.of("source_id", target.source().getSourceId(),
-                            "source_role", target.role().value(), "database", databaseName),
+                    Map.of("sourceId", target.source().getSourceId(),
+                            "sourceRole", target.role().value(), "database", databaseName),
                     Map.of("error", safeMessage(exception))));
             traces.finishStandalone(traceId, "failed", "metadata_sync",
                     safeMessage(exception), 1);
@@ -249,20 +249,20 @@ public class MetadataSyncService {
             List<Map<String, Object>> changes, List<Map<String, Object>> affected,
             String traceId) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("hospital_id", hospitalId);
-        result.put("db_name", databaseName);
+        result.put("hospitalId", hospitalId);
+        result.put("dbName", databaseName);
         DatabaseTarget target = database(databaseName);
-        result.put("source_id", target.source().getSourceId());
-        result.put("source_role", target.role().value());
-        result.put("has_snapshot", true);
-        result.put("metadata_source", catalog.sourceName(target.role()));
-        result.put("synced_at", java.time.LocalDateTime.now().toString());
-        result.put("table_count", snapshot.tables().size());
-        result.put("column_count", snapshot.columns().size());
-        result.put("batch_id", batchId);
+        result.put("sourceId", target.source().getSourceId());
+        result.put("sourceRole", target.role().value());
+        result.put("hasSnapshot", true);
+        result.put("metadataSource", catalog.sourceName(target.role()));
+        result.put("syncedAt", java.time.LocalDateTime.now().toString());
+        result.put("tableCount", snapshot.tables().size());
+        result.put("columnCount", snapshot.columns().size());
+        result.put("batchId", batchId);
         result.put("changes", changes);
-        result.put("affected_rules", affected);
-        result.put("trace_id", traceId);
+        result.put("affectedRules", affected);
+        result.put("traceId", traceId);
         return result;
     }
 
@@ -277,14 +277,14 @@ public class MetadataSyncService {
             Map<String, Object> input, Map<String, Object> output) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("event", "trace_node");
-        event.put("node_name", name);
-        event.put("node_type", type);
+        event.put("nodeName", name);
+        event.put("nodeType", type);
         event.put("status", status);
-        event.put("started_at_epoch_ms", started);
-        event.put("ended_at_epoch_ms", started + duration);
-        event.put("duration_ms", duration);
-        event.put("tool_name", "dbhub_metadata_sync");
-        event.put("db_source", "dbhub");
+        event.put("startedAtEpochMs", started);
+        event.put("endedAtEpochMs", started + duration);
+        event.put("durationMs", duration);
+        event.put("toolName", "dbhub_metadata_sync");
+        event.put("dbSource", "dbhub");
         event.put("capability", "sync_database_metadata");
         event.put("input", input);
         event.put("output", output);
@@ -318,8 +318,8 @@ public class MetadataSyncService {
     private static Map<String, Object> change(
             String type, String table, String field, String description) {
         return new LinkedHashMap<>(Map.of(
-                "change_type", type, "table_name", table,
-                "field_name", field, "change_desc", description));
+                "changeType", type, "tableName", table,
+                "fieldName", field, "changeDesc", description));
     }
 
     private static Map<String, Object> normalize(Map<String, Object> row) {

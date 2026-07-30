@@ -43,20 +43,20 @@ public class AgentCapabilitiesController {
                 Map.entry("enabled", true),
                 Map.entry("status", "shadow_only"),
                 Map.entry("model", models.defaultModelId()),
-                Map.entry("default_model", models.defaultModelId()),
+                Map.entry("defaultModel", models.defaultModelId()),
                 Map.entry("models", models.listModels()),
                 Map.entry("streaming", true),
-                Map.entry("max_steps", 12),
+                Map.entry("maxSteps", 12),
                 Map.entry("orchestration", "compiled_plan_deterministic"),
-                Map.entry("shadow_only", true),
+                Map.entry("shadowOnly", true),
                 Map.entry("versions", Map.of(
-                        "request_plan", RequestPlan.VERSION,
-                        "compiled_plan", CompiledPlanIR.VERSION,
-                        "capability_registry", CapabilitySpecRegistry.VERSION,
+                        "requestPlan", RequestPlan.VERSION,
+                        "compiledPlan", CompiledPlanIR.VERSION,
+                        "capabilityRegistry", CapabilitySpecRegistry.VERSION,
                         "prompt", PromptCatalog.VERSION,
-                        "model_adapter", SpringAiModelInvoker.VERSION,
+                        "modelAdapter", SpringAiModelInvoker.VERSION,
                         "evidence", EvidenceEnvelope.VERSION,
                         "verifier", EvidenceVerifier.VERSION)),
-                Map.entry("automatic_tool_loop", false));
+                Map.entry("automaticToolLoop", false));
     }
 }

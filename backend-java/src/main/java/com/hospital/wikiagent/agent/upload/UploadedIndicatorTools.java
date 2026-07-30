@@ -86,46 +86,46 @@ public class UploadedIndicatorTools {
         RowComparison rowComparison = rowComparison(workbook, systemValues, context);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("file_key", upload.fileKey());
-        data.put("file_name", upload.originalName());
-        data.put("sheet_count", workbook.sheets().size());
-        data.put("row_count", workbook.totalRows());
+        data.put("fileKey", upload.fileKey());
+        data.put("fileName", upload.originalName());
+        data.put("sheetCount", workbook.sheets().size());
+        data.put("rowCount", workbook.totalRows());
         data.put("columns", safeColumns(workbook));
         boolean containsDetailRecords = workbook.sheets().stream().anyMatch(SheetPreview::detailExport);
-        data.put("contains_detail_records", containsDetailRecords);
-        data.put("file_evidence_type", containsDetailRecords
+        data.put("containsDetailRecords", containsDetailRecords);
+        data.put("fileEvidenceType", containsDetailRecords
                 ? "detail"
                 : uploadedValues.hasAny() ? "summary" : "unknown");
         data.put("summary", "已解析 " + upload.originalName() + "，共 "
                 + workbook.totalRows() + " 行数据。");
-        data.put("looks_like_indicator_data", uploadedValues.hasAny() || identity.ruleId() != null);
-        put(data, "uploaded_rule_id", identity.ruleId());
-        put(data, "uploaded_rule_name", identity.ruleName());
-        put(data, "uploaded_stat_period", identity.statPeriod());
-        put(data, "uploaded_numerator", uploadedValues.numerator());
-        put(data, "uploaded_denominator", uploadedValues.denominator());
-        put(data, "uploaded_rate", uploadedValues.rate());
-        put(data, "system_rule_id", systemValues.ruleId());
-        put(data, "system_stat_period", systemValues.statPeriod());
-        put(data, "system_numerator", systemValues.numerator());
-        put(data, "system_denominator", systemValues.denominator());
-        put(data, "system_rate", systemValues.rate());
-        data.put("comparison_level", comparison.level());
-        data.put("comparison_status", comparison.status());
-        data.put("comparison_direction", "上传文件值 - 系统值");
-        data.put("comparison_metrics", comparison.metrics());
-        data.put("matched_count", comparison.matchedCount());
-        data.put("different_count", comparison.differentCount());
+        data.put("looksLikeIndicatorData", uploadedValues.hasAny() || identity.ruleId() != null);
+        put(data, "uploadedRuleId", identity.ruleId());
+        put(data, "uploadedRuleName", identity.ruleName());
+        put(data, "uploadedStatPeriod", identity.statPeriod());
+        put(data, "uploadedNumerator", uploadedValues.numerator());
+        put(data, "uploadedDenominator", uploadedValues.denominator());
+        put(data, "uploadedRate", uploadedValues.rate());
+        put(data, "systemRuleId", systemValues.ruleId());
+        put(data, "systemStatPeriod", systemValues.statPeriod());
+        put(data, "systemNumerator", systemValues.numerator());
+        put(data, "systemDenominator", systemValues.denominator());
+        put(data, "systemRate", systemValues.rate());
+        data.put("comparisonLevel", comparison.level());
+        data.put("comparisonStatus", comparison.status());
+        data.put("comparisonDirection", "上传文件值 - 系统值");
+        data.put("comparisonMetrics", comparison.metrics());
+        data.put("matchedCount", comparison.matchedCount());
+        data.put("differentCount", comparison.differentCount());
         if (rowComparison == null) {
-            data.put("row_level_comparison_available", false);
-            data.put("cause_analysis_available", false);
-            data.put("cause_analysis_note", comparison.note());
+            data.put("rowLevelComparisonAvailable", false);
+            data.put("causeAnalysisAvailable", false);
+            data.put("causeAnalysisNote", comparison.note());
         } else {
             Map<String, Object> safeRowComparison = rowComparison.safeData();
             data.putAll(safeRowComparison);
-            data.put("row_comparison", safeRowComparison);
-            data.put("cause_analysis_available", rowComparison.available());
-            data.put("cause_analysis_note", rowComparison.message());
+            data.put("rowComparison", safeRowComparison);
+            data.put("causeAnalysisAvailable", rowComparison.available());
+            data.put("causeAnalysisNote", rowComparison.message());
         }
 
         String summary = rowComparison == null
@@ -186,12 +186,12 @@ public class UploadedIndicatorTools {
             }
             Map<String, Object> data = result.data();
             return new TrialValues(
-                    text(data.get("run_id")),
-                    text(data.get("rule_id")),
-                    period(data.get("stat_start"), data.get("stat_end")),
-                    number(data.get("numerator_count")),
-                    number(data.get("denominator_count")),
-                    number(data.get("result_value")));
+                    text(data.get("runId")),
+                    text(data.get("ruleId")),
+                    period(data.get("statStart"), data.get("statEnd")),
+                    number(data.get("numeratorCount")),
+                    number(data.get("denominatorCount")),
+                    number(data.get("resultValue")));
         }
         return TrialValues.empty();
     }
@@ -284,8 +284,8 @@ public class UploadedIndicatorTools {
         Map<String, Object> metric = new LinkedHashMap<>();
         metric.put("metric", label);
         metric.put("role", role);
-        metric.put("uploaded_value", uploaded);
-        metric.put("system_value", system);
+        metric.put("uploadedValue", uploaded);
+        metric.put("systemValue", system);
         metric.put("difference", difference);
         metric.put("unit", unit);
         metric.put("match", Math.abs(difference) < 0.01);

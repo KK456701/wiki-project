@@ -240,16 +240,16 @@ const summaryNodeNames = new Set([
 
 function executionCategory(event: AgentEvent): ExecutionNodeCategory | null {
   const status = event.status || ''
-  const nodeName = event.node_name || ''
-  const toolName = event.tool_name || ''
+  const nodeName = event.nodeName || ''
+  const toolName = event.toolName || ''
   if (status === 'failed' || status === 'error') return 'failure'
   if (nodeName === 'batch_indicator'
-      && !event.subtask_id
+      && !event.subtaskId
       && (event.message || '').startsWith('正在计算指标')) return null
-  if (event.node_type === 'llm') return 'llm'
+  if (event.nodeType === 'llm') return 'llm'
   if (ruleNodeNames.has(nodeName)
       || (nodeName === 'tool_result' && ruleTools.has(toolName))) return 'rule'
-  if (event.node_type === 'database'
+  if (event.nodeType === 'database'
       || dataNodeNames.has(nodeName)
       || (nodeName === 'tool_result' && dataTools.has(toolName))) return 'data'
   if (verificationNodeNames.has(nodeName) || nodeName.includes('validation')) return 'verification'
@@ -261,8 +261,8 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
   const category = executionCategory(event)
   if (!category) return
   const nodes = message.executionNodes || (message.executionNodes = [])
-  const nodeName = event.node_name || 'unknown'
-  const subtaskId = event.subtask_id || 'root'
+  const nodeName = event.nodeName || 'unknown'
+  const subtaskId = event.subtaskId || 'root'
   const repeatedBatchNode = subtaskId.includes(':batch:')
     ? nodes.find((node) => node.nodeName === nodeName && node.category === category)
     : undefined
@@ -271,10 +271,10 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     repeatedBatchNode.status = event.status === 'failed' || event.status === 'error'
       ? 'failed'
       : 'success'
-    repeatedBatchNode.durationMs = event.duration_ms
-    repeatedBatchNode.toolName = event.tool_name
+    repeatedBatchNode.durationMs = event.durationMs
+    repeatedBatchNode.toolName = event.toolName
     repeatedBatchNode.capability = event.capability
-    repeatedBatchNode.modelId = event.model_id
+    repeatedBatchNode.modelId = event.modelId
     repeatedBatchNode.subtaskId = subtaskId
     repeatedBatchNode.occurrence = 0
     repeatedBatchNode.repeatCount = (repeatedBatchNode.repeatCount || 1) + 1
@@ -286,7 +286,7 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
   nodes.push({
     id: `${nodeName}-${subtaskId}-${occurrence}`,
     nodeName,
-    nodeType: event.node_type || 'code',
+    nodeType: event.nodeType || 'code',
     label,
     category,
     status: event.status === 'failed' || event.status === 'error'
@@ -294,10 +294,10 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
       : event.status === 'warning' || event.status === 'incomplete'
         ? 'warning'
         : 'success',
-    durationMs: event.duration_ms,
-    toolName: event.tool_name,
+    durationMs: event.durationMs,
+    toolName: event.toolName,
     capability: event.capability,
-    modelId: event.model_id,
+    modelId: event.modelId,
     subtaskId,
     occurrence,
   })
@@ -374,27 +374,27 @@ function makeId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)}`
 }
 
-/** 把持久化的批量卡片载荷（snake_case，与 SSE batch_indicator_result 同形态）转为前端卡片数据 */
+/** 把持久化的批量卡片载荷（与 SSE batch_indicator_result 同形态）转为前端卡片数据 */
 function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
   return {
-    ruleId: String(raw.rule_id ?? ''),
-    ruleName: String(raw.rule_name ?? ''),
-    profileId: raw.profile_id as string | undefined,
-    profileLabel: raw.profile_label as string | undefined,
+    ruleId: String(raw.ruleId ?? ''),
+    ruleName: String(raw.ruleName ?? ''),
+    profileId: raw.profileId as string | undefined,
+    profileLabel: raw.profileLabel as string | undefined,
     status: String(raw.status ?? ''),
     done: Number(raw.done ?? 0),
     total: Number(raw.total ?? 0),
-    resultValue: raw.result_value as number | undefined,
-    numeratorCount: raw.numerator_count as number | undefined,
-    denominatorCount: raw.denominator_count as number | undefined,
+    resultValue: raw.resultValue as number | undefined,
+    numeratorCount: raw.numeratorCount as number | undefined,
+    denominatorCount: raw.denominatorCount as number | undefined,
     unit: raw.unit as string | undefined,
-    calculationDisplay: raw.calculation_display as string | undefined,
-    statStart: raw.stat_start as string | undefined,
-    statEnd: raw.stat_end as string | undefined,
-    runId: raw.run_id as string | undefined,
-    dataFreshness: raw.data_freshness as string | undefined,
-    errorCode: raw.error_code as string | undefined,
-    errorMessage: raw.error_message as string | undefined,
+    calculationDisplay: raw.calculationDisplay as string | undefined,
+    statStart: raw.statStart as string | undefined,
+    statEnd: raw.statEnd as string | undefined,
+    runId: raw.runId as string | undefined,
+    dataFreshness: raw.dataFreshness as string | undefined,
+    errorCode: raw.errorCode as string | undefined,
+    errorMessage: raw.errorMessage as string | undefined,
   }
 }
 
@@ -435,12 +435,12 @@ function normalizeClarification(
     kind: value.kind || 'free_text',
     title: value.title || '还需要你补充一点信息',
     question: value.question || '',
-    helpText: value.help_text || '',
-    selectionMode: value.selection_mode === 'multiple' ? 'multiple' : 'single',
+    helpText: value.helpText || '',
+    selectionMode: value.selectionMode === 'multiple' ? 'multiple' : 'single',
     options: value.options || [],
-    allowFreeText: Boolean(value.allow_free_text),
-    freeTextPlaceholder: value.free_text_placeholder || '补充说明',
-    resumePrefix: value.resume_prefix || '继续处理上一条请求。补充信息：',
+    allowFreeText: Boolean(value.allowFreeText),
+    freeTextPlaceholder: value.freeTextPlaceholder || '补充说明',
+    resumePrefix: value.resumePrefix || '继续处理上一条请求。补充信息：',
   }
 }
 
@@ -534,7 +534,7 @@ export const useAgentStore = defineStore('agent', {
         this.messages = list.map((message: SessionMessage) => {
           // 持久化的批量卡片载荷与 SSE batch_indicator_result 同形态，
           // 恢复后卡片组件渲染效果与实时推送一致。
-          const rawBatch = Array.isArray(message.batch_results) ? message.batch_results : []
+          const rawBatch = Array.isArray(message.batchResults) ? message.batchResults : []
           return {
             id: makeId('message'),
             role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
@@ -562,12 +562,12 @@ export const useAgentStore = defineStore('agent', {
     },
     async upload(file: File) {
       const result = await uploadIndicatorFile(this.token, file)
-      this.latestFileKey = result.file_key
-      this.latestFileName = result.file_name
+      this.latestFileKey = result.fileKey
+      this.latestFileName = result.fileName
       this.messages.push({
         id: makeId('message'),
         role: 'user',
-        content: `已上传：${result.file_name}（${(result.size_bytes / 1024).toFixed(1)} KB）`,
+        content: `已上传：${result.fileName}（${(result.sizeBytes / 1024).toFixed(1)} KB）`,
         status: 'complete',
         evidence: [],
       })
@@ -645,7 +645,7 @@ export const useAgentStore = defineStore('agent', {
       }
     },
     applyEvent(message: ChatMessage, event: AgentEvent) {
-      if (event.trace_id) message.traceId = event.trace_id
+      if (event.traceId) message.traceId = event.traceId
       if (event.event === 'assistant_message' || event.event === 'clarification_required') {
         setAgentContent(message, event.message || '')
         if (event.event === 'assistant_message') {
@@ -665,34 +665,34 @@ export const useAgentStore = defineStore('agent', {
       if (event.event === 'model_start') setStage(message, event.message || '模型处理中', 'llm')
       if (event.event === 'stage_update' && message.status === 'running') {
         const backendLabel = event.message || ''
-        const label = !backendLabel || backendLabel === event.node_name
-          ? nodeLabels[event.node_name || ''] || backendLabel || '推进业务流程'
+        const label = !backendLabel || backendLabel === event.nodeName
+          ? nodeLabels[event.nodeName || ''] || backendLabel || '推进业务流程'
           : backendLabel
         appendExecutionNode(message, event, label)
-        setStage(message, label, stageKind(event.node_type),
-          event.status === 'failed' ? 'failed' : 'success', event.duration_ms)
+        setStage(message, label, stageKind(event.nodeType),
+          event.status === 'failed' ? 'failed' : 'success', event.durationMs)
       }
       if (event.event === 'batch_indicator_result') {
         if (!message.batchResults) message.batchResults = []
         const incoming: BatchIndicatorResult = {
-          ruleId: event.rule_id || '',
-          ruleName: event.rule_name || '',
-          profileId: event.profile_id,
-          profileLabel: event.profile_label,
+          ruleId: event.ruleId || '',
+          ruleName: event.ruleName || '',
+          profileId: event.profileId,
+          profileLabel: event.profileLabel,
           status: event.status || '',
           done: event.done || 0,
           total: event.total || 0,
-          resultValue: event.result_value,
-          numeratorCount: event.numerator_count,
-          denominatorCount: event.denominator_count,
+          resultValue: event.resultValue,
+          numeratorCount: event.numeratorCount,
+          denominatorCount: event.denominatorCount,
           unit: event.unit,
-          calculationDisplay: event.calculation_display,
-          statStart: event.stat_start,
-          statEnd: event.stat_end,
-          runId: event.run_id,
-          dataFreshness: event.data_freshness,
-          errorCode: event.error_code,
-          errorMessage: event.error_message,
+          calculationDisplay: event.calculationDisplay,
+          statStart: event.statStart,
+          statEnd: event.statEnd,
+          runId: event.runId,
+          dataFreshness: event.dataFreshness,
+          errorCode: event.errorCode,
+          errorMessage: event.errorMessage,
         }
         // 同一指标+口径重复推送时原地替换，避免叠出同形卡片；
         // 不同口径（profileId 不同）各自保留一张卡片。
@@ -705,11 +705,11 @@ export const useAgentStore = defineStore('agent', {
           message.batchResults.push(incoming)
         }
         setStage(message,
-          `已完成 ${event.done}/${event.total}：${event.rule_name || ''}`,
+          `已完成 ${event.done}/${event.total}：${event.ruleName || ''}`,
           'code', event.status === 'FAILED' ? 'warning' : 'success')
       }
       if (event.event === 'agent_done') {
-        if (event.stop_reason === 'clarification' || message.awaitingClarification) {
+        if (event.stopReason === 'clarification' || message.awaitingClarification) {
           message.pendingTerminalStatus = 'complete'
         } else if (event.status === 'completed') {
           message.pendingTerminalStatus = 'complete'
@@ -718,24 +718,24 @@ export const useAgentStore = defineStore('agent', {
         }
       }
       if (event.event === 'tool_call') {
-        setStage(message, toolLabels[event.tool_name || ''] || '调用受控业务工具', 'tool',
+        setStage(message, toolLabels[event.toolName || ''] || '调用受控业务工具', 'tool',
           'running')
         message.evidence.push({
-          id: `${event.tool_name || 'tool'}-${message.evidence.length}`,
-          label: toolLabels[event.tool_name || ''] || '处理业务信息',
+          id: `${event.toolName || 'tool'}-${message.evidence.length}`,
+          label: toolLabels[event.toolName || ''] || '处理业务信息',
           state: 'running',
           detail: '正在调用受控业务工具',
         })
       }
       if (event.event === 'tool_result') {
-        const step = [...message.evidence].reverse().find((item) => item.state === 'running' && item.id.startsWith(event.tool_name || 'tool'))
+        const step = [...message.evidence].reverse().find((item) => item.state === 'running' && item.id.startsWith(event.toolName || 'tool'))
         if (!step) return
         step.state = event.status === 'success' || event.status === 'preview_ready' ? 'success' : 'warning'
         step.detail = event.reused ? '复用本轮已有结果' : event.message || event.code || '工具执行结束'
-        step.durationMs = event.duration_ms
+        step.durationMs = event.durationMs
         step.reused = event.reused
         setStage(message, step.label, 'tool',
-          step.state === 'success' ? 'success' : 'warning', event.duration_ms)
+          step.state === 'success' ? 'success' : 'warning', event.durationMs)
       }
     },
   },

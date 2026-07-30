@@ -26,19 +26,19 @@ class WikiRuleKnowledgeSourceTest {
         Map<String, Object> rule = source.effectiveRule(
                 "患者入院 48 小时内转科的比例", "hospital_without_release");
 
-        assertThat(rule.get("rule_id")).isEqualTo("HXZD-001-001");
-        assertThat(rule.get("rule_source")).isEqualTo("wiki");
-        assertThat(rule.get("effective_level")).isEqualTo("company");
-        assertThat(rule.get("execution_status")).isEqualTo("documentation_only");
-        assertThat(rule.get("sql_status")).isEqualTo("unavailable");
-        assertThat(rule.get("standard_sql")).asString()
+        assertThat(rule.get("ruleId")).isEqualTo("HXZD-001-001");
+        assertThat(rule.get("ruleSource")).isEqualTo("wiki");
+        assertThat(rule.get("effectiveLevel")).isEqualTo("company");
+        assertThat(rule.get("executionStatus")).isEqualTo("documentation_only");
+        assertThat(rule.get("sqlStatus")).isEqualTo("unavailable");
+        assertThat(rule.get("standardSql")).asString()
                 .contains("MRAS_BUSINESS_FIRSTVISIT");
-        assertThat(rule.get("overview_runtime_eligible")).isEqualTo(false);
-        assertThat(rule.get("numerator_rule")).isEqualTo("入院48小时内转科患者人次数");
-        assertThat(rule.get("denominator_rule")).isEqualTo("同期入院患者总人次数");
-        assertThat(rule.get("filter_rule")).asString().isBlank();
-        assertThat(rule.get("exclude_rule")).asString().isBlank();
-        assertThat(((Map<?, ?>) rule.get("calculation_definition")).get("exclusions"))
+        assertThat(rule.get("overviewRuntimeEligible")).isEqualTo(false);
+        assertThat(rule.get("numeratorRule")).isEqualTo("入院48小时内转科患者人次数");
+        assertThat(rule.get("denominatorRule")).isEqualTo("同期入院患者总人次数");
+        assertThat(rule.get("filterRule")).asString().isBlank();
+        assertThat(rule.get("excludeRule")).asString().isBlank();
+        assertThat(((Map<?, ?>) rule.get("calculationDefinition")).get("exclusions"))
                 .asString().isBlank();
     }
 
@@ -49,9 +49,9 @@ class WikiRuleKnowledgeSourceTest {
         Map<String, Object> mapping = source.fieldMapping(
                 "HXZD-001-001", "hospital_without_release");
 
-        assertThat(search.get("resolved_rule_id")).isEqualTo("HXZD-001-001");
-        assertThat(mapping.get("rule_source")).isEqualTo("wiki");
-        assertThat(mapping.get("execution_status")).isEqualTo("documentation_only");
+        assertThat(search.get("resolvedRuleId")).isEqualTo("HXZD-001-001");
+        assertThat(mapping.get("ruleSource")).isEqualTo("wiki");
+        assertThat(mapping.get("executionStatus")).isEqualTo("documentation_only");
         assertThat(mapping.get("status")).isEqualTo("missing");
         assertThat((List<?>) mapping.get("items")).isEmpty();
     }
@@ -64,7 +64,7 @@ class WikiRuleKnowledgeSourceTest {
         var qualityRules = source.dataQualityRules("HXZD-001-001");
 
         assertThat(indicators).hasSize(35);
-        assertThat(indicators).extracting(item -> item.get("rule_id"))
+        assertThat(indicators).extracting(item -> item.get("ruleId"))
                 .contains("HXZD-001-001", "HXZD-016-002");
         assertThat(profiles).isEmpty();
         assertThat(qualityRules).isEmpty();
@@ -81,11 +81,11 @@ class WikiRuleKnowledgeSourceTest {
                 Map.class);
 
         assertThat(rule)
-                .containsEntry("execution_status", "executable")
-                .containsEntry("sql_status", "available")
-                .containsEntry("knowledge_release_id", pointer.get("release_id"));
-        assertThat(rule.get("standard_sql")).asString().contains("MRAS_BUSINESS_FIRSTVISIT");
-        Map<?, ?> extraction = (Map<?, ?>) rule.get("extraction_contract");
+                .containsEntry("executionStatus", "executable")
+                .containsEntry("sqlStatus", "available")
+                .containsEntry("knowledgeReleaseId", pointer.get("release_id"));
+        assertThat(rule.get("standardSql")).asString().contains("MRAS_BUSINESS_FIRSTVISIT");
+        Map<?, ?> extraction = (Map<?, ?>) rule.get("extractionContract");
         assertThat(extraction.get("route")).isEqualTo("EVENT");
         assertThat(extraction.get("event_table"))
                 .isEqualTo("MRAS_BUSINESS_FIRSTVISIT");
@@ -97,7 +97,7 @@ class WikiRuleKnowledgeSourceTest {
     void explicitScalarOverviewMappingIsNotPollutedByGeneratedCandidates() {
         Map<String, Object> rule = source.effectiveRule(
                 "HXZD-012-001", "hospital_001");
-        Map<?, ?> contract = (Map<?, ?>) rule.get("dual_database_contract");
+        Map<?, ?> contract = (Map<?, ?>) rule.get("dualDatabaseContract");
         Map<?, ?> mapping = (Map<?, ?>) contract.get("overview_result_mapping");
 
         assertThat(mapping.get("index_value")).isEqualTo("index_value");
@@ -107,18 +107,18 @@ class WikiRuleKnowledgeSourceTest {
                 .isEqualTo("分母-三级手术并发症发生率");
         assertThat(mapping.containsKey("numerator_count")).isFalse();
         assertThat(mapping.containsKey("denominator_count")).isFalse();
-        assertThat(rule.get("result_unit")).isEqualTo("ratio");
+        assertThat(rule.get("resultUnit")).isEqualTo("ratio");
     }
 
     @Test
     void medianMetricPublishesMinuteResultContractAndTargetMapping() {
         Map<String, Object> rule = source.effectiveRule(
                 "HXZD-014-001", "hospital_001");
-        Map<?, ?> resultContract = (Map<?, ?>) rule.get("result_contract");
-        Map<?, ?> dual = (Map<?, ?>) rule.get("dual_database_contract");
+        Map<?, ?> resultContract = (Map<?, ?>) rule.get("resultContract");
+        Map<?, ?> dual = (Map<?, ?>) rule.get("dualDatabaseContract");
         Map<?, ?> mapping = (Map<?, ?>) dual.get("overview_result_mapping");
 
-        assertThat(rule.get("result_unit")).isEqualTo("minutes");
+        assertThat(rule.get("resultUnit")).isEqualTo("minutes");
         assertThat(resultContract.get("value_type")).isEqualTo("median_duration");
         assertThat(resultContract.get("target_value")).isEqualTo(5);
         assertThat(mapping.get("index_value")).isEqualTo("监测情况");
@@ -131,34 +131,34 @@ class WikiRuleKnowledgeSourceTest {
         var indicators = source.activeIndicatorNames("hospital_001", 100);
 
         for (Map<String, String> indicator : indicators) {
-            Map<String, Object> rule = source.effectiveRule(indicator.get("rule_id"), "hospital_001");
+            Map<String, Object> rule = source.effectiveRule(indicator.get("ruleId"), "hospital_001");
             assertThat(rule.get("definition"))
-                    .as("%s definition", indicator.get("rule_id"))
+                    .as("%s definition", indicator.get("ruleId"))
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
             assertThat(rule.get("formula"))
-                    .as("%s formula", indicator.get("rule_id"))
+                    .as("%s formula", indicator.get("ruleId"))
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
-            assertThat(rule.get("numerator_rule"))
-                    .as("%s numerator", indicator.get("rule_id"))
+            assertThat(rule.get("numeratorRule"))
+                    .as("%s numerator", indicator.get("ruleId"))
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
-            assertThat(rule.get("denominator_rule"))
-                    .as("%s denominator", indicator.get("rule_id"))
+            assertThat(rule.get("denominatorRule"))
+                    .as("%s denominator", indicator.get("ruleId"))
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
-            assertThat(rule.get("standard_sql"))
-                    .as("%s overview SQL", indicator.get("rule_id"))
+            assertThat(rule.get("standardSql"))
+                    .as("%s overview SQL", indicator.get("ruleId"))
                     .isInstanceOf(String.class)
                     .asString()
                     .isNotBlank();
-            assertThat(rule.get("overview_runtime_eligible"))
-                    .as("%s overview runtime eligibility", indicator.get("rule_id"))
+            assertThat(rule.get("overviewRuntimeEligible"))
+                    .as("%s overview runtime eligibility", indicator.get("ruleId"))
                     .isEqualTo(true);
         }
     }
@@ -167,14 +167,14 @@ class WikiRuleKnowledgeSourceTest {
     void draftOnlyIndicatorRemainsDocumentationOnlyButKeepsStaticOverviewReference() {
         Map<String, Object> rule = source.effectiveRule("HXZD-009-004", "hospital_001");
 
-        assertThat(rule.get("rule_id")).isEqualTo("HXZD-009-004");
-        assertThat(rule.get("profile_id"))
+        assertThat(rule.get("ruleId")).isEqualTo("HXZD-009-004");
+        assertThat(rule.get("profileId"))
                 .isEqualTo("HXZD-009-004-company-default");
-        assertThat(rule.get("execution_status")).isEqualTo("documentation_only");
-        assertThat(rule.get("sql_status")).isEqualTo("overview_static_validated");
-        assertThat(rule.get("standard_sql")).asString().isNotBlank();
-        assertThat(rule.get("overview_runtime_eligible")).isEqualTo(true);
-        assertThat(rule.get("execution_blockers")).asList()
+        assertThat(rule.get("executionStatus")).isEqualTo("documentation_only");
+        assertThat(rule.get("sqlStatus")).isEqualTo("overview_static_validated");
+        assertThat(rule.get("standardSql")).asString().isNotBlank();
+        assertThat(rule.get("overviewRuntimeEligible")).isEqualTo(true);
+        assertThat(rule.get("executionBlockers")).asList()
                 .containsExactly("当前指标没有可进入生效口径的已审批Profile");
     }
 
@@ -188,14 +188,14 @@ class WikiRuleKnowledgeSourceTest {
 
         WikiRuleKnowledgeSource versioned = new WikiRuleKnowledgeSource(root.toString(), mapper);
         assertThat(versioned.searchForHospital("第一版指标", "hospital_001", 3)
-                .get("knowledge_release_id")).isEqualTo("KB-ONE");
+                .get("knowledgeReleaseId")).isEqualTo("KB-ONE");
 
         // 运行时每秒最多检查一次指针，防止每个请求都访问磁盘。
         Thread.sleep(1_050L);
         writePointer(root, "KB-TWO", mapper);
         Map<String, Object> switched = versioned.searchForHospital("第二版指标", "hospital_001", 3);
-        assertThat(switched.get("knowledge_release_id")).isEqualTo("KB-TWO");
-        assertThat(switched.get("resolved_rule_id")).isEqualTo("HXZD-001-001");
+        assertThat(switched.get("knowledgeReleaseId")).isEqualTo("KB-TWO");
+        assertThat(switched.get("resolvedRuleId")).isEqualTo("HXZD-001-001");
 
         // 指向不存在的版本时不得清空当前缓存，也不能退回到半成品目录。
         Thread.sleep(1_050L);
@@ -204,8 +204,8 @@ class WikiRuleKnowledgeSourceTest {
                  "release_path":"releases/company/KB-BROKEN"}
                 """, StandardCharsets.UTF_8);
         Map<String, Object> retained = versioned.searchForHospital("第二版指标", "hospital_001", 3);
-        assertThat(retained.get("knowledge_release_id")).isEqualTo("KB-TWO");
-        assertThat(retained.get("resolved_rule_id")).isEqualTo("HXZD-001-001");
+        assertThat(retained.get("knowledgeReleaseId")).isEqualTo("KB-TWO");
+        assertThat(retained.get("resolvedRuleId")).isEqualTo("HXZD-001-001");
     }
 
     private static void createSearchOnlyRelease(

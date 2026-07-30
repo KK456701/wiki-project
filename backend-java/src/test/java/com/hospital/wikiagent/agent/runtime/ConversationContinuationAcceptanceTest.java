@@ -131,7 +131,7 @@ class ConversationContinuationAcceptanceTest {
     }
 
     private static Map<String, String> metric(String id, String name) {
-        return Map.of("rule_id", id, "rule_name", name);
+        return Map.of("ruleId", id, "ruleName", name);
     }
 
     private static HybridIndicatorResolver.ResolvedIndicator resolved(

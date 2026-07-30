@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.auth.HospitalAuthService;
@@ -41,8 +40,8 @@ public class MetadataController {
     @GetMapping("/overview")
     public Map<String, Object> overview(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestParam(name = "hospital_id", required = false) String hospitalId,
-            @RequestParam(name = "db_name", required = false) String databaseName) {
+            @RequestParam(name = "hospitalId", required = false) String hospitalId,
+            @RequestParam(name = "dbName", required = false) String databaseName) {
         HospitalPrincipal principal = principal(authorization);
         requireHospital(principal, hospitalId);
         return metadata.overview(principal, databaseName);
@@ -55,7 +54,7 @@ public class MetadataController {
         HospitalPrincipal principal = principal(authorization);
         requireHospital(principal, request.hospitalId());
         return metadata.sync(
-                principal, request.hospitalId(), request.databaseName(), request.source());
+                principal, request.hospitalId(), request.dbName(), request.source());
     }
 
     private HospitalPrincipal principal(String authorization) {
@@ -77,8 +76,8 @@ public class MetadataController {
     }
 
     public record MetadataSyncRequest(
-            @JsonProperty("hospital_id") String hospitalId,
-            @JsonProperty("db_name") String databaseName,
+            String hospitalId,
+            String dbName,
             String source) {
     }
 }

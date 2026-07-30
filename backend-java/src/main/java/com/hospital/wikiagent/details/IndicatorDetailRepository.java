@@ -104,36 +104,36 @@ public class IndicatorDetailRepository {
             return Optional.empty();
         }
         Map<String, Object> snapshot = map(row.get("run_context_json"));
-        Map<String, Object> rule = objectMap(snapshot.get("effective_rule"));
-        Map<String, Object> mapping = objectMap(snapshot.get("field_mapping"));
+        Map<String, Object> rule = objectMap(snapshot.get("effectiveRule"));
+        Map<String, Object> mapping = objectMap(snapshot.get("fieldMapping"));
         Map<String, Object> parameters = objectMap(snapshot.get("params"));
-        Map<String, Object> execution = objectMap(snapshot.get("execution_context"));
-        String start = first(text(snapshot.get("stat_start")), sqlTime(row.get("stat_start_time")));
-        String end = first(text(snapshot.get("stat_end")), sqlTime(row.get("stat_end_time")));
+        Map<String, Object> execution = objectMap(snapshot.get("executionContext"));
+        String start = first(text(snapshot.get("statStart")), sqlTime(row.get("stat_start_time")));
+        String end = first(text(snapshot.get("statEnd")), sqlTime(row.get("stat_end_time")));
         parameters.put("start_time", start);
         parameters.put("end_time", end);
-        Map<String, Object> calculation = objectMap(rule.get("calculation_definition"));
+        Map<String, Object> calculation = objectMap(rule.get("calculationDefinition"));
         if (calculation.isEmpty()) {
-            calculation = objectMap(rule.get("national_calculation_definition"));
+            calculation = objectMap(rule.get("nationalCalculationDefinition"));
         }
         return Optional.of(new RunContext(
                 runId,
                 text(row.get("sql_id")),
                 hospitalId,
                 text(row.get("rule_id")),
-                text(rule.get("rule_name")),
-                first(text(rule.get("effective_level")), "national"),
-                nullableText(rule.get("national_version")),
-                integer(rule.get("hospital_version")),
+                text(rule.get("ruleName")),
+                first(text(rule.get("effectiveLevel")), "national"),
+                nullableText(rule.get("nationalVersion")),
+                integer(rule.get("hospitalVersion")),
                 start,
                 end,
                 first(
-                        text(snapshot.get("db_source_id")),
-                        text(execution.get("source_id")),
-                        text(mapping.get("db_name"))),
-                text(mapping.get("main_table")),
+                        text(snapshot.get("dbSourceId")),
+                        text(execution.get("sourceId")),
+                        text(mapping.get("dbName"))),
+                text(mapping.get("mainTable")),
                 first(text(mapping.get("dialect")), "sqlserver"),
-                text(mapping.get("query_profile")),
+                text(mapping.get("queryProfile")),
                 calculation,
                 mapping,
                 parameters,

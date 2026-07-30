@@ -37,12 +37,12 @@ public class AgentTraceController {
     @GetMapping
     public Map<String, Object> list(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestParam(name = "started_after", required = false) String startedAfter,
-            @RequestParam(name = "started_before", required = false) String startedBefore,
+            @RequestParam(name = "startedAfter", required = false) String startedAfter,
+            @RequestParam(name = "startedBefore", required = false) String startedBefore,
             @RequestParam(required = false) String status,
-            @RequestParam(name = "model_id", required = false) String modelId,
-            @RequestParam(name = "tool_name", required = false) String toolName,
-            @RequestParam(name = "failure_class", required = false) String failureClass,
+            @RequestParam(name = "modelId", required = false) String modelId,
+            @RequestParam(name = "toolName", required = false) String toolName,
+            @RequestParam(name = "failureClass", required = false) String failureClass,
             @RequestParam(defaultValue = "100") int limit) {
         var principal = auth.authenticate(BearerTokens.require(authorization));
         try {
@@ -56,12 +56,12 @@ public class AgentTraceController {
     @GetMapping("/metrics")
     public Map<String, Object> metrics(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestParam(name = "started_after", required = false) String startedAfter,
-            @RequestParam(name = "started_before", required = false) String startedBefore,
+            @RequestParam(name = "startedAfter", required = false) String startedAfter,
+            @RequestParam(name = "startedBefore", required = false) String startedBefore,
             @RequestParam(required = false) String status,
-            @RequestParam(name = "model_id", required = false) String modelId,
-            @RequestParam(name = "tool_name", required = false) String toolName,
-            @RequestParam(name = "failure_class", required = false) String failureClass) {
+            @RequestParam(name = "modelId", required = false) String modelId,
+            @RequestParam(name = "toolName", required = false) String toolName,
+            @RequestParam(name = "failureClass", required = false) String failureClass) {
         var principal = auth.authenticate(BearerTokens.require(authorization));
         try {
             return traces.metrics(principal, filters(

@@ -53,7 +53,7 @@ public class DbHubController {
         }
         return Map.of(
                 "status", "ok",
-                "dbhub_http_url", properties.getApiUrl().replaceFirst("/+$", ""),
+                "dbhubHttpUrl", properties.getApiUrl().replaceFirst("/+$", ""),
                 "sources", allowed);
     }
 

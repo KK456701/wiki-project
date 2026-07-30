@@ -36,8 +36,6 @@ import com.hospital.wikiagent.upload.UploadStorage;
 import com.hospital.wikiagent.upload.XlsxWorkbookReader;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
 class IndicatorDetailServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-21T08:00:00Z");
@@ -60,9 +58,7 @@ class IndicatorDetailServiceTest {
                 .addScript("classpath:test-runtime-schema.sql")
                 .build();
         jdbc = new JdbcTemplate(database);
-        objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        objectMapper = new ObjectMapper();
         repository = new IndicatorDetailRepository(jdbc, objectMapper);
         repository.initialize();
         businessQuery = new StubBusinessQuery(List.of(
@@ -173,7 +169,7 @@ class IndicatorDetailServiceTest {
 
         var exported = comparisons.createForDual(
                 principal, "RUN_BUSINESS", "RUN_REAL_EXPORT", true,
-                Map.of("report_id", "DDR_test", "conclusion_code", "DUAL_DATABASE_RESULT_MISMATCH"));
+                Map.of("reportId", "DDR_test", "conclusionCode", "DUAL_DATABASE_RESULT_MISMATCH"));
         var download = service.resolveDownload(principal, exported.exportId());
         var workbook = reader.read(new StoredUpload(
                 "dual.xlsx", exported.fileName(), Files.size(download.path()), download.path()));
@@ -233,26 +229,26 @@ class IndicatorDetailServiceTest {
                 uploaded.fileKey().getBytes(StandardCharsets.UTF_8));
         Map<String, Object> quality = Map.of(
                 "layer", 6,
-                "node_name", "检查数据质量",
+                "nodeName", "检查数据质量",
                 "status", "warning",
-                "cause_confirmed", false,
-                "duration_ms", 12,
+                "causeConfirmed", false,
+                "durationMs", 12,
                 "checks", List.of(Map.of(
-                        "check_id", "missing_admission_id",
+                        "checkId", "missing_admission_id",
                         "type", "required_not_null",
                         "status", "confirmed",
-                        "affected_count", 1,
+                        "affectedCount", 1,
                         "description", "入院流水号不能为空")));
         Map<String, Object> report = Map.of(
-                "report_id", "DDR_test",
-                "rule_id", "MQSI2025_005",
-                "stat_start", "2026-01-01T00:00:00",
-                "stat_end", "2026-02-01T00:00:00",
-                "conclusion_code", "INSUFFICIENT_EXTERNAL_EVIDENCE",
-                "stopped_layer", 6,
-                "user_summary", "发现质量异常但尚不能确认差值来源。",
-                "affected_record_count", 1,
-                "evidence_limit", "仅表示当前证据下内部一致。",
+                "reportId", "DDR_test",
+                "ruleId", "MQSI2025_005",
+                "statStart", "2026-01-01T00:00:00",
+                "statEnd", "2026-02-01T00:00:00",
+                "conclusionCode", "INSUFFICIENT_EXTERNAL_EVIDENCE",
+                "stoppedLayer", 6,
+                "userSummary", "发现质量异常但尚不能确认差值来源。",
+                "affectedRecordCount", 1,
+                "evidenceLimit", "仅表示当前证据下内部一致。",
                 "layers", List.of(quality));
 
         var exported = comparisons.createForDiagnosis(
@@ -303,36 +299,38 @@ class IndicatorDetailServiceTest {
             int denominator,
             String sourceId) throws Exception {
         Map<String, Object> runContext = Map.of(
-                "effective_rule", Map.of(
-                        "rule_id", "MQSI2025_005",
-                        "rule_name", "急会诊及时到位率",
-                        "effective_level", "hospital",
-                        "national_version", "2025",
-                        "hospital_version", 1,
-                        "calculation_definition", Map.of(
+                "effectiveRule", Map.of(
+                        "ruleId", "MQSI2025_005",
+                        "ruleName", "急会诊及时到位率",
+                        "effectiveLevel", "hospital",
+                        "nationalVersion", "2025",
+                        "hospitalVersion", 1,
+                        // calculation_definition 内层是知识 Profile 透传键，保持 snake
+                        "calculationDefinition", Map.of(
                                 "detail_fields", List.of(
                                         field("consult_id", "会诊编号", "none"),
                                         field("patient_id", "患者标识", "patient_id"),
                                         field("request_time", "请求时间", "none"),
                                         field("arrive_time", "到位时间", "none"),
                                         field("arrive_minutes", "到位耗时", "none")))),
-                "field_mapping", Map.of(
-                        "hospital_id", "hospital_001",
-                        "db_name", "WiNEX_All_DEV",
+                "fieldMapping", Map.of(
+                        "hospitalId", "hospital_001",
+                        "dbName", "WiNEX_All_DEV",
                         "schema", "dbo",
-                        "main_table", "INPATIENT_CONSULT_APPLY",
+                        "mainTable", "INPATIENT_CONSULT_APPLY",
                         "dialect", "sqlserver",
-                        "query_profile", "urgent_consult_sqlserver"),
-                "execution_context", Map.of(
-                        "source_role", "winex_aima".equals(sourceId) ? "real" : "business",
-                        "source_id", sourceId),
+                        "queryProfile", "urgent_consult_sqlserver"),
+                "executionContext", Map.of(
+                        "sourceRole", "winex_aima".equals(sourceId) ? "real" : "business",
+                        "sourceId", sourceId),
+                // params 内层是 SQL 绑定参数，保持 snake
                 "params", Map.of(
                         "hospital_soid", 991827,
                         "urgent_level_code", 977578,
                         "arrive_minutes_threshold", 20),
-                "stat_start", "2026-01-01 00:00:00",
-                "stat_end", "2026-04-01 00:00:00",
-                "db_source_id", sourceId);
+                "statStart", "2026-01-01 00:00:00",
+                "statEnd", "2026-04-01 00:00:00",
+                "dbSourceId", sourceId);
         jdbc.update("""
                 INSERT INTO med_sql_run_log (
                   run_id,sql_id,hospital_id,rule_id,stat_start_time,stat_end_time,

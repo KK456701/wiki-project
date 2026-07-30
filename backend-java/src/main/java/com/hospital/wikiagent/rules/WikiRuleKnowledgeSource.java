@@ -100,11 +100,11 @@ public class WikiRuleKnowledgeSource {
                 .toList();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("query", query == null ? "" : query.strip());
-        result.put("hospital_id", hospitalId);
-        result.put("resolved_rule_id", matches.isEmpty() ? null : matches.get(0).get("rule_id"));
+        result.put("hospitalId", hospitalId);
+        result.put("resolvedRuleId", matches.isEmpty() ? null : matches.get(0).get("ruleId"));
         result.put("matches", matches);
-        result.put("rule_source", "wiki");
-        result.put("knowledge_release_id", currentSnapshot().releaseId());
+        result.put("ruleSource", "wiki");
+        result.put("knowledgeReleaseId", currentSnapshot().releaseId());
         return result;
     }
 
@@ -114,8 +114,8 @@ public class WikiRuleKnowledgeSource {
                 .sorted(Comparator.comparing(rule -> text(rule.get("rule_id"))))
                 .limit(Math.max(1, Math.min(500, limit)))
                 .map(rule -> Map.of(
-                        "rule_id", text(rule.get("rule_id")),
-                        "rule_name", text(rule.get("rule_name"))))
+                        "ruleId", text(rule.get("rule_id")),
+                        "ruleName", text(rule.get("rule_name"))))
                 .toList();
     }
 
@@ -172,66 +172,66 @@ public class WikiRuleKnowledgeSource {
         nationalRule.put("definition", definition);
         nationalRule.put("formula", formula);
         nationalRule.put("version", "2025");
-        nationalRule.put("source_path", rule.get("source_path"));
+        nationalRule.put("sourcePath", rule.get("source_path"));
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("rule_id", ruleId);
-        result.put("index_code", ruleId);
-        result.put("rule_name", text(rule.get("rule_name")));
+        result.put("ruleId", ruleId);
+        result.put("indexCode", ruleId);
+        result.put("ruleName", text(rule.get("rule_name")));
         result.put("category", first(text(rule.get("category")), text(manifest.get("category"))));
-        result.put("hospital_id", hospitalId);
-        result.put("effective_level", "company");
-        result.put("profile_id", selectedProfileId);
-        result.put("profile_name", profile.get("profile_name"));
-        result.put("execution_status", executionStatus);
-        result.put("execution_blockers", blockers);
+        result.put("hospitalId", hospitalId);
+        result.put("effectiveLevel", "company");
+        result.put("profileId", selectedProfileId);
+        result.put("profileName", profile.get("profile_name"));
+        result.put("executionStatus", executionStatus);
+        result.put("executionBlockers", blockers);
         result.put("definition", definition);
         result.put("formula", formula);
-        result.put("numerator_rule", text(profile.get("numerator_rule")));
-        result.put("denominator_rule", text(profile.get("denominator_rule")));
-        result.put("filter_rule", first(
+        result.put("numeratorRule", text(profile.get("numerator_rule")));
+        result.put("denominatorRule", text(profile.get("denominator_rule")));
+        result.put("filterRule", first(
                 text(profile.get("filter_rule")),
                 text(profile.get("filter_caliber"))));
-        result.put("exclude_rule", first(
+        result.put("excludeRule", first(
                 text(profile.get("exclude_rule")),
                 text(profile.get("exclusion_rule")),
                 text(profile.get("exclusions"))));
-        result.put("implementation_status", overviewSql);
-        result.put("standard_sql", overviewSql);
-        result.put("source_extract_sql", sourceExtractSql);
-        result.put("department_detail_sql", departmentDetailSql);
-        result.put("patient_detail_sql", patientDetailSql);
-        result.put("sql_capabilities", sqlCapabilities);
-        result.put("extraction_contract", map(profile.get("extraction_contract")));
-        result.put("dual_database_contract", dualDatabaseContract);
-        result.put("result_mapping", resultMapping);
-        result.put("result_contract", resultContract);
-        result.put("overview_runtime_eligible", overviewRuntimeEligible);
-        result.put("calculation_definition", calculation(profile));
-        result.put("national_calculation_definition", calculation(profile));
-        result.put("field_contract", map(profile.get("field_contract")));
-        result.put("field_status", text(mapping.get("status")));
-        result.put("sql_status", "executable".equals(executionStatus) && !overviewSql.isBlank()
+        result.put("implementationStatus", overviewSql);
+        result.put("standardSql", overviewSql);
+        result.put("sourceExtractSql", sourceExtractSql);
+        result.put("departmentDetailSql", departmentDetailSql);
+        result.put("patientDetailSql", patientDetailSql);
+        result.put("sqlCapabilities", sqlCapabilities);
+        result.put("extractionContract", map(profile.get("extraction_contract")));
+        result.put("dualDatabaseContract", dualDatabaseContract);
+        result.put("resultMapping", resultMapping);
+        result.put("resultContract", resultContract);
+        result.put("overviewRuntimeEligible", overviewRuntimeEligible);
+        result.put("calculationDefinition", calculation(profile));
+        result.put("nationalCalculationDefinition", calculation(profile));
+        result.put("fieldContract", map(profile.get("field_contract")));
+        result.put("fieldStatus", text(mapping.get("status")));
+        result.put("sqlStatus", "executable".equals(executionStatus) && !overviewSql.isBlank()
                 ? "available"
                 : overviewRuntimeEligible ? "overview_static_validated" : "unavailable");
-        result.put("hospital_override", null);
-        result.put("company_rule", Map.of(
+        result.put("hospitalOverride", null);
+        result.put("companyRule", Map.of(
                 "path", text(rule.get("company_path")),
                 "implementation", text(profile.get("profile_name")),
-                "implementation_status", executionStatus));
-        result.put("national_rule", nationalRule);
-        result.put("national_params", Map.of());
-        result.put("effective_params", params);
-        result.put("result_unit", first(
+                "implementationStatus", executionStatus));
+        result.put("nationalRule", nationalRule);
+        result.put("nationalParams", Map.of());
+        result.put("effectiveParams", params);
+        result.put("resultUnit", first(
                 text(resultContract.get("unit")),
                 text(manifest.get("unit")),
                 "percentage"));
-        result.put("national_version", "2025");
-        result.put("hospital_version", null);
-        result.put("overridden_fields", List.of());
-        result.put("fallback_chain", List.of("company", "national"));
-        result.put("rule_source", "wiki");
-        result.put("knowledge_release_id", resolved.releaseId());
+        result.put("nationalVersion", "2025");
+        result.put("hospitalVersion", null);
+        result.put("overriddenFields", List.of());
+        result.put("fallbackChain", List.of("company", "national"));
+        result.put("ruleSource", "wiki");
+        result.put("knowledgeReleaseId", resolved.releaseId());
         result.put("warnings", blockers);
         result.put("relations", relation(ruleId));
         return result;
@@ -334,29 +334,29 @@ public class WikiRuleKnowledgeSource {
             String column = split < 0 ? physical : physical.substring(split + 1);
             String expected = text(map(businessFields.get(entry.getKey())).get("type"));
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("business_field", entry.getKey());
-            item.put("db_name", mapping.get("db_name"));
-            item.put("table_name", table);
-            item.put("column_name", column);
-            item.put("data_type", expected);
+            item.put("businessField", entry.getKey());
+            item.put("dbName", mapping.get("dbName"));
+            item.put("tableName", table);
+            item.put("columnName", column);
+            item.put("dataType", expected);
             item.put("status", mapping.get("status"));
             items.add(item);
             Map<String, Object> metadata = new LinkedHashMap<>(item);
-            metadata.put("mapping_data_type", expected);
-            metadata.put("metadata_data_type", expected);
+            metadata.put("mappingDataType", expected);
+            metadata.put("metadataDataType", expected);
             metadataItems.add(metadata);
         }
         Map<String, Object> result = new LinkedHashMap<>(mapping);
-        result.put("rule_id", ruleId);
-        result.put("profile_id", selected.get("profile_id"));
-        result.put("execution_status", selected.get("execution_status"));
-        result.put("execution_blockers", selected.get("execution_blockers"));
-        result.put("hospital_id", hospitalId);
+        result.put("ruleId", ruleId);
+        result.put("profileId", selected.get("profile_id"));
+        result.put("executionStatus", selected.get("execution_status"));
+        result.put("executionBlockers", selected.get("execution_blockers"));
+        result.put("hospitalId", hospitalId);
         result.put("items", items);
-        result.put("metadata_items", metadataItems);
+        result.put("metadataItems", metadataItems);
         result.put("relations", listOfMaps(mapping.get("relations")));
-        result.put("rule_source", "wiki");
-        result.put("knowledge_release_id", resolved.releaseId());
+        result.put("ruleSource", "wiki");
+        result.put("knowledgeReleaseId", resolved.releaseId());
         return result;
     }
 
@@ -386,9 +386,31 @@ public class WikiRuleKnowledgeSource {
                     value.put("status", "approved");
                     value.put("label", first(
                             text(profile.get("label")), text(profile.get("profile_name"))));
-                    value.put("overview_runtime_eligible", true);
-                    value.put("parameter_overrides", map(profile.get("parameter_overrides")));
-                    value.put("field_role_overrides", map(profile.get("field_role_overrides")));
+                    value.put("overviewRuntimeEligible", true);
+                    value.put("parameterOverrides", map(profile.get("parameter_overrides")));
+                    value.put("fieldRoleOverrides", map(profile.get("field_role_overrides")));
+                    // 知识 Profile 内层仍是 snake 键；对外候选口径契约统一驼峰，
+                    // 在这个边界一次性改名，与 MrasRuleKnowledgeSource 输出保持一致。
+                    value.remove("parameter_overrides");
+                    value.remove("field_role_overrides");
+                    renameKey(value, "profile_id", "profileId");
+                    renameKey(value, "profile_name", "profileName");
+                    renameKey(value, "governance_status", "governanceStatus");
+                    renameKey(value, "execution_status", "executionStatus");
+                    renameKey(value, "execution_blockers", "executionBlockers");
+                    renameKey(value, "numerator_rule", "numeratorRule");
+                    renameKey(value, "denominator_rule", "denominatorRule");
+                    renameKey(value, "time_dimension", "timeDimension");
+                    renameKey(value, "effective_from", "effectiveFrom");
+                    renameKey(value, "effective_to", "effectiveTo");
+                    renameKey(value, "source_version", "sourceVersion");
+                    renameKey(value, "source_level", "sourceLevel");
+                    renameKey(value, "caliber_definition", "caliberDefinition");
+                    renameKey(value, "period_anchor_label", "periodAnchorLabel");
+                    renameKey(value, "elapsed_anchor_label", "elapsedAnchorLabel");
+                    renameKey(value, "difference_dimensions", "differenceDimensions");
+                    renameKey(value, "evidence_keywords", "evidenceKeywords");
+                    renameKey(value, "baseline_equivalent", "baselineEquivalent");
                     // Profile中允许保留空的生效结束时间等可选字段，
                     // Map.copyOf 会因 null 值抛出异常，因此这里返回当前方法
                     // 已创建的独立可变副本；调用方无法借此修改缓存中的契约。
@@ -412,7 +434,7 @@ public class WikiRuleKnowledgeSource {
         String defaultProfileId = text(manifest.get("default_profile"));
         List<Map<String, Object>> executable = caliberProfiles(ruleId, hospitalId);
         java.util.Set<String> executableIds = executable.stream()
-                .map(item -> text(item.get("profile_id")))
+                .map(item -> text(item.get("profileId")))
                 .collect(java.util.stream.Collectors.toSet());
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> profile : listOfMaps(manifest.get("profiles"))) {
@@ -431,20 +453,20 @@ public class WikiRuleKnowledgeSource {
                 optionStatus = "draft";
             }
             Map<String, Object> value = new LinkedHashMap<>();
-            value.put("profile_id", profileId);
-            value.put("profile_name", first(
+            value.put("profileId", profileId);
+            value.put("profileName", first(
                     text(profile.get("profile_name")), text(profile.get("label")), profileId));
-            value.put("is_current", current);
-            value.put("option_status", optionStatus);
-            value.put("governance_status", governance);
-            value.put("execution_status", text(profile.get("execution_status")));
-            value.put("overview_runtime_eligible", executableIds.contains(profileId));
-            value.put("unavailable_reason", first(
+            value.put("isCurrent", current);
+            value.put("optionStatus", optionStatus);
+            value.put("governanceStatus", governance);
+            value.put("executionStatus", text(profile.get("execution_status")));
+            value.put("overviewRuntimeEligible", executableIds.contains(profileId));
+            value.put("unavailableReason", first(
                     String.join("；", stringList(profile.get("execution_blockers"))),
                     "draft".equals(optionStatus) ? "该方案仍是草稿或尚未实现" : ""));
-            value.put("time_dimension", text(profile.get("time_dimension")));
-            value.put("effective_from", profile.get("effective_from"));
-            value.put("effective_to", profile.get("effective_to"));
+            value.put("timeDimension", text(profile.get("time_dimension")));
+            value.put("effectiveFrom", profile.get("effective_from"));
+            value.put("effectiveTo", profile.get("effective_to"));
             result.add(value);
         }
         return List.copyOf(result);
@@ -465,10 +487,10 @@ public class WikiRuleKnowledgeSource {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("numerator", profile.get("numerator_rule"));
         result.put("denominator", profile.get("denominator_rule"));
-        result.put("numerator_caliber", profile.get("numerator_caliber"));
-        result.put("denominator_caliber", profile.get("denominator_caliber"));
-        result.put("time_dimension", profile.get("time_dimension"));
-        result.put("dedup_key", profile.get("dedup_key"));
+        result.put("numeratorCaliber", profile.get("numerator_caliber"));
+        result.put("denominatorCaliber", profile.get("denominator_caliber"));
+        result.put("timeDimension", profile.get("time_dimension"));
+        result.put("dedupKey", profile.get("dedup_key"));
         result.put("exclusions", first(
                 text(profile.get("exclude_rule")),
                 text(profile.get("exclusion_rule")),
@@ -483,13 +505,23 @@ public class WikiRuleKnowledgeSource {
         if (!hospital.isEmpty()) {
             result.putAll(hospital);
         }
+        // 知识库 YAML 仍用 snake 键；对外契约统一驼峰，在这个边界一次性改名。
+        renameKey(result, "main_table", "mainTable");
+        renameKey(result, "db_name", "dbName");
+        renameKey(result, "query_profile", "queryProfile");
         result.putIfAbsent("status", "missing");
         result.putIfAbsent("dialect", "sqlserver");
         result.putIfAbsent("fields", Map.of());
         result.putIfAbsent("parameters", Map.of());
         result.putIfAbsent("relations", List.of());
-        result.putIfAbsent("query_profile", "");
+        result.putIfAbsent("queryProfile", "");
         return result;
+    }
+
+    private static void renameKey(Map<String, Object> value, String from, String to) {
+        if (value.containsKey(from)) {
+            value.putIfAbsent(to, value.remove(from));
+        }
     }
 
     private Map<String, Object> manifest(Map<String, Object> rule) {
@@ -693,16 +725,16 @@ public class WikiRuleKnowledgeSource {
     private Map<String, Object> match(Map<String, Object> rule) {
         String path = text(rule.get("national_path"));
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("rule_id", text(rule.get("rule_id")));
-        result.put("rule_name", text(rule.get("rule_name")));
+        result.put("ruleId", text(rule.get("rule_id")));
+        result.put("ruleName", text(rule.get("rule_name")));
         result.put("category", text(rule.get("category")));
         result.put("content", first(text(rule.get("definition_short")),
                 section(read(path), "指标定义")));
         result.put("formula", text(rule.get("formula_short")));
         result.put("numerator", text(rule.get("numerator_short")));
         result.put("denominator", text(rule.get("denominator_short")));
-        result.put("time_dimension", text(rule.get("time_dimension")));
-        result.put("execution_status", text(rule.get("execution_status")));
+        result.put("timeDimension", text(rule.get("time_dimension")));
+        result.put("executionStatus", text(rule.get("execution_status")));
         result.put("type", "wiki_rule");
         result.put("path", path);
         return result;

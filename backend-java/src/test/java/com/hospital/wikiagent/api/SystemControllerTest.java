@@ -15,7 +15,7 @@ class SystemControllerTest {
         assertThat(response).containsExactlyInAnyOrderEntriesOf(Map.of(
                 "status", "ok",
                 "runtime", "java",
-                "agent_orchestration", "compiled_plan"));
+                "agentOrchestration", "compiled_plan"));
     }
 
     @Test
@@ -25,8 +25,8 @@ class SystemControllerTest {
         assertThat(controller.runtimeStatus())
                 .containsEntry("runtime", "java")
                 .containsEntry("frontend", "vue3")
-                .containsEntry("rule_source", "wiki")
-                .containsEntry("runtime_store", "sqlite")
-                .containsEntry("business_database_access", "dbhub");
+                .containsEntry("ruleSource", "wiki")
+                .containsEntry("runtimeStore", "sqlite")
+                .containsEntry("businessDatabaseAccess", "dbhub");
     }
 }

@@ -188,13 +188,13 @@ class PlanGoalAlignmentValidatorTest {
 
     private static Map<String, Object> wardEntryProfile() {
         Map<String, Object> profile = new LinkedHashMap<>();
-        profile.put("profile_id", "hospital_001_ward_entry_anchor");
+        profile.put("profileId", "hospital_001_ward_entry_anchor");
         profile.put("label", "首次入区时间统计及48小时口径");
         profile.put("aliases", List.of("入区", "首次入区"));
-        profile.put("source_version", "2026-07");
+        profile.put("sourceVersion", "2026-07");
         profile.put("status", "approved");
         // 真实 Wiki 配置用 null 表示长期有效；校验器必须保留该合法值。
-        profile.put("effective_to", null);
+        profile.put("effectiveTo", null);
         return profile;
     }
 }

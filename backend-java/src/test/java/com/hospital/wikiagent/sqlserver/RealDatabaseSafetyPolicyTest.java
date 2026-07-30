@@ -58,7 +58,6 @@ class RealDatabaseSafetyPolicyTest {
                         "username: ${WIKI_SQLSERVER_USERNAME:}",
                         "password: ${WIKI_SQLSERVER_PASSWORD:}",
                         "schema-name: ${DBHUB_BUSINESS_SCHEMA:WINDBA_GN}",
-                        "property-naming-strategy: SNAKE_CASE",
                         "fail-on-unknown-properties: true")
                 .doesNotContain(
                         "jdbc:sqlserver://172.",

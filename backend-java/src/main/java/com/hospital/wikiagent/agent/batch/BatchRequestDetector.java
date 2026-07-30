@@ -161,10 +161,10 @@ public class BatchRequestDetector {
         String normalized = normalize(query);
         List<Map<String, Object>> profiles = rules.caliberProfiles(ruleId, hospitalId);
         for (Map<String, Object> profile : profiles) {
-            String profileId = text(profile.get("profile_id"));
+            String profileId = text(profile.get("profileId"));
             String profileLabel = first(
                     text(profile.get("label")),
-                    text(profile.get("profile_name")),
+                    text(profile.get("profileName")),
                     profileId);
             if ((!profileId.isBlank()
                         && normalized.toLowerCase().contains(
@@ -176,14 +176,14 @@ public class BatchRequestDetector {
         }
         if (normalized.contains("默认口径") || normalized.contains("当前口径")) {
             Map<String, Object> effective = rules.effectiveRule(ruleId, hospitalId);
-            String profileId = text(effective.get("profile_id"));
+            String profileId = text(effective.get("profileId"));
             if (!profileId.isBlank()) {
                 return new Target(
                         ruleId,
                         ruleName,
                         profileId,
                         first(
-                                text(effective.get("profile_name")),
+                                text(effective.get("profileName")),
                                 text(effective.get("label")),
                                 profileId));
             }
@@ -208,7 +208,7 @@ public class BatchRequestDetector {
             return List.of();
         }
         return rules.activeIndicatorNames(hospitalId, 500).stream()
-                .map(value -> new Target(value.get("rule_id"), value.get("rule_name")))
+                .map(value -> new Target(value.get("ruleId"), value.get("ruleName")))
                 .filter(value -> value.ruleId() != null && !value.ruleId().isBlank()
                         && value.ruleName() != null && !value.ruleName().isBlank())
                 .limit(35)
@@ -240,7 +240,7 @@ public class BatchRequestDetector {
             return List.of();
         }
         return activeIndicators.stream()
-                .map(value -> new Target(value.get("rule_id"), value.get("rule_name")))
+                .map(value -> new Target(value.get("ruleId"), value.get("ruleName")))
                 .filter(value -> !value.ruleId().isBlank() && !value.ruleName().isBlank())
                 .filter(value -> query.contains(value.ruleName())
                         || query.toUpperCase().contains(value.ruleId().toUpperCase()))

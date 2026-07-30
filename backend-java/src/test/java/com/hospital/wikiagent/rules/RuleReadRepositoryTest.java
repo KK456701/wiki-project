@@ -43,9 +43,9 @@ class RuleReadRepositoryTest {
     void searchesAllHxzdIndicatorsFromWiki() {
         assertThat(repository.activeIndicatorNames("hospital_001", 100))
                 .hasSize(35)
-                .allSatisfy(item -> assertThat(item.get("rule_id")).startsWith("HXZD-"));
+                .allSatisfy(item -> assertThat(item.get("ruleId")).startsWith("HXZD-"));
         assertThat(repository.searchForHospital("首诊", "hospital_001", 5))
-                .extracting(result -> result.get("resolved_rule_id"))
+                .extracting(result -> result.get("resolvedRuleId"))
                 .isEqualTo("HXZD-001-001");
     }
 
@@ -55,14 +55,14 @@ class RuleReadRepositoryTest {
                 "HXZD-001-001", "hospital_without_release");
 
         assertThat(rule)
-                .containsEntry("rule_id", "HXZD-001-001")
-                .containsEntry("execution_status", "documentation_only")
-                .containsEntry("sql_status", "unavailable")
-                .containsEntry("overview_runtime_eligible", false);
-        assertThat(rule.get("standard_sql")).asString()
+                .containsEntry("ruleId", "HXZD-001-001")
+                .containsEntry("executionStatus", "documentation_only")
+                .containsEntry("sqlStatus", "unavailable")
+                .containsEntry("overviewRuntimeEligible", false);
+        assertThat(rule.get("standardSql")).asString()
                 .contains("MRAS_BUSINESS_FIRSTVISIT");
-        assertThat(rule.get("numerator_rule")).asString().isNotBlank();
-        assertThat(rule.get("denominator_rule")).asString().isNotBlank();
+        assertThat(rule.get("numeratorRule")).asString().isNotBlank();
+        assertThat(rule.get("denominatorRule")).asString().isNotBlank();
     }
 
     @Test
@@ -79,13 +79,13 @@ class RuleReadRepositoryTest {
                 "HXZD-003-001", "hospital_without_release"))
                 .singleElement()
                 .satisfies(option -> {
-                    assertThat(option).containsEntry("is_current", true);
-                    assertThat(option.get("profile_name")).asString().contains("公版");
+                    assertThat(option).containsEntry("isCurrent", true);
+                    assertThat(option.get("profileName")).asString().contains("公版");
                 });
 
         assertThat(repository.caliberCatalog(
                 "HXZD-006-003", "hospital_without_release"))
-                .extracting(option -> option.get("option_status"))
+                .extracting(option -> option.get("optionStatus"))
                 .containsExactly("current_default", "draft");
     }
 
@@ -95,9 +95,9 @@ class RuleReadRepositoryTest {
                 "HXZD-001-001", "hospital_001", "将首诊时间改为15分钟");
 
         assertThat(preview)
-                .containsEntry("rule_id", "HXZD-001-001")
-                .containsKey("profile_id")
-                .containsEntry("target_level", "hospital");
+                .containsEntry("ruleId", "HXZD-001-001")
+                .containsKey("profileId")
+                .containsEntry("targetLevel", "hospital");
         assertThat(preview.get("message")).asString().contains("不提供草稿、审批或发布");
     }
 }

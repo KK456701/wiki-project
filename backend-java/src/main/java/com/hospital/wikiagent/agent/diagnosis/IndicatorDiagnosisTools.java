@@ -93,7 +93,7 @@ public class IndicatorDiagnosisTools {
                             "根据错误码 " + prepared.code() + " 修正执行契约后重试。")));
         }
         ToolResult trial = sqlTools.trial(
-                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sql_id"))),
+                new IndicatorSqlTools.TrialInput(text(prepared.data().get("sqlId"))),
                 context);
         if (!trial.ok()) {
             return layer(3, "数据快照与双库诊断", false, List.of(
@@ -103,7 +103,7 @@ public class IndicatorDiagnosisTools {
         }
 
         List<Map<String, Object>> checks = new ArrayList<>();
-        String extractionStatus = text(trial.data().get("extraction_status"));
+        String extractionStatus = text(trial.data().get("extractionStatus"));
         if ("SKIPPED_DISABLED".equals(extractionStatus)) {
             checks.add(check("source_extraction", "warn",
                     "抽取模式未启用，本轮未刷新真实库数据，结论基于现有快照。",
@@ -114,9 +114,9 @@ public class IndicatorDiagnosisTools {
         }
         checks.add(check("dual_overview", "pass",
                 "已完成业务库与真实库概览核对，状态："
-                        + text(trial.data().get("comparison_status")) + "。", ""));
+                        + text(trial.data().get("comparisonStatus")) + "。", ""));
         Map<String, Object> dualDiagnosis =
-                objectMap(trial.data().get("dual_difference_diagnosis"));
+                objectMap(trial.data().get("dualDifferenceDiagnosis"));
         String detailStatus = text(dualDiagnosis.get("status"));
         checks.add("completed".equals(detailStatus)
                 ? check("dual_detail", "pass",
@@ -125,14 +125,14 @@ public class IndicatorDiagnosisTools {
                         "明细诊断未完整完成：" + text(dualDiagnosis.get("reason")),
                         "补齐并验证科室和患者明细比较契约。"));
         Map<String, Object> result = layer(3, "数据快照与双库诊断", true, checks);
-        result.put("run_id", trial.data().get("run_id"));
-        result.put("diagnosis_report_id", trial.data().get("diagnosis_report_id"));
-        result.put("extraction_status", extractionStatus);
-        result.put("data_freshness", trial.data().get("data_freshness"));
-        result.put("comparison_status", trial.data().get("comparison_status"));
-        result.put("business_result", trial.data().get("business_result"));
-        result.put("real_result", trial.data().get("real_result"));
-        result.put("dual_difference_diagnosis", dualDiagnosis);
+        result.put("runId", trial.data().get("runId"));
+        result.put("diagnosisReportId", trial.data().get("diagnosisReportId"));
+        result.put("extractionStatus", extractionStatus);
+        result.put("dataFreshness", trial.data().get("dataFreshness"));
+        result.put("comparisonStatus", trial.data().get("comparisonStatus"));
+        result.put("businessResult", trial.data().get("businessResult"));
+        result.put("realResult", trial.data().get("realResult"));
+        result.put("dualDifferenceDiagnosis", dualDiagnosis);
         return result;
     }
 
@@ -146,7 +146,7 @@ public class IndicatorDiagnosisTools {
                 .map(check -> text(check.get("message"))).filter(value -> !value.isBlank()).toList();
         List<String> suggestions = layers.stream().flatMap(layer -> listOfMaps(layer.get("checks")).stream())
                 .filter(check -> Set.of("warn", "fail").contains(text(check.get("status"))))
-                .map(check -> text(check.get("repair_suggest"))).filter(value -> !value.isBlank()).distinct().toList();
+                .map(check -> text(check.get("repairSuggest"))).filter(value -> !value.isBlank()).distinct().toList();
         String reportId = id("DR_");
         String summary = switch (status) {
             case "failed" -> "诊断未通过：" + String.join("；", problems);
@@ -161,21 +161,21 @@ public class IndicatorDiagnosisTools {
             return failure("error", "DIAGNOSIS_REPORT_SAVE_FAILED", "诊断已执行，但报告保存失败。", false);
         }
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("rule_id", input.ruleId());
-        data.put("diagnose_status", status);
-        data.put("report_id", reportId);
+        data.put("ruleId", input.ruleId());
+        data.put("diagnoseStatus", status);
+        data.put("reportId", reportId);
         data.put("summary", summary);
-        data.put("user_summary", summary);
+        data.put("userSummary", summary);
         data.put("layers", layers);
         Map<String, Object> execution = layers.stream()
                 .filter(layer -> Integer.valueOf(3).equals(layer.get("layer")))
                 .findFirst()
                 .orElse(Map.of());
-        copyIfPresent(execution, data, "run_id");
-        copyIfPresent(execution, data, "diagnosis_report_id");
-        copyIfPresent(execution, data, "extraction_status");
-        copyIfPresent(execution, data, "data_freshness");
-        copyIfPresent(execution, data, "comparison_status");
+        copyIfPresent(execution, data, "runId");
+        copyIfPresent(execution, data, "diagnosisReportId");
+        copyIfPresent(execution, data, "extractionStatus");
+        copyIfPresent(execution, data, "dataFreshness");
+        copyIfPresent(execution, data, "comparisonStatus");
         List<String> confirmedFindings = layers.stream()
                 .flatMap(layer -> listOfMaps(layer.get("checks")).stream())
                 .filter(check -> "pass".equals(text(check.get("status"))))
@@ -184,12 +184,12 @@ public class IndicatorDiagnosisTools {
                 .distinct()
                 .toList();
         if (!confirmedFindings.isEmpty()) {
-            data.put("confirmed_findings", String.join("；", confirmedFindings));
+            data.put("confirmedFindings", String.join("；", confirmedFindings));
         }
         if (!problems.isEmpty()) {
-            data.put("evidence_limit", String.join("；", problems));
+            data.put("evidenceLimit", String.join("；", problems));
         }
-        if (input.statPeriod() != null) data.put("stat_period", input.statPeriod());
+        if (input.statPeriod() != null) data.put("statPeriod", input.statPeriod());
         return ToolResult.success("INDICATOR_DIAGNOSED", "指标诊断已完成。", data);
     }
 
@@ -203,15 +203,15 @@ public class IndicatorDiagnosisTools {
 
     private static Map<String, Object> structureLayer(ToolResult implementation) {
         List<Map<String, Object>> checks = new ArrayList<>();
-        addIssueChecks(checks, implementation.data(), "missing_mappings", "fail",
+        addIssueChecks(checks, implementation.data(), "missingMappings", "fail",
                 "缺失字段映射：", "补齐并确认医院字段映射。");
-        addIssueChecks(checks, implementation.data(), "unconfirmed_mappings", "fail",
+        addIssueChecks(checks, implementation.data(), "unconfirmedMappings", "fail",
                 "字段映射尚未确认：", "确认字段映射后重新诊断。");
-        addIssueChecks(checks, implementation.data(), "missing_columns", "fail",
+        addIssueChecks(checks, implementation.data(), "missingColumns", "fail",
                 "最新元数据中缺少字段：", "同步元数据或修正映射。");
-        addIssueChecks(checks, implementation.data(), "type_mismatches", "fail",
+        addIssueChecks(checks, implementation.data(), "typeMismatches", "fail",
                 "字段类型不兼容：", "修正字段映射或数据类型。");
-        addIssueChecks(checks, implementation.data(), "missing_relations", "fail",
+        addIssueChecks(checks, implementation.data(), "missingRelations", "fail",
                 "缺少跨表关联：", "确认关联字段与关联类型。");
         if (checks.isEmpty()) {
             checks.add(check("implementation", "pass", "字段映射、元数据和跨表关联已确认。", ""));
@@ -228,11 +228,11 @@ public class IndicatorDiagnosisTools {
         checks.add(text(rule.get("formula")).isBlank()
                 ? check("formula", "fail", "指标公式缺失。", "先确认指标公式。")
                 : check("formula", "pass", "指标公式已配置。", ""));
-        String sql = text(rule.get("standard_sql")).toUpperCase(Locale.ROOT);
+        String sql = text(rule.get("standardSql")).toUpperCase(Locale.ROOT);
         checks.add(sql.contains("CASE") || sql.contains("NULLIF")
                 ? check("zero_guard", "pass", "SQL 已配置分母为零保护。", "")
                 : check("zero_guard", "warn", "SQL 未明确配置分母为零保护。", "使用 CASE 或 NULLIF 保护零分母。"));
-        List<?> overridden = rule.get("overridden_fields") instanceof List<?> list ? list : List.of();
+        List<?> overridden = rule.get("overriddenFields") instanceof List<?> list ? list : List.of();
         if (overridden.isEmpty()) {
             checks.add(check("caliber_override", "pass", "本院未覆盖国标口径。", ""));
         } else {
@@ -246,7 +246,7 @@ public class IndicatorDiagnosisTools {
 
     private Map<String, Object> dataLayer(Map<String, Object> rule, Map<String, Object> mapping) {
         List<Map<String, Object>> checks = new ArrayList<>();
-        String mainTable = text(mapping.get("main_table"));
+        String mainTable = text(mapping.get("mainTable"));
         String dialect = text(mapping.get("dialect"));
         String schema = text(mapping.get("schema"));
         if (mainTable.isBlank()) {
@@ -273,7 +273,8 @@ public class IndicatorDiagnosisTools {
                     List.of(check("main_table_access", "fail", "无法通过 DBHub 访问业务主表。", "检查 DBHub、只读权限和数据源配置。")));
         }
 
-        Map<String, Object> contractFields = objectMap(objectMap(rule.get("field_contract")).get("business_fields"));
+        // field_contract 内层是知识 Profile 透传键，保持 snake
+        Map<String, Object> contractFields = objectMap(objectMap(rule.get("fieldContract")).get("business_fields"));
         for (Map.Entry<String, Object> entry : objectMap(mapping.get("fields")).entrySet()) {
             String[] parts = text(entry.getValue()).split("\\.");
             if (parts.length < 2 || !mainTable.equals(parts[parts.length - 2])) continue;
@@ -340,7 +341,7 @@ public class IndicatorDiagnosisTools {
             int number, String name, boolean ok, List<Map<String, Object>> checks) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("layer", number);
-        result.put("layer_name", name);
+        result.put("layerName", name);
         result.put("ok", ok);
         result.put("checks", checks);
         return result;
@@ -352,7 +353,7 @@ public class IndicatorDiagnosisTools {
                 "name", name,
                 "status", status,
                 "message", message,
-                "repair_suggest", repairSuggest);
+                "repairSuggest", repairSuggest);
     }
 
     private static String qualify(String schema, String table, String dialect) {

@@ -58,11 +58,11 @@ class MetadataSyncServiceTest {
                 principal, "hospital_001", "winex_all_dev", "dbhub");
         Map<String, Object> overview = service.overview(principal, "WiNEX_All_DEV");
 
-        assertThat(result).containsEntry("table_count", 2).containsEntry("column_count", 1);
-        assertThat(overview).containsEntry("has_snapshot", true)
-                .containsEntry("table_count", 2).containsEntry("column_count", 1)
-                .containsEntry("source_role", "business")
-                .containsEntry("source_id", "winex_all_dev");
+        assertThat(result).containsEntry("tableCount", 2).containsEntry("columnCount", 1);
+        assertThat(overview).containsEntry("hasSnapshot", true)
+                .containsEntry("tableCount", 2).containsEntry("columnCount", 1)
+                .containsEntry("sourceRole", "business")
+                .containsEntry("sourceId", "winex_all_dev");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_metadata_column WHERE hospital_id='hospital_001'",
                 Integer.class)).isEqualTo(1);
@@ -78,7 +78,7 @@ class MetadataSyncServiceTest {
                 "data_type", "bigint", "column_type", "bigint", "is_nullable", "NO")));
 
         assertThat(MetadataSyncService.diff(previous, current))
-                .extracting(item -> item.get("change_type"))
+                .extracting(item -> item.get("changeType"))
                 .containsExactly("column_type_changed", "column_nullable_changed");
     }
 
@@ -100,10 +100,10 @@ class MetadataSyncServiceTest {
         Map<String, Object> result = service.overview(principal, "winex_aima");
 
         assertThat(result)
-                .containsEntry("db_name", "winex_aima")
-                .containsEntry("source_role", "real")
-                .containsEntry("source_id", "winex_aima")
-                .containsEntry("has_snapshot", false);
+                .containsEntry("dbName", "winex_aima")
+                .containsEntry("sourceRole", "real")
+                .containsEntry("sourceId", "winex_aima")
+                .containsEntry("hasSnapshot", false);
     }
 
     @Test

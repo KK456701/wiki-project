@@ -85,18 +85,18 @@ public class EvidenceVerifier {
                 "EVIDENCE_PERIOD_MISMATCH", "证据统计开始时间与当前请求不一致。");
         requireTimeMatch(expected.statEnd(), value.statEnd(),
                 "EVIDENCE_PERIOD_MISMATCH", "证据统计结束时间与当前请求不一致。");
-        String evidenceSqlId = text(value.safePayload().get("sql_id"));
+        String evidenceSqlId = text(value.safePayload().get("sqlId"));
         requireMatch(expected.sqlId(), evidenceSqlId,
                 "EVIDENCE_SQL_MISMATCH", "证据 SQL 对象与当前已校验 SQL 不一致。");
         String evidenceCaliberProfileId = text(
-                value.safePayload().get("caliber_profile_id"));
+                value.safePayload().get("caliberProfileId"));
         requireMatch(expected.caliberProfileId(), evidenceCaliberProfileId,
                 "EVIDENCE_CALIBER_MISMATCH", "证据候选口径与当前计划不一致。");
         String evidenceRuleVersion = text(
-                value.safePayload().get("current_rule_version"));
+                value.safePayload().get("currentRuleVersion"));
         requireMatch(expected.currentRuleVersion(), evidenceRuleVersion,
                 "EVIDENCE_RULE_MISMATCH", "候选口径证据引用的当前规则版本已变化。");
-        String caliberSqlId = text(value.safePayload().get("caliber_sql_id"));
+        String caliberSqlId = text(value.safePayload().get("caliberSqlId"));
         requireMatch(expected.sqlId(), caliberSqlId,
                 "EVIDENCE_SQL_MISMATCH", "候选口径试运行未使用当前已校验 SQL。");
         ToolResult currentResult = expected.currentToolResults().get(value.evidenceId());

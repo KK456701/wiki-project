@@ -123,7 +123,7 @@ class CapabilityPlanningTest {
 
         state.lastToolResults().add(ToolResult.success(
                 "RULE_SEARCHED", "找到 1 个匹配指标。",
-                Map.of("resolved_rule_id", "MQSI2025_001", "matches", List.of())));
+                Map.of("resolvedRuleId", "MQSI2025_001", "matches", List.of())));
         ControllerDecision second = controller.nextDecision(ir, validation, state);
         assertThat(second.toolNames()).containsExactly("get_effective_rule");
     }
@@ -156,7 +156,7 @@ class CapabilityPlanningTest {
         AgentRunState state = new AgentRunState();
         state.lastToolResults().add(ToolResult.success(
                 "INDICATOR_DIAGNOSED", "指标诊断已完成。",
-                Map.of("report_id", "DR_001", "diagnose_status", "failed")));
+                Map.of("reportId", "DR_001", "diagnoseStatus", "failed")));
         PlanValidation validation = PlanValidation.valid(null);
 
         assertThat(AgentStateController.stateFacts(state, validation)).contains("diagnosis");
@@ -167,7 +167,7 @@ class CapabilityPlanningTest {
         AgentRunState state = new AgentRunState();
         state.lastToolResults().add(ToolResult.success(
                 "DIFFERENCE_DIAGNOSIS_COMPLETED", "差异诊断已完成。",
-                Map.of("report_id", "DDR_001", "conclusion_code", "SYSTEM_RESULT_VERIFIED")));
+                Map.of("reportId", "DDR_001", "conclusionCode", "SYSTEM_RESULT_VERIFIED")));
 
         assertThat(AgentStateController.stateFacts(state, PlanValidation.valid(null)))
                 .contains("difference_diagnosis_report");

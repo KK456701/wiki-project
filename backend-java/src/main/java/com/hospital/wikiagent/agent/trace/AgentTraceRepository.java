@@ -170,8 +170,25 @@ public class AgentTraceRepository {
 
     private static Map<String, Object> normalize(Map<String, Object> source) {
         Map<String, Object> value = new LinkedHashMap<>();
-        source.forEach((key, item) -> value.put(key.toLowerCase(Locale.ROOT), item));
+        source.forEach((key, item) -> value.put(camel(key.toLowerCase(Locale.ROOT)), item));
         return value;
+    }
+
+    /** 仓储出口统一把数据库列名转成驼峰键，上层不再感知 snake_case 列名。 */
+    private static String camel(String key) {
+        if (key == null || key.indexOf('_') < 0) return key;
+        StringBuilder builder = new StringBuilder(key.length());
+        boolean upper = false;
+        for (int i = 0; i < key.length(); i++) {
+            char ch = key.charAt(i);
+            if (ch == '_') {
+                upper = builder.length() > 0;
+                continue;
+            }
+            builder.append(upper ? Character.toUpperCase(ch) : ch);
+            upper = false;
+        }
+        return builder.toString();
     }
 
     public record TraceNode(

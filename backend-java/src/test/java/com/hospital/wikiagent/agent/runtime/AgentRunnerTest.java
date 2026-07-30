@@ -59,8 +59,6 @@ import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.RuleReadRepository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 class AgentRunnerTest {
     private static final String RULE_TEMPLATE_ANSWER = """
             # 急会诊及时到位率
@@ -113,9 +111,7 @@ class AgentRunnerTest {
 
     @Test
     void runsRuleExplanationThroughDeterministicToolsAndVerifiedEvidence() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         ToolRegistry tools = new ToolRegistry(ruleRepository(objectMapper));
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -126,18 +122,18 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
-                  "target_indicator": {"raw_name": "transfer_within_48h_ratio"},
-                  "time_expression": {
-                    "raw_text": "2026年1月",
-                    "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-02-01T00:00:00"
+                  "targetIndicator": {"rawName": "transfer_within_48h_ratio"},
+                  "timeExpression": {
+                    "rawText": "2026年1月",
+                    "startTime": "2026-01-01T00:00:00",
+                    "endTime": "2026-02-01T00:00:00"
                   },
-                  "requested_outputs": ["definition", "formula"],
+                  "requestedOutputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """,
@@ -171,10 +167,10 @@ class AgentRunnerTest {
         assertThat(result.requestPlan().targetIndicator().ruleId()).isEqualTo("HXZD-003-001");
         assertThat(result.stepCount()).isEqualTo(1);
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .containsExactly("get_effective_rule");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("followup_plan_resolve", "rule_explanation_answer")
                 .doesNotContain("planner_llm", "final_answer_llm");
         assertThat(store.evidence).hasSize(3);
@@ -200,9 +196,7 @@ class AgentRunnerTest {
 
     @Test
     void resolvesCurrentCaliberFollowupDeterministicallyBeforePlanner() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         RuleReadRepository rules = ruleRepository(objectMapper);
         ToolRegistry tools = new ToolRegistry(rules);
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
@@ -221,7 +215,7 @@ class AgentRunnerTest {
                         "hospital_001:user_001:session_caliber_current",
                         "session_caliber_current",
                         "用户：急会诊及时到位率从一月到现在是多少？",
-                        "{\"active_rule_id\":\"HXZD-003-001\"}",
+                        "{\"activeRuleId\":\"HXZD-003-001\"}",
                         "HXZD-003-001",
                         "急会诊及时到位率",
                         null,
@@ -267,10 +261,10 @@ class AgentRunnerTest {
                 com.hospital.wikiagent.agent.ir.PlanIntent.RULE_EXPLANATION);
         assertThat(result.requestPlan().targetCaliber().profileId()).isNull();
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .containsExactly("get_effective_rule");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("followup_plan_resolve", "plan_goal_alignment",
                         "rule_explanation_answer")
                 .doesNotContain(
@@ -282,9 +276,7 @@ class AgentRunnerTest {
 
     @Test
     void replansSemanticValidationFailureBeforeCallingTools() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         ToolRegistry tools = new ToolRegistry(ruleRepository(objectMapper));
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -295,27 +287,27 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "indicator_sql_prepare",
                   "goal": "错误理解的初始目标",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {"raw_text": ""},
-                  "requested_outputs": ["trial_result"],
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "timeExpression": {"rawText": ""},
+                  "requestedOutputs": ["trial_result"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """,
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "纠正后解释指标定义和公式",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {"raw_text": ""},
-                  "requested_outputs": ["definition", "formula"],
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "timeExpression": {"rawText": ""},
+                  "requestedOutputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """,
@@ -346,16 +338,14 @@ class AgentRunnerTest {
         assertThat(result.stopReason()).isEqualTo("final_answer");
         assertThat(result.requestPlan().goal()).isEqualTo("纠正后解释指标定义和公式");
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .containsExactly("get_effective_rule");
         assertThat(models.calls).isEqualTo(2);
     }
 
     @Test
     void runsTrialResultThroughPreparedSqlObjectDbHubBoundaryAndVerifiedEvidence() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
@@ -386,18 +376,18 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "indicator_trial_run",
                   "goal": "计算急会诊及时到位率",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {
-                    "raw_text": "2026年1月",
-                    "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-02-01T00:00:00"
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "timeExpression": {
+                    "rawText": "2026年1月",
+                    "startTime": "2026-01-01T00:00:00",
+                    "endTime": "2026-02-01T00:00:00"
                   },
-                  "requested_outputs": ["trial_result"],
+                  "requestedOutputs": ["trial_result"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """,
@@ -427,7 +417,7 @@ class AgentRunnerTest {
         assertThat(result.answer()).contains("25.0%", "1", "4");
         assertThat(result.answer()).contains("{{detail_export:RUN_");
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .containsExactly(
                         "search_indicator_rules", "get_effective_rule",
                         "prepare_indicator_sql", "trial_run_indicator_sql");
@@ -435,9 +425,9 @@ class AgentRunnerTest {
                 .filteredOn(value -> "trial_run".equals(value.factType()))
                 .singleElement()
                 .satisfies(value -> {
-                    assertThat(value.safePayload()).containsEntry("numerator_count", 1L)
-                            .containsEntry("denominator_count", 4L)
-                            .containsEntry("result_value", 25.0);
+                    assertThat(value.safePayload()).containsEntry("numeratorCount", 1L)
+                            .containsEntry("denominatorCount", 4L)
+                            .containsEntry("resultValue", 25.0);
                     assertThat(value.sourceObjectId()).startsWith("RUN_");
                 });
         assertThat(store.verifications.values()).allMatch(value -> "verified".equals(value.status()));
@@ -445,9 +435,7 @@ class AgentRunnerTest {
 
     @Test
     void upgradesRuleExplanationToTrialRunWhenQueryContainsTimeRange() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
@@ -478,18 +466,18 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "rule_explanation",
                   "goal": "解释急会诊及时到位率",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {
-                    "raw_text": "2026年1月",
-                    "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-02-01T00:00:00"
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "timeExpression": {
+                    "rawText": "2026年1月",
+                    "startTime": "2026-01-01T00:00:00",
+                    "endTime": "2026-02-01T00:00:00"
                   },
-                  "requested_outputs": ["definition", "formula"],
+                  "requestedOutputs": ["definition", "formula"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """,
@@ -521,15 +509,13 @@ class AgentRunnerTest {
                 com.hospital.wikiagent.agent.ir.PlanIntent.INDICATOR_TRIAL_RUN);
         // 应执行 SQL 工具
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .contains("prepare_indicator_sql", "trial_run_indicator_sql");
     }
 
     @Test
     void preparedSqlAnswerUsesCompactSqlFirstTemplate() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
@@ -555,18 +541,18 @@ class AgentRunnerTest {
         QueueInvoker models = new QueueInvoker(
                 """
                 {
-                  "schema_version": "request-plan-v2",
+                  "schemaVersion": "request-plan-v2",
                   "intent": "indicator_sql_prepare",
                   "goal": "解释 SQL 以及分子分母口径",
-                  "target_indicator": {"raw_name": "急会诊及时到位率"},
-                  "time_expression": {
-                    "raw_text": "沿用2026年1月",
-                    "start_time": "2026-01-01T00:00:00",
-                    "end_time": "2026-02-01T00:00:00"
+                  "targetIndicator": {"rawName": "急会诊及时到位率"},
+                  "timeExpression": {
+                    "rawText": "沿用2026年1月",
+                    "startTime": "2026-01-01T00:00:00",
+                    "endTime": "2026-02-01T00:00:00"
                   },
-                  "requested_outputs": ["prepared_sql_handle"],
+                  "requestedOutputs": ["prepared_sql_handle"],
                   "constraints": [],
-                  "semantic_ambiguities": [],
+                  "semanticAmbiguities": [],
                   "confidence": 0.9
                 }
                 """);
@@ -596,9 +582,7 @@ class AgentRunnerTest {
 
     @Test
     void resolvesSqlFollowupFromStructuredContextWithoutCallingUnreliableLocalPlanner() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
@@ -653,7 +637,7 @@ class AgentRunnerTest {
                 .contains("2026-01-01 00:00:00", "2026-02-01 00:00:00")
                 .doesNotContain("分子口径：", "分母口径：");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("followup_plan_resolve")
                 .doesNotContain("planner_llm");
         assertThat(models.calls).isZero();
@@ -661,9 +645,7 @@ class AgentRunnerTest {
 
     @Test
     void resolvesSqlFollowupWithoutPreviousPeriodAndUsesNonExecutingDefaultRange() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         IndicatorSqlTools sqlTools = new IndicatorSqlTools(
                 fixture.rules(), new SqlObjectRepository(fixture.jdbc(), objectMapper),
@@ -721,11 +703,11 @@ class AgentRunnerTest {
         assertThat(result.answer())
                 .contains("概览 SQL", "未指定统计时间", "未访问数据库");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("followup_plan_resolve")
                 .doesNotContain("planner_llm");
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .contains("prepare_indicator_sql")
                 .doesNotContain("trial_run_indicator_sql");
         assertThat(models.calls).isZero();
@@ -733,9 +715,7 @@ class AgentRunnerTest {
 
     @Test
     void resolvesNumeratorFollowupWithoutPlannerAndUsesFocusedTemplate() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         SqlFixture fixture = sqlFixture(objectMapper);
         ToolRegistry tools = new ToolRegistry(fixture.rules());
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
@@ -788,7 +768,7 @@ class AgentRunnerTest {
                 .contains("## 分子口径", "及时到位次数")
                 .doesNotContain("## 分母口径", "## 口径摘要");
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("followup_plan_resolve", "rule_explanation_answer")
                 .doesNotContain("planner_llm", "final_answer_llm");
         assertThat(models.calls).isZero();
@@ -796,9 +776,7 @@ class AgentRunnerTest {
 
     @Test
     void rejectsRemovedImplementationValidationBeforePlannerOrTools() {
-        ObjectMapper objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        ObjectMapper objectMapper = new ObjectMapper();
         ToolRegistry tools = new ToolRegistry(ruleRepository(objectMapper));
         CapabilitySpecRegistry capabilities = new CapabilitySpecRegistry(tools);
         MemoryEvidenceStore store = new MemoryEvidenceStore();
@@ -831,10 +809,10 @@ class AgentRunnerTest {
         assertThat(result.answer()).contains("当前系统不提供", "全面实施验收");
         assertThat(result.requestPlan().intent()).isEqualTo(PlanIntent.UNKNOWN);
         assertThat(events).filteredOn(event -> "tool_call".equals(event.get("event")))
-                .extracting(event -> event.get("tool_name"))
+                .extracting(event -> event.get("toolName"))
                 .isEmpty();
         assertThat(events).filteredOn(event -> "trace_node".equals(event.get("event")))
-                .extracting(event -> event.get("node_name"))
+                .extracting(event -> event.get("nodeName"))
                 .contains("unsupported_feature_guard")
                 .doesNotContain("planner_llm", "final_answer_llm");
         assertThat(models.calls).isZero();
@@ -861,13 +839,13 @@ class AgentRunnerTest {
         Map<String, Object> mapping = confirmedMapping();
         Map<String, Object> search = Map.of(
                 "query", "急会诊及时到位率",
-                "hospital_id", "hospital_001",
-                "resolved_rule_id", "HXZD-003-001",
+                "hospitalId", "hospital_001",
+                "resolvedRuleId", "HXZD-003-001",
                 "matches", List.of(Map.of(
-                        "rule_id", "HXZD-003-001",
-                        "rule_name", "急会诊及时到位率",
+                        "ruleId", "HXZD-003-001",
+                        "ruleName", "急会诊及时到位率",
                         "category", "会诊制度")),
-                "rule_source", "wiki");
+                "ruleSource", "wiki");
         when(rules.searchForHospital(anyString(), anyString(), org.mockito.ArgumentMatchers.anyInt()))
                 .thenReturn(search);
         when(rules.effectiveRule(anyString(), anyString())).thenReturn(rule);
@@ -897,24 +875,26 @@ class AgentRunnerTest {
                   AND request_time>=:start_time AND request_time<:end_time
                 """;
         return Map.ofEntries(
-                Map.entry("rule_id", "HXZD-003-001"),
-                Map.entry("rule_name", "急会诊及时到位率"),
+                Map.entry("ruleId", "HXZD-003-001"),
+                Map.entry("ruleName", "急会诊及时到位率"),
                 Map.entry("category", "会诊制度"),
-                Map.entry("profile_id", "HXZD-003-001-company-default"),
-                Map.entry("execution_status", "executable"),
+                Map.entry("profileId", "HXZD-003-001-company-default"),
+                Map.entry("executionStatus", "executable"),
                 Map.entry("definition", "急会诊及时到位次数占总次数的比例。"),
                 Map.entry("formula", "及时到位次数 ÷ 急会诊总次数 × 100%"),
-                Map.entry("numerator_rule", "及时到位次数"),
-                Map.entry("denominator_rule", "急会诊总次数"),
-                Map.entry("standard_sql", sql),
-                Map.entry("field_contract", Map.of("business_fields", Map.of(
+                Map.entry("numeratorRule", "及时到位次数"),
+                Map.entry("denominatorRule", "急会诊总次数"),
+                Map.entry("standardSql", sql),
+                // field_contract 内层是知识 Profile 透传键（business_fields 及业务字段名），保持 snake
+                Map.entry("fieldContract", Map.of("business_fields", Map.of(
                         "hospital_id", Map.of("type", "string"),
                         "request_time", Map.of("type", "datetime"),
                         "arrive_time", Map.of("type", "datetime"),
                         "consult_type", Map.of("type", "string")))),
-                Map.entry("effective_params", Map.of("consult_type_value", "急会诊")),
-                Map.entry("hospital_version", 1),
-                Map.entry("national_version", "2025"));
+                // effective_params 内层是 SQL 绑定参数名，保持 snake
+                Map.entry("effectiveParams", Map.of("consult_type_value", "急会诊")),
+                Map.entry("hospitalVersion", 1),
+                Map.entry("nationalVersion", "2025"));
     }
 
     private static Map<String, Object> confirmedMapping() {
@@ -924,31 +904,32 @@ class AgentRunnerTest {
                 mappingItem("arrive_time", "datetime"),
                 mappingItem("consult_type", "varchar"));
         return Map.ofEntries(
-                Map.entry("rule_id", "HXZD-003-001"),
-                Map.entry("profile_id", "HXZD-003-001-company-default"),
+                Map.entry("ruleId", "HXZD-003-001"),
+                Map.entry("profileId", "HXZD-003-001-company-default"),
                 Map.entry("dialect", "sqlserver"),
-                Map.entry("db_name", "business_test"),
+                Map.entry("dbName", "business_test"),
                 Map.entry("schema", "dbo"),
-                Map.entry("main_table", "consult_record"),
+                Map.entry("mainTable", "consult_record"),
                 Map.entry("status", "confirmed"),
+                // fields 内层键是业务字段名，保持 snake
                 Map.entry("fields", Map.of(
                         "hospital_id", "consult_record.hospital_id",
                         "request_time", "consult_record.request_time",
                         "arrive_time", "consult_record.arrive_time",
                         "consult_type", "consult_record.consult_type")),
                 Map.entry("items", items),
-                Map.entry("metadata_items", items),
+                Map.entry("metadataItems", items),
                 Map.entry("relations", List.of()));
     }
 
     private static Map<String, Object> mappingItem(String field, String dataType) {
         return Map.of(
-                "business_field", field,
-                "table_name", "consult_record",
-                "column_name", field,
-                "data_type", dataType,
-                "mapping_data_type", dataType,
-                "metadata_data_type", dataType,
+                "businessField", field,
+                "tableName", "consult_record",
+                "columnName", field,
+                "dataType", dataType,
+                "mappingDataType", dataType,
+                "metadataDataType", dataType,
                 "status", "confirmed");
     }
 

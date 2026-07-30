@@ -31,16 +31,16 @@ class ClarificationPromptFactoryTest {
     void listsRecommendedAndAllHospitalIndicatorsForAmbiguousPluralRequest() {
         RuleReadRepository rules = mock(RuleReadRepository.class);
         when(rules.activeIndicatorNames("hospital_001", 500)).thenReturn(List.of(
-                Map.of("rule_id", "MQSI2025_001",
-                        "rule_name", "患者入院 48 小时内转科的比例"),
-                Map.of("rule_id", "MQSI2025_005",
-                        "rule_name", "急会诊及时到位率")));
+                Map.of("ruleId", "MQSI2025_001",
+                        "ruleName", "患者入院 48 小时内转科的比例"),
+                Map.of("ruleId", "MQSI2025_005",
+                        "ruleName", "急会诊及时到位率")));
         AgentRunState state = new AgentRunState();
         state.lastToolResults().add(new ToolResult(
                 false, "validation_failed", "RULE_SEARCHED", "存在多个候选",
                 Map.of("matches", List.of(Map.of(
-                        "rule_id", "MQSI2025_005",
-                        "rule_name", "急会诊及时到位率"))),
+                        "ruleId", "MQSI2025_005",
+                        "ruleName", "急会诊及时到位率"))),
                 false, false, List.of()));
         ClarificationPromptFactory factory = new ClarificationPromptFactory(rules, CLOCK);
 

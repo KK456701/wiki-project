@@ -75,11 +75,11 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("query", query == null ? "" : query.strip());
-        result.put("hospital_id", hospitalId);
-        result.put("resolved_rule_id", matches.isEmpty() ? null : matches.get(0).get("rule_id"));
+        result.put("hospitalId", hospitalId);
+        result.put("resolvedRuleId", matches.isEmpty() ? null : matches.get(0).get("ruleId"));
         result.put("matches", matches);
-        result.put("rule_source", "mras");
-        result.put("knowledge_release_id", "mras-v60");
+        result.put("ruleSource", "mras");
+        result.put("knowledgeReleaseId", "mras-v60");
         return result;
     }
 
@@ -89,7 +89,7 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         List<Map<String, String>> result = new ArrayList<>();
         for (EntityPageData entity : entityParser.getAllEntities().values()) {
             if (!seen.add(entity.code())) continue;
-            result.add(Map.of("rule_id", entity.code(), "rule_name", entity.name()));
+            result.add(Map.of("ruleId", entity.code(), "ruleName", entity.name()));
             if (result.size() >= Math.max(1, Math.min(500, limit))) break;
         }
         return result;
@@ -126,74 +126,74 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         String standardSql = hasSql ? renderOverviewSql(entity.overviewSql()) : "";
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("rule_id", entity.code());
-        result.put("index_code", entity.code());
-        result.put("rule_name", entity.name());
+        result.put("ruleId", entity.code());
+        result.put("indexCode", entity.code());
+        result.put("ruleName", entity.name());
         result.put("category", entity.category());
-        result.put("hospital_id", hospitalId);
-        result.put("effective_level", "company");
-        result.put("profile_id", entity.variantCode());
-        result.put("profile_name", entity.variantLabel());
-        result.put("execution_status", executionStatus);
-        result.put("execution_blockers", List.of());
+        result.put("hospitalId", hospitalId);
+        result.put("effectiveLevel", "company");
+        result.put("profileId", entity.variantCode());
+        result.put("profileName", entity.variantLabel());
+        result.put("executionStatus", executionStatus);
+        result.put("executionBlockers", List.of());
         result.put("definition", definition);
         result.put("formula", formula);
-        result.put("numerator_rule", numeratorRule);
-        result.put("denominator_rule", denominatorRule);
-        result.put("filter_rule", "");
-        result.put("exclude_rule", "");
-        result.put("implementation_status", standardSql);
-        result.put("standard_sql", standardSql);
-        result.put("source_extract_sql", entity.sourceTableSql());
-        result.put("department_detail_sql", entity.deptStatSql());
-        result.put("patient_detail_sql", entity.patientDetailSql());
-        result.put("sql_capabilities", Map.of(
+        result.put("numeratorRule", numeratorRule);
+        result.put("denominatorRule", denominatorRule);
+        result.put("filterRule", "");
+        result.put("excludeRule", "");
+        result.put("implementationStatus", standardSql);
+        result.put("standardSql", standardSql);
+        result.put("sourceExtractSql", entity.sourceTableSql());
+        result.put("departmentDetailSql", entity.deptStatSql());
+        result.put("patientDetailSql", entity.patientDetailSql());
+        result.put("sqlCapabilities", Map.of(
                 "overview", Map.of("status", hasSql ? "executable" : "unavailable")));
-        result.put("extraction_contract", Map.of());
-        result.put("dual_database_contract", Map.of());
-        result.put("result_mapping", Map.of(
+        result.put("extractionContract", Map.of());
+        result.put("dualDatabaseContract", Map.of());
+        result.put("resultMapping", Map.of(
                 "index_value", "监测情况",
                 "numerator_count", "分子",
                 "denominator_count", "分母"));
-        result.put("result_contract", Map.of("unit", unit));
-        result.put("overview_runtime_eligible", hasSql);
-        result.put("calculation_definition", Map.of(
+        result.put("resultContract", Map.of("unit", unit));
+        result.put("overviewRuntimeEligible", hasSql);
+        result.put("calculationDefinition", Map.of(
                 "numerator", numeratorRule,
                 "denominator", denominatorRule));
-        result.put("national_calculation_definition", Map.of(
+        result.put("nationalCalculationDefinition", Map.of(
                 "numerator", numeratorRule,
                 "denominator", denominatorRule));
-        result.put("field_contract", Map.of());
-        result.put("field_status", "mras_default");
-        result.put("sql_status", hasSql ? "available" : "unavailable");
-        result.put("hospital_override", null);
-        result.put("company_rule", Map.of(
+        result.put("fieldContract", Map.of());
+        result.put("fieldStatus", "mras_default");
+        result.put("sqlStatus", hasSql ? "available" : "unavailable");
+        result.put("hospitalOverride", null);
+        result.put("companyRule", Map.of(
                 "path", "knowledge-index/entities/" + entity.variantCode(),
                 "implementation", entity.variantLabel(),
-                "implementation_status", executionStatus));
-        result.put("national_rule", Map.of(
+                "implementationStatus", executionStatus));
+        result.put("nationalRule", Map.of(
                 "definition", definition,
                 "formula", formula,
                 "version", "2025",
-                "source_path", "knowledge-index/concepts/" + entity.code() + entity.name() + ".md"));
-        result.put("national_params", Map.of());
-        result.put("effective_params", Map.of(
+                "sourcePath", "knowledge-index/concepts/" + entity.code() + entity.name() + ".md"));
+        result.put("nationalParams", Map.of());
+        result.put("effectiveParams", Map.of(
                 "marptBeginAt", "统计开始时间",
                 "marptEndAt", "统计结束时间"));
-        result.put("result_unit", unit);
-        result.put("national_version", "2025");
-        result.put("hospital_version", null);
-        result.put("overridden_fields", List.of());
-        result.put("fallback_chain", List.of("company"));
-        result.put("rule_source", "mras");
-        result.put("knowledge_release_id", "mras-v60");
+        result.put("resultUnit", unit);
+        result.put("nationalVersion", "2025");
+        result.put("hospitalVersion", null);
+        result.put("overriddenFields", List.of());
+        result.put("fallbackChain", List.of("company"));
+        result.put("ruleSource", "mras");
+        result.put("knowledgeReleaseId", "mras-v60");
         result.put("warnings", List.of());
         result.put("relations", Map.of());
         result.put("significance", significance);
         result.put("system", entity.system());
         result.put("caliber", entity.caliber());
-        result.put("data_source", entity.dataSource());
-        result.put("monitor_params", entity.monitorParams());
+        result.put("dataSource", entity.dataSource());
+        result.put("monitorParams", entity.monitorParams());
         result.put("dimension", entity.dimension());
         return result;
     }
@@ -207,24 +207,24 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
     public Map<String, Object> fieldMapping(String ruleId, String hospitalId, String profileId) {
         EntityPageData entity = resolveEntity(ruleId, profileId);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("rule_id", ruleId);
-        result.put("profile_id", entity != null ? entity.variantCode() : ruleId);
-        result.put("execution_status", entity != null && entity.hasOverviewSql() ? "executable" : "documentation_only");
-        result.put("execution_blockers", List.of());
-        result.put("hospital_id", hospitalId);
+        result.put("ruleId", ruleId);
+        result.put("profileId", entity != null ? entity.variantCode() : ruleId);
+        result.put("executionStatus", entity != null && entity.hasOverviewSql() ? "executable" : "documentation_only");
+        result.put("executionBlockers", List.of());
+        result.put("hospitalId", hospitalId);
         result.put("status", "mras_default");
         result.put("dialect", "sqlserver");
-        result.put("db_name", "WINDBA_GN");
+        result.put("dbName", "WINDBA_GN");
         result.put("fields", Map.of());
         result.put("parameters", Map.of(
                 "marptBeginAt", "统计开始时间",
                 "marptEndAt", "统计结束时间"));
         result.put("relations", List.of());
-        result.put("query_profile", "");
+        result.put("queryProfile", "");
         result.put("items", List.of());
-        result.put("metadata_items", List.of());
-        result.put("rule_source", "mras");
-        result.put("knowledge_release_id", "mras-v60");
+        result.put("metadataItems", List.of());
+        result.put("ruleSource", "mras");
+        result.put("knowledgeReleaseId", "mras-v60");
         return result;
     }
 
@@ -243,18 +243,18 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
                 .filter(EntityPageData::hasOverviewSql)
                 .map(entity -> {
                     Map<String, Object> profile = new LinkedHashMap<>();
-                    profile.put("profile_id", entity.variantCode());
-                    profile.put("profile_name", entity.variantLabel());
+                    profile.put("profileId", entity.variantCode());
+                    profile.put("profileName", entity.variantLabel());
                     profile.put("label", entity.variantLabel());
                     profile.put("status", "approved");
-                    profile.put("governance_status", "approved");
-                    profile.put("execution_status", "executable");
-                    profile.put("overview_runtime_eligible", true);
-                    profile.put("parameter_overrides", Map.of());
-                    profile.put("field_role_overrides", Map.of());
-                    profile.put("numerator_rule", extractPattern(entity.formula(), NUMERATOR_PATTERN));
-                    profile.put("denominator_rule", extractPattern(entity.formula(), DENOMINATOR_PATTERN));
-                    profile.put("time_dimension", entity.dimension());
+                    profile.put("governanceStatus", "approved");
+                    profile.put("executionStatus", "executable");
+                    profile.put("overviewRuntimeEligible", true);
+                    profile.put("parameterOverrides", Map.of());
+                    profile.put("fieldRoleOverrides", Map.of());
+                    profile.put("numeratorRule", extractPattern(entity.formula(), NUMERATOR_PATTERN));
+                    profile.put("denominatorRule", extractPattern(entity.formula(), DENOMINATOR_PATTERN));
+                    profile.put("timeDimension", entity.dimension());
                     return profile;
                 })
                 .toList();
@@ -354,15 +354,15 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
 
     private Map<String, Object> matchCard(EntityPageData entity) {
         Map<String, Object> card = new LinkedHashMap<>();
-        card.put("rule_id", entity.code());
-        card.put("rule_name", entity.name());
+        card.put("ruleId", entity.code());
+        card.put("ruleName", entity.name());
         card.put("category", entity.category());
         card.put("content", entity.definition());
         card.put("formula", entity.formula());
         card.put("numerator", extractPattern(entity.formula(), NUMERATOR_PATTERN));
         card.put("denominator", extractPattern(entity.formula(), DENOMINATOR_PATTERN));
-        card.put("time_dimension", entity.dimension());
-        card.put("execution_status", entity.hasOverviewSql() ? "executable" : "documentation_only");
+        card.put("timeDimension", entity.dimension());
+        card.put("executionStatus", entity.hasOverviewSql() ? "executable" : "documentation_only");
         card.put("type", "wiki_rule");
         card.put("path", "knowledge-index/entities/" + entity.variantCode() + ".md");
         return card;

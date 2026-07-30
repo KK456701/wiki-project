@@ -104,15 +104,15 @@ function statRange(item: BatchIndicatorResult): string {
 const caliberFields: Array<[string, string]> = [
   ['definition', '指标定义'],
   ['caliber', '统计口径'],
-  ['numerator_rule', '分子口径'],
-  ['denominator_rule', '分母口径'],
+  ['numeratorRule', '分子口径'],
+  ['denominatorRule', '分母口径'],
   ['significance', '监测意义'],
-  ['data_source', '数据来源'],
+  ['dataSource', '数据来源'],
 ]
 
 const methodFields: Array<[string, string]> = [
   ['formula', '计算公式'],
-  ['result_unit', '结果单位'],
+  ['resultUnit', '结果单位'],
 ]
 
 function ruleText(rule: EffectiveRule | undefined, key: string): string {
@@ -297,9 +297,9 @@ function cellText(row: Record<string, unknown>, column: string): string {
               <dd>{{ group.items[0].calculationDisplay }}</dd>
             </template>
           </dl>
-          <details v-if="ruleText(stateOf(group).rule, 'standard_sql')" class="indicator-sql">
+          <details v-if="ruleText(stateOf(group).rule, 'standardSql')" class="indicator-sql">
             <summary>查看核算 SQL</summary>
-            <pre>{{ ruleText(stateOf(group).rule, 'standard_sql') }}</pre>
+            <pre>{{ ruleText(stateOf(group).rule, 'standardSql') }}</pre>
           </details>
         </template>
       </div>
@@ -322,11 +322,11 @@ function cellText(row: Record<string, unknown>, column: string): string {
         <p v-else-if="stateOf(group).detailError" class="indicator-error">{{ stateOf(group).detailError }}</p>
         <template v-else-if="stateOf(group).details[stateOf(group).detailGroup]">
           <p class="indicator-detail-summary">
-            共 {{ stateOf(group).details[stateOf(group).detailGroup]!.row_count }} 条记录
+            共 {{ stateOf(group).details[stateOf(group).detailGroup]!.rowCount }} 条记录
             <template v-if="stateOf(group).details[stateOf(group).detailGroup]!.truncated">（仅展示前 200 条）</template>
           </p>
           <p
-            v-if="stateOf(group).details[stateOf(group).detailGroup]!.sql_source === 'mras_patient_detail'"
+            v-if="stateOf(group).details[stateOf(group).detailGroup]!.sqlSource === 'mras_patient_detail'"
             class="indicator-error"
           >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
           <div
@@ -348,11 +348,11 @@ function cellText(row: Record<string, unknown>, column: string): string {
           </div>
           <p v-else class="indicator-loading">统计区间内没有明细记录。</p>
           <details
-            v-if="stateOf(group).details[stateOf(group).detailGroup]!.detail_sql"
+            v-if="stateOf(group).details[stateOf(group).detailGroup]!.detailSql"
             class="indicator-sql"
           >
             <summary>查看明细 SQL</summary>
-            <pre>{{ stateOf(group).details[stateOf(group).detailGroup]!.detail_sql }}</pre>
+            <pre>{{ stateOf(group).details[stateOf(group).detailGroup]!.detailSql }}</pre>
           </details>
         </template>
       </div>

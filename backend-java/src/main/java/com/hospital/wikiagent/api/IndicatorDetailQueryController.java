@@ -91,12 +91,12 @@ public class IndicatorDetailQueryController {
 
         Map<String, Object> data = result.data();
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("rule_id", ruleId);
-        body.put("rule_name", data.get("indicator_name"));
+        body.put("ruleId", ruleId);
+        body.put("ruleName", data.get("indicatorName"));
         body.put("group", group);
-        body.put("stat_start", startTime.toString());
-        body.put("stat_end", endTime.toString());
-        body.put("row_count", data.get("row_count"));
+        body.put("statStart", startTime.toString());
+        body.put("statEnd", endTime.toString());
+        body.put("rowCount", data.get("rowCount"));
         Object rows = data.get("rows");
         if (rows instanceof List<?> rowList && rowList.size() > MAX_ROWS) {
             body.put("rows", rowList.subList(0, MAX_ROWS));
@@ -105,9 +105,9 @@ public class IndicatorDetailQueryController {
             body.put("rows", rows == null ? List.of() : rows);
         }
         // usedDetailSql 为空说明走的是领导知识库患者明细回退，此时分子/分母区分不生效
-        body.put("sql_source", usedDetailSql != null ? "synthesized" : "mras_patient_detail");
+        body.put("sqlSource", usedDetailSql != null ? "synthesized" : "mras_patient_detail");
         if (usedDetailSql != null) {
-            body.put("detail_sql", usedDetailSql.strip());
+            body.put("detailSql", usedDetailSql.strip());
         }
         return body;
     }

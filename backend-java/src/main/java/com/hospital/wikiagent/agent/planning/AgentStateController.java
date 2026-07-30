@@ -127,7 +127,7 @@ public class AgentStateController {
             }
             switch (result.code()) {
                 case "RULE_SEARCHED" -> {
-                    Object ruleId = result.data().get("resolved_rule_id");
+                    Object ruleId = result.data().get("resolvedRuleId");
                     if (ruleId != null && !ruleId.toString().isBlank()) {
                         facts.add("rule_identity");
                     }
@@ -186,7 +186,7 @@ public class AgentStateController {
             if (!"RULE_SEARCHED".equals(result.code())) {
                 continue;
             }
-            if (result.data().get("resolved_rule_id") != null) {
+            if (result.data().get("resolvedRuleId") != null) {
                 return "";
             }
             Object rawMatches = result.data().get("matches");
@@ -196,7 +196,7 @@ public class AgentStateController {
             List<String> names = new ArrayList<>();
             for (Object raw : matches.stream().limit(3).toList()) {
                 if (raw instanceof Map<?, ?> item) {
-                    Object name = item.get("rule_name") != null ? item.get("rule_name") : item.get("rule_id");
+                    Object name = item.get("ruleName") != null ? item.get("ruleName") : item.get("ruleId");
                     if (name != null && !name.toString().isBlank()) {
                         names.add(name.toString());
                     }
@@ -213,7 +213,7 @@ public class AgentStateController {
             if (!"RULE_SEARCHED".equals(result.code())) {
                 continue;
             }
-            if (result.data().get("resolved_rule_id") != null) {
+            if (result.data().get("resolvedRuleId") != null) {
                 return false;
             }
             Object rawMatches = result.data().get("matches");

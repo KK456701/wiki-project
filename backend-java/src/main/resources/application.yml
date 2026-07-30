@@ -36,7 +36,6 @@ spring:
       schema-locations: classpath:sqlite-runtime-schema.sql
       continue-on-error: false
   jackson:
-    property-naming-strategy: SNAKE_CASE
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
     serialization:

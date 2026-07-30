@@ -107,7 +107,7 @@ public class HybridIndicatorResolver {
         List<Span> occupied = new ArrayList<>();
         try {
             Map<String, Object> normalization = terminology.normalize(input, hospitalId);
-            releaseVersion = text(normalization.get("release_version"));
+            releaseVersion = text(normalization.get("releaseVersion"));
             addNormalizationMatches(input, normalization, catalog, resolved, occupied);
         } catch (RuntimeException ignored) {
             // 术语治理表不可用时，仍以生效指标目录完成正式名称识别。
@@ -115,10 +115,10 @@ public class HybridIndicatorResolver {
         addExactCatalogMatches(input, catalog, resolved, occupied);
         resolved = new ArrayList<>(deduplicate(resolved));
         TraceEvents.completed(sink, traceId, "indicator_rule_match", "code", ruleStarted,
-                subtaskId, Map.of("query", input, "hospital_id", safe(hospitalId)), Map.of(
+                subtaskId, Map.of("query", input, "hospitalId", safe(hospitalId)), Map.of(
                         "matches", resolved,
-                        "release_version", releaseVersion,
-                        "resolver_version", VERSION));
+                        "releaseVersion", releaseVersion,
+                        "resolverVersion", VERSION));
 
         // 第二层：只在未占用文本片段内做本地相似度召回，阈值和领先幅度均固定。
         long semanticStarted = TraceEvents.started();
@@ -147,7 +147,7 @@ public class HybridIndicatorResolver {
                 semanticStarted, subtaskId,
                 Map.of("segments", segments.stream().map(Segment::text).toList()), Map.of(
                         "resolved", resolved,
-                        "candidate_groups", ambiguities,
+                        "candidateGroups", ambiguities,
                         "algorithm", "normalized-levenshtein+jaccard+containment",
                         "threshold", SEMANTIC_THRESHOLD,
                         "margin", SEMANTIC_MARGIN));
@@ -182,8 +182,8 @@ public class HybridIndicatorResolver {
         // 补充已审核别名，不能把历史 MQSI 规则重新加入候选集，否则名称精确匹配
         // 会先占用文本片段，导致后续 Wiki 中的新编号永远没有机会被选择。
         for (Map<String, String> item : rules.activeIndicatorNames(hospitalId, 500)) {
-            String ruleId = text(item.get("rule_id"));
-            String name = text(item.get("rule_name"));
+            String ruleId = text(item.get("ruleId"));
+            String name = text(item.get("ruleName"));
             if (ruleId.isBlank() || name.isBlank()) continue;
             CatalogBuilder builder = byRule.computeIfAbsent(ruleId,
                     ignored -> new CatalogBuilder(ruleId, "RULE:" + ruleId, name));
@@ -241,10 +241,10 @@ public class HybridIndicatorResolver {
         int cursor = 0;
         for (Object raw : matches) {
             if (!(raw instanceof Map<?, ?> value)) continue;
-            String mention = text(value.get("matched_text"));
-            String canonicalName = text(value.get("canonical_name"));
-            String conceptCode = text(value.get("concept_code"));
-            Object rawIds = value.get("linked_rule_ids");
+            String mention = text(value.get("matchedText"));
+            String canonicalName = text(value.get("canonicalName"));
+            String conceptCode = text(value.get("conceptCode"));
+            Object rawIds = value.get("linkedRuleIds");
             if (!(rawIds instanceof List<?> ids) || ids.size() != 1 || mention.isBlank()) continue;
             String ruleId = text(ids.get(0));
             CatalogItem item = catalog.stream().filter(candidate -> candidate.ruleId().equals(ruleId))
@@ -359,15 +359,15 @@ public class HybridIndicatorResolver {
                     .map(Map.Entry::getValue).toList();
             TraceEvents.completed(observer, traceId, "indicator_llm_disambiguation", "llm",
                     started, subtaskId,
-                    Map.of("system_prompt", systemPrompt, "user_prompt", userPrompt, "tools", List.of()),
-                    Map.of("raw_content", raw, "resolved", resolved,
-                            "remaining_groups", remaining.size()),
-                    "model_id", modelId, "prompt_version", PromptCatalog.VERSION);
+                    Map.of("systemPrompt", systemPrompt, "userPrompt", userPrompt, "tools", List.of()),
+                    Map.of("rawContent", raw, "resolved", resolved,
+                            "remainingGroups", remaining.size()),
+                    "modelId", modelId, "promptVersion", PromptCatalog.VERSION);
             return new Disambiguation(resolved, remaining);
         } catch (Exception exception) {
             TraceEvents.failed(observer, traceId, "indicator_llm_disambiguation", "llm",
                     started, subtaskId, "INDICATOR_DISAMBIGUATION_FAILED", exception.getMessage(),
-                    "model_id", modelId, "prompt_version", PromptCatalog.VERSION);
+                    "modelId", modelId, "promptVersion", PromptCatalog.VERSION);
             return new Disambiguation(List.of(), groups);
         }
     }

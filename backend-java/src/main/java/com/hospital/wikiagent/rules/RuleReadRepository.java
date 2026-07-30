@@ -111,7 +111,7 @@ public class RuleReadRepository {
         List<Map<String, Object>> fieldChanges = List.of(
                 fieldChange("指标定义", requestedDefinition, currentDefinition),
                 fieldChange("计算公式", requestedFormula, currentFormula),
-                fieldChange("实现状态", "", text(effective.get("execution_status"))));
+                fieldChange("实现状态", "", text(effective.get("executionStatus"))));
         List<String> changedFields = fieldChanges.stream()
                 .filter(item -> Boolean.TRUE.equals(item.get("changed")))
                 .map(item -> text(item.get("field")))
@@ -122,33 +122,33 @@ public class RuleReadRepository {
         requested.put("status", "requested");
         requested.put("definition", requestedDefinition);
         requested.put("formula", requestedFormula);
-        requested.put("source_text", changeDescription);
+        requested.put("sourceText", changeDescription);
 
         Map<String, Object> current = new LinkedHashMap<>();
-        current.put("level", text(effective.get("effective_level")));
+        current.put("level", text(effective.get("effectiveLevel")));
         current.put("status", "effective");
         current.put("definition", currentDefinition);
         current.put("formula", currentFormula);
-        current.put("execution_status", text(effective.get("execution_status")));
+        current.put("executionStatus", text(effective.get("executionStatus")));
 
         Map<String, Object> impact = new LinkedHashMap<>();
-        impact.put("changed_fields", changedFields);
-        impact.put("affects_definition", changedFields.contains("指标定义"));
-        impact.put("affects_formula", changedFields.contains("计算公式"));
-        impact.put("requires_field_review", changedFields.contains("实现状态"));
-        impact.put("requires_sql_regeneration",
+        impact.put("changedFields", changedFields);
+        impact.put("affectsDefinition", changedFields.contains("指标定义"));
+        impact.put("affectsFormula", changedFields.contains("计算公式"));
+        impact.put("requiresFieldReview", changedFields.contains("实现状态"));
+        impact.put("requiresSqlRegeneration",
                 changedFields.contains("计算公式") || changedFields.contains("实现状态"));
-        impact.put("requires_version_increment", !changedFields.isEmpty());
+        impact.put("requiresVersionIncrement", !changedFields.isEmpty());
 
         Map<String, Object> preview = new LinkedHashMap<>();
-        preview.put("rule_id", text(effective.get("rule_id")));
-        preview.put("rule_name", text(effective.get("rule_name")));
-        preview.put("profile_id", text(effective.get("profile_id")));
-        preview.put("target_level", "hospital");
-        preview.put("current_effective_level", text(effective.get("effective_level")));
+        preview.put("ruleId", text(effective.get("ruleId")));
+        preview.put("ruleName", text(effective.get("ruleName")));
+        preview.put("profileId", text(effective.get("profileId")));
+        preview.put("targetLevel", "hospital");
+        preview.put("currentEffectiveLevel", text(effective.get("effectiveLevel")));
         preview.put("requested", requested);
-        preview.put("current_effective", current);
-        preview.put("field_changes", fieldChanges);
+        preview.put("currentEffective", current);
+        preview.put("fieldChanges", fieldChanges);
         preview.put("impact", impact);
         preview.put("message", "已生成只读差异预览；当前系统不提供草稿、审批或发布功能。");
         return preview;
@@ -174,13 +174,13 @@ public class RuleReadRepository {
                             + "WHERE hospital_id=? AND db_name=? AND table_name=? AND column_name=? "
                             + "ORDER BY id DESC LIMIT 1",
                     rows -> rows.next() ? text(rows.getObject(1)) : "",
-                    hospitalId, text(item.get("db_name")), text(item.get("table_name")),
-                    text(item.get("column_name")));
-            enriched.put("mapping_data_type", text(item.get("data_type")));
-            enriched.put("metadata_data_type", actualType);
+                    hospitalId, text(item.get("dbName")), text(item.get("tableName")),
+                    text(item.get("columnName")));
+            enriched.put("mappingDataType", text(item.get("dataType")));
+            enriched.put("metadataDataType", actualType);
             metadataItems.add(enriched);
         }
-        result.put("metadata_items", metadataItems);
+        result.put("metadataItems", metadataItems);
         return result;
     }
 

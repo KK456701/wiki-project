@@ -107,11 +107,11 @@ class HybridIndicatorResolverTest {
                 "index_code", "MQSI2025_001")));
         when(fixture.terminology().normalize(anyString(), anyString())).thenReturn(Map.of(
                 "matches", List.of(Map.of(
-                        "matched_text", "患者入院48小时内转科的比例",
-                        "canonical_name", "患者入院48小时内转科的比例",
-                        "concept_code", "IND_MQSI2025_001",
-                        "linked_rule_ids", List.of("MQSI2025_001"))),
-                "release_version", "stale-term-v1"));
+                        "matchedText", "患者入院48小时内转科的比例",
+                        "canonicalName", "患者入院48小时内转科的比例",
+                        "conceptCode", "IND_MQSI2025_001",
+                        "linkedRuleIds", List.of("MQSI2025_001"))),
+                "releaseVersion", "stale-term-v1"));
 
         var result = fixture.resolver().resolve(
                 "统计患者入院48小时内转科的比例，从2026年1月1日到2026年2月1日",
@@ -195,7 +195,7 @@ class HybridIndicatorResolverTest {
         when(repository.ruleLinks()).thenReturn(List.of());
         TerminologyService terminology = mock(TerminologyService.class);
         when(terminology.normalize(anyString(), anyString())).thenReturn(Map.of(
-                "matches", List.of(), "release_version", "test-v1"));
+                "matches", List.of(), "releaseVersion", "test-v1"));
         AgentModelInvoker models = configuredModels == null
                 ? mock(AgentModelInvoker.class) : configuredModels;
         AgentModelProperties properties = new AgentModelProperties();
@@ -214,7 +214,7 @@ class HybridIndicatorResolverTest {
     }
 
     private static Map<String, String> rule(String id, String name) {
-        return Map.of("rule_id", id, "rule_name", name);
+        return Map.of("ruleId", id, "ruleName", name);
     }
 
     private record Fixture(

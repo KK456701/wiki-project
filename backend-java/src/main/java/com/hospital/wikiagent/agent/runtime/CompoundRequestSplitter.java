@@ -143,7 +143,7 @@ public class CompoundRequestSplitter {
         }
         try {
             return rules.activeIndicatorNames(hospitalId, 500).stream()
-                    .map(value -> value.get("rule_name"))
+                    .map(value -> value.get("ruleName"))
                     .filter(name -> name != null && !name.isBlank() && query.contains(name))
                     .distinct()
                     .sorted(java.util.Comparator.comparingInt(query::indexOf))

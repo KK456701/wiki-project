@@ -33,7 +33,7 @@ async function refresh() {
   error.value = ''
   const filters: Record<string, string> = {}
   if (status.value) filters.status = status.value
-  if (modelId.value) filters.model_id = modelId.value
+  if (modelId.value) filters.modelId = modelId.value
   try {
     const [runResult, metricResult] = await Promise.all([
       loadAgentRuns(store.token, { ...filters, limit: '100' }),
@@ -83,10 +83,10 @@ function duration(value?: number) {
     <p v-if="error" class="runs-error">{{ error }}</p>
     <template v-if="metrics">
       <section class="metric-grid">
-        <article><span>请求量</span><strong>{{ metrics.request_count }}</strong><small>当前筛选窗口</small></article>
-        <article><span>成功率</span><strong>{{ rate(metrics.success_rate) }}</strong><small>未完成 {{ rate(metrics.incomplete_rate) }}</small></article>
-        <article><span>p95 耗时</span><strong>{{ duration(metrics.latency_ms.p95) }}</strong><small>平均 {{ duration(metrics.latency_ms.average) }}</small></article>
-        <article><span>复合请求</span><strong>{{ metrics.compound_request_count }}</strong><small>平均 {{ duration(metrics.compound_average_duration_ms) }}</small></article>
+        <article><span>请求量</span><strong>{{ metrics.requestCount }}</strong><small>当前筛选窗口</small></article>
+        <article><span>成功率</span><strong>{{ rate(metrics.successRate) }}</strong><small>未完成 {{ rate(metrics.incompleteRate) }}</small></article>
+        <article><span>p95 耗时</span><strong>{{ duration(metrics.latencyMs.p95) }}</strong><small>平均 {{ duration(metrics.latencyMs.average) }}</small></article>
+        <article><span>复合请求</span><strong>{{ metrics.compoundRequestCount }}</strong><small>平均 {{ duration(metrics.compoundAverageDurationMs) }}</small></article>
       </section>
 
       <section v-if="metrics.warnings.length" class="runtime-warnings">
@@ -107,23 +107,23 @@ function duration(value?: number) {
         <article class="runtime-panel">
           <header><h2>模型表现</h2><span>调用 / 超时 / 耗时</span></header>
           <div class="runtime-ranking">
-            <div v-for="model in metrics.models" :key="model.model_id"><strong>{{ model.model_id }}</strong><span>{{ model.calls }} 次 · {{ model.timeouts }} 超时 · {{ duration(model.duration_ms) }}</span></div>
+            <div v-for="model in metrics.models" :key="model.modelId"><strong>{{ model.modelId }}</strong><span>{{ model.calls }} 次 · {{ model.timeouts }} 超时 · {{ duration(model.durationMs) }}</span></div>
             <p v-if="!metrics.models.length">当前窗口没有模型调用</p>
           </div>
         </article>
         <article class="runtime-panel">
           <header><h2>工具表现</h2><span>调用 / 失败 / 耗时</span></header>
           <div class="runtime-ranking">
-            <div v-for="tool in metrics.tools" :key="tool.tool_name"><strong>{{ tool.tool_name }}</strong><span>{{ tool.calls }} 次 · {{ tool.failures }} 失败 · {{ duration(tool.duration_ms) }}</span></div>
+            <div v-for="tool in metrics.tools" :key="tool.toolName"><strong>{{ tool.toolName }}</strong><span>{{ tool.calls }} 次 · {{ tool.failures }} 失败 · {{ duration(tool.durationMs) }}</span></div>
             <p v-if="!metrics.tools.length">当前窗口没有工具调用</p>
           </div>
         </article>
         <article class="runtime-panel">
           <header><h2>稳定性边界</h2><span>确定性停止</span></header>
           <div class="stability-list">
-            <p><span>重复调用停止率</span><strong>{{ rate(metrics.repeated_call_stop_rate) }}</strong></p>
-            <p><span>Replan 率</span><strong>{{ rate(metrics.replan_rate) }}</strong></p>
-            <p><span>p50 / p99</span><strong>{{ duration(metrics.latency_ms.p50) }} / {{ duration(metrics.latency_ms.p99) }}</strong></p>
+            <p><span>重复调用停止率</span><strong>{{ rate(metrics.repeatedCallStopRate) }}</strong></p>
+            <p><span>Replan 率</span><strong>{{ rate(metrics.replanRate) }}</strong></p>
+            <p><span>p50 / p99</span><strong>{{ duration(metrics.latencyMs.p50) }} / {{ duration(metrics.latencyMs.p99) }}</strong></p>
           </div>
         </article>
       </section>
@@ -135,11 +135,11 @@ function duration(value?: number) {
         <table>
           <thead><tr><th>开始时间</th><th>Trace</th><th>意图</th><th>状态</th><th>耗时</th><th>错误</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="run in runs" :key="run.trace_id">
-              <td>{{ String(run.started_at || '-') }}</td><td><code>{{ run.trace_id }}</code></td><td>{{ run.intent || '-' }}</td>
-              <td><span class="run-status" :data-status="run.final_status">{{ run.final_status || '-' }}</span></td>
-              <td>{{ duration(run.duration_ms) }}</td><td>{{ run.error_count || 0 }}</td>
-              <td><button type="button" @click="selectedTraceId = run.trace_id">查看链路</button></td>
+            <tr v-for="run in runs" :key="run.traceId">
+              <td>{{ String(run.startedAt || '-') }}</td><td><code>{{ run.traceId }}</code></td><td>{{ run.intent || '-' }}</td>
+              <td><span class="run-status" :data-status="run.finalStatus">{{ run.finalStatus || '-' }}</span></td>
+              <td>{{ duration(run.durationMs) }}</td><td>{{ run.errorCount || 0 }}</td>
+              <td><button type="button" @click="selectedTraceId = run.traceId">查看链路</button></td>
             </tr>
             <tr v-if="!runs.length"><td colspan="7">当前筛选下暂无运行记录。</td></tr>
           </tbody>

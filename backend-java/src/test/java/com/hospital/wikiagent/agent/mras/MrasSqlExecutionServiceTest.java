@@ -92,14 +92,14 @@ class MrasSqlExecutionServiceTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("MRAS_QUERY_COMPLETED");
-        assertThat(result.data().get("indicator_code")).isEqualTo("HXZD-001-001");
-        assertThat(result.data().get("sql_source")).isEqualTo("mras");
-        assertThat(result.data().get("numerator_count")).isEqualTo(5L);
-        assertThat(result.data().get("denominator_count")).isEqualTo(100L);
-        assertThat(result.data().get("no_sample")).isEqualTo(false);
+        assertThat(result.data().get("indicatorCode")).isEqualTo("HXZD-001-001");
+        assertThat(result.data().get("sqlSource")).isEqualTo("mras");
+        assertThat(result.data().get("numeratorCount")).isEqualTo(5L);
+        assertThat(result.data().get("denominatorCount")).isEqualTo(100L);
+        assertThat(result.data().get("noSample")).isEqualTo(false);
         // 百分比类指标：概览 SQL 返回的 0-1 比值必须换算为百分数
-        assertThat(((Number) result.data().get("result_value")).doubleValue()).isEqualTo(5.0);
-        assertThat(((Number) result.data().get("target_value")).doubleValue()).isEqualTo(10.0);
+        assertThat(((Number) result.data().get("resultValue")).doubleValue()).isEqualTo(5.0);
+        assertThat(((Number) result.data().get("targetValue")).doubleValue()).isEqualTo(10.0);
         assertThat(result.data().get("unit")).isEqualTo("percentage");
     }
 
@@ -116,7 +116,7 @@ class MrasSqlExecutionServiceTest {
 
         assertThat(result.ok()).isTrue();
         assertThat(result.data().get("status")).isEqualTo("empty");
-        assertThat(result.data().get("no_sample")).isEqualTo(true);
+        assertThat(result.data().get("noSample")).isEqualTo(true);
     }
 
     @Test
@@ -156,9 +156,9 @@ class MrasSqlExecutionServiceTest {
                 LocalDateTime.of(2025, 12, 31, 23, 59),
                 null, null);
         assertThat(lower.ok()).isTrue();
-        assertThat(lower.data().get("target_direction")).isEqualTo("<");
+        assertThat(lower.data().get("targetDirection")).isEqualTo("<");
         assertThat(lower.data().get("unit")).isEqualTo("percentage");
-        assertThat(((Number) lower.data().get("result_value")).doubleValue()).isEqualTo(80.0);
+        assertThat(((Number) lower.data().get("resultValue")).doubleValue()).isEqualTo(80.0);
 
         // 比值类指标（计量单位“比值”）：单位为 ratio，数值不 ×100，无导向
         ToolResult ratio = service.executeOverview(
@@ -168,8 +168,8 @@ class MrasSqlExecutionServiceTest {
                 null, null);
         assertThat(ratio.ok()).isTrue();
         assertThat(ratio.data().get("unit")).isEqualTo("ratio");
-        assertThat(((Number) ratio.data().get("result_value")).doubleValue()).isEqualTo(0.8);
-        assertThat(ratio.data().get("target_direction")).isNull();
+        assertThat(((Number) ratio.data().get("resultValue")).doubleValue()).isEqualTo(0.8);
+        assertThat(ratio.data().get("targetDirection")).isNull();
     }
 
     @Test

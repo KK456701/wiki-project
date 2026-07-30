@@ -30,15 +30,15 @@ final class TraceEvents {
         long endedAt = System.currentTimeMillis();
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("event", "trace_node");
-        event.put("trace_id", traceId);
-        event.put("node_id", id("NODE_"));
-        event.put("node_name", nodeName);
-        event.put("node_type", nodeType);
+        event.put("traceId", traceId);
+        event.put("nodeId", id("NODE_"));
+        event.put("nodeName", nodeName);
+        event.put("nodeType", nodeType);
         event.put("status", "success");
-        event.put("started_at_epoch_ms", startedAt);
-        event.put("ended_at_epoch_ms", endedAt);
-        event.put("duration_ms", Math.max(0, endedAt - startedAt));
-        event.put("subtask_id", subtaskId == null ? "root" : subtaskId);
+        event.put("startedAtEpochMs", startedAt);
+        event.put("endedAtEpochMs", endedAt);
+        event.put("durationMs", Math.max(0, endedAt - startedAt));
+        event.put("subtaskId", subtaskId == null ? "root" : subtaskId);
         event.put("input", input == null ? Map.of() : input);
         event.put("output", output == null ? Map.of() : output);
         for (int index = 0; index + 1 < attributes.length; index += 2) {
@@ -62,19 +62,19 @@ final class TraceEvents {
         long endedAt = System.currentTimeMillis();
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("event", "trace_node");
-        event.put("trace_id", traceId);
-        event.put("node_id", id("NODE_"));
-        event.put("node_name", nodeName);
-        event.put("node_type", nodeType);
+        event.put("traceId", traceId);
+        event.put("nodeId", id("NODE_"));
+        event.put("nodeName", nodeName);
+        event.put("nodeType", nodeType);
         event.put("status", "failed");
-        event.put("started_at_epoch_ms", startedAt);
-        event.put("ended_at_epoch_ms", endedAt);
-        event.put("duration_ms", Math.max(0, endedAt - startedAt));
-        event.put("subtask_id", subtaskId == null ? "root" : subtaskId);
+        event.put("startedAtEpochMs", startedAt);
+        event.put("endedAtEpochMs", endedAt);
+        event.put("durationMs", Math.max(0, endedAt - startedAt));
+        event.put("subtaskId", subtaskId == null ? "root" : subtaskId);
         event.put("input", Map.of());
         event.put("output", Map.of());
-        event.put("error_code", code == null ? "RUNTIME_ERROR" : code);
-        event.put("error_message", message == null ? "" : message);
+        event.put("errorCode", code == null ? "RUNTIME_ERROR" : code);
+        event.put("errorMessage", message == null ? "" : message);
         for (int index = 0; index + 1 < attributes.length; index += 2) {
             if (attributes[index + 1] != null) {
                 event.put(String.valueOf(attributes[index]), attributes[index + 1]);
@@ -97,15 +97,15 @@ final class TraceEvents {
         long endedAt = System.currentTimeMillis();
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("event", "trace_node");
-        event.put("trace_id", traceId);
-        event.put("node_id", id("NODE_"));
-        event.put("node_name", nodeName);
-        event.put("node_type", nodeType);
+        event.put("traceId", traceId);
+        event.put("nodeId", id("NODE_"));
+        event.put("nodeName", nodeName);
+        event.put("nodeType", nodeType);
         event.put("status", status == null || status.isBlank() ? "success" : status);
-        event.put("started_at_epoch_ms", endedAt - Math.max(0, durationMs));
-        event.put("ended_at_epoch_ms", endedAt);
-        event.put("duration_ms", Math.max(0, durationMs));
-        event.put("subtask_id", subtaskId == null ? "root" : subtaskId);
+        event.put("startedAtEpochMs", endedAt - Math.max(0, durationMs));
+        event.put("endedAtEpochMs", endedAt);
+        event.put("durationMs", Math.max(0, durationMs));
+        event.put("subtaskId", subtaskId == null ? "root" : subtaskId);
         event.put("input", input == null ? Map.of() : input);
         event.put("output", output == null ? Map.of() : output);
         for (int index = 0; index + 1 < attributes.length; index += 2) {

@@ -69,7 +69,7 @@ public class IndicatorDetailController {
             @PathVariable("run_id") String runId,
             @PathVariable String group,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(name = "page_size", required = false) Integer pageSize) {
+            @RequestParam(name = "pageSize", required = false) Integer pageSize) {
         DetailPage result = details.getPage(principal(authorization), runId, group, page,
                 pageSize == null ? details.defaultPageSize() : pageSize);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);

@@ -46,7 +46,7 @@ public class AgentSessionController {
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         auth.authenticate(BearerTokens.require(authorization));
         String sessionId = AgentConversationMemory.newSessionId();
-        return Map.of("session_id", sessionId);
+        return Map.of("sessionId", sessionId);
     }
 
     /**

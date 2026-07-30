@@ -352,18 +352,18 @@ public class CompoundAgentRuntime {
         String requestId = first(request.requestId(), id("REQ_"));
         TraceEvents.completed(observer, traceId, "compound_split", "code", splitStarted,
                 "root", Map.of("query", request.query()), Map.of(
-                        "subtask_count", split.tasks().size(),
+                        "subtaskCount", split.tasks().size(),
                         "targets", split.tasks().stream().map(SubtaskSpec::target).toList(),
-                        "common_time", split.commonTimeExpression() == null
+                        "commonTime", split.commonTimeExpression() == null
                                 ? "" : split.commonTimeExpression(),
-                        "serial_required", split.serialRequired(),
-                        "splitter_version", CompoundRequestSplitter.VERSION));
+                        "serialRequired", split.serialRequired(),
+                        "splitterVersion", CompoundRequestSplitter.VERSION));
         emit(observer, "agent_start", traceId, 0, Map.of(
                 "status", "running",
-                "session_id", conversation.sessionId(),
+                "sessionId", conversation.sessionId(),
                 "compound", true,
-                "subtask_count", split.tasks().size(),
-                "splitter_version", CompoundRequestSplitter.VERSION));
+                "subtaskCount", split.tasks().size(),
+                "splitterVersion", CompoundRequestSplitter.VERSION));
 
         String provider = models.requireInfo(request.modelId()).provider();
         int configured = "ollama".equals(provider)
@@ -400,21 +400,21 @@ public class CompoundAgentRuntime {
         String answer = String.join("\n\n---\n\n", sections);
         String stopReason = successful > 0 ? "final_answer" : "compound_failed";
         TraceEvents.completed(observer, traceId, "compound_merge", "code", mergeStarted,
-                "root", Map.of("subtask_count", outcomes.size()), Map.of(
-                        "successful_subtasks", successful,
-                        "failed_subtasks", outcomes.size() - successful,
-                        "ordered_targets", outcomes.stream().map(value -> value.task().target()).toList()));
+                "root", Map.of("subtaskCount", outcomes.size()), Map.of(
+                        "successfulSubtasks", successful,
+                        "failedSubtasks", outcomes.size() - successful,
+                        "orderedTargets", outcomes.stream().map(value -> value.task().target()).toList()));
         emit(observer, "assistant_message", traceId, steps, Map.of(
                 "message", answer,
                 "status", successful > 0 ? "completed" : "failed",
                 "compound", true,
-                "successful_subtasks", successful,
-                "failed_subtasks", outcomes.size() - successful));
+                "successfulSubtasks", successful,
+                "failedSubtasks", outcomes.size() - successful));
         emit(observer, "agent_done", traceId, steps, Map.of(
-                "stop_reason", stopReason,
+                "stopReason", stopReason,
                 "status", successful > 0 ? "completed" : "incomplete",
-                "step_count", steps,
-                "subtask_count", outcomes.size()));
+                "stepCount", steps,
+                "subtaskCount", outcomes.size()));
         AgentRunState memoryState = new AgentRunState();
         memoryState.currentUploadFileKey(first(request.fileKey(), conversation.uploadFileKey()));
         memoryState.lastIntent("compound");
@@ -530,19 +530,19 @@ public class CompoundAgentRuntime {
             TraceEvents.completed(observer, parentTraceId, "compound_subtask", "code",
                     subtaskStarted, subtaskId, Map.of(
                             "target", task.target(), "query", task.query()), Map.of(
-                            "stop_reason", result.stopReason(), "step_count", result.stepCount()),
-                    "node_id", subtaskNodeId);
+                            "stopReason", result.stopReason(), "stepCount", result.stepCount()),
+                    "nodeId", subtaskNodeId);
             return new SubtaskOutcome(task, result, result.answer());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             TraceEvents.failed(observer, parentTraceId, "compound_subtask", "code",
                     subtaskStarted, subtaskId, "SUBTASK_CANCELLED", "子任务已取消。",
-                    "node_id", subtaskNodeId);
+                    "nodeId", subtaskNodeId);
             return SubtaskOutcome.failed(task, "该指标子任务已取消，请单独重试。");
         } catch (RuntimeException exception) {
             TraceEvents.failed(observer, parentTraceId, "compound_subtask", "code",
                     subtaskStarted, subtaskId, "SUBTASK_FAILED", exception.getMessage(),
-                    "node_id", subtaskNodeId);
+                    "nodeId", subtaskNodeId);
             return SubtaskOutcome.failed(task, "该指标子任务执行失败，请单独重试。");
         } finally {
             if (acquired) {
@@ -595,12 +595,12 @@ public class CompoundAgentRuntime {
             return;
         }
         Map<String, Object> safe = new LinkedHashMap<>(event);
-        safe.put("child_trace_id", event.get("trace_id"));
-        safe.put("trace_id", parentTraceId);
-        safe.put("subtask_id", subtaskId);
-        safe.put("subtask_index", subtaskIndex);
+        safe.put("childTraceId", event.get("traceId"));
+        safe.put("traceId", parentTraceId);
+        safe.put("subtaskId", subtaskId);
+        safe.put("subtaskIndex", subtaskIndex);
         if ("trace_node".equals(type)) {
-            safe.put("parent_node_id", subtaskNodeId);
+            safe.put("parentNodeId", subtaskNodeId);
         }
         observer.onEvent(Map.copyOf(safe));
     }
@@ -613,7 +613,7 @@ public class CompoundAgentRuntime {
             Map<String, Object> values) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event", event);
-        payload.put("trace_id", traceId);
+        payload.put("traceId", traceId);
         payload.put("step", step);
         payload.putAll(values);
         observer.onEvent(Map.copyOf(payload));
@@ -646,16 +646,16 @@ public class CompoundAgentRuntime {
         AgentRunState state = new AgentRunState();
         conversations.appendAssistant(conversation, request.principal(), answer, state);
         emit(observer, "agent_start", traceId, 0, Map.of(
-                "status", "running", "session_id", conversation.sessionId(),
-                "resolver_version", HybridIndicatorResolver.VERSION));
+                "status", "running", "sessionId", conversation.sessionId(),
+                "resolverVersion", HybridIndicatorResolver.VERSION));
         emit(observer, "clarification_required", traceId, 0, Map.of(
                 "message", answer,
                 "code", "INDICATOR_AMBIGUOUS",
-                "fallback_category", "USER_CLARIFICATION",
+                "fallbackCategory", "USER_CLARIFICATION",
                 "clarification", clarification == null ? Map.of() : clarification,
-                "stop_reason", "clarification"));
+                "stopReason", "clarification"));
         emit(observer, "agent_done", traceId, 0, Map.of(
-                "stop_reason", "clarification", "status", "incomplete", "step_count", 0));
+                "stopReason", "clarification", "status", "incomplete", "stepCount", 0));
         return new AgentRunResult(
                 answer, "clarification", traceId, conversation.sessionId(), 0,
                 null, null, clarification);
@@ -678,15 +678,15 @@ public class CompoundAgentRuntime {
         conversations.appendAssistant(
                 conversation, request.principal(), answer, new AgentRunState());
         emit(observer, "agent_start", traceId, 0, Map.of(
-                "status", "running", "session_id", conversation.sessionId()));
+                "status", "running", "sessionId", conversation.sessionId()));
         emit(observer, "clarification_required", traceId, 0, Map.of(
                 "message", answer,
                 "code", "INTENT_AMBIGUOUS",
-                "fallback_category", "USER_CLARIFICATION",
+                "fallbackCategory", "USER_CLARIFICATION",
                 "clarification", clarification == null ? Map.of() : clarification,
-                "stop_reason", "clarification"));
+                "stopReason", "clarification"));
         emit(observer, "agent_done", traceId, 0, Map.of(
-                "stop_reason", "clarification", "status", "incomplete", "step_count", 0));
+                "stopReason", "clarification", "status", "incomplete", "stepCount", 0));
         return new AgentRunResult(
                 answer, "clarification", traceId, conversation.sessionId(), 0,
                 null, null, clarification);
@@ -740,15 +740,15 @@ public class CompoundAgentRuntime {
         conversations.appendAssistant(
                 conversation, request.principal(), answer, new AgentRunState());
         emit(observer, "agent_start", traceId, 0, Map.of(
-                "status", "running", "session_id", conversation.sessionId()));
+                "status", "running", "sessionId", conversation.sessionId()));
         emit(observer, "clarification_required", traceId, 0, Map.of(
                 "message", answer,
                 "code", code,
-                "fallback_category", "USER_CLARIFICATION",
+                "fallbackCategory", "USER_CLARIFICATION",
                 "clarification", clarification == null ? Map.of() : clarification,
-                "stop_reason", "clarification"));
+                "stopReason", "clarification"));
         emit(observer, "agent_done", traceId, 0, Map.of(
-                "stop_reason", "clarification", "status", "incomplete", "step_count", 0));
+                "stopReason", "clarification", "status", "incomplete", "stepCount", 0));
         return new AgentRunResult(
                 answer, "clarification", traceId, conversation.sessionId(), 0,
                 null, null, clarification);
@@ -911,7 +911,7 @@ public class CompoundAgentRuntime {
                 java.time.LocalDateTime.now());
         String traceId = first(request.traceId(), id("TRACE_"));
         emit(observer, "agent_start", traceId, 0, Map.of(
-                "status", "running", "session_id", conversation.sessionId()));
+                "status", "running", "sessionId", conversation.sessionId()));
         long started = TraceEvents.started();
         boolean denominator = detailKindDenominator(request.query());
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
@@ -934,14 +934,14 @@ public class CompoundAgentRuntime {
             result = mrasExecution.executePatientDetail(ruleId, start, end, null, null);
         }
         TraceEvents.completed(observer, traceId, "mras_patient_detail", "database",
-                started, "root", Map.of("rule_id", ruleId),
-                Map.of("ok", result.ok(), "code", result.code(), "query_type", queryType));
+                started, "root", Map.of("ruleId", ruleId),
+                Map.of("ok", result.ok(), "code", result.code(), "queryType", queryType));
         String detailLabel = denominator ? "分母明细" : "分子明细";
         String answer;
         if (!result.ok()) {
             answer = "查询" + detailLabel + "失败：" + result.summary();
         } else {
-            Object rowCount = result.data().get("row_count");
+            Object rowCount = result.data().get("rowCount");
             int rows = rowCount instanceof Number number ? number.intValue() : 0;
             if (rows == 0) {
                 answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
@@ -964,7 +964,7 @@ public class CompoundAgentRuntime {
         emit(observer, "assistant_message", traceId, 1, Map.of(
                 "message", answer, "status", "completed"));
         emit(observer, "agent_done", traceId, 1, Map.of(
-                "stop_reason", "final_answer", "status", "completed", "step_count", 1));
+                "stopReason", "final_answer", "status", "completed", "stepCount", 1));
         return new AgentRunResult(answer, "final_answer", traceId,
                 conversation.sessionId(), 1, null, null);
     }

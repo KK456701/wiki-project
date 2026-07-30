@@ -30,8 +30,6 @@ import com.hospital.wikiagent.rules.RuleReadRepository;
 import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategies;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
 class IndicatorSqlToolsTest {
     private JdbcTemplate jdbc;
@@ -49,9 +47,7 @@ class IndicatorSqlToolsTest {
                 .addScript("classpath:test-runtime-schema.sql")
                 .build();
         jdbc = new JdbcTemplate(database);
-        objectMapper = JsonMapper.builder()
-                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .build();
+        objectMapper = new ObjectMapper();
         rules = mock(RuleReadRepository.class);
         when(rules.effectiveRule(anyString(), anyString())).thenReturn(executableRule());
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(executableRule());
@@ -79,29 +75,29 @@ class IndicatorSqlToolsTest {
         ToolExecutionContext context = executionContext(runtimeContext, state);
         ToolResult inspected = tools.inspect(new IndicatorSqlTools.InspectInput("HXZD-003-001"), context);
         assertThat(inspected.ok()).isTrue();
-        assertThat(inspected.data()).containsEntry("mapping_status", "confirmed");
+        assertThat(inspected.data()).containsEntry("mappingStatus", "confirmed");
 
         ToolResult prepared = tools.prepare(new IndicatorSqlTools.PrepareInput(
                 "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"), context);
         assertThat(prepared.ok()).isTrue();
         assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
         assertThat(prepared.data()).containsKeys(
-                "sql_id", "context_digest", "stat_start", "stat_end", "sql_preview", "parameters");
+                "sqlId", "contextDigest", "statStart", "statEnd", "sqlPreview", "parameters");
         assertThat(prepared.data())
-                .containsEntry("source_role", "business")
-                .containsEntry("db_source_id", "business_test");
-        assertThat(prepared.data().get("sql_preview").toString()).startsWith("SELECT");
-        assertThat(prepared.data()).doesNotContainKey("sql_text");
+                .containsEntry("sourceRole", "business")
+                .containsEntry("dbSourceId", "business_test");
+        assertThat(prepared.data().get("sqlPreview").toString()).startsWith("SELECT");
+        assertThat(prepared.data()).doesNotContainKey("sqlText");
 
-        String sqlId = prepared.data().get("sql_id").toString();
+        String sqlId = prepared.data().get("sqlId").toString();
         ToolResult trial = tools.trial(new IndicatorSqlTools.TrialInput(sqlId), context);
         assertThat(trial.ok()).isTrue();
         assertThat(trial.code()).isEqualTo("TRIAL_RUN_COMPLETED");
         assertThat(trial.data())
-                .containsEntry("numerator_count", 1L)
-                .containsEntry("denominator_count", 4L)
-                .containsEntry("result_value", 25.0)
-                .containsEntry("source_role", "business")
+                .containsEntry("numeratorCount", 1L)
+                .containsEntry("denominatorCount", 4L)
+                .containsEntry("resultValue", 25.0)
+                .containsEntry("sourceRole", "business")
                 .containsEntry("source", "business_test");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isEqualTo(1);
@@ -133,8 +129,8 @@ class IndicatorSqlToolsTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
         assertThat(result.data())
-                .containsEntry("stat_start", "2025-06-01 00:00:00")
-                .containsEntry("stat_end", "2026-07-27 00:00:00");
+                .containsEntry("statStart", "2025-06-01 00:00:00")
+                .containsEntry("statEnd", "2026-07-27 00:00:00");
     }
 
     @Test
@@ -169,14 +165,15 @@ class IndicatorSqlToolsTest {
 
         assertThat(result.ok()).isFalse();
         assertThat(result.code()).isEqualTo("FIELD_PRECHECK_FAILED");
-        assertThat(result.data().get("missing_mappings")).asList().contains("arrive_time");
+        assertThat(result.data().get("missingMappings")).asList().contains("arrive_time");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isZero();
     }
 
     @Test
     void acceptsPublishedDualDatabaseVerificationWhenLocalMetadataCacheIsEmpty() {
         Map<String, Object> verifiedRule = new LinkedHashMap<>(executableRule());
-        verifiedRule.put("dual_database_contract", Map.of(
+        // dual_database_contract 内层是知识 Profile 透传键，保持 snake
+        verifiedRule.put("dualDatabaseContract", Map.of(
                 "schema_compatible", true,
                 "source_verification", Map.of(
                         "business", Map.of(
@@ -190,15 +187,15 @@ class IndicatorSqlToolsTest {
         Map<String, Object> mappingWithoutCachedMetadata =
                 new LinkedHashMap<>(confirmedMapping());
         List<Map<String, Object>> metadataWithoutTypes =
-                ((List<Map<String, Object>>) mappingWithoutCachedMetadata.get("metadata_items"))
+                ((List<Map<String, Object>>) mappingWithoutCachedMetadata.get("metadataItems"))
                         .stream()
                         .map(item -> {
                             Map<String, Object> copy = new LinkedHashMap<>(item);
-                            copy.put("metadata_data_type", "");
+                            copy.put("metadataDataType", "");
                             return Map.copyOf(copy);
                         })
                         .toList();
-        mappingWithoutCachedMetadata.put("metadata_items", metadataWithoutTypes);
+        mappingWithoutCachedMetadata.put("metadataItems", metadataWithoutTypes);
         when(rules.fieldMapping(anyString(), anyString(), isNull()))
                 .thenReturn(mappingWithoutCachedMetadata);
 
@@ -209,7 +206,7 @@ class IndicatorSqlToolsTest {
                 "HXZD-003-001", "2026-01-01T00:00:00", "2026-02-01T00:00:00"),
                 executionContext(runtimeContext, state));
 
-        assertThat(inspected.data().get("missing_columns")).asList().isEmpty();
+        assertThat(inspected.data().get("missingColumns")).asList().isEmpty();
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
     }
@@ -217,15 +214,15 @@ class IndicatorSqlToolsTest {
     @Test
     void exposesStaticValidatedReferenceSqlForExplicitSqlPrepareWithoutDatabaseAccess() {
         Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
-        documentationOnly.put("execution_status", "documentation_only");
-        documentationOnly.put("standard_sql", """
+        documentationOnly.put("executionStatus", "documentation_only");
+        documentationOnly.put("standardSql", """
                 SELECT 0 AS index_value, 0 AS numerator_count, 0 AS denominator_count
                 FROM consult_record
                 WHERE
                   --布局组件设置提升效率
                   AND request_time>=:start_time AND request_time<:end_time
                 """);
-        documentationOnly.put("execution_blockers", List.of("缺少经确认的医院字段契约"));
+        documentationOnly.put("executionBlockers", List.of("缺少经确认的医院字段契约"));
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
         state.lastIntent(PlanIntent.INDICATOR_SQL_PREPARE.value());
 
@@ -236,11 +233,11 @@ class IndicatorSqlToolsTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("SQL_REFERENCE_PREPARED");
         assertThat(result.data())
-                .containsEntry("execution_status", "documentation_only")
-                .containsEntry("reference_only", true)
-                .containsEntry("validation_status", "static_validated")
-                .doesNotContainKey("sql_id");
-        assertThat(result.data().get("sql_preview").toString())
+                .containsEntry("executionStatus", "documentation_only")
+                .containsEntry("referenceOnly", true)
+                .containsEntry("validationStatus", "static_validated")
+                .doesNotContainKey("sqlId");
+        assertThat(result.data().get("sqlPreview").toString())
                 .contains("WHERE", "1=1", "AND request_time")
                 .doesNotContain("布局组件设置提升效率");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM med_generated_sql", Integer.class)).isZero();
@@ -251,9 +248,9 @@ class IndicatorSqlToolsTest {
     @Test
     void preparesStaticOverviewForDualDatabaseTrialRunPlan() {
         Map<String, Object> documentationOnly = new LinkedHashMap<>(executableRule());
-        documentationOnly.put("execution_status", "documentation_only");
-        documentationOnly.put("overview_runtime_eligible", true);
-        documentationOnly.put("execution_blockers", List.of("缺少经确认的医院字段契约"));
+        documentationOnly.put("executionStatus", "documentation_only");
+        documentationOnly.put("overviewRuntimeEligible", true);
+        documentationOnly.put("executionBlockers", List.of("缺少经确认的医院字段契约"));
         when(rules.effectiveRule(anyString(), anyString(), isNull())).thenReturn(documentationOnly);
         state.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
 
@@ -264,8 +261,8 @@ class IndicatorSqlToolsTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.code()).isEqualTo("SQL_OBJECT_PREPARED");
         assertThat(result.data())
-                .containsEntry("validation_status", "overview_static_validated")
-                .containsKey("sql_id");
+                .containsEntry("validationStatus", "overview_static_validated")
+                .containsKey("sqlId");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM med_agent_sql_object", Integer.class)).isEqualTo(1);
     }
@@ -293,17 +290,17 @@ class IndicatorSqlToolsTest {
         for (Map<String, String> indicator :
                 repository.activeIndicatorNames("hospital_001", 100)) {
             AgentRunState indicatorState = new AgentRunState();
-            indicatorState.currentRuleId(indicator.get("rule_id"));
+            indicatorState.currentRuleId(indicator.get("ruleId"));
             indicatorState.lastIntent(PlanIntent.INDICATOR_TRIAL_RUN.value());
             ToolResult prepared = runtimeTools.prepare(
                     new IndicatorSqlTools.PrepareInput(
-                            indicator.get("rule_id"),
+                            indicator.get("ruleId"),
                             "2026-01-01T00:00:00",
                             "2026-02-01T00:00:00"),
                     executionContext(hospitalContext, indicatorState));
 
             assertThat(prepared.ok())
-                    .as("%s: %s", indicator.get("rule_id"), prepared)
+                    .as("%s: %s", indicator.get("ruleId"), prepared)
                     .isTrue();
             assertThat(prepared.code()).isEqualTo("SQL_OBJECT_PREPARED");
         }
@@ -319,7 +316,7 @@ class IndicatorSqlToolsTest {
                 "request-2", "trace-2", "business_test");
 
         ToolResult result = tools.trial(
-                new IndicatorSqlTools.TrialInput(prepared.data().get("sql_id").toString()),
+                new IndicatorSqlTools.TrialInput(prepared.data().get("sqlId").toString()),
                 executionContext(otherHospital, state));
 
         assertThat(result.ok()).isFalse();
@@ -396,19 +393,20 @@ class IndicatorSqlToolsTest {
                   AND request_time>=:start_time AND request_time<:end_time
                 """;
         return Map.ofEntries(
-                Map.entry("rule_id", "HXZD-003-001"),
-                Map.entry("rule_name", "急会诊及时到位率"),
-                Map.entry("profile_id", "company-default"),
-                Map.entry("execution_status", "executable"),
-                Map.entry("standard_sql", sql),
-                Map.entry("field_contract", Map.of("business_fields", Map.of(
+                Map.entry("ruleId", "HXZD-003-001"),
+                Map.entry("ruleName", "急会诊及时到位率"),
+                Map.entry("profileId", "company-default"),
+                Map.entry("executionStatus", "executable"),
+                Map.entry("standardSql", sql),
+                // field_contract/effective_params 内层是知识 Profile 透传键，保持 snake
+                Map.entry("fieldContract", Map.of("business_fields", Map.of(
                         "hospital_id", Map.of("type", "string"),
                         "request_time", Map.of("type", "datetime"),
                         "arrive_time", Map.of("type", "datetime"),
                         "consult_type", Map.of("type", "string")))),
-                Map.entry("effective_params", Map.of("consult_type_value", "急会诊")),
-                Map.entry("hospital_version", 1),
-                Map.entry("national_version", "2025"));
+                Map.entry("effectiveParams", Map.of("consult_type_value", "急会诊")),
+                Map.entry("hospitalVersion", 1),
+                Map.entry("nationalVersion", "2025"));
     }
 
     private static Map<String, Object> confirmedMapping() {
@@ -418,31 +416,32 @@ class IndicatorSqlToolsTest {
                 mappingItem("arrive_time", "datetime"),
                 mappingItem("consult_type", "varchar"));
         return Map.ofEntries(
-                Map.entry("rule_id", "HXZD-003-001"),
-                Map.entry("profile_id", "company-default"),
+                Map.entry("ruleId", "HXZD-003-001"),
+                Map.entry("profileId", "company-default"),
                 Map.entry("dialect", "sqlserver"),
-                Map.entry("db_name", "business_test"),
+                Map.entry("dbName", "business_test"),
                 Map.entry("schema", "dbo"),
-                Map.entry("main_table", "consult_record"),
+                Map.entry("mainTable", "consult_record"),
                 Map.entry("status", "confirmed"),
+                // fields 内层键是业务字段名，保持 snake
                 Map.entry("fields", Map.of(
                         "hospital_id", "consult_record.hospital_id",
                         "request_time", "consult_record.request_time",
                         "arrive_time", "consult_record.arrive_time",
                         "consult_type", "consult_record.consult_type")),
                 Map.entry("items", items),
-                Map.entry("metadata_items", items),
+                Map.entry("metadataItems", items),
                 Map.entry("relations", List.of()));
     }
 
     private static Map<String, Object> mappingItem(String field, String dataType) {
         return Map.of(
-                "business_field", field,
-                "table_name", "consult_record",
-                "column_name", field,
-                "data_type", dataType,
-                "mapping_data_type", dataType,
-                "metadata_data_type", dataType,
+                "businessField", field,
+                "tableName", "consult_record",
+                "columnName", field,
+                "dataType", dataType,
+                "mappingDataType", dataType,
+                "metadataDataType", dataType,
                 "status", "confirmed");
     }
 

@@ -44,7 +44,7 @@ class FinalAnswerComposerTest {
 
         assertThat(result.corrected()).isTrue();
         assertThat(result.content()).contains("4.41%");
-        assertThat(invoker.prompts.get(0)).contains("RUN_001", "numerator_count");
+        assertThat(invoker.prompts.get(0)).contains("RUN_001", "numeratorCount");
         assertThat(invoker.prompts.get(0)).doesNotContain("SELECT", "patient_id");
     }
 
@@ -364,8 +364,8 @@ class FinalAnswerComposerTest {
                 "2026-01-01 00:00:00", "2026-04-01 00:00:00",
                 "trial_run_indicator_sql", "RUN_001", "input", "result",
                 "sensitive_reference", now, now.plusSeconds(3600), "RUN_001",
-                Map.of("run_id", "RUN_001", "numerator_count", 3,
-                        "denominator_count", 68, "result_value", 4.41));
+                Map.of("runId", "RUN_001", "numeratorCount", 3,
+                        "denominatorCount", 68, "resultValue", 4.41));
         EvidenceVerification verification = new EvidenceVerification(
                 EvidenceVerification.VERSION, "EVV_001", "EVD_001", "trace_001",
                 "subtask_001", "hospital_001", "plan-verifier-v1", "verified",
@@ -382,20 +382,20 @@ class FinalAnswerComposerTest {
                 "execute_indicator_dual_store", "RUN_EMPTY", "input", "result",
                 "sensitive_reference", now, now.plusSeconds(3600), "RUN_EMPTY",
                 Map.of(
-                        "run_id", "RUN_EMPTY",
-                        "numerator_count", 0,
-                        "denominator_count", 0,
-                        "result_value", 0.0,
-                        "no_sample", true,
-                        "comparison_status", "matched",
-                        "business_result", Map.of(
-                                "numerator_count", 0,
-                                "denominator_count", 0,
-                                "result_value", 0.0),
-                        "real_result", Map.of(
-                                "numerator_count", 0,
-                                "denominator_count", 0,
-                                "result_value", 0.0)));
+                        "runId", "RUN_EMPTY",
+                        "numeratorCount", 0,
+                        "denominatorCount", 0,
+                        "resultValue", 0.0,
+                        "noSample", true,
+                        "comparisonStatus", "matched",
+                        "businessResult", Map.of(
+                                "numeratorCount", 0,
+                                "denominatorCount", 0,
+                                "resultValue", 0.0),
+                        "realResult", Map.of(
+                                "numeratorCount", 0,
+                                "denominatorCount", 0,
+                                "resultValue", 0.0)));
         EvidenceVerification verification = new EvidenceVerification(
                 EvidenceVerification.VERSION, "EVV_EMPTY", "EVD_EMPTY", "trace_empty",
                 "subtask_empty", "hospital_001", "plan-verifier-v1", "verified",
@@ -411,14 +411,14 @@ class FinalAnswerComposerTest {
                 "", "", "get_effective_rule", "MQSI2025_001", "input", "result",
                 "internal", now, now.plusSeconds(3600), "MQSI2025_001",
                 Map.of(
-                        "rule_id", "MQSI2025_001",
-                        "rule_name", "患者入院 48 小时内转科的比例",
+                        "ruleId", "MQSI2025_001",
+                        "ruleName", "患者入院 48 小时内转科的比例",
                         "definition", "入院 48 小时内转科患者人次数占同期入院患者总人次数的比例。",
                         "formula", "分子 ÷ 分母 × 100%",
-                        "numerator_rule", "入院后 0 至 48 小时内非 ICU 转科人次数",
-                        "denominator_rule", "同期入院患者总人次数",
-                        "effective_level", "hospital",
-                        "hospital_version", 4));
+                        "numeratorRule", "入院后 0 至 48 小时内非 ICU 转科人次数",
+                        "denominatorRule", "同期入院患者总人次数",
+                        "effectiveLevel", "hospital",
+                        "hospitalVersion", 4));
         EvidenceVerification verification = new EvidenceVerification(
                 EvidenceVerification.VERSION, "EVV_RULE_001", "EVD_RULE_001",
                 "trace_001", "subtask_001", "hospital_001", "plan-verifier-v1",

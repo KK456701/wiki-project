@@ -57,8 +57,8 @@ public class AgentPlanController {
         return Map.of(
                 "status", "shadow_only",
                 "validation", validation,
-                "compiled_plan", compiled,
-                "first_decision", firstDecision,
-                "tools_executed", false);
+                "compiledPlan", compiled,
+                "firstDecision", firstDecision,
+                "toolsExecuted", false);
     }
 }

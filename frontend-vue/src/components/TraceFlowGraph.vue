@@ -55,7 +55,7 @@ const laneGap = 14
 const lanes = computed(() => {
   const ids: string[] = []
   props.nodes.forEach((node) => {
-    const id = String(node.subtask_id || 'root')
+    const id = String(node.subtaskId || 'root')
     if (!ids.includes(id)) ids.push(id)
   })
   return ids.sort((left, right) => {
@@ -66,14 +66,14 @@ const lanes = computed(() => {
 })
 
 function stageId(node: TraceNode): string {
-  const explicit = String(node.flow_stage || '')
+  const explicit = String(node.flowStage || '')
   if (stages.some((stage) => stage.id === explicit)) return explicit
-  const type = String(node.node_type || 'code')
+  const type = String(node.nodeType || 'code')
   if (type === 'tool' || type === 'database') return 'execution'
-  if (type === 'llm') return String(node.node_name || '') === 'final_answer_llm'
+  if (type === 'llm') return String(node.nodeName || '') === 'final_answer_llm'
     ? 'answer'
     : 'planning'
-  if (type === 'storage') return String(node.node_name || '') === 'memory_load'
+  if (type === 'storage') return String(node.nodeName || '') === 'memory_load'
     ? 'context'
     : 'answer'
   return 'execution'
@@ -82,7 +82,7 @@ function stageId(node: TraceNode): string {
 const grouped = computed(() => {
   const values = new Map<string, TraceNode[]>()
   props.nodes.forEach((node) => {
-    const key = `${String(node.subtask_id || 'root')}::${stageId(node)}`
+    const key = `${String(node.subtaskId || 'root')}::${stageId(node)}`
     if (!values.has(key)) values.set(key, [])
     values.get(key)?.push(node)
   })
@@ -113,7 +113,7 @@ const positionedNodes = computed<PositionedNode[]>(() => {
       nodes.forEach((node, index) => {
         result.push({
           node,
-          id: String(node.node_id || `${lane.id}-${stage.id}-${index}`),
+          id: String(node.nodeId || `${lane.id}-${stage.id}-${index}`),
           stageId: stage.id,
           x: marginX + laneLabelWidth + stageIndex * (stageWidth + stageGap)
             + (stageWidth - nodeWidth) / 2,
@@ -142,8 +142,8 @@ const canvasHeight = computed(() => {
 })
 
 const visibleEdges = computed<PositionedEdge[]>(() => props.edges.flatMap((edge): PositionedEdge[] => {
-  const source = positionById.value.get(String(edge.from_node_id || ''))
-  const target = positionById.value.get(String(edge.to_node_id || ''))
+  const source = positionById.value.get(String(edge.fromNodeId || ''))
+  const target = positionById.value.get(String(edge.toNodeId || ''))
   if (!source || !target) return []
   const sourceRight = source.x + nodeWidth
   const sourceCenterX = source.x + nodeWidth / 2
@@ -197,13 +197,13 @@ watch(() => props.selectedNodeId, async (id) => {
 })
 
 function nodeClass(node: TraceNode): string[] {
-  const type = String(node.node_type || 'code')
+  const type = String(node.nodeType || 'code')
   const status = String(node.status || '')
   return [`is-${type}`, status === 'failed' || status === 'error' ? 'is-failed' : '']
 }
 
 function shortTitle(node: TraceNode): string {
-  const value = String(node.node_title || node.node_name || '未命名节点')
+  const value = String(node.nodeTitle || node.nodeName || '未命名节点')
   return value.length > 12 ? `${value.slice(0, 12)}…` : value
 }
 
@@ -213,8 +213,8 @@ function laneTitle(id: string): string {
 
 function markerId(edge: PositionedEdge): string {
   if (edge.loop) return 'url(#flow-arrow-loop)'
-  if (String(edge.edge_type || '') === 'replan') return 'url(#flow-arrow-replan)'
-  if (String(edge.edge_type || '') === 'failure') return 'url(#flow-arrow-failure)'
+  if (String(edge.edgeType || '') === 'replan') return 'url(#flow-arrow-replan)'
+  if (String(edge.edgeType || '') === 'failure') return 'url(#flow-arrow-failure)'
   return 'url(#flow-arrow)'
 }
 </script>
@@ -276,8 +276,8 @@ function markerId(edge: PositionedEdge): string {
 
       <g class="flow-edges">
         <g v-for="(edge, index) in visibleEdges"
-          :key="`${String(edge.from_node_id)}-${String(edge.to_node_id)}-${index}`"
-          :class="[`edge-${String(edge.edge_type || 'sequence')}`, { 'is-loop': edge.loop }]">
+          :key="`${String(edge.fromNodeId)}-${String(edge.toNodeId)}-${index}`"
+          :class="[`edge-${String(edge.edgeType || 'sequence')}`, { 'is-loop': edge.loop }]">
           <path :d="edge.path" :marker-end="markerId(edge)" />
           <text v-if="edge.label" :x="edge.labelX" :y="edge.labelY">
             {{ String(edge.label) }}
@@ -294,7 +294,7 @@ function markerId(edge: PositionedEdge): string {
         @click="emit('select', item.node)"
         @keydown.enter="emit('select', item.node)">
         <rect :width="nodeWidth" :height="nodeHeight"
-          :rx="String(item.node.node_type || '') === 'llm' ? 13 : 3" />
+          :rx="String(item.node.nodeType || '') === 'llm' ? 13 : 3" />
         <circle cx="16" cy="17" r="5" />
         <text class="flow-sequence" x="29" y="21">
           {{ String(item.node.sequence || '').padStart(2, '0') }}
@@ -304,7 +304,7 @@ function markerId(edge: PositionedEdge): string {
         </text>
         <text class="flow-title" x="14" y="47">{{ shortTitle(item.node) }}</text>
         <text class="flow-meta" x="14" y="67">
-          {{ String(item.node.node_name || '') }} · {{ Number(item.node.duration_ms || 0) }}ms
+          {{ String(item.node.nodeName || '') }} · {{ Number(item.node.durationMs || 0) }}ms
         </text>
       </g>
     </svg>

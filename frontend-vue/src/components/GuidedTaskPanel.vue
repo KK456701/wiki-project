@@ -46,7 +46,7 @@ const filteredIndicators = computed(() => {
   const keyword = search.value.trim().toLowerCase()
   if (!keyword) return indicators.value
   return indicators.value.filter((item) =>
-    `${item.rule_id} ${item.rule_name}`.toLowerCase().includes(keyword))
+    `${item.ruleId} ${item.ruleName}`.toLowerCase().includes(keyword))
 })
 
 const timeText = computed(() => {
@@ -97,14 +97,14 @@ function toggleIndicator(ruleId: string) {
 function selectAll() {
   selected.value = selected.value.length === indicators.value.length
     ? []
-    : indicators.value.map((item) => item.rule_id)
+    : indicators.value.map((item) => item.ruleId)
 }
 
 function submit() {
   if (!canSubmit.value) return
   const names = indicators.value
-    .filter((item) => selected.value.includes(item.rule_id))
-    .map((item) => item.rule_name)
+    .filter((item) => selected.value.includes(item.ruleId))
+    .map((item) => item.ruleName)
   const allSelected = names.length === indicators.value.length && names.length > 1
   const query = task.value === 'calc'
     ? allSelected
@@ -164,14 +164,14 @@ function submit() {
           <div class="guided-indicator-grid">
             <button
               v-for="item in filteredIndicators"
-              :key="item.rule_id"
+              :key="item.ruleId"
               type="button"
               class="guided-indicator"
-              :class="{ 'is-selected': selected.includes(item.rule_id) }"
-              @click="toggleIndicator(item.rule_id)"
+              :class="{ 'is-selected': selected.includes(item.ruleId) }"
+              @click="toggleIndicator(item.ruleId)"
             >
-              <strong>{{ item.rule_name }}</strong>
-              <span>{{ item.rule_id }}</span>
+              <strong>{{ item.ruleName }}</strong>
+              <span>{{ item.ruleId }}</span>
             </button>
           </div>
           <p v-if="!filteredIndicators.length" class="guided-hint">没有匹配的指标。</p>

@@ -139,8 +139,8 @@ class BatchRequestDetectorTest {
     @Test
     void oneOrMoreExplicitIndicatorsUseDeterministicSelectedBatch() {
         List<Map<String, String>> catalog = List.of(
-                Map.of("rule_id", "R1", "rule_name", "患者入院8小时内查房率"),
-                Map.of("rule_id", "R2", "rule_name", "急会诊及时到位率"));
+                Map.of("ruleId", "R1", "ruleName", "患者入院8小时内查房率"),
+                Map.of("ruleId", "R2", "ruleName", "急会诊及时到位率"));
 
         BatchRequestSpec selected = detector.detect(
                 "计算患者入院8小时内查房率、急会诊及时到位率的结果",
@@ -160,11 +160,11 @@ class BatchRequestDetectorTest {
         BatchRequestDetector profileDetector = new BatchRequestDetector(rules);
         List<Map<String, Object>> profiles = List.of(
                 Map.of(
-                        "profile_id", "R1-default",
-                        "profile_name", "默认统计口径"),
+                        "profileId", "R1-default",
+                        "profileName", "默认统计口径"),
                 Map.of(
-                        "profile_id", "R1-candidate",
-                        "profile_name", "候选统计口径"));
+                        "profileId", "R1-candidate",
+                        "profileName", "候选统计口径"));
         when(rules.caliberProfiles("R1", "hospital_001")).thenReturn(profiles);
 
         assertThat(profileDetector.requiresProfileExpansion(

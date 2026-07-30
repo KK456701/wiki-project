@@ -35,15 +35,15 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   const list = [...sessionList.value]
   for (const [sid, isRunning] of Object.entries(store.runningSessions)) {
     if (!isRunning) continue
-    if (list.some((session) => session.session_id === sid)) continue
+    if (list.some((session) => session.sessionId === sid)) continue
     const firstUser = sid === store.sessionId
       ? store.messages.find((message) => message.role === 'user')
       : undefined
     list.unshift({
-      session_id: sid,
+      sessionId: sid,
       title: firstUser?.content?.trim().slice(0, 24) || '新对话',
-      last_message_at: new Date().toISOString(),
-      message_count: store.messages.length,
+      lastMessageAt: new Date().toISOString(),
+      messageCount: store.messages.length,
     })
   }
   return list
@@ -183,14 +183,14 @@ async function exportDiagnosis(reportId?: string) {
         <ul class="session-list">
           <li
             v-for="session in displaySessionList"
-            :key="session.session_id"
+            :key="session.sessionId"
             class="session-item"
-            :class="{ active: session.session_id === store.sessionId }"
-            @click="switchSession(session.session_id)"
+            :class="{ active: session.sessionId === store.sessionId }"
+            @click="switchSession(session.sessionId)"
           >
-            <span v-if="store.runningSessions[session.session_id]" class="session-spinner" title="处理中"></span>
+            <span v-if="store.runningSessions[session.sessionId]" class="session-spinner" title="处理中"></span>
             <span class="session-title">{{ session.title }}</span>
-            <button type="button" class="session-delete" title="删除" @click="removeSession(session.session_id, $event)">×</button>
+            <button type="button" class="session-delete" title="删除" @click="removeSession(session.sessionId, $event)">×</button>
           </li>
         </ul>
         <p v-if="!displaySessionList.length" class="sidebar-empty">暂无历史对话</p>

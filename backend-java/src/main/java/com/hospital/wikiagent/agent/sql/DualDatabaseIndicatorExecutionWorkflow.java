@@ -121,18 +121,18 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         report(context, "dual_period_validation", "校验统计范围",
                 period.ok() ? "success" : "failed", 0,
                 Map.of(
-                        "stat_start", sql.statStart(),
-                        "stat_end", sql.statEnd(),
+                        "statStart", sql.statStart(),
+                        "statEnd", sql.statEnd(),
                         "code", period.code()));
         if (!period.ok()) {
             return ToolResult.failure(
                     "validation_failed", period.code(), period.message(), false);
         }
 
-        Map<String, Object> contract = objectMap(rule.get("dual_database_contract"));
+        Map<String, Object> contract = objectMap(rule.get("dualDatabaseContract"));
         boolean fullSchemaContract = schemaCompatible(contract);
         boolean overviewStaticRuntime =
-                Boolean.TRUE.equals(rule.get("overview_runtime_eligible"));
+                Boolean.TRUE.equals(rule.get("overviewRuntimeEligible"));
         if (realOnlyCalculation && !overviewStaticRuntime) {
             return ToolResult.failure(
                     "validation_failed", "REAL_DATABASE_SCHEMA_INCOMPATIBLE",
@@ -146,9 +146,9 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     false);
         }
 
-        String sourceSql = text(rule.get("source_extract_sql"));
+        String sourceSql = text(rule.get("sourceExtractSql"));
         boolean sourceSqlRequired = "EVENT".equalsIgnoreCase(text(
-                objectMap(rule.get("extraction_contract")).get("route")));
+                objectMap(rule.get("extractionContract")).get("route")));
         if (extractionRequired() && sourceSqlRequired
                 && (sourceSql.isBlank() || !validator.validateReadOnly(sourceSql).ok())) {
             return ToolResult.failure(
@@ -163,11 +163,11 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         Map<String, Object> extractionPreparation = new LinkedHashMap<>();
         extractionPreparation.put(
                 "mode", extractionRequired() ? "required" : "disabled");
-        extractionPreparation.put("release_id", text(rule.get("knowledge_release_id")));
-        extractionPreparation.put("rule_id", sql.ruleId());
-        extractionPreparation.put("profile_id", text(rule.get("profile_id")));
+        extractionPreparation.put("releaseId", text(rule.get("knowledgeReleaseId")));
+        extractionPreparation.put("ruleId", sql.ruleId());
+        extractionPreparation.put("profileId", text(rule.get("profileId")));
         if (!sourceSql.isBlank()) {
-            extractionPreparation.put("source_sql_sha256", sha256(sourceSql));
+            extractionPreparation.put("sourceSqlSha256", sha256(sourceSql));
         }
         report(context, "source_extraction_prepare", "准备源数据抽取",
                 extractionRequired() ? "success" : "skipped", 0,
@@ -249,7 +249,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 objects.saveDualRun(
                         comparisonRunId,
                         sql,
-                        text(rule.get("profile_id")),
+                        text(rule.get("profileId")),
                         extraction.extractionId(),
                         business.runId(),
                         real.runId(),
@@ -271,68 +271,68 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                             "error", "DUAL_DIAGNOSIS_REPORT_PERSIST_FAILED",
                             "双库结果不一致，但诊断报告保存失败，未生成不完整结论。", false);
                 }
-                diagnosis.put("report_id", diagnosisReportId);
+                diagnosis.put("reportId", diagnosisReportId);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("run_id", comparisonRunId);
-            data.put("canonical_run_id", real.runId());
-            data.put("sql_id", sql.sqlId());
-            data.put("rule_id", sql.ruleId());
-            data.put("profile_id", rule.get("profile_id"));
-            data.put("stat_start", sql.statStart());
-            data.put("stat_end", sql.statEnd());
-            data.put("extraction_id", extraction.extractionId());
-            data.put("extraction_status", extraction.status().name());
-            data.put("data_freshness",
+            data.put("runId", comparisonRunId);
+            data.put("canonicalRunId", real.runId());
+            data.put("sqlId", sql.sqlId());
+            data.put("ruleId", sql.ruleId());
+            data.put("profileId", rule.get("profileId"));
+            data.put("statStart", sql.statStart());
+            data.put("statEnd", sql.statEnd());
+            data.put("extractionId", extraction.extractionId());
+            data.put("extractionStatus", extraction.status().name());
+            data.put("dataFreshness",
                     extraction.status() == ExtractionResult.Status.SKIPPED_DISABLED
                             ? "existing_snapshot_not_refreshed"
                             : "refreshed_by_current_run");
-            data.put("comparison_status", comparisonStatus);
-            data.put("result_comparison_status", resultMatched ? "matched" : "mismatched");
-            data.put("target_comparison_status",
+            data.put("comparisonStatus", comparisonStatus);
+            data.put("resultComparisonStatus", resultMatched ? "matched" : "mismatched");
+            data.put("targetComparisonStatus",
                     targetConflict ? "conflict" : "compatible");
-            data.put("business_result", business.safeMap());
-            data.put("real_result", real.safeMap());
+            data.put("businessResult", business.safeMap());
+            data.put("realResult", real.safeMap());
             if (real.numerator() != null) {
-                data.put("numerator_count", real.numerator());
+                data.put("numeratorCount", real.numerator());
             }
             if (real.denominator() != null) {
-                data.put("denominator_count", real.denominator());
+                data.put("denominatorCount", real.denominator());
             }
-            data.put("result_value", real.resultValue());
-            putIfPresent(data, "component_left", real.componentLeft());
-            putIfPresent(data, "component_right", real.componentRight());
-            putIfPresent(data, "sample_count", real.sampleCount());
+            data.put("resultValue", real.resultValue());
+            putIfPresent(data, "componentLeft", real.componentLeft());
+            putIfPresent(data, "componentRight", real.componentRight());
+            putIfPresent(data, "sampleCount", real.sampleCount());
             Number resolvedTarget = resolvedTarget(business, real);
             if (resolvedTarget == null && !targetConflict) {
                 resolvedTarget = profileTarget(contract);
             }
-            putIfPresent(data, "target_value", resolvedTarget);
+            putIfPresent(data, "targetValue", resolvedTarget);
             if (targetConflict) {
-                data.put("target_conflict", true);
-                data.put("business_target_value", business.targetValue());
-                data.put("real_target_value", real.targetValue());
+                data.put("targetConflict", true);
+                data.put("businessTargetValue", business.targetValue());
+                data.put("realTargetValue", real.targetValue());
             } else if (resolvedTarget != null) {
                 String targetSource = targetSource(business, real);
-                data.put("target_source",
+                data.put("targetSource",
                         targetSource.isBlank() ? "profile" : targetSource);
             }
-            data.put("no_sample", real.denominator() != null
+            data.put("noSample", real.denominator() != null
                     ? real.denominator() == 0
                     : real.resultValue() == null);
-            data.put("dual_difference_diagnosis", diagnosis);
+            data.put("dualDifferenceDiagnosis", diagnosis);
             if (!diagnosisReportId.isBlank()) {
-                data.put("diagnosis_report_id", diagnosisReportId);
+                data.put("diagnosisReportId", diagnosisReportId);
             }
-            data.put("workflow_version", VERSION);
+            data.put("workflowVersion", VERSION);
             context.runState().lastRunId(real.runId());
             report(context, "dual_comparison", "核对双库结果", "success", 0,
-                    Map.of("comparison_status", comparisonStatus));
+                    Map.of("comparisonStatus", comparisonStatus));
             report(context, "dual_diagnosis_conclusion", "生成诊断结论", "success", 0,
                     Map.of(
-                            "comparison_status", comparisonStatus,
-                            "diagnosis_status", diagnosis.getOrDefault("status", "skipped")));
+                            "comparisonStatus", comparisonStatus,
+                            "diagnosisStatus", diagnosis.getOrDefault("status", "skipped")));
             return ToolResult.success(
                     // 保留既有工具结果码，避免状态控制器、批处理和上传对比把双库
                     // 结果当成“尚未试运行”；双库语义由 comparison_status 区分。
@@ -368,46 +368,46 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("run_id", real.runId());
-        data.put("canonical_run_id", real.runId());
-        data.put("sql_id", sql.sqlId());
-        data.put("rule_id", sql.ruleId());
-        data.put("profile_id", rule.get("profile_id"));
-        data.put("stat_start", sql.statStart());
-        data.put("stat_end", sql.statEnd());
-        data.put("extraction_id", extraction.extractionId());
-        data.put("extraction_status", extraction.status().name());
-        data.put("data_freshness", "refreshed_by_current_run");
-        data.put("calculation_mode", "real_database_only");
-        data.put("real_result", real.safeMap());
+        data.put("runId", real.runId());
+        data.put("canonicalRunId", real.runId());
+        data.put("sqlId", sql.sqlId());
+        data.put("ruleId", sql.ruleId());
+        data.put("profileId", rule.get("profileId"));
+        data.put("statStart", sql.statStart());
+        data.put("statEnd", sql.statEnd());
+        data.put("extractionId", extraction.extractionId());
+        data.put("extractionStatus", extraction.status().name());
+        data.put("dataFreshness", "refreshed_by_current_run");
+        data.put("calculationMode", "real_database_only");
+        data.put("realResult", real.safeMap());
         if (real.numerator() != null) {
-            data.put("numerator_count", real.numerator());
+            data.put("numeratorCount", real.numerator());
         }
         if (real.denominator() != null) {
-            data.put("denominator_count", real.denominator());
+            data.put("denominatorCount", real.denominator());
         }
-        data.put("result_value", real.resultValue());
-        putIfPresent(data, "component_left", real.componentLeft());
-        putIfPresent(data, "component_right", real.componentRight());
-        putIfPresent(data, "sample_count", real.sampleCount());
+        data.put("resultValue", real.resultValue());
+        putIfPresent(data, "componentLeft", real.componentLeft());
+        putIfPresent(data, "componentRight", real.componentRight());
+        putIfPresent(data, "sampleCount", real.sampleCount());
         Number resolvedTarget = real.targetValue() != null
                 ? real.targetValue() : profileTarget(contract);
-        putIfPresent(data, "target_value", resolvedTarget);
+        putIfPresent(data, "targetValue", resolvedTarget);
         if (resolvedTarget != null) {
-            data.put("target_source",
+            data.put("targetSource",
                     real.targetValue() != null ? "real" : "profile");
         }
-        data.put("no_sample", real.denominator() != null
+        data.put("noSample", real.denominator() != null
                 ? real.denominator() == 0
                 : real.resultValue() == null);
-        data.put("workflow_version", VERSION);
+        data.put("workflowVersion", VERSION);
         context.runState().lastRunId(real.runId());
         report(context, "real_calculation_complete", "完成真实库指标计算",
                 "success", 0,
                 Map.of(
-                        "run_id", real.runId(),
-                        "source_id", real.sourceId(),
-                        "status", data.get("no_sample").equals(Boolean.TRUE)
+                        "runId", real.runId(),
+                        "sourceId", real.sourceId(),
+                        "status", data.get("noSample").equals(Boolean.TRUE)
                                 ? "NO_SAMPLE" : "SUCCESS"));
         return ToolResult.success(
                 "TRIAL_RUN_COMPLETED",
@@ -435,7 +435,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                 Map.of(
                         "status", "SKIPPED_DISABLED",
                         "reason", "extraction_mode_disabled",
-                        "cache_reused", false));
+                        "cacheReused", false));
         return result;
     }
 
@@ -451,40 +451,40 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             boolean overviewMatched,
             ToolExecutionContext context) {
         String reportId = id("DDR_");
-        long affected = longValue(diagnosis.get("affected_record_count")) == null
+        long affected = longValue(diagnosis.get("affectedRecordCount")) == null
                 ? estimatedAffectedCount(business, real)
-                : longValue(diagnosis.get("affected_record_count"));
+                : longValue(diagnosis.get("affectedRecordCount"));
         Map<String, Object> safeReport = new LinkedHashMap<>();
-        safeReport.put("report_id", reportId);
-        safeReport.put("rule_id", sql.ruleId());
-        safeReport.put("profile_id", rule.get("profile_id"));
-        safeReport.put("stat_start", sql.statStart());
-        safeReport.put("stat_end", sql.statEnd());
-        safeReport.put("comparison_run_id", comparisonRunId);
-        safeReport.put("extraction_id", extraction.extractionId());
-        safeReport.put("baseline_run_id", real.runId());
-        safeReport.put("business_run_id", business.runId());
-        safeReport.put("real_run_id", real.runId());
-        safeReport.put("business_result", business.safeMap());
-        safeReport.put("real_result", real.safeMap());
-        safeReport.put("conclusion_code", overviewMatched
+        safeReport.put("reportId", reportId);
+        safeReport.put("ruleId", sql.ruleId());
+        safeReport.put("profileId", rule.get("profileId"));
+        safeReport.put("statStart", sql.statStart());
+        safeReport.put("statEnd", sql.statEnd());
+        safeReport.put("comparisonRunId", comparisonRunId);
+        safeReport.put("extractionId", extraction.extractionId());
+        safeReport.put("baselineRunId", real.runId());
+        safeReport.put("businessRunId", business.runId());
+        safeReport.put("realRunId", real.runId());
+        safeReport.put("businessResult", business.safeMap());
+        safeReport.put("realResult", real.safeMap());
+        safeReport.put("conclusionCode", overviewMatched
                 ? "EXPLICIT_DIAGNOSIS_COMPLETED"
                 : "DUAL_DATABASE_RESULT_MISMATCH");
-        safeReport.put("user_summary", overviewMatched
+        safeReport.put("userSummary", overviewMatched
                 ? "业务库与真实库概览一致，已按用户要求继续核对科室和患者明细。"
                 : "业务库与真实库的指标结果不一致。");
-        safeReport.put("trigger_type",
+        safeReport.put("triggerType",
                 explicitDiagnosis ? "explicit_user_diagnosis" : "automatic_mismatch");
-        safeReport.put("extraction_status", extraction.status().name());
-        safeReport.put("data_freshness",
+        safeReport.put("extractionStatus", extraction.status().name());
+        safeReport.put("dataFreshness",
                 extraction.status() == ExtractionResult.Status.SKIPPED_DISABLED
                         ? "existing_snapshot_not_refreshed"
                         : "refreshed_by_current_run");
-        safeReport.put("affected_record_count", affected);
-        safeReport.put("evidence_limit",
+        safeReport.put("affectedRecordCount", affected);
+        safeReport.put("evidenceLimit",
                 "逐条原因只以受保护明细快照为准；患者行不写入诊断报告或 Trace。");
-        safeReport.put("dual_difference_diagnosis", diagnosis);
-        safeReport.put("workflow_version", VERSION);
+        safeReport.put("dualDifferenceDiagnosis", diagnosis);
+        safeReport.put("workflowVersion", VERSION);
         diagnosisReports.saveDifference(
                 reportId,
                 context.agentContext().hospitalId(),
@@ -510,16 +510,16 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                         + "|" + sql.ruleId() + "|" + sql.statStart() + "|" + sql.statEnd());
         Long hospitalSoid = extractionProperties.getHospitalSoid();
         @SuppressWarnings("unchecked")
-        Map<String, Object> extractionContract = rule.get("extraction_contract") instanceof Map<?, ?> m
+        Map<String, Object> extractionContract = rule.get("extractionContract") instanceof Map<?, ?> m
                 ? (Map<String, Object>) m : Map.of();
         ExtractionRequest request = new ExtractionRequest(
                 context.agentContext().traceId(),
                 context.subtaskId(),
                 context.agentContext().hospitalId(),
                 context.agentContext().userId(),
-                text(rule.get("knowledge_release_id")),
+                text(rule.get("knowledgeReleaseId")),
                 sql.ruleId(),
-                text(rule.get("profile_id")),
+                text(rule.get("profileId")),
                 parseTime(sql.statStart()),
                 parseTime(sql.statEnd()),
                 sourceSql,
@@ -535,12 +535,12 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         report(context, "source_data_extraction", "抽取数据到真实库",
                 result.successful() ? "success" : "failed", elapsedMs(started),
                 Map.of(
-                        "extraction_id", blank(result.extractionId(), ""),
+                        "extractionId", blank(result.extractionId(), ""),
                         "status", result.status().name().toLowerCase(Locale.ROOT),
-                        "extracted_rows", result.extractedRows(),
-                        "inserted_rows", result.insertedRows(),
-                        "updated_rows", result.updatedRows(),
-                        "rejected_rows", result.rejectedRows()));
+                        "extractedRows", result.extractedRows(),
+                        "insertedRows", result.insertedRows(),
+                        "updatedRows", result.updatedRows(),
+                        "rejectedRows", result.rejectedRows()));
         return lease;
     }
 
@@ -557,7 +557,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         } catch (DbHubMcpException exception) {
             report(context, "dual_overview_retry", "重试双库概览查询", "retrying",
                     elapsedMs(started), Map.of(
-                            "source_role", role.value(),
+                            "sourceRole", role.value(),
                             "reason", "dbhub_mcp_failure"));
             rows = databaseQuery.execute(role, executableSql);
         }
@@ -621,24 +621,24 @@ public class DualDatabaseIndicatorExecutionWorkflow {
         long durationMs = elapsedMs(started);
         Map<String, Object> runContext = new LinkedHashMap<>(sql.contextSnapshot());
         Map<String, Object> executionContext =
-                objectMap(runContext.get("execution_context"));
-        executionContext.put("source_role", role.value());
-        executionContext.put("source_id", databaseQuery.sourceId(role));
-        executionContext.put("workflow_version", VERSION);
-        runContext.put("execution_context", executionContext);
+                objectMap(runContext.get("executionContext"));
+        executionContext.put("sourceRole", role.value());
+        executionContext.put("sourceId", databaseQuery.sourceId(role));
+        executionContext.put("workflowVersion", VERSION);
+        runContext.put("executionContext", executionContext);
         // 明细预览根据该数据源重新查询，不能沿用准备 SQL 时的旧单库来源。
-        runContext.put("db_source_id", databaseQuery.sourceId(role));
+        runContext.put("dbSourceId", databaseQuery.sourceId(role));
         objects.saveRun(
                 runId, sql, "success", resultValue, numerator, denominator, "",
                 durationMs, context.agentContext().userId(),
                 runContext);
         Map<String, Object> traceOutput = new LinkedHashMap<>();
-        traceOutput.put("source_id", databaseQuery.sourceId(role));
-        traceOutput.put("run_id", runId);
-        traceOutput.put("overview_sql_sha256", sha256(sql.sqlText()));
-        traceOutput.put("result_contract", ratioContract ? "ratio" : "scalar");
+        traceOutput.put("sourceId", databaseQuery.sourceId(role));
+        traceOutput.put("runId", runId);
+        traceOutput.put("overviewSqlSha256", sha256(sql.sqlText()));
+        traceOutput.put("resultContract", ratioContract ? "ratio" : "scalar");
         if (resultValue != null) {
-            traceOutput.put("result_value", resultValue);
+            traceOutput.put("resultValue", resultValue);
         }
         if (numerator != null) {
             traceOutput.put("numerator_count", numerator);
@@ -663,8 +663,8 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             Map<String, Object> parameters,
             Map<String, Object> contract,
             ToolExecutionContext context) {
-        String departmentSql = text(rule.get("department_detail_sql"));
-        String patientSql = text(rule.get("patient_detail_sql"));
+        String departmentSql = text(rule.get("departmentDetailSql"));
+        String patientSql = text(rule.get("patientDetailSql"));
         String departmentKey = text(contract.get("department_comparison_key"));
         String patientKey = text(contract.get("patient_comparison_key"));
         if (departmentSql.isBlank() || patientSql.isBlank()
@@ -687,7 +687,7 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     strings(contract.get("department_compare_fields")));
             report(context, "dual_department_detail", "核对科室差异", "success",
                     elapsedMs(departmentStarted),
-                    withHash(department.safeMap(), "department_sql_sha256",
+                    withHash(department.safeMap(), "departmentSqlSha256",
                             sha256(departmentSql)));
             long patientStarted = System.nanoTime();
             PairComparison patient = compare(
@@ -697,13 +697,13 @@ public class DualDatabaseIndicatorExecutionWorkflow {
                     strings(contract.get("patient_compare_fields")));
             report(context, "dual_patient_detail", "核对患者明细", "success",
                     elapsedMs(patientStarted),
-                    withHash(patient.safeMap(), "patient_sql_sha256",
+                    withHash(patient.safeMap(), "patientSqlSha256",
                             sha256(patientSql)));
             return Map.of(
                     "status", "completed",
-                    "department_comparison", department.safeMap(),
-                    "patient_comparison", patient.safeMap(),
-                    "affected_record_count",
+                    "departmentComparison", department.safeMap(),
+                    "patientComparison", patient.safeMap(),
+                    "affectedRecordCount",
                     department.businessOnly() + department.realOnly()
                             + department.different()
                             + patient.businessOnly() + patient.realOnly() + patient.different());
@@ -822,18 +822,18 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             DatabaseResult real,
             Map<String, Object> diagnosis) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("result_contract",
+        result.put("resultContract",
                 business.ratioContract() && real.ratioContract() ? "ratio" : "scalar");
-        result.put("business_result_value", business.resultValue());
-        result.put("real_result_value", real.resultValue());
-        putIfPresent(result, "business_target_value", business.targetValue());
-        putIfPresent(result, "real_target_value", real.targetValue());
-        result.put("target_conflict", targetConflict(business, real));
+        result.put("businessResultValue", business.resultValue());
+        result.put("realResultValue", real.resultValue());
+        putIfPresent(result, "businessTargetValue", business.targetValue());
+        putIfPresent(result, "realTargetValue", real.targetValue());
+        result.put("targetConflict", targetConflict(business, real));
         if (business.ratioContract() && real.ratioContract()) {
-            result.put("numerator_delta", business.numerator() - real.numerator());
-            result.put("denominator_delta", business.denominator() - real.denominator());
+            result.put("numeratorDelta", business.numerator() - real.numerator());
+            result.put("denominatorDelta", business.denominator() - real.denominator());
         }
-        result.put("diagnosis_status",
+        result.put("diagnosisStatus",
                 diagnosis.getOrDefault("status", "incomplete"));
         return result;
     }
@@ -1074,21 +1074,21 @@ public class DualDatabaseIndicatorExecutionWorkflow {
 
         Map<String, Object> safeMap() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("run_id", runId);
-            result.put("source_role", sourceRole);
-            result.put("source_id", sourceId);
-            result.put("result_contract", ratioContract() ? "ratio" : "scalar");
-            result.put("result_value", resultValue);
+            result.put("runId", runId);
+            result.put("sourceRole", sourceRole);
+            result.put("sourceId", sourceId);
+            result.put("resultContract", ratioContract() ? "ratio" : "scalar");
+            result.put("resultValue", resultValue);
             if (numerator != null) {
-                result.put("numerator_count", numerator);
+                result.put("numeratorCount", numerator);
             }
             if (denominator != null) {
-                result.put("denominator_count", denominator);
+                result.put("denominatorCount", denominator);
             }
-            putIfPresent(result, "component_left", componentLeft);
-            putIfPresent(result, "component_right", componentRight);
-            putIfPresent(result, "sample_count", sampleCount);
-            putIfPresent(result, "target_value", targetValue);
+            putIfPresent(result, "componentLeft", componentLeft);
+            putIfPresent(result, "componentRight", componentRight);
+            putIfPresent(result, "sampleCount", sampleCount);
+            putIfPresent(result, "targetValue", targetValue);
             return result;
         }
     }
@@ -1107,14 +1107,14 @@ public class DualDatabaseIndicatorExecutionWorkflow {
             long realDuplicateCount) {
         Map<String, Object> safeMap() {
             return Map.of(
-                    "both_count", both,
-                    "business_only_count", businessOnly,
-                    "real_only_count", realOnly,
-                    "different_count", different,
-                    "business_count", businessCount,
-                    "real_count", realCount,
-                    "business_duplicate_count", businessDuplicateCount,
-                    "real_duplicate_count", realDuplicateCount);
+                    "bothCount", both,
+                    "businessOnlyCount", businessOnly,
+                    "realOnlyCount", realOnly,
+                    "differentCount", different,
+                    "businessCount", businessCount,
+                    "realCount", realCount,
+                    "businessDuplicateCount", businessDuplicateCount,
+                    "realDuplicateCount", realDuplicateCount);
         }
     }
 

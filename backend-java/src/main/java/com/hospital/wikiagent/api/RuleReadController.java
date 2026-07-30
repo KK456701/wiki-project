@@ -58,7 +58,7 @@ public class RuleReadController {
     public Map<String, Object> effective(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable String ruleId,
-            @RequestParam(name = "hospital_id", required = false) String requestedHospitalId) {
+            @RequestParam(name = "hospitalId", required = false) String requestedHospitalId) {
         HospitalPrincipal principal = principal(authorization);
         if (requestedHospitalId != null && !principal.canAccessHospital(requestedHospitalId)) {
             throw new HospitalAuthException(
