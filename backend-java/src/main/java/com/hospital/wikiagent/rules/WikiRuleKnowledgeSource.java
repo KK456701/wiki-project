@@ -32,7 +32,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * 猜测Markdown结构。Profile未完成生产验收时可以返回通过静态门禁的 SQL 参考稿，
  * 但数据库访问仍由运行时执行门禁控制。</p>
  *
- * <p>已被 {@link MrasRuleKnowledgeSource}（领导知识库适配器）替代，
+ * <p>已被 {@link MrasRuleKnowledgeSource}（知识库适配器）替代，
  * 不再作为 Spring Bean 注册。保留类文件供子类继承和旧测试引用。</p>
  */
 public class WikiRuleKnowledgeSource {

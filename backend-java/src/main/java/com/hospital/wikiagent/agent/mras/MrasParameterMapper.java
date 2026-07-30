@@ -8,7 +8,7 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /**
- * 将 Agent 解析出的时间范围与可选过滤条件映射为领导知识库 SQL 模板所需的命名参数 Map。
+ * 将 Agent 解析出的时间范围与可选过滤条件映射为知识库 SQL 模板所需的命名参数 Map。
  *
  * <p>职责边界：纯参数映射（无 IO、无 SQL 执行），输出可直接交给
  * {@link MrasTemplateRenderer#render(String, Map)} 做模板渲染。</p>
@@ -32,7 +32,7 @@ public class MrasParameterMapper {
     private static final String DEFAULT_SYNC_TYPE = "outHosp";
 
     /**
-     * 将 Agent 解析出的查询条件映射为领导知识库模板参数。
+     * 将 Agent 解析出的查询条件映射为知识库模板参数。
      *
      * @param start           查询开始时间（必填）
      * @param end             查询结束时间（必填）

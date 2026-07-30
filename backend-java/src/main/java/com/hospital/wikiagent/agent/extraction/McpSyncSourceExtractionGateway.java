@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
+import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
 import com.hospital.wikiagent.dto.SyncDataDto;
 import com.hospital.wikiagent.dto.TableDataDto;
@@ -33,9 +35,12 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
     private static final Logger log = LoggerFactory.getLogger(McpSyncSourceExtractionGateway.class);
 
     private final SyncDataService syncDataService;
+    private final MrasTemplateRenderer templateRenderer;
 
-    public McpSyncSourceExtractionGateway(SyncDataService syncDataService) {
+    public McpSyncSourceExtractionGateway(
+            SyncDataService syncDataService, MrasTemplateRenderer templateRenderer) {
         this.syncDataService = syncDataService;
+        this.templateRenderer = templateRenderer;
     }
 
     @Override
@@ -71,9 +76,12 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             dto.setHospitalSOID(request.hospitalSoid());
 
             // eventDataList：核心制度事件表（sourceSql + 时间范围）
+            // 知识库 V3 的源表 SQL 带 #ETC{:exDeptSet} / #EQUALS{:syncType} / #{NOLOCK} 模板行，
+            // 必须先渲染再交给 DBHub，否则残留的 :exDeptSet 会以
+            // “Named parameter not bound”整条抽取失败。
             TableDataDto eventData = new TableDataDto();
             eventData.setTable(eventTable);
-            eventData.setSqlScript(sourceSql);
+            eventData.setSqlScript(renderSourceSql(sourceSql));
             eventData.setStartTime(toDate(request.statStart()));
             eventData.setEndTime(toDate(request.statEnd()));
             dto.setEventDataList(List.of(eventData));
@@ -168,7 +176,7 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
     }
 
     @SuppressWarnings("unchecked")
-    private static List<TableDataDto> buildEventTableList(
+    private List<TableDataDto> buildEventTableList(
             Map<String, Object> contract, ExtractionRequest request) {
         Object extObj = contract.get("extended_events");
         if (!(extObj instanceof List<?> extList) || extList.isEmpty()) {
@@ -183,11 +191,24 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             TableDataDto extEvent = new TableDataDto();
             extEvent.setEventNo(eventNo);
             extEvent.setTable("MRAS_PATIENT_EVENT");
-            extEvent.setSqlScript(sqlScript);
+            extEvent.setSqlScript(renderSourceSql(sqlScript));
             extEvent.setStartTime(toDate(request.statStart()));
             extEvent.setEndTime(toDate(request.statEnd()));
             result.add(extEvent);
         }
         return result;
+    }
+
+    /**
+     * 渲染知识库源表 SQL：剥离 Markdown 包裹引号 + 解析 #ETC/#EQUALS 模板 + 修正方言。
+     *
+     * <p>与 {@code MrasSqlExecutionService.ensureExtracted} 保持同一口径：
+     * syncType 固定为 outHosp（按出区时间过滤），未提供的 #ETC 参数（如 :exDeptSet）
+     * 由渲染器整行删除；:startTime/:endTime 保留为命名参数交给 DBHub 绑定。</p>
+     */
+    private String renderSourceSql(String rawSql) {
+        return templateRenderer.renderTemplate(
+                MrasSqlExecutionService.stripLeadingTrailingQuotes(rawSql),
+                Map.of("syncType", "outHosp"));
     }
 }

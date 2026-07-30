@@ -120,7 +120,7 @@ public class EntityPageParser {
         } catch (IOException exception) {
             throw new UncheckedIOException("无法扫描 knowledge-index/entities 目录", exception);
         }
-        log.info("领导知识库实体页加载完成: {} 个实体（含变体）", map.size());
+        log.info("知识库实体页加载完成: {} 个实体（含变体）", map.size());
         return map;
     }
 

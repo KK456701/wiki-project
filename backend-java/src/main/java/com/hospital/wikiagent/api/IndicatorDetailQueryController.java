@@ -27,7 +27,7 @@ import com.hospital.wikiagent.auth.HospitalAuthService;
 /**
  * 指标结果卡片的「明细」按钮接口：按 rule_id + 统计区间直接查询分子/分母患者明细。
  *
- * <p>复用会话内明细链路的同一套能力（小模型合成明细 SQL + 领导知识库患者明细回退），
+ * <p>复用会话内明细链路的同一套能力（小模型合成明细 SQL + 知识库患者明细回退），
  * 但不依赖会话上下文，前端卡片可对任意指标、任意统计区间独立调用。</p>
  */
 @RestController
@@ -70,7 +70,7 @@ public class IndicatorDetailQueryController {
         boolean denominator = "denominator".equals(group);
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
 
-        // 优先用合成的分子/分母明细 SQL（每次重新合成，不缓存）；合成或执行失败回退领导知识库患者明细 SQL
+        // 优先用合成的分子/分母明细 SQL（每次重新合成，不缓存）；合成或执行失败回退知识库患者明细 SQL
         ToolResult result = null;
         String usedDetailSql = null;
         DetailSqlPair pair = detailSynthesizer.synthesize(ruleId);
@@ -105,7 +105,7 @@ public class IndicatorDetailQueryController {
         } else {
             body.put("rows", rows == null ? List.of() : rows);
         }
-        // usedDetailSql 为空说明走的是领导知识库患者明细回退，此时分子/分母区分不生效
+        // usedDetailSql 为空说明走的是知识库患者明细回退，此时分子/分母区分不生效
         body.put("sqlSource", usedDetailSql != null ? "synthesized" : "mras_patient_detail");
         if (usedDetailSql != null) {
             body.put("detailSql", usedDetailSql.strip());

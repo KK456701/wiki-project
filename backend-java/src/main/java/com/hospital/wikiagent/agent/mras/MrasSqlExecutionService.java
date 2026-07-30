@@ -9,6 +9,8 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,14 +29,14 @@ import com.hospital.wikiagent.service.SyncDataService;
 import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
 /**
- * 领导知识库（knowledge-index-mras）概览/科室/明细 SQL 的端到端执行服务。
+ * 知识库（knowledge-index-mras）概览/科室/明细 SQL 的端到端执行服务。
  *
  * <p>职责边界：从 EntityPageParser 取模板 → MrasTemplateRenderer 解析模板语法 →
  * ReadOnlySqlValidator 只读校验 → SqlParameterBinder 防注入绑定 →
  * IndicatorDatabaseQueryClient 执行。不修改知识库文件、不直接访问网络。</p>
  *
  * <p>与现有 DualDatabaseIndicatorExecutionWorkflow 并行存在，不替换原有链路；
- * 仅当指标在领导知识库中有对应实体页时可用。</p>
+ * 仅当指标在知识库中有对应实体页时可用。</p>
  */
 @Component
 public class MrasSqlExecutionService {
@@ -73,7 +75,7 @@ public class MrasSqlExecutionService {
     }
 
     /**
-     * 判断指定指标是否在领导知识库中可用。
+     * 判断指定指标是否在知识库中可用。
      */
     public boolean supports(String indicatorCode) {
         EntityPageData entity = entityPageParser.getEntity(indicatorCode);
@@ -81,7 +83,7 @@ public class MrasSqlExecutionService {
     }
 
     /**
-     * 执行领导知识库概览查询（兼容旧调用方，不指定 profileId 时使用主方案）。
+     * 执行知识库概览查询（兼容旧调用方，不指定 profileId 时使用主方案）。
      */
     public ToolResult executeOverview(
             String indicatorCode,
@@ -93,7 +95,7 @@ public class MrasSqlExecutionService {
     }
 
     /**
-     * 执行领导知识库概览查询，支持多口径 profileId。
+     * 执行知识库概览查询，支持多口径 profileId。
      *
      * <p>多口径逻辑：当指标有多个变体（如 _001、_002）且指定了 profileId 时，
      * 自动为每个口径创建独立中间表（如 MRAS_BUSINESS_ANTI_1、MRAS_BUSINESS_ANTI_2），
@@ -118,7 +120,7 @@ public class MrasSqlExecutionService {
         CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
         if (caliberRes == null) {
             return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
-                    "领导知识库中没有指标 " + indicatorCode + " 的实体页。", false);
+                    "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
         }
         EntityPageData entity = caliberRes.entity;
         if (!entity.hasOverviewSql()) {
@@ -129,19 +131,24 @@ public class MrasSqlExecutionService {
         Map<String, Object> params = parameterMapper.mapParameters(
                 start, end, deptFilter, qualifiedFilter);
 
-        // 查询前先抽取数据到 winex_aima；失败时把警告随结果透传，不再静默。抽取独立计时供 trace 归属。
+        // 查询前先抽取数据到 winex_aima；抽取独立计时供 trace 归属。
         long extractStarted = System.currentTimeMillis();
-        String extractionWarning = ensureExtracted(entity, start, end, caliberRes.caliberNo);
+        ExtractionOutcome extraction = ensureExtracted(entity, start, end, caliberRes.caliberNo);
         long extractionDurationMs = System.currentTimeMillis() - extractStarted;
+
+        ToolResult caliberFailure = caliberExtractionFailure(indicatorCode, caliberRes, extraction);
+        if (caliberFailure != null) {
+            return caliberFailure;
+        }
 
         return executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
-                entity.name(), entity.dimension(), true, extractionWarning, extractionDurationMs,
+                entity.name(), entity.dimension(), true, extraction.warning(), extractionDurationMs,
                 caliberRes.caliberNo, caliberRes.baseTable);
     }
 
     /**
-     * 执行领导知识库科室统计查询（兼容旧调用方）。
+     * 执行知识库科室统计查询（兼容旧调用方）。
      */
     public ToolResult executeDeptStat(
             String indicatorCode,
@@ -152,7 +159,7 @@ public class MrasSqlExecutionService {
     }
 
     /**
-     * 执行领导知识库科室统计查询，支持多口径 profileId。
+     * 执行知识库科室统计查询，支持多口径 profileId。
      */
     public ToolResult executeDeptStat(
             String indicatorCode,
@@ -164,7 +171,7 @@ public class MrasSqlExecutionService {
         CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
         if (caliberRes == null) {
             return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
-                    "领导知识库中没有指标 " + indicatorCode + " 的实体页。", false);
+                    "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
         }
         EntityPageData entity = caliberRes.entity;
         if (entity.deptStatSql() == null || entity.deptStatSql().isBlank()) {
@@ -176,17 +183,22 @@ public class MrasSqlExecutionService {
                 start, end, deptFilter, null);
 
         long deptExtractStarted = System.currentTimeMillis();
-        String extractionWarning = ensureExtracted(entity, start, end, caliberRes.caliberNo);
+        ExtractionOutcome extraction = ensureExtracted(entity, start, end, caliberRes.caliberNo);
         long deptExtractionMs = System.currentTimeMillis() - deptExtractStarted;
+
+        ToolResult caliberFailure = caliberExtractionFailure(indicatorCode, caliberRes, extraction);
+        if (caliberFailure != null) {
+            return caliberFailure;
+        }
 
         return executeSql(
                 entity.deptStatSql(), params, indicatorCode, "dept_stat",
-                entity.name(), entity.dimension(), true, extractionWarning, deptExtractionMs,
+                entity.name(), entity.dimension(), true, extraction.warning(), deptExtractionMs,
                 caliberRes.caliberNo, caliberRes.baseTable);
     }
 
     /**
-     * 执行领导知识库患者明细查询（兼容旧调用方）。
+     * 执行知识库患者明细查询（兼容旧调用方）。
      */
     public ToolResult executePatientDetail(
             String indicatorCode,
@@ -198,7 +210,7 @@ public class MrasSqlExecutionService {
     }
 
     /**
-     * 执行领导知识库患者明细查询，支持多口径 profileId。
+     * 执行知识库患者明细查询，支持多口径 profileId。
      */
     public ToolResult executePatientDetail(
             String indicatorCode,
@@ -211,7 +223,7 @@ public class MrasSqlExecutionService {
         CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
         if (caliberRes == null) {
             return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
-                    "领导知识库中没有指标 " + indicatorCode + " 的实体页。", false);
+                    "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
         }
         EntityPageData entity = caliberRes.entity;
         if (entity.patientDetailSql() == null || entity.patientDetailSql().isBlank()) {
@@ -223,12 +235,17 @@ public class MrasSqlExecutionService {
                 start, end, deptFilter, qualifiedFilter);
 
         long detailExtractStarted = System.currentTimeMillis();
-        String extractionWarning = ensureExtracted(entity, start, end, caliberRes.caliberNo);
+        ExtractionOutcome extraction = ensureExtracted(entity, start, end, caliberRes.caliberNo);
         long detailExtractionMs = System.currentTimeMillis() - detailExtractStarted;
+
+        ToolResult caliberFailure = caliberExtractionFailure(indicatorCode, caliberRes, extraction);
+        if (caliberFailure != null) {
+            return caliberFailure;
+        }
 
         return executeSql(
                 entity.patientDetailSql(), params, indicatorCode, "patient_detail",
-                entity.name(), entity.dimension(), true, extractionWarning, detailExtractionMs,
+                entity.name(), entity.dimension(), true, extraction.warning(), detailExtractionMs,
                 caliberRes.caliberNo, caliberRes.baseTable);
     }
 
@@ -305,14 +322,14 @@ public class MrasSqlExecutionService {
         try {
             renderedSql = templateRenderer.renderTemplate(templateSql, params);
         } catch (RuntimeException exception) {
-            log.warn("领导知识库模板渲染失败 {} {}: {}", indicatorCode, queryType,
+            log.warn("知识库模板渲染失败 {} {}: {}", indicatorCode, queryType,
                     exception.getMessage());
             return ToolResult.failure("validation_failed", "MRAS_TEMPLATE_RENDER_FAILED",
-                    "领导知识库 SQL 模板渲染失败。", false);
+                    "知识库 SQL 模板渲染失败。", false);
         }
         if (renderedSql.isBlank()) {
             return ToolResult.failure("validation_failed", "MRAS_TEMPLATE_EMPTY",
-                    "领导知识库 SQL 模板渲染结果为空。", false);
+                    "知识库 SQL 模板渲染结果为空。", false);
         }
         // 知识库部分 SQL 文件有前导双引号（如 "SELECT），需剥离；
         // 小模型合成的 SQL 已是干净语句（结尾可能是字符串字面量闭合引号），不能剥离。
@@ -320,9 +337,14 @@ public class MrasSqlExecutionService {
             renderedSql = stripLeadingTrailingQuotes(renderedSql);
         }
 
-        // 多口径时：把 SQL 中的中间表名替换为口径表名（如 MRAS_BUSINESS_ANTI → MRAS_BUSINESS_ANTI_1）
+        // 多口径时：把 SQL 中的中间表名替换为口径表名（如 MRAS_BUSINESS_ANTI → MRAS_BUSINESS_ANTI_1）。
+        // 前置约束：调用方已通过 caliberExtractionFailure 拦截，能走到这里说明 caliberNo>0 时
+        // 本次抽取一定成功、口径表已建好并写入数据，替换后不会指向空表或不存在的表。
+        // 用词边界匹配，避免把 MRAS_BUSINESS_ANTI 误伤成 MRAS_BUSINESS_ANTI_1BIOTIC 之类的同前缀表名。
         if (caliberNo > 0 && targetTable != null && !targetTable.isBlank()) {
-            renderedSql = renderedSql.replace(targetTable, targetTable + "_" + caliberNo);
+            renderedSql = renderedSql.replaceAll(
+                    "\\b" + Pattern.quote(targetTable) + "\\b",
+                    Matcher.quoteReplacement(targetTable + "_" + caliberNo));
             log.debug("多口径 SQL 表名替换: {} → {}_{} ({})",
                     targetTable, targetTable, caliberNo, queryType);
         }
@@ -331,10 +353,10 @@ public class MrasSqlExecutionService {
         ReadOnlySqlValidator.ValidationResult validation =
                 sqlValidator.validateReadOnly(renderedSql);
         if (!validation.ok()) {
-            log.warn("领导知识库 SQL 校验未通过 {} {}: {}", indicatorCode, queryType,
+            log.warn("知识库 SQL 校验未通过 {} {}: {}", indicatorCode, queryType,
                     validation.message());
             return ToolResult.failure("validation_failed", "MRAS_SQL_VALIDATION_FAILED",
-                    "领导知识库 SQL 未通过只读安全校验: " + validation.message(), false);
+                    "知识库 SQL 未通过只读安全校验: " + validation.message(), false);
         }
 
         // 第三步：参数绑定（防注入）
@@ -343,7 +365,7 @@ public class MrasSqlExecutionService {
             executableSql = parameterBinder.bind(renderedSql, params);
         } catch (RuntimeException exception) {
             return ToolResult.failure("validation_failed", "MRAS_PARAMETER_BIND_FAILED",
-                    "领导知识库 SQL 参数绑定失败: " + exception.getMessage(), false);
+                    "知识库 SQL 参数绑定失败: " + exception.getMessage(), false);
         }
 
         // 第四步：执行查询
@@ -352,19 +374,19 @@ public class MrasSqlExecutionService {
         try {
             rows = databaseQuery.execute(DatabaseRole.REAL, executableSql);
         } catch (DbHubMcpException exception) {
-            log.warn("领导知识库查询失败 {} {}: {}", indicatorCode, queryType, exception.getMessage());
+            log.warn("知识库查询失败 {} {}: {}", indicatorCode, queryType, exception.getMessage());
             // 瞬态连接失败重试一次
             try {
                 rows = databaseQuery.execute(DatabaseRole.REAL, executableSql);
             } catch (RuntimeException retryException) {
-                log.error("领导知识库查询重试仍失败 {} {}: {}", indicatorCode, queryType, retryException.getMessage());
+                log.error("知识库查询重试仍失败 {} {}: {}", indicatorCode, queryType, retryException.getMessage());
                 return ToolResult.failure("error", "MRAS_QUERY_FAILED",
-                        "领导知识库查询执行失败（已重试）。", true);
+                        "知识库查询执行失败（已重试）。", true);
             }
         } catch (RuntimeException exception) {
-            log.warn("领导知识库查询异常 {} {}: {}", indicatorCode, queryType, exception.getMessage());
+            log.warn("知识库查询异常 {} {}: {}", indicatorCode, queryType, exception.getMessage());
             return ToolResult.failure("error", "MRAS_QUERY_FAILED",
-                    "领导知识库查询执行失败。", true);
+                    "知识库查询执行失败。", true);
         }
         long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
 
@@ -393,35 +415,82 @@ public class MrasSqlExecutionService {
         }
 
         String summary = "overview".equals(queryType)
-                ? "领导知识库概览计算完成。"
+                ? "知识库概览计算完成。"
                 : "patient_detail".equals(queryType)
-                        ? "领导知识库患者明细查询完成。"
-                        : "领导知识库科室统计查询完成。";
+                        ? "知识库患者明细查询完成。"
+                        : "知识库科室统计查询完成。";
         return ToolResult.success("MRAS_QUERY_COMPLETED", summary, data);
     }
 
     // ==================== 抽取步骤 ====================
 
     /**
+     * 抽取结果：区分「成功」「合法跳过」「失败」三态，并携带具体原因。
+     *
+     * <p>多口径的口径表由 {@code copyTableMultipleTimes} 先 DROP 再建空结构，
+     * 只有抽取成功该表里才有数据。因此多口径 SQL 的表名替换严格绑定
+     * {@link ExtractionState#SUCCESS}：非成功一律带原因硬报错，
+     * 既不返回 0/0（会被误读为「该口径无样本」），也不回退查原表
+     * （原表装的是别的口径的数据）。</p>
+     *
+     * @param state  抽取状态
+     * @param reason 跳过或失败的具体原因（成功时为 null）
+     */
+    private record ExtractionOutcome(ExtractionState state, String reason) {
+        static ExtractionOutcome skipped(String reason) {
+            return new ExtractionOutcome(ExtractionState.SKIPPED, reason);
+        }
+
+        static ExtractionOutcome success() {
+            return new ExtractionOutcome(ExtractionState.SUCCESS, null);
+        }
+
+        static ExtractionOutcome failed(String reason) {
+            return new ExtractionOutcome(ExtractionState.FAILED, reason);
+        }
+
+        boolean isSuccess() {
+            return state == ExtractionState.SUCCESS;
+        }
+
+        /**
+         * 随结果透传给用户的警告文案：只有真失败才提示，合法跳过不打扰。
+         */
+        String warning() {
+            return state == ExtractionState.FAILED ? reason : null;
+        }
+
+        /**
+         * 供多口径硬报错使用的原因描述，保证非空。
+         */
+        String describeReason() {
+            return reason == null || reason.isBlank() ? "未知原因" : reason;
+        }
+    }
+
+    private enum ExtractionState { SUCCESS, SKIPPED, FAILED }
+
+    /**
      * 查询前确保数据已抽取到 winex_aima：构建 SyncDataDto 并转调 SyncDataService。
      *
      * @param caliberNo 口径编号（0 表示单口径/不启用分表，≥1 表示多口径对应编号）
-     * @return null 表示抽取成功或合法跳过；非 null 为失败原因
      */
-    private String ensureExtracted(EntityPageData entity, LocalDateTime start, LocalDateTime end,
-                                   int caliberNo) {
+    private ExtractionOutcome ensureExtracted(EntityPageData entity, LocalDateTime start,
+                                              LocalDateTime end, int caliberNo) {
         if (syncDataService == null) {
             log.debug("SyncDataService 未启用，跳过 MRAS 抽取");
-            return null;
+            return ExtractionOutcome.skipped("抽取服务未启用（SyncDataService 未注入）");
         }
         if (!entity.canExtract()) {
             log.debug("指标 {} 缺少源表 SQL 或目标表，跳过抽取", entity.code());
-            return null;
+            return ExtractionOutcome.skipped("实体页缺少源表 SQL 或中间表名"
+                    + "（sourceTableSql=" + (entity.sourceTableSql() == null ? "缺失" : "有")
+                    + ", targetTable=" + entity.targetTable() + "）");
         }
         Long hospitalSoid = sqlServerProperties.getHospitalSoid();
         if (hospitalSoid == null) {
             log.warn("未配置 wiki.sqlserver.hospital-soid，跳过 MRAS 抽取");
-            return "未配置医院 SOID，本次未抽取源库数据";
+            return ExtractionOutcome.failed("未配置医院 SOID，本次未抽取源库数据");
         }
 
         try {
@@ -480,12 +549,36 @@ public class MrasSqlExecutionService {
                     entity.code(), entity.targetTable(), entity.bizTables(), start, end);
             syncDataService.syncEventData(dto);
             log.info("MRAS 指标 {} 抽取完成", entity.code());
-            return null;
+            return ExtractionOutcome.success();
         } catch (Exception exception) {
-            log.warn("MRAS 指标 {} 抽取失败（不阻断查询，警告随结果透传）: {}",
-                    entity.code(), exception.getMessage());
-            return exception.getMessage();
+            log.warn("MRAS 指标 {} 抽取失败: {}", entity.code(), exception.getMessage());
+            return ExtractionOutcome.failed(exception.getMessage());
         }
+    }
+
+    /**
+     * 多口径抽取未成功时中断查询并报出真实原因。
+     *
+     * <p>口径表（表名_N）由 {@code copyTableMultipleTimes} 先 DROP 再建空结构，
+     * 只有本次抽取成功它才有数据。所以 SQL 的口径表名替换严格绑定抽取成功：
+     * 失败或跳过都不做替换、直接把具体原因（命名参数未绑定、缺字段、
+     * 缺源表 SQL、未配置医院 SOID 等）抛给调用方，不做任何降级回退。</p>
+     *
+     * <p>单口径不分表，原表保有上次抽取结果，沿用警告透传的降级语义。</p>
+     *
+     * @return 需要中断时返回失败结果；可继续执行时返回 {@code null}
+     */
+    private ToolResult caliberExtractionFailure(
+            String indicatorCode, CaliberResolution caliberRes, ExtractionOutcome extraction) {
+        if (caliberRes.caliberNo() <= 0 || extraction.isSuccess()) {
+            return null;
+        }
+        String reason = extraction.describeReason();
+        log.error("指标 {} 第 {} 口径抽取未成功（{}），中断查询: {}",
+                indicatorCode, caliberRes.caliberNo(), extraction.state(), reason);
+        return ToolResult.failure("unavailable", "MRAS_CALIBER_EXTRACTION_FAILED",
+                "指标 " + indicatorCode + " 第 " + caliberRes.caliberNo()
+                        + " 口径数据抽取失败，无法给出该口径结果：" + reason, false);
     }
 
     // ==================== 多口径变体解析 ====================
@@ -561,7 +654,7 @@ public class MrasSqlExecutionService {
 
     /**
      * 解析概览查询结果行，提取分子/分母/指标值/目标值。
-     * 领导知识库概览 SQL 返回中文列名（如 "分子...", "分母...", "监测情况", "目标值"）。
+     * 知识库概览 SQL 返回中文列名（如 "分子...", "分母...", "监测情况", "目标值"）。
      *
      * <p>量纲约定：知识库概览 SQL 的“监测情况”“目标值”对百分比类指标返回
      * 0-1 比值（如 10/417=0.0239），而系统内展示约定是百分数（2.40 → “2.40%”），

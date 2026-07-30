@@ -166,7 +166,7 @@ public class CompoundAgentRuntime {
                         request, observer, conversation);
             }
         }
-        // 明细查询拦截：用户请求“分母明细”“患者明细”等，直接走领导知识库 patientDetailSql
+        // 明细查询拦截：用户请求“分母明细”“患者明细”等，直接走知识库 patientDetailSql
         if (mrasExecution != null && isDetailRequest(request.query())) {
             AgentRunResult detailResult = tryDetailView(request, observer, conversation);
             if (detailResult != null) {
@@ -903,7 +903,7 @@ public class CompoundAgentRuntime {
             return null; // 无法确定指标，回退到正常流程
         }
         if (!mrasExecution.supports(ruleId)) {
-            return null; // 领导知识库不支持，回退到正常流程
+            return null; // 知识库不支持，回退到正常流程
         }
         java.time.LocalDateTime start = parseTime(conversation.statStart(),
                 java.time.LocalDate.now().withDayOfYear(1).atStartOfDay());
@@ -915,7 +915,7 @@ public class CompoundAgentRuntime {
         long started = TraceEvents.started();
         boolean denominator = detailKindDenominator(request.query());
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
-        // 优先用小模型合成的分子/分母明细 SQL；合成或执行失败则回退领导知识库患者明细 SQL
+        // 优先用小模型合成的分子/分母明细 SQL；合成或执行失败则回退知识库患者明细 SQL
         ToolResult result = null;
         String usedDetailSql = null;
         if (detailSynthesizer != null) {

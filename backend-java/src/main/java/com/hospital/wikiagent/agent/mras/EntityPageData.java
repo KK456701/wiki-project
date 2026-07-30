@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 领导知识库实体页的结构化解析结果，承载一个指标维度的全部元数据和四段 SQL。
+ * 知识库实体页的结构化解析结果，承载一个指标维度的全部元数据和四段 SQL。
  *
  * <p>职责边界：纯数据载体（不可变 record），不含任何解析或渲染逻辑；
  * 由 EntityPageParser 在启动时一次性构建并缓存。</p>

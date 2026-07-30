@@ -25,12 +25,13 @@ import com.hospital.wikiagent.service.SyncDataService;
 import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
 /**
- * MrasSqlExecutionService 单元测试：验证领导知识库查询的端到端编排逻辑。
+ * MrasSqlExecutionService 单元测试：验证知识库查询的端到端编排逻辑。
  */
 class MrasSqlExecutionServiceTest {
 
     private EntityPageParser entityPageParser;
     private IndicatorDatabaseQueryClient databaseQuery;
+    private SyncDataService syncDataService;
     private MrasSqlExecutionService service;
 
     @BeforeEach
@@ -39,9 +40,12 @@ class MrasSqlExecutionServiceTest {
         databaseQuery = mock(IndicatorDatabaseQueryClient.class);
         SqlServerProperties props = new SqlServerProperties();
         props.setHospitalSoid(991827L);
+        // 多口径表名替换绑定抽取成功，因此这里必须提供可用的 SyncDataService，
+        // 否则抽取被判为「跳过」，多口径查询会按设计直接报错而不做表名替换。
+        syncDataService = mock(SyncDataService.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<SyncDataService> provider = mock(ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(null);
+        when(provider.getIfAvailable()).thenReturn(syncDataService);
         service = new MrasSqlExecutionService(
                 entityPageParser,
                 new ConceptPageParser(),
@@ -208,6 +212,24 @@ class MrasSqlExecutionServiceTest {
         ArgumentCaptor<String> sqlCaptor2 = ArgumentCaptor.forClass(String.class);
         verify(databaseQuery, org.mockito.Mockito.times(2)).execute(eq(DatabaseRole.REAL), sqlCaptor2.capture());
         assertThat(sqlCaptor2.getAllValues().get(1)).contains("MRAS_BUSINESS_ANTI_2");
+    }
+
+    @Test
+    void multiCaliberExtractionFailureReportsReasonWithoutFallback() {
+        // 抽取失败（如源表 SQL 命名参数未绑定）时口径表是空表，
+        // 必须带原因硬报错，既不返回 0/0，也不回退查原表。
+        org.mockito.Mockito.doThrow(new RuntimeException("Named parameter not bound : exDeptSet"))
+                .when(syncDataService).syncEventData(org.mockito.ArgumentMatchers.any());
+
+        ToolResult result = service.executeOverview("HXZD-015-001", "HXZD-015-001_001",
+                LocalDateTime.of(2025, 3, 1, 0, 0),
+                LocalDateTime.of(2025, 12, 31, 23, 59), null, null);
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("MRAS_CALIBER_EXTRACTION_FAILED");
+        assertThat(result.summary()).contains("exDeptSet");
+        // 不回退：一条 SQL 都不该发给数据库
+        org.mockito.Mockito.verifyNoInteractions(databaseQuery);
     }
 
     @Test

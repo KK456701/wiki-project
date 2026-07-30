@@ -2,8 +2,6 @@ import { defineStore } from 'pinia'
 
 import {
   loadCapabilities,
-  loginHospital,
-  logoutHospital,
   streamAgent,
   uploadIndicatorFile,
   createSession,
@@ -470,23 +468,6 @@ export const useAgentStore = defineStore('agent', {
     latestAgentMessage: (state): ChatMessage | undefined => [...state.messages].reverse().find((message) => message.role === 'agent'),
   },
   actions: {
-    async login(accountId: string, password: string) {
-      const auth = await loginHospital(accountId, password)
-      this.token = auth.token
-      this.user = auth.user
-      sessionStorage.setItem('vueHospitalToken', auth.token)
-      sessionStorage.setItem('vueHospitalUser', JSON.stringify(auth.user))
-      await this.refreshCapabilities()
-    },
-    async logout() {
-      await logoutHospital(this.token).catch(() => undefined)
-      this.token = ''
-      this.user = { userId: 'guest_user', accountId: 'guest', hospitalId: 'demo_hospital', permissions: [] }
-      this.capabilities = null
-      this.messages = []
-      sessionStorage.removeItem('vueHospitalToken')
-      sessionStorage.removeItem('vueHospitalUser')
-    },
     async refreshCapabilities() {
       this.capabilities = await loadCapabilities(this.token)
       const ids = this.capabilities.models.map((model) => model.id)

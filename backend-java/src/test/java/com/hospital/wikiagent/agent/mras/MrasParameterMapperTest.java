@@ -8,7 +8,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * MrasParameterMapper 单元测试：验证参数映射逻辑正确覆盖领导知识库模板所需的全部命名参数。
+ * MrasParameterMapper 单元测试：验证参数映射逻辑正确覆盖知识库模板所需的全部命名参数。
  */
 class MrasParameterMapperTest {
 

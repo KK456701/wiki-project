@@ -73,7 +73,7 @@ public class ConceptPageParser {
         } catch (IOException exception) {
             throw new UncheckedIOException("无法扫描 knowledge-index/concepts 目录", exception);
         }
-        log.info("领导知识库概念页加载完成: {} 个指标", map.size());
+        log.info("知识库概念页加载完成: {} 个指标", map.size());
         return map;
     }
 

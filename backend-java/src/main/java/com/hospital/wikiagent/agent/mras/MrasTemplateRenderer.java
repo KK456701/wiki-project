@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 /**
- * 解析领导知识库（knowledge-index-mras）的 #ETC{} / #EQUALS{} 模板 SQL 语法。
+ * 解析知识库（knowledge-index-mras）的 #ETC{} / #EQUALS{} 模板 SQL 语法。
  *
  * <p>职责边界：仅负责模板文本的条件裁剪、参数替换和方言修正；
  * 不执行 SQL、不访问数据库、不修改知识库原文件。

@@ -50,7 +50,7 @@ management:
         include: health,info
 
 wiki:
-  # knowledge.root 已废弃：知识库完全切换到 knowledge-index-mras（领导知识库）
+  # knowledge.root 已废弃：知识库完全切换到 knowledge-index-mras（知识库）
   # 旧配置保留仅供测试兼容构造器使用
   knowledge:
     root: ${WIKI_KNOWLEDGE_ROOT:src/main/resources/core-rules-wiki}

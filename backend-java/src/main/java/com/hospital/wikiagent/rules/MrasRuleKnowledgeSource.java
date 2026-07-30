@@ -23,7 +23,7 @@ import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 
 /**
- * 基于领导知识库（knowledge-index）的规则知识源适配器。
+ * 基于知识库（knowledge-index）的规则知识源适配器。
  *
  * <p>完全替代旧 core-rules-wiki 数据源，对外暴露与 WikiRuleKnowledgeSource 相同的
  * 公共 API，内部从 EntityPageParser + ConceptPageParser 取数据。下游 10+ 个消费类

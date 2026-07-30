@@ -86,22 +86,22 @@ public class MrasDetailSqlSynthesizer {
 
         Attempt first = attempt(entity, null);
         if (first.pair() != null) {
-            log.info("领导知识库明细 SQL 合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
+            log.info("知识库明细 SQL 合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
                     indicatorCode, first.pair().denominatorSql(), first.pair().numeratorSql());
             return first.pair();
         }
         // 模型不可用（连不上/超时）时重试只会再白等一次超时，直接回退；只对校验失败带错误信息重试一次
         if (!first.retryable()) {
-            log.warn("领导知识库明细 SQL 合成失败（模型不可用，不重试）{}: {}", indicatorCode, first.error());
+            log.warn("知识库明细 SQL 合成失败（模型不可用，不重试）{}: {}", indicatorCode, first.error());
             return null;
         }
         Attempt second = attempt(entity, first.error());
         if (second.pair() != null) {
-            log.info("领导知识库明细 SQL 重试合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
+            log.info("知识库明细 SQL 重试合成成功 {}\n分母明细 SQL: {}\n分子明细 SQL: {}",
                     indicatorCode, second.pair().denominatorSql(), second.pair().numeratorSql());
             return second.pair();
         }
-        log.warn("领导知识库明细 SQL 合成失败 {}: {}", indicatorCode, second.error());
+        log.warn("知识库明细 SQL 合成失败 {}: {}", indicatorCode, second.error());
         return null;
     }
 

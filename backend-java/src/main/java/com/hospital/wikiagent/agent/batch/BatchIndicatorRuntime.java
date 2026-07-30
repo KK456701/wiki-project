@@ -376,7 +376,7 @@ public class BatchIndicatorRuntime {
     }
 
     /**
-     * 通过领导知识库 MrasSqlExecutionService 执行概览查询，转换为批量结果。
+     * 通过知识库 MrasSqlExecutionService 执行概览查询，转换为批量结果。
      * 抽取与 SQL 执行分别发出独立计时的 trace 节点，耗时归属不再全部算在
      * “完成单项指标计算”一个节点上。
      */

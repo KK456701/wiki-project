@@ -5,15 +5,6 @@ export interface HospitalUser {
   permissions: string[]
 }
 
-interface LoginWireResponse {
-  token: string
-  userId: string
-  accountId: string
-  hospitalId: string
-  permissions: string[]
-  mustChangePassword: boolean
-}
-
 export interface AgentModel {
   id: string
   name: string
@@ -258,35 +249,6 @@ async function readJson<T>(response: Response): Promise<T> {
     throw new Error(message || `请求失败（HTTP ${response.status}）`)
   }
   return data
-}
-
-export async function loginHospital(accountId: string, password: string): Promise<{ token: string; user: HospitalUser }> {
-  const response = await fetch('/api/auth/hospital/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ accountId, password }),
-  })
-  const data = await readJson<LoginWireResponse>(response)
-  if (data.mustChangePassword) {
-    throw new Error('该账号需要先在现有页面修改初始密码，再进入迁移版页面。')
-  }
-  return {
-    token: data.token,
-    user: {
-      userId: data.userId,
-      accountId: data.accountId,
-      hospitalId: data.hospitalId,
-      permissions: data.permissions || [],
-    },
-  }
-}
-
-export async function logoutHospital(token: string): Promise<void> {
-  if (!token) return
-  await fetch('/api/auth/hospital/logout', {
-    method: 'POST',
-    headers: authHeaders(token),
-  })
 }
 
 export async function loadCapabilities(token: string): Promise<AgentCapabilities> {
