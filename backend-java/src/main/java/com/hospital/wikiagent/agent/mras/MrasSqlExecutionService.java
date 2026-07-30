@@ -337,6 +337,104 @@ public class MrasSqlExecutionService {
     }
 
     /**
+     * 服务端对账明细：先跑「目标表-概览」拿卡片分子/分母（金标准），再跑
+     * {@link MrasDetailSqlExtractor} 产出的单结果集明细（每行带 {@code __meets_numerator} 判定列），
+     * 按判定列统计分子/分母并与卡片逐一核对。任一不等即硬报错
+     * （{@code MRAS_DETAIL_COUNT_MISMATCH}），绝不返回与卡片对不上的明细。
+     *
+     * <p>返回的 {@link ToolResult} 在明细 data 之上追加运行绑定字段：{@code numeratorCount}/
+     * {@code denominatorCount}（明细实测）、{@code cardNumerator}/{@code cardDenominator}
+     * （概览卡片金标准）、{@code overviewSqlHash}（若调用方提供）。上层据此按 group 过滤分子行。</p>
+     *
+     * @param indicatorCode   指标编码
+     * @param profileId       口径变体编码（可为 null 表示主方案）
+     * @param detailSql       单结果集明细 SQL（含 {@code __meets_numerator} 判定列）
+     * @param overviewSqlHash 概览 SQL 哈希（运行绑定用，可为 null）
+     * @param start           统计开始时间
+     * @param end             统计结束时间
+     */
+    public ToolResult executeReconciledDetail(
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            String overviewSqlHash,
+            LocalDateTime start,
+            LocalDateTime end) {
+
+        // 卡片金标准：概览分子/分母。概览失败直接透传，不臆测数值。
+        ToolResult overview = executeOverview(indicatorCode, profileId, start, end, null, null);
+        if (!overview.ok()) {
+            return overview;
+        }
+        Long cardNumerator = getLong(overview.data(), "numeratorCount");
+        Long cardDenominator = getLong(overview.data(), "denominatorCount");
+        // 无样本指标概览分子/分母为 null（noSample=true）而非解析缺口，按 0/0 参与对账，
+        // 使空明细与空卡片一致通过；仅无样本时归零，真实解析缺口的 null 仍触发硬报错。
+        boolean noSample = Boolean.TRUE.equals(overview.data().get("noSample"));
+        if (noSample) {
+            if (cardNumerator == null) {
+                cardNumerator = 0L;
+            }
+            if (cardDenominator == null) {
+                cardDenominator = 0L;
+            }
+        }
+
+        ToolResult detail = executeExtractedDetail(
+                indicatorCode, profileId, detailSql, start, end, "reconciled_detail");
+        if (!detail.ok()) {
+            return detail;
+        }
+
+        List<Map<String, Object>> rows = detailRows(detail.data());
+        long denominator = rows.size();
+        long numerator = rows.stream().filter(MrasSqlExecutionService::meetsNumerator).count();
+
+        if (cardNumerator == null || cardDenominator == null
+                || numerator != cardNumerator || denominator != cardDenominator) {
+            log.warn("明细与卡片对账不一致 {}（profileId={}）：明细={}/{}，卡片={}/{}",
+                    indicatorCode, profileId, numerator, denominator, cardNumerator, cardDenominator);
+            return ToolResult.failure("error", "MRAS_DETAIL_COUNT_MISMATCH",
+                    "明细与卡片口径不一致（明细 " + numerator + "/" + denominator
+                            + "，卡片 " + cardNumerator + "/" + cardDenominator + "），已拒绝返回。",
+                    false);
+        }
+
+        // detail.data() 可能是不可变 Map（Map.of / List.of 构造），写入运行绑定字段前复制。
+        Map<String, Object> data = new LinkedHashMap<>(detail.data());
+        data.put("numeratorCount", numerator);
+        data.put("denominatorCount", denominator);
+        data.put("cardNumerator", cardNumerator);
+        data.put("cardDenominator", cardDenominator);
+        if (overviewSqlHash != null && !overviewSqlHash.isBlank()) {
+            data.put("overviewSqlHash", overviewSqlHash);
+        }
+        return ToolResult.success(detail.code(), detail.summary(), data);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> detailRows(Map<String, Object> data) {
+        Object raw = data.get("rows");
+        if (raw instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        return List.of();
+    }
+
+    /** 判定单结果集某行是否命中分子：读 {@code __meets_numerator} 列，1/"1"/"true" 视为命中。 */
+    private static boolean meetsNumerator(Map<String, Object> row) {
+        Object flag = row.get(MrasDetailSqlExtractor.NUMERATOR_FLAG_COLUMN);
+        if (flag instanceof Number number) {
+            return number.intValue() == 1;
+        }
+        if (flag == null) {
+            return false;
+        }
+        String text = flag.toString().strip();
+        return "1".equals(text) || "true".equalsIgnoreCase(text);
+    }
+
+    /**
      * 获取指标的元数据上下文（定义、口径、数据来源、监测参数），供 LLM 解释用。
      */
     public Map<String, String> getExplanationContext(String indicatorCode) {

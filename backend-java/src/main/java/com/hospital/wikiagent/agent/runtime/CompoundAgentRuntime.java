@@ -916,7 +916,8 @@ public class CompoundAgentRuntime {
         boolean denominator = detailKindDenominator(request.query());
         String queryType = denominator ? "denominator_detail" : "numerator_detail";
         String detailLabel = denominator ? "分母明细" : "分子明细";
-        // 从概览/科室统计口径确定性提取分子/分母明细 SQL；异形指标显式报错，不降级回退患者明细
+        // 从「目标表-概览」口径确定性提取单结果集明细 SQL（含 __meets_numerator 判定列）；
+        // 异形指标显式报错，不降级回退患者明细。
         DetailExtraction extraction = detailExtractor.extract(ruleId, null);
         String answer;
         String usedDetailSql = null;
@@ -926,23 +927,30 @@ public class CompoundAgentRuntime {
                     started, "root", Map.of("ruleId", ruleId),
                     Map.of("ok", false, "code", "MRAS_DETAIL_UNSUPPORTED", "queryType", queryType));
         } else {
-            String detailSql = denominator ? extraction.denominatorSql() : extraction.numeratorSql();
-            ToolResult result = mrasExecution.executeExtractedDetail(
-                    ruleId, null, detailSql, start, end, queryType);
+            String detailSql = extraction.detailSql();
+            // 服务端对账：跑概览拿卡片分子/分母，再跑单结果集明细，行数与卡片不一致即硬报错。
+            ToolResult result = mrasExecution.executeReconciledDetail(
+                    ruleId, null, detailSql, extraction.overviewSqlHash(), start, end);
             TraceEvents.completed(observer, traceId, "mras_extracted_detail", "database",
                     started, "root", Map.of("ruleId", ruleId),
                     Map.of("ok", result.ok(), "code", result.code(), "queryType", queryType));
             if (!result.ok()) {
                 answer = "查询" + detailLabel + "失败：" + result.summary();
             } else {
-                Object rowCount = result.data().get("rowCount");
-                int rows = rowCount instanceof Number number ? number.intValue() : 0;
+                // 分子恒为分母子集：分母展示全部行，分子按判定列过滤。
+                List<Map<String, Object>> allRows = detailRows(result.data());
+                List<Map<String, Object>> groupRows = denominator
+                        ? allRows
+                        : allRows.stream().filter(CompoundAgentRuntime::meetsNumerator).toList();
+                int rows = groupRows.size();
                 if (rows == 0) {
                     answer = "统计区间 " + start.toLocalDate() + " 至 " + end.toLocalDate()
                             + " 内，" + (ruleName == null ? ruleId : ruleName)
                             + " 无样本数据，无法展示" + detailLabel + "。";
                 } else {
-                    answer = formatDetailTable(result.data(), ruleName, rows);
+                    Map<String, Object> view = new java.util.LinkedHashMap<>();
+                    view.put("rows", groupRows);
+                    answer = formatDetailTable(view, ruleName, rows);
                     usedDetailSql = detailSql;
                 }
                 // 带上提取的明细 SQL 一起输出
@@ -963,6 +971,28 @@ public class CompoundAgentRuntime {
                 "stopReason", "final_answer", "status", "completed", "stepCount", 1));
         return new AgentRunResult(answer, "final_answer", traceId,
                 conversation.sessionId(), 1, null, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> detailRows(Map<String, Object> data) {
+        Object raw = data.get("rows");
+        if (raw instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        return List.of();
+    }
+
+    /** 判定明细某行是否命中分子：读 {@code __meets_numerator} 列，1/"1"/"true" 视为命中。 */
+    private static boolean meetsNumerator(Map<String, Object> row) {
+        Object flag = row.get(MrasDetailSqlExtractor.NUMERATOR_FLAG_COLUMN);
+        if (flag instanceof Number number) {
+            return number.intValue() == 1;
+        }
+        if (flag == null) {
+            return false;
+        }
+        String text = flag.toString().strip();
+        return "1".equals(text) || "true".equalsIgnoreCase(text);
     }
 
     @SuppressWarnings("unchecked")

@@ -1,6 +1,10 @@
 package com.hospital.wikiagent.agent.mras;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
@@ -11,25 +15,28 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * 确定性明细 SQL 提取器：不依赖 LLM，从知识库实体页「目标表-科室统计」段的聚合 CTE
- * 逐字复刻分子/分母口径，机械转成两条明细查询。
+ * 确定性明细 SQL 提取器：不依赖 LLM，从知识库实体页「目标表-概览」段的聚合 CTE
+ * 逐字复刻分子/分母口径，机械转成<strong>一条</strong>单结果集明细查询。
  *
- * <p>核心做法是「保留差异」而非「解析差异」：概览/科室统计 SQL 的 FROM / JOIN / WHERE
+ * <p>核心做法是「保留差异」而非「解析差异」：概览 SQL 的 FROM / JOIN / WHERE
  * 千变万化（主表别名可能是 event/t1/e、可能多表 JOIN、判定可能是 DATEDIFF 表达式或
  * JOIN 子查询列），本提取器一个字都不改，只做三件机械动作：
  * <ol>
  *   <li>把聚合列（COUNT(...) 等）整段丢弃，改成 {@code SELECT *}（列不影响行数）；</li>
  *   <li>删掉 {@code GROUP BY}（明细要行，不要按科室汇总）；</li>
- *   <li>分子明细在分母 FROM/WHERE 之上追加分子判定：顶层已有 WHERE 时追加
- *       {@code AND (<判定条件>)}，顶层无 WHERE（过滤条件在派生表内部，如 HXZD-004-001 的
- *       DISTINCT 去重子查询）时追加 {@code WHERE (<判定条件>)}；判定条件即
- *       {@code COUNT(CASE WHEN <条件> THEN ...)} 里的 {@code <条件>}，原样复制。</li>
+ *   <li>追加一列判定 {@code CASE WHEN <条件> THEN 1 ELSE 0 END AS __meets_numerator}，
+ *       {@code <条件>} 即 {@code COUNT(CASE WHEN <条件> THEN ...)} 里的原文，逐字复制。</li>
  * </ol>
- * FROM/JOIN/WHERE 及其中的模板标记（{@code #ETC{}}/{@code #EQUALS{}}/{@code #{NOLOCK}}/
- * {@code :marptBeginAt}）全部保留，交由 {@link MrasSqlExecutionService} 走标准渲染链路。</p>
+ * 由此得到<strong>单结果集</strong>：全体分母行 + 每行一个 {@code __meets_numerator} 标记
+ * （1=命中分子）。分子恒为分母子集（同一批行，只是标记不同），杜绝「分子&gt;分母」类假阳性；
+ * 上层按标记过滤得分子行、按行数与卡片对账。FROM/JOIN/WHERE 及模板标记
+ * （{@code #ETC{}}/{@code #EQUALS{}}/{@code #{NOLOCK}}/{@code :marptBeginAt}）全部保留，
+ * 交由 {@link MrasSqlExecutionService} 走标准渲染链路。</p>
  *
- * <p>分母若为 {@code COUNT(DISTINCT <键>)}，明细需按该键去重到一行（ROW_NUMBER 包裹），
- * 使行数与卡片的去重口径一致。</p>
+ * <p>分母若为 {@code COUNT(DISTINCT <键>)}，明细按该键去重到一行（ROW_NUMBER 包裹），
+ * 且判定列改用 {@code MAX(CASE WHEN <条件> THEN 1 ELSE 0 END) OVER (PARTITION BY <键>)}
+ * 做<strong>组级判定</strong>：只要该键任一原始行命中，去重代表行即标记为分子，与卡片
+ * {@code COUNT(DISTINCT key WHERE 条件)} 的去重口径一致。</p>
  *
  * <p>无法机械转换的「异形」指标一律显式拒绝、不降级、不给对不上的数：
  * <ul>
@@ -74,26 +81,30 @@ public class MrasDetailSqlExtractor {
         this.entityPageParser = entityPageParser;
     }
 
+    /** 单结果集判定列名：1=命中分子，0=仅分母。上层据此过滤分子行、按行数与卡片对账。 */
+    public static final String NUMERATOR_FLAG_COLUMN = "__meets_numerator";
+
     /**
      * 提取结果。
      *
-     * @param supported        是否可确定性下钻
-     * @param denominatorSql   分母明细 SQL（含命名参数/模板标记，未渲染；不支持时为 null）
-     * @param numeratorSql     分子明细 SQL（同上）
+     * @param supported         是否可确定性下钻
+     * @param detailSql         单结果集明细 SQL：全体分母行 + {@code __meets_numerator} 判定列
+     *                          （含命名参数/模板标记，未渲染；不支持时为 null）
+     * @param overviewSqlHash   本次提取所依据「目标表-概览」SQL 的 sha256（运行绑定用；不支持时为 null）
      * @param unsupportedReason 不支持时的具体原因（支持时为 null）
      */
     public record DetailExtraction(
             boolean supported,
-            String denominatorSql,
-            String numeratorSql,
+            String detailSql,
+            String overviewSqlHash,
             String unsupportedReason) {
 
         static DetailExtraction unsupported(String reason) {
             return new DetailExtraction(false, null, null, reason);
         }
 
-        static DetailExtraction of(String denominatorSql, String numeratorSql) {
-            return new DetailExtraction(true, denominatorSql, numeratorSql, null);
+        static DetailExtraction of(String detailSql, String overviewSqlHash) {
+            return new DetailExtraction(true, detailSql, overviewSqlHash, null);
         }
     }
 
@@ -141,21 +152,15 @@ public class MrasDetailSqlExtractor {
         }
 
         String dedupKey = distinctKey(aggBody);
-        String denominatorSql;
-        String numeratorSql;
-        if (dedupKey == null) {
-            // 行级口径：分母 = COUNT(1)/COUNT(*)，明细直接取行。
-            denominatorSql = "SELECT *\n" + fromClause;
-            numeratorSql = "SELECT *\n" + appendNumeratorPredicate(fromClause, condition);
-        } else {
-            // 去重口径：分母 = COUNT(DISTINCT <键>)，明细按键去重到一行。
-            denominatorSql = wrapDistinct(fromClause, dedupKey, null);
-            numeratorSql = wrapDistinct(fromClause, dedupKey, condition);
-        }
+        String detailSql = dedupKey == null
+                // 行级口径：分母 = COUNT(1)/COUNT(*)，明细直接取行 + 逐行判定列。
+                ? buildRowLevelDetail(fromClause, condition)
+                // 去重口径：分母 = COUNT(DISTINCT <键>)，明细按键去重到一行 + 组级判定列。
+                : buildDistinctDetail(fromClause, dedupKey, condition);
 
         log.info("确定性明细提取成功 {}（profileId={}）：去重键={}，分子判定={}",
                 indicatorCode, profileId, dedupKey == null ? "行级" : dedupKey, condition);
-        return DetailExtraction.of(denominatorSql, numeratorSql);
+        return DetailExtraction.of(detailSql, sha256(source));
     }
 
     private EntityPageData resolveEntity(String indicatorCode, String profileId) {
@@ -170,34 +175,46 @@ public class MrasDetailSqlExtractor {
     }
 
     /**
-     * 按 ROW_NUMBER 去重键包裹，保留 FROM/JOIN/WHERE 原文；仅取主表列（{@code <别名>.*}）
-     * 避免派生表因 JOIN 子查询列与主表同名而报「列名重复」。
-     *
-     * @param fromClause 逐字 FROM..（GROUP BY 之前）片段
-     * @param dedupKey   去重键（如 event.ENCOUNTER_ID）
-     * @param extraCondition 分子追加判定；为 null 时是分母
+     * 行级明细：分母 = COUNT(1)/COUNT(*)，每行独立成一条明细，追加逐行判定列
+     * {@code CASE WHEN <条件> THEN 1 ELSE 0 END AS __meets_numerator}。FROM/JOIN/WHERE
+     * 及模板标记逐字保留，判定条件原样复制、不做语义改写。
      */
-    private String wrapDistinct(String fromClause, String dedupKey, String extraCondition) {
-        int dot = dedupKey.indexOf('.');
-        String selectCols = dot > 0 ? dedupKey.substring(0, dot) + ".*" : "*";
-        String inner = extraCondition == null
-                ? fromClause
-                : appendNumeratorPredicate(fromClause, extraCondition);
-        return "SELECT * FROM (\n"
-                + "  SELECT " + selectCols + ", ROW_NUMBER() OVER (PARTITION BY " + dedupKey
-                + " ORDER BY (SELECT NULL)) AS \"__detail_rn\"\n  "
-                + inner + "\n) __detail_dedup\nWHERE __detail_dedup.\"__detail_rn\" = 1";
+    private String buildRowLevelDetail(String fromClause, String condition) {
+        return "SELECT *, CASE WHEN (" + condition + ") THEN 1 ELSE 0 END AS \""
+                + NUMERATOR_FLAG_COLUMN + "\"\n" + fromClause;
     }
 
     /**
-     * 在概览 FROM/WHERE 之上追加分子判定：顶层已有 WHERE 时追加 {@code AND (<条件>)}；顶层无
-     * WHERE（过滤条件位于派生表内部，如 HXZD-004-001 的 {@code FROM (SELECT DISTINCT ...) event}
-     * 去重子查询）时追加 {@code WHERE (<条件>)}，避免直接拼 AND 生成 {@code ) event AND (...)}
-     * 之类的非法 SQL。判定条件本身逐字保留，不做语义改写。
+     * 去重明细：分母 = COUNT(DISTINCT <键>)，按 ROW_NUMBER 取每个去重键的代表行。判定列用
+     * {@code MAX(CASE WHEN <条件> THEN 1 ELSE 0 END) OVER (PARTITION BY <键>)} 做组级判定——
+     * 只要该键任一原始行命中，代表行即标记为分子，与卡片
+     * {@code COUNT(DISTINCT key WHERE 条件)} 去重口径一致。仅取主表列（{@code <别名>.*}）避免
+     * 派生表因 JOIN 子查询列与主表同名而报「列名重复」。
+     *
+     * @param fromClause 逐字 FROM..（GROUP BY 之前）片段
+     * @param dedupKey   去重键（如 event.ENCOUNTER_ID）
+     * @param condition  分子判定条件（逐字保留）
      */
-    private String appendNumeratorPredicate(String fromClause, String condition) {
-        String connector = topLevelKeyword(fromClause, "WHERE", true) < 0 ? "\nWHERE (" : "\nAND (";
-        return fromClause + connector + condition + ")";
+    private String buildDistinctDetail(String fromClause, String dedupKey, String condition) {
+        int dot = dedupKey.indexOf('.');
+        String selectCols = dot > 0 ? dedupKey.substring(0, dot) + ".*" : "*";
+        return "SELECT * FROM (\n"
+                + "  SELECT " + selectCols + ",\n"
+                + "    MAX(CASE WHEN (" + condition + ") THEN 1 ELSE 0 END) OVER (PARTITION BY "
+                + dedupKey + ") AS \"" + NUMERATOR_FLAG_COLUMN + "\",\n"
+                + "    ROW_NUMBER() OVER (PARTITION BY " + dedupKey
+                + " ORDER BY (SELECT NULL)) AS \"__detail_rn\"\n  "
+                + fromClause + "\n) __detail_dedup\nWHERE __detail_dedup.\"__detail_rn\" = 1";
+    }
+
+    /** 概览 SQL 的 sha256（十六进制小写），用于运行绑定核对明细与卡片同源。 */
+    private static String sha256(String text) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 摘要算法不可用", exception);
+        }
     }
 
     /**
