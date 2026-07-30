@@ -24,11 +24,12 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 统一数据抽取服务：通过业务 MCP 读取源库数据并清库重写到 winex_aima。
- *
- * <p>支持三类数据同步：事件中间表（eventDataList）、患者事件表（eventTableList）、
- * 基础/业务表（bizDataList）。所有写入操作在同一个 SQL Server 事务内完成，
- * 仅在 {@code wiki.sqlserver.enabled=true} 时注册为 Spring Bean。</p>
+ * 数据同步服务
+ * 负责从远程数据源（通过 DbHubMcpClient）抽取数据，并同步到本地 SQL Server 数据库。
+ * 支持三类数据同步：
+ * 1. 患者事件表（MRAS_PATIENT_EVENT）：通过 SQL 脚本抽取并关联事件号
+ * 2. 事件数据表（eventDataList）：根据事件查询关联的就诊数据
+ * 3. 业务数据表（bizDataList）：基础表全量同步 + 患者表按就诊ID批量同步
  */
 @Service
 @ConditionalOnProperty(prefix = "wiki.sqlserver", name = "enabled", havingValue = "true")
@@ -42,6 +43,9 @@ public class SyncDataService {
     private static final int DEFAULT_INSERT_BATCH_ROWS = 200;
 
     private static final String TOOLS_NAME = "execCustomQuery";
+
+    // 上一次会话ID
+    private String lastConversationId = "";
 
     /**
      * 审计时间列：winex_aima 部分中间表（如 MRAS_BUSINESS_SUR_GRADE/
@@ -63,7 +67,7 @@ public class SyncDataService {
     /** Local table column cache: key=table name upper, value=column info map (column name -> data type) */
     private final Map<String, Map<String, String>> localColumnCache = new HashMap<>();
 
-    // base tables
+    /** 基础配置表列表，这些表进行全量同步（IS_DEL=0） */
     private final List<String> baseTableList = new ArrayList<>() {{
         add("BUSINESS_UNIT_X_BU_TYPE");
         add("MRAS_MEDTECH_PRO");
@@ -71,6 +75,13 @@ public class SyncDataService {
         add("CLIBASIC_SURGERY");
     }};
 
+    /**
+     * 构造函数，注入所需的依赖
+     *
+     * @param dbHubMcpClient 数据库 MCP 客户端，用于调用远程数据源
+     * @param sqlServerProperties SQL Server 配置属性
+     * @param sqlServerJdbcTemplate SQL Server JDBC 模板，用于执行 SQL
+     */
     public SyncDataService(DbHubMcpClient dbHubMcpClient,
                            SqlServerProperties sqlServerProperties,
                            @Qualifier("sqlServerJdbcTemplate") JdbcTemplate sqlServerJdbcTemplate) {
@@ -79,12 +90,37 @@ public class SyncDataService {
         this.sqlServerJdbcTemplate = sqlServerJdbcTemplate;
     }
 
+    /**
+     * 同步事件数据到本地数据库
+     * 处理流程：
+     * 1. 处理事件表数据（eventTableList）：执行SQL脚本抽取数据到MRAS_PATIENT_EVENT表
+     * 2. 处理事件数据（eventDataList）：抽取数据并收集关联的就诊ID
+     * 3. 处理业务数据（bizDataList）：
+     *    - 基础表：全量同步（IS_DEL=0）
+     *    - 患者表：按就诊ID批量同步（根据encounterIdList）
+     *
+     * @param syncDataDto 同步数据参数
+     * @return "success" 表示同步成功
+     */
     @Transactional("sqlServerTransactionManager")
     public String syncEventData(SyncDataDto syncDataDto) {
         List<TableDataDto> eventDataList = syncDataDto.getEventDataList();
-        if (eventDataList == null || eventDataList.isEmpty()) {
-            return "success";
+//        if (eventDataList == null || eventDataList.isEmpty()) {
+//            return "success";
+//        }
+        // 防止模型解析异常导致的死循环
+        if (Objects.nonNull(syncDataDto.getCaliber()) && (syncDataDto.getCaliber() > 10 || syncDataDto.getCaliber() < 1)) {
+            return "failure";
         }
+
+        Integer caliber = syncDataDto.getCaliber();
+        String conversationId = syncDataDto.getConversationId();
+        boolean sameConversation = StrUtil.isNotBlank(conversationId) && conversationId.equals(lastConversationId);
+
+        // 是否需要清除数据：无口径 或 非同一会话
+        boolean needClearData = caliber == null || !sameConversation;
+        // 不需要同步基础表数据：同一会话 且 第 N 个口径（N > 1），第一个口径已经同步过基础表
+        boolean notSyncBaseTable = sameConversation && caliber != null && caliber > 1;
 
         //MRAS_PATIENT_EVENT患者事件表数据同步
         List<TableDataDto> eventTableList = syncDataDto.getEventTableList();
@@ -97,11 +133,11 @@ public class SyncDataService {
                 String sqlScript = eventTableDto.getSqlScript();
 
                 if (StrUtil.isBlank(targetTable) || StrUtil.isBlank(sqlScript) || !"MRAS_PATIENT_EVENT".equals(targetTable)) {
-                    log.warn("eventTableList item has blank table or sqlScript, skip");
+                    log.warn("eventTableList 表名或 sqlScript 为空，跳过");
                     continue;
                 }
 
-                log.info("start execute sqlScript for table {}", targetTable);
+                log.info("开始为表 {} 执行 sqlScript", targetTable);
                 try {
                     Map<String, Object> params = new HashMap<>();
                     params.put("startTime", eventTableDto.getStartTime());
@@ -116,29 +152,30 @@ public class SyncDataService {
                             row.put("EVENT_NO", eventNo);
                         }
                         // 插入数据到目标表
-                        replaceTableData(targetTable, eventRows, StrUtil.isBlank(eventNo) ? "" : "EVENT_NO = '" + eventNo + "'");
-                        log.info("synced {} rows to table {} from eventTableList", eventRows.size(), targetTable);
+                        replaceTableData(syncDataDto, targetTable, eventRows, StrUtil.isBlank(eventNo) ? "" : "EVENT_NO = '" + eventNo + "'", needClearData, "BIZ_ID");
+                        log.info("已从 eventTableList 同步 {} 行数据到表 {}", eventRows.size(), targetTable);
                     } else {
-                        log.info("no data returned from sqlScript for table {}", targetTable);
+                        log.info("表 {} 的 sqlScript 未返回数据", targetTable);
                     }
                 } catch (Exception e) {
-                    log.error("failed to execute sqlScript for table {}: {}", targetTable, e.getMessage());
+                    log.error("为表 {} 执行 sqlScript 失败: {}", targetTable, e.getMessage());
                 }
             }
         }
 
-        List<Long> encounterIdList = new ArrayList<>();
+        Set<Long> encounterIdList = new HashSet<>();
 
         for (TableDataDto eventData : eventDataList) {
 
             String eventTable = eventData.getTable();
-            String sqlScript = eventData.getSqlScript();
 
             if (StrUtil.isBlank(eventTable)) {
                 continue;
             }
 
-            log.info("start sync table {} data", eventTable);
+            // 先判断是否是多口径的数据同步
+
+            log.info("开始同步表 {} 数据", eventTable);
 
             Map<String, Object> params = new HashMap<>();
             params.put("startTime", eventData.getStartTime());
@@ -160,13 +197,15 @@ public class SyncDataService {
                         try {
                             encounterIdList.add(Long.valueOf(encounterId.toString()));
                         } catch (NumberFormatException e) {
-                            log.warn("Failed to parse ENCOUNTER_ID: {}", encounterId);
+                            log.warn("解析 ENCOUNTER_ID 失败: {}", encounterId);
                         }
                     }
                 }
             }
-
-            replaceTableData(eventTable, rows, "");
+            if (Objects.nonNull(syncDataDto.getCaliber())) {
+                eventTable = copyTableMultipleTimes(eventTable, syncDataDto.getCaliber());
+            }
+            replaceTableData(syncDataDto, eventTable, rows, "", true, "");
         }
         List<TableDataDto> bizDataList = syncDataDto.getBizDataList();
         if (CollUtil.isNotEmpty(bizDataList)) {
@@ -177,23 +216,26 @@ public class SyncDataService {
                     continue;
                 }
                 if (!baseTableList.contains(bizTable) && !BizTableEnum.getTableList().contains(bizTable)) {
-                    log.info("table {} not in baseTableList or patableList, skip", bizTable);
+                    log.info("表 {} 不在基础表列表或患者表列表中，跳过", bizTable);
                     continue;
                 }
 
                 Map<String, Object> bizParams = new HashMap<>();
                 if (baseTableList.contains(bizTable)) {
-                    log.info("start sync base table {} data with IS_DEL=0", bizTable);
+                    if (notSyncBaseTable) {
+                        continue;
+                    }
+                    log.info("开始全量同步基础表 {}（IS_DEL=0）", bizTable);
                     if (StrUtil.isBlank(sqlScript)) {
                         sqlScript = "select * from " + bizTable + " where IS_DEL = 0";
                     }
                     List<Map<String, Object>> bizRows = DbHubMcpClient.extractRowsV2(dbHubMcpClient.callTool(
                             TOOLS_NAME, sqlScript, bizParams, syncDataDto.getHospitalSOID()));
-                    replaceTableData(bizTable, bizRows, "");
+                    replaceTableData(syncDataDto, bizTable, bizRows, "", needClearData, "");
                 } else if (BizTableEnum.getTableList().contains(bizTable)) {
-                    log.info("start sync patient table {} data with encounterIdList", bizTable);
+                    log.info("开始按就诊ID同步患者表 {} 数据", bizTable);
                     if (CollUtil.isEmpty(encounterIdList)) {
-                        log.info("encounterIdList is empty, skip table {}", bizTable);
+                        log.info("就诊ID列表为空，跳过表 {}", bizTable);
                         continue;
                     }
                     if (StrUtil.isBlank(sqlScript)) {
@@ -204,7 +246,6 @@ public class SyncDataService {
                         sqlScript = "select * from " + bizTable + " where IS_DEL = 0 and " + condition;
                     }
                     List<String> distinctIds = encounterIdList.stream()
-                            .distinct()
                             .map(String::valueOf)
                             .collect(Collectors.toList());
 
@@ -215,7 +256,7 @@ public class SyncDataService {
                         List<String> batchIds = distinctIds.subList(i, Math.min(i + batchSize, distinctIds.size()));
                         String encounterIds = String.join(",", batchIds);
                         String batchSql = sqlScript.replace(":encounterIds", encounterIds);
-                        log.info("syncing patient table {} batch {}/{}, encounterIds count: {}",
+                        log.info("正在同步患者表 {} 第 {} / {} 批，就诊ID数量: {}",
                                 bizTable, i / batchSize + 1,
                                 (distinctIds.size() + batchSize - 1) / batchSize,
                                 batchIds.size());
@@ -225,33 +266,52 @@ public class SyncDataService {
                             allBizRows.addAll(bizRows);
                         }
                     }
-
-                    replaceTableData(bizTable, allBizRows, "");
+                    String bizId = bizTable.replaceFirst("_\\d+$", "") + "_ID";
+                    replaceTableData(syncDataDto, bizTable, allBizRows, "", needClearData, bizId);
                 }
             }
         }
+        lastConversationId = conversationId;
         return "success";
     }
 
-    private void replaceTableData(String tableName, List<Map<String, Object>> rows, String condition) {
-        String clearedTableSql = "DELETE FROM " + qualifyTable(tableName) + (StrUtil.isBlank(condition) ? "" : " WHERE " + condition);
-        entityManager.createNativeQuery(clearedTableSql).executeUpdate();
-        log.info("cleared table {}", tableName);
+    /**
+     * 替换表数据：先清空再插入
+     *
+     * @param tableName 目标表名
+     * @param rows 要插入的数据行
+     * @param condition 清空表时的WHERE条件（为空则清空全表）
+     */
+    private void replaceTableData(SyncDataDto syncDataDto, String tableName, List<Map<String, Object>> rows, String condition, Boolean needClearData, String bizId) {
+        if (needClearData) {
+            String clearedTableSql = "DELETE FROM " + qualifyTable(tableName) + (StrUtil.isBlank(condition) ? "" : " WHERE " + condition);
+            entityManager.createNativeQuery(clearedTableSql).executeUpdate();
+            log.info("已清空表 {}", tableName);
+        }
 
         if (rows != null && !rows.isEmpty()) {
-            String pkColumn = tableName.toUpperCase() + "_ID";
+            String pkColumn = tableName.toUpperCase().replaceFirst("_\\d+$", "") + "_ID";
             List<Map<String, Object>> converted = rows.stream()
                     .map(row -> {
                         Map<String, Object> newRow = convertKeysToUpperSnakeCase(row);
-                        newRow.put(pkColumn, snowflake.nextId());
+                        Object existingPk = newRow.get(pkColumn);
+                        if (existingPk == null || (existingPk instanceof CharSequence cs && cs.toString().isBlank())) {
+                            newRow.put(pkColumn, snowflake.nextId());
+                        }
                         return newRow;
                     })
                     .collect(Collectors.toList());
-            insertRows(tableName, converted);
-            log.info("inserted {} rows into table {}", converted.size(), tableName);
+            insertRows(tableName, converted, needClearData, bizId);
+            log.info("已插入 {} 行数据到表 {}", converted.size(), tableName);
         }
     }
 
+    /**
+     * 将Map的key转换为大写下划线格式（UPPER_SNAKE_CASE）
+     *
+     * @param row 原始数据行
+     * @return 转换后的数据行
+     */
     private Map<String, Object> convertKeysToUpperSnakeCase(Map<String, Object> row) {
         Map<String, Object> converted = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : row.entrySet()) {
@@ -262,10 +322,17 @@ public class SyncDataService {
         return converted;
     }
 
-    private void insertRows(String eventTable, List<Map<String, Object>> rows) {
+    /**
+     * 插入数据行到指定表
+     * 根据本地表结构补齐字段，空值使用数据库默认值
+     *
+     * @param eventTable 目标表名
+     * @param rows 要插入的数据行
+     */
+    private void insertRows(String eventTable, List<Map<String, Object>> rows, Boolean needClearData, String bizId) {
         Map<String, String> columnTypes = resolveLocalColumns(eventTable);
         if (columnTypes.isEmpty()) {
-            log.warn("local table {} has no resolved columns, skip insert", eventTable);
+            log.warn("本地表 {} 无可用列信息，跳过插入", eventTable);
             return;
         }
         List<String> columns = new ArrayList<>(columnTypes.keySet());
@@ -292,11 +359,11 @@ public class SyncDataService {
             normalizedRows.add(fullRow);
         }
         if (normalizedRows.isEmpty()) {
-            log.warn("no valid rows to insert into table {}", eventTable);
+            log.warn("没有有效数据行可插入表 {}", eventTable);
             return;
         }
 
-        batchInsert(qualifyTable(eventTable), columns, columnTypes, normalizedRows);
+        batchInsert(qualifyTable(eventTable), columns, columnTypes, normalizedRows, needClearData, bizId);
     }
 
     /**
@@ -304,8 +371,43 @@ public class SyncDataService {
      * Null/missing values become DEFAULT so SQL Server column defaults still apply.
      * Batch size is limited by SQL Server parameter count (max 2100).
      */
-    private void batchInsert(String tableName, List<String> columns, Map<String, String> columnTypes, List<Map<String, Object>> rows) {
+    /**
+     * 批量插入数据行
+     * 使用多值 SQL 批量插入，空值使用 DEFAULT 以保留数据库默认值
+     * 批量大小受 SQL Server 参数数量限制（最大 2100）
+     *
+     * @param tableName 目标表名（含 schema）
+     * @param columns 列名列表
+     * @param columnTypes 列名到数据类型的映射
+     * @param rows 要插入的数据行
+     */
+    private void batchInsert(String tableName, List<String> columns, Map<String, String> columnTypes, List<Map<String, Object>> rows, Boolean needClearData, String bizId) {
         if (columns == null || columns.isEmpty() || rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        // 非清空模式下，按 bizId 排重：查询现有表中已存在的 bizId，跳过重复行
+        List<Map<String, Object>> insertRows = rows;
+        if (!needClearData && StrUtil.isNotBlank(bizId) && columns.contains(bizId)) {
+            Set<String> bizIds = rows.stream()
+                    .map(row -> row.get(bizId))
+                    .filter(Objects::nonNull)
+                    .map(Object::toString)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.toSet());
+            if (!bizIds.isEmpty()) {
+                Set<String> existing = loadExistingBizIds(tableName, bizId, bizIds);
+                insertRows = rows.stream()
+                        .filter(row -> {
+                            Object val = row.get(bizId);
+                            return val == null || !existing.contains(val.toString());
+                        })
+                        .collect(Collectors.toList());
+                log.info("表 {} 按 {} 排重：待插入 {} 行，已存在 {} 行，实际插入 {} 行",
+                        tableName, bizId, rows.size(), rows.size() - insertRows.size(), insertRows.size());
+            }
+        }
+        if (insertRows.isEmpty()) {
             return;
         }
 
@@ -314,9 +416,9 @@ public class SyncDataService {
                 SQL_SERVER_MAX_PARAMS / columns.size()));
         String columnList = String.join(",", columns);
 
-        for (int from = 0; from < rows.size(); from += maxRowsPerBatch) {
-            int to = Math.min(from + maxRowsPerBatch, rows.size());
-            List<Map<String, Object>> batch = rows.subList(from, to);
+        for (int from = 0; from < insertRows.size(); from += maxRowsPerBatch) {
+            int to = Math.min(from + maxRowsPerBatch, insertRows.size());
+            List<Map<String, Object>> batch = insertRows.subList(from, to);
 
             List<Object> params = new ArrayList<>(batch.size() * columns.size());
             List<String> valueGroups = new ArrayList<>(batch.size());
@@ -350,7 +452,30 @@ public class SyncDataService {
 //            log.info("executable sql: {}", buildExecutableSql(sql, params));
             sqlServerJdbcTemplate.update(sql, params.toArray());
         }
-        log.info("batch inserted {} rows into {} with {} columns", rows.size(), tableName, columns.size());
+        log.info("已批量插入 {} 行到表 {}（{} 列）", insertRows.size(), tableName, columns.size());
+    }
+
+    /**
+     * 查询表中已存在的指定 bizId 值集合。
+     * 分批查询避免 IN 子句过大。
+     */
+    private Set<String> loadExistingBizIds(String tableName, String bizIdColumn, Set<String> bizIds) {
+        Set<String> result = new HashSet<>();
+        List<String> values = new ArrayList<>(bizIds);
+        int batchSize = 500;
+        for (int i = 0; i < values.size(); i += batchSize) {
+            List<String> batch = values.subList(i, Math.min(i + batchSize, values.size()));
+            String placeholders = batch.stream().map(v -> "?").collect(Collectors.joining(","));
+            String sql = "SELECT " + bizIdColumn + " FROM " + tableName
+                    + " WHERE " + bizIdColumn + " IN (" + placeholders + ")";
+            List<Object> queryRows = sqlServerJdbcTemplate.queryForList(sql, Object.class, batch.toArray());
+            for (Object row : queryRows) {
+                if (row != null) {
+                    result.add(row.toString());
+                }
+            }
+        }
+        return result;
     }
 
     /**
@@ -388,7 +513,7 @@ public class SyncDataService {
                     // 有小数点，使用 BigDecimal
                     return new java.math.BigDecimal(strValue);
                 } catch (NumberFormatException e) {
-                    log.warn("Failed to convert '{}' to numeric type {}, keeping original", strValue, dataType);
+                    log.warn("无法将 '{}' 转换为数值类型 {}，保留原值", strValue, dataType);
                     return value;
                 }
             }
@@ -413,6 +538,14 @@ public class SyncDataService {
      * Build a fully inlined SQL string for debugging/manual execution.
      * Values are escaped for SQL Server style literals.
      */
+    /**
+     * 构建完全内联的 SQL 字符串（用于调试/手动执行）
+     * 值按照 SQL Server 风格的字面量进行转义
+     *
+     * @param sqlWithPlaceholders 带占位符的 SQL
+     * @param values 参数值列表
+     * @return 完全内联的 SQL 字符串
+     */
     private String buildExecutableSql(String sqlWithPlaceholders, List<Object> values) {
         StringBuilder executable = new StringBuilder();
         int valueIndex = 0;
@@ -427,6 +560,13 @@ public class SyncDataService {
         return executable.toString();
     }
 
+    /**
+     * 格式化 SQL 字面量值
+     * 支持数字、布尔、字节数组、日期时间、字符串等类型
+     *
+     * @param value 要格式化的值
+     * @return SQL 字面量字符串
+     */
     private String formatSqlLiteral(Object value) {
         if (value == null) {
             return "NULL";
@@ -445,6 +585,15 @@ public class SyncDataService {
         return "N'" + text + "'";
     }
 
+    /**
+     * 将各种日期时间类型格式化为统一的日期时间字符串
+     * 支持的类型：LocalDateTime, LocalDate, LocalTime, OffsetDateTime,
+     * ZonedDateTime, Instant, java.util.Date, java.sql.Timestamp,
+     * java.sql.Date, java.sql.Time, Calendar
+     *
+     * @param value 日期时间对象
+     * @return 格式化后的字符串，不支持的类型返回 null
+     */
     private String formatDateTimeLiteral(Object value) {
         if (value instanceof LocalDateTime localDateTime) {
             return SQL_DATE_TIME_FORMATTER.format(localDateTime);
@@ -482,6 +631,12 @@ public class SyncDataService {
         return null;
     }
 
+    /**
+     * 将字节数组转换为十六进制字符串
+     *
+     * @param bytes 字节数组
+     * @return 十六进制字符串（大写）
+     */
     private String bytesToHex(byte[] bytes) {
         StringBuilder hex = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
@@ -493,6 +648,14 @@ public class SyncDataService {
     /**
      * Resolve SQL Server table column names via INFORMATION_SCHEMA.
      * Returns upper-case names for case-insensitive matching with remote fields.
+     */
+    /**
+     * 解析本地 SQL Server 表的列信息
+     * 通过 INFORMATION_SCHEMA.COLUMNS 查询，返回列名（大写）到数据类型（小写）的映射
+     * 结果会被缓存到 localColumnCache 中
+     *
+     * @param tableName 表名
+     * @return 列名到数据类型的映射
      */
     private Map<String, String> resolveLocalColumns(String tableName) {
         String cacheKey = tableName == null ? "" : tableName.toUpperCase();
@@ -517,13 +680,19 @@ public class SyncDataService {
                 }
             }
         } catch (Exception e) {
-            log.warn("failed to resolve columns for SQL Server table {}: {}", tableName, e.getMessage());
+            log.warn("解析 SQL Server 表 {} 列信息失败: {}", tableName, e.getMessage());
         }
 
         localColumnCache.put(cacheKey, columns);
         return columns;
     }
 
+    /**
+     * 为表名添加 schema 前缀
+     *
+     * @param tableName 表名
+     * @return 带 schema 前缀的表名
+     */
     private String qualifyTable(String tableName) {
         String schema = resolveSchema();
         if (schema == null || schema.isBlank()) {
@@ -532,8 +701,58 @@ public class SyncDataService {
         return schema + "." + tableName;
     }
 
+    /**
+     * 获取配置的 schema 名称，如果未配置则返回默认值 "dbo"
+     *
+     * @return schema 名称
+     */
     private String resolveSchema() {
         String schema = sqlServerProperties.getSchema();
         return (schema == null || schema.isBlank()) ? "dbo" : schema;
+    }
+
+    /**
+     * 复制表结构并创建多个副本表
+     * 命名规则：原表名_1, 原表名_2, 原表名_3...
+     * 复制前先检查目标表是否存在，存在则先删除
+     *
+     * @param sourceTableName 原表名
+     * @param caliberNo 第几个口径
+     * @return "success" 表示成功
+     */
+    public String copyTableMultipleTimes(String sourceTableName, int caliberNo) {
+        if (StrUtil.isBlank(sourceTableName)) {
+            log.warn("源表名为空");
+            throw new RuntimeException("源表名为空");
+        }
+
+        String schema = resolveSchema();
+        String qualifiedSourceTable = qualifyTable(sourceTableName);
+
+        // 检查源表是否存在
+        String checkSourceSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+                "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
+        Integer sourceCount = sqlServerJdbcTemplate.queryForObject(
+                checkSourceSql, Integer.class, schema, sourceTableName);
+        if (sourceCount == null || sourceCount == 0) {
+            log.warn("源表 {} 不存在", qualifiedSourceTable);
+            throw new RuntimeException("源表不存在");
+        }
+
+        String targetTableName = sourceTableName + "_" + caliberNo;
+        String qualifiedTargetTable = qualifyTable(targetTableName);
+
+        // 先判断再删除
+        String dropSql = "DROP TABLE IF EXISTS " + qualifiedTargetTable;
+        sqlServerJdbcTemplate.execute(dropSql);
+        log.info("已删除已存在的表 {}", qualifiedTargetTable);
+
+        // 复制表结构和数据：SELECT * INTO new_table FROM source_table
+        String copySql = "SELECT * INTO " + qualifiedTargetTable + " FROM " + qualifiedSourceTable + " where 1 = 0";
+        sqlServerJdbcTemplate.execute(copySql);
+        log.info("已复制表 {} 到 {}", qualifiedSourceTable, qualifiedTargetTable);
+
+        log.info("成功创建表 {}", targetTableName);
+        return targetTableName;
     }
 }

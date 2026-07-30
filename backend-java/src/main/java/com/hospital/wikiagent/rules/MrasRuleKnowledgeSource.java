@@ -149,7 +149,7 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         result.put("patientDetailSql", entity.patientDetailSql());
         result.put("sqlCapabilities", Map.of(
                 "overview", Map.of("status", hasSql ? "executable" : "unavailable")));
-        result.put("extractionContract", Map.of());
+        result.put("extractionContract", buildExtractionContract(entity));
         result.put("dualDatabaseContract", Map.of());
         result.put("resultMapping", Map.of(
                 "index_value", "监测情况",
@@ -377,7 +377,20 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
     private static String normalize(String value) {
         if (value == null) return "";
         return value.toLowerCase(Locale.ROOT)
-                .replaceAll("[\\s　，。？！、：；（）()《》\"'`]+", "")
-                .replace("的", "");
+                .replaceAll("[\\s\u3000\uff0c\u3002\uff1f\uff01\u3001\uff1a\uff1b\uff08\uff09()\u300a\u300b\"'`]+", "")
+                .replace("\u7684", "");
+    }
+
+    private static Map<String, Object> buildExtractionContract(EntityPageData entity) {
+        Map<String, Object> contract = new LinkedHashMap<>();
+        contract.put("event_table", entity.targetTable() == null ? "" : entity.targetTable());
+        contract.put("dependency_tables", entity.bizTables() == null ? List.of() : entity.bizTables());
+        if (entity.extendedEvents() != null && !entity.extendedEvents().isEmpty()) {
+            List<Map<String, String>> extEvents = entity.extendedEvents().stream()
+                    .map(e -> Map.of("eventNo", e.getKey(), "sqlScript", e.getValue()))
+                    .toList();
+            contract.put("extended_events", extEvents);
+        }
+        return contract;
     }
 }

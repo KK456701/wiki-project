@@ -3,6 +3,7 @@ package com.hospital.wikiagent.agent.mras;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -187,12 +188,31 @@ public class EntityPageParser {
         String targetTable = extractTableFromDataSource(dataSource, "中间表");
         List<String> bizTables = extractBizTables(dataSource);
 
+        // 解析关联拓展事件 1-4（部分指标需要额外抽取的患者事件表）
+        List<Map.Entry<String, String>> extendedEvents = extractExtendedEvents(sections);
+
         return new EntityPageData(
                 code, name, dimension, variantCode, variantLabel,
                 definition, formula, caliber, dataSource, monitorParams,
                 "", "", system, category,
                 sourceTableSql, overviewSql, deptStatSql, patientDetailSql,
-                eventNo, targetTable, bizTables);
+                eventNo, targetTable, bizTables, extendedEvents);
+    }
+
+    /**
+     * 解析“关联拓展事件 1-4”和对应的“关联拓展事件 SQL1-4”章节，
+     * 返回 (eventNo, sqlScript) 对列表。仅部分指标有这些章节。
+     */
+    private List<Map.Entry<String, String>> extractExtendedEvents(Map<String, String> sections) {
+        List<Map.Entry<String, String>> events = new ArrayList<>();
+        for (int i = 1; i <= 4; i++) {
+            String eventNo = sectionText(sections, "关联拓展事件" + i);
+            String sql = extractSql(sections, "关联拓展事件SQL" + i);
+            if (!eventNo.isBlank() && !sql.isBlank()) {
+                events.add(new AbstractMap.SimpleImmutableEntry<>(eventNo, sql));
+            }
+        }
+        return events.isEmpty() ? List.of() : List.copyOf(events);
     }
 
     /**

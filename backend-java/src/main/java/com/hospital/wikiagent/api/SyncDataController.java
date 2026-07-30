@@ -7,6 +7,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -29,5 +30,10 @@ public class SyncDataController {
     @PostMapping("/local-db/sync")
     public String syncEventData(@Validated @RequestBody SyncDataDto syncDataDto) {
         return syncDataService.syncEventData(syncDataDto);
+    }
+
+    @PostMapping("/local-db/copy-table")
+    public String copyTableMultipleTimes(@RequestParam String sourceTableName, @RequestParam int count) {
+        return syncDataService.copyTableMultipleTimes(sourceTableName, count);
     }
 }

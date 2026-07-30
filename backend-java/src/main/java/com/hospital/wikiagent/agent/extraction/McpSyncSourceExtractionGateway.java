@@ -92,6 +92,12 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
                 dto.setBizDataList(bizList);
             }
 
+            // eventTableList：关联拓展事件（部分指标需要的额外患者事件表）
+            List<TableDataDto> extList = buildEventTableList(contract, request);
+            if (!extList.isEmpty()) {
+                dto.setEventTableList(extList);
+            }
+
             log.info("[{}] 开始抽取: eventTable={}, bizTables={} ({} ~ {})",
                     extractionId, eventTable, dependencyTables,
                     request.statStart(), request.statEnd());
@@ -159,5 +165,29 @@ public class McpSyncSourceExtractionGateway implements SourceExtractionGateway {
             return List.of();
         }
         return list.stream().map(String::valueOf).filter(s -> !s.isBlank()).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<TableDataDto> buildEventTableList(
+            Map<String, Object> contract, ExtractionRequest request) {
+        Object extObj = contract.get("extended_events");
+        if (!(extObj instanceof List<?> extList) || extList.isEmpty()) {
+            return List.of();
+        }
+        List<TableDataDto> result = new ArrayList<>();
+        for (Object item : extList) {
+            if (!(item instanceof Map<?, ?> map)) continue;
+            String eventNo = text(map.get("eventNo"));
+            String sqlScript = text(map.get("sqlScript"));
+            if (eventNo.isBlank() || sqlScript.isBlank()) continue;
+            TableDataDto extEvent = new TableDataDto();
+            extEvent.setEventNo(eventNo);
+            extEvent.setTable("MRAS_PATIENT_EVENT");
+            extEvent.setSqlScript(sqlScript);
+            extEvent.setStartTime(toDate(request.statStart()));
+            extEvent.setEndTime(toDate(request.statEnd()));
+            result.add(extEvent);
+        }
+        return result;
     }
 }

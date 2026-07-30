@@ -15,13 +15,21 @@ import java.util.List;
 @Data
 public class SyncDataDto {
 
+    // 第几个指标口径
+    private Integer caliber;
+
+    // 会话ID
+    private String conversationId;
+
     @NotNull(message = "SOID不能为空")
     private Long hospitalSOID;
 
     @NotEmpty(message = "核心制度表数据不能为空")
     private List<TableDataDto> eventDataList;
 
+    // 业务表
     private List<TableDataDto> bizDataList;
 
+    // 依赖事件表
     private List<TableDataDto> eventTableList;
 }

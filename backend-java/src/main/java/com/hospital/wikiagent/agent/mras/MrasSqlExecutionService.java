@@ -399,6 +399,23 @@ public class MrasSqlExecutionService {
                 dto.setBizDataList(bizList);
             }
 
+            // eventTableList：关联拓展事件（部分指标需要的额外患者事件表）
+            if (entity.extendedEvents() != null && !entity.extendedEvents().isEmpty()) {
+                List<TableDataDto> extList = new ArrayList<>();
+                for (Map.Entry<String, String> ext : entity.extendedEvents()) {
+                    TableDataDto extEvent = new TableDataDto();
+                    extEvent.setEventNo(ext.getKey());
+                    extEvent.setTable("MRAS_PATIENT_EVENT");
+                    extEvent.setSqlScript(templateRenderer.renderTemplate(
+                            stripLeadingTrailingQuotes(ext.getValue()),
+                            Map.of("syncType", "outHosp")));
+                    extEvent.setStartTime(toDate(start));
+                    extEvent.setEndTime(toDate(end));
+                    extList.add(extEvent);
+                }
+                dto.setEventTableList(extList);
+            }
+
             log.info("MRAS 指标 {} 开始抽取: targetTable={}, bizTables={} ({} ~ {})",
                     entity.code(), entity.targetTable(), entity.bizTables(), start, end);
             syncDataService.syncEventData(dto);
