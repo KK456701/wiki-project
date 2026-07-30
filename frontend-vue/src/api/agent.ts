@@ -415,83 +415,59 @@ export async function loadTerminologyReleases(
   return readJson(response)
 }
 
-export async function loginAdmin(password: string): Promise<{ token: string; message: string }> {
-  const response = await fetch('/api/admin/login', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password }),
-  })
-  return readJson(response)
-}
-
-export async function logoutAdmin(token: string): Promise<void> {
-  if (!token) return
-  const response = await fetch('/api/admin/logout', {
-    method: 'POST', headers: authHeaders(token),
-  })
-  await readJson(response)
-}
-
-function terminologyAdminHeaders(adminToken: string, hospitalToken: string): HeadersInit {
-  return {
-    Authorization: `Bearer ${adminToken}`,
-    'X-Hospital-Authorization': `Bearer ${hospitalToken}`,
-    'Content-Type': 'application/json',
-  }
-}
-
 export async function createTerminologyAlias(
-  adminToken: string, hospitalToken: string, payload: Record<string, unknown>,
+  hospitalToken: string, payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const response = await fetch('/api/terminology/aliases', {
-    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   return readJson(response)
 }
 
 export async function approveTerminologyAlias(
-  adminToken: string, hospitalToken: string, aliasId: number,
+  hospitalToken: string, aliasId: number,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/aliases/${aliasId}/approve`, {
-    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
 
 export async function createTerminologyMapping(
-  adminToken: string, hospitalToken: string, payload: Record<string, unknown>,
+  hospitalToken: string, payload: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const response = await fetch('/api/terminology/hospital-mappings', {
-    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   return readJson(response)
 }
 
 export async function approveTerminologyMapping(
-  adminToken: string, hospitalToken: string, mappingId: number,
+  hospitalToken: string, mappingId: number,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/hospital-mappings/${mappingId}/approve`, {
-    method: 'POST', headers: terminologyAdminHeaders(adminToken, hospitalToken),
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
 
-export async function publishTerminology(adminToken: string): Promise<Record<string, unknown>> {
+export async function publishTerminology(hospitalToken: string): Promise<Record<string, unknown>> {
   const response = await fetch('/api/terminology/releases/publish', {
-    method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)
 }
 
 export async function restoreTerminology(
-  adminToken: string, releaseId: string,
+  hospitalToken: string, releaseId: string,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(`/api/terminology/releases/${encodeURIComponent(releaseId)}/restore`, {
-    method: 'POST', headers: { ...authHeaders(adminToken), 'Content-Type': 'application/json' },
+    method: 'POST', headers: { ...authHeaders(hospitalToken), 'Content-Type': 'application/json' },
     body: JSON.stringify({ actorId: 'admin' }),
   })
   return readJson(response)

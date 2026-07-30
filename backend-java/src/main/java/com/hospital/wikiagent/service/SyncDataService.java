@@ -13,6 +13,7 @@ import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -158,7 +159,9 @@ public class SyncDataService {
                         log.info("表 {} 的 sqlScript 未返回数据", targetTable);
                     }
                 } catch (Exception e) {
-                    log.error("为表 {} 执行 sqlScript 失败: {}", targetTable, e.getMessage());
+                    log.error("为表 {} 执行 sqlScript 失败: {}", targetTable, e.getMessage(), e);
+                    throw new RuntimeException("患者事件表 " + targetTable + "（事件 " + eventNo
+                            + "）抽取失败：" + e.getMessage(), e);
                 }
             }
         }
@@ -712,13 +715,16 @@ public class SyncDataService {
     }
 
     /**
-     * 复制表结构并创建多个副本表
+     * 为多口径场景准备口径复制表。
      * 命名规则：原表名_1, 原表名_2, 原表名_3...
-     * 复制前先检查目标表是否存在，存在则先删除
+     *
+     * <p>口径复制表一旦建好即长期复用：本方法只在该口径表尚不存在时用
+     * {@code SELECT * INTO} 复制一次结构（需要 CREATE TABLE 权限）；已存在则直接复用，
+     * 后续由 {@link #replaceTableData} 以 DELETE+INSERT 刷新数据，不再需要建表权限。</p>
      *
      * @param sourceTableName 原表名
      * @param caliberNo 第几个口径
-     * @return "success" 表示成功
+     * @return 实际写入的口径表名（原表名_口径号）
      */
     public String copyTableMultipleTimes(String sourceTableName, int caliberNo) {
         if (StrUtil.isBlank(sourceTableName)) {
@@ -730,10 +736,10 @@ public class SyncDataService {
         String qualifiedSourceTable = qualifyTable(sourceTableName);
 
         // 检查源表是否存在
-        String checkSourceSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
+        String checkTableSql = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES " +
                 "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?";
         Integer sourceCount = sqlServerJdbcTemplate.queryForObject(
-                checkSourceSql, Integer.class, schema, sourceTableName);
+                checkTableSql, Integer.class, schema, sourceTableName);
         if (sourceCount == null || sourceCount == 0) {
             log.warn("源表 {} 不存在", qualifiedSourceTable);
             throw new RuntimeException("源表不存在");
@@ -742,17 +748,27 @@ public class SyncDataService {
         String targetTableName = sourceTableName + "_" + caliberNo;
         String qualifiedTargetTable = qualifyTable(targetTableName);
 
-        // 先判断再删除
-        String dropSql = "DROP TABLE IF EXISTS " + qualifiedTargetTable;
-        sqlServerJdbcTemplate.execute(dropSql);
-        log.info("已删除已存在的表 {}", qualifiedTargetTable);
+        // 口径复制表已存在则复用，仅由后续 replaceTableData 清空并重新插入，
+        // 避免每次都 DROP/CREATE 而需要 CREATE TABLE 权限
+        Integer targetCount = sqlServerJdbcTemplate.queryForObject(
+                checkTableSql, Integer.class, schema, targetTableName);
+        if (targetCount != null && targetCount > 0) {
+            log.info("口径复制表 {} 已存在，直接复用（后续清空+重插）", qualifiedTargetTable);
+            return targetTableName;
+        }
 
-        // 复制表结构和数据：SELECT * INTO new_table FROM source_table
+        // 首次使用该口径：复制表结构（不含数据）。此步骤需要 CREATE TABLE 权限
         String copySql = "SELECT * INTO " + qualifiedTargetTable + " FROM " + qualifiedSourceTable + " where 1 = 0";
-        sqlServerJdbcTemplate.execute(copySql);
-        log.info("已复制表 {} 到 {}", qualifiedSourceTable, qualifiedTargetTable);
-
-        log.info("成功创建表 {}", targetTableName);
+        try {
+            sqlServerJdbcTemplate.execute(copySql);
+        } catch (DataAccessException e) {
+            log.error("创建口径复制表 {} 失败: {}", qualifiedTargetTable, e.getMessage());
+            throw new RuntimeException("创建口径复制表 " + qualifiedTargetTable
+                    + " 失败：当前数据库账号缺少 CREATE TABLE 权限。请用有权限的账号在该库执行一次授权后重试："
+                    + "GRANT CREATE TABLE TO [抽数账号]; GRANT ALTER ON SCHEMA::" + schema + " TO [抽数账号];"
+                    + "（授权后该口径表会自动建好，之后仅做清空+插入，不再需要建表权限）。原始错误：" + e.getMessage(), e);
+        }
+        log.info("已创建口径复制表 {}（复制自 {}）", qualifiedTargetTable, qualifiedSourceTable);
         return targetTableName;
     }
 }

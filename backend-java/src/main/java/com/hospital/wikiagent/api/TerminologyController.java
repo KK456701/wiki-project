@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.hospital.wikiagent.auth.BearerTokens;
-import com.hospital.wikiagent.auth.AdminSessionService;
 import com.hospital.wikiagent.auth.HospitalAuthException;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -37,15 +36,13 @@ import com.hospital.wikiagent.terminology.TerminologyService.TerminologyNotFound
 public class TerminologyController {
     private final HospitalAuthService auth;
     private final TerminologyService terminology;
-    private final AdminSessionService admins;
     private final TerminologyGovernanceService governance;
 
     public TerminologyController(
             HospitalAuthService auth, TerminologyService terminology,
-            AdminSessionService admins, TerminologyGovernanceService governance) {
+            TerminologyGovernanceService governance) {
         this.auth = auth;
         this.terminology = terminology;
-        this.admins = admins;
         this.governance = governance;
     }
 
@@ -92,11 +89,10 @@ public class TerminologyController {
     @PostMapping("/aliases")
     public Map<String, Object> createAlias(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
             @RequestBody AliasRequest request) {
-        admins.require(authorization);
+        HospitalPrincipal principal = principal(authorization);
         String hospital = request.hospitalId() == null ? "" : request.hospitalId().strip();
-        if (!hospital.isEmpty()) requireHospital(principal(hospitalAuthorization), hospital);
+        if (!hospital.isEmpty()) requireHospital(principal, hospital);
         return governance.createAlias(new AliasCommand(
                 hospital, request.conceptCode(), request.aliasText(), request.relationType(),
                 request.retrievalEnabled() == null || request.retrievalEnabled(),
@@ -107,20 +103,16 @@ public class TerminologyController {
     @PostMapping("/aliases/{aliasId}/approve")
     public Map<String, Object> approveAlias(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
             @PathVariable long aliasId, @RequestBody ActorRequest ignored) {
-        admins.require(authorization);
-        String hospital = hospitalAuthorization == null ? "" : principal(hospitalAuthorization).hospitalId();
-        return governance.approveAlias(aliasId, hospital);
+        HospitalPrincipal principal = principal(authorization);
+        return governance.approveAlias(aliasId, principal.hospitalId());
     }
 
     @PostMapping("/hospital-mappings")
     public Map<String, Object> createMapping(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
             @RequestBody MappingRequest request) {
-        admins.require(authorization);
-        HospitalPrincipal principal = principal(hospitalAuthorization);
+        HospitalPrincipal principal = principal(authorization);
         requireHospital(principal, request.hospitalId());
         return governance.createMapping(new MappingCommand(
                 request.hospitalId(), request.conceptCode(), request.codeSystem(), request.localCode(),
@@ -131,10 +123,8 @@ public class TerminologyController {
     @PostMapping("/hospital-mappings/{mappingId}/approve")
     public Map<String, Object> approveMapping(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
-            @RequestHeader(value = "X-Hospital-Authorization", required = false) String hospitalAuthorization,
             @PathVariable long mappingId, @RequestBody ActorRequest ignored) {
-        admins.require(authorization);
-        HospitalPrincipal principal = principal(hospitalAuthorization);
+        HospitalPrincipal principal = principal(authorization);
         return governance.approveMapping(mappingId, principal.hospitalId());
     }
 
@@ -142,7 +132,7 @@ public class TerminologyController {
     public Map<String, Object> publish(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestBody ActorRequest ignored) {
-        admins.require(authorization);
+        principal(authorization);
         return governance.publish();
     }
 
@@ -150,7 +140,7 @@ public class TerminologyController {
     public Map<String, Object> restore(
             @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @PathVariable String releaseId, @RequestBody ActorRequest ignored) {
-        admins.require(authorization);
+        principal(authorization);
         return governance.restore(releaseId);
     }
 
