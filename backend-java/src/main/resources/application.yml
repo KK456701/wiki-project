@@ -55,7 +55,9 @@ management:
         include: health,info
 
 wiki:
-  # knowledge.root 已废弃：知识库完全切换到 knowledge-index（实体页由 EntityPageParser 扫 classpath:knowledge-index/entities/*.md）
+  # 可指向外部 knowledge-index；显式配置的目录不存在时启动失败，不回退 classpath。
+  knowledge-index-root: ${WIKI_KNOWLEDGE_INDEX_ROOT:classpath:knowledge-index}
+  # knowledge.root 已废弃，保留仅供旧测试兼容。
   # 旧配置保留仅供测试兼容构造器使用
   knowledge:
     root: ${WIKI_KNOWLEDGE_ROOT:src/main/resources/core-rules-wiki}

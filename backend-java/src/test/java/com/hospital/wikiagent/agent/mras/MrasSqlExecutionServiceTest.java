@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +18,8 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 
 import com.hospital.wikiagent.agent.runtime.ToolResult;
+import com.hospital.wikiagent.agent.extraction.HospitalExecutionLock;
+import com.hospital.wikiagent.agent.extraction.ExtractionSnapshotRegistry;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
@@ -46,6 +49,12 @@ class MrasSqlExecutionServiceTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<SyncDataService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(syncDataService);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<HospitalExecutionLock> lockProvider = mock(ObjectProvider.class);
+        when(lockProvider.getIfAvailable()).thenReturn(new HospitalExecutionLock());
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ExtractionSnapshotRegistry> snapshotProvider = mock(ObjectProvider.class);
+        when(snapshotProvider.getIfAvailable()).thenReturn(null);
         service = new MrasSqlExecutionService(
                 entityPageParser,
                 new ConceptPageParser(),
@@ -55,7 +64,9 @@ class MrasSqlExecutionServiceTest {
                 new SqlParameterBinder(),
                 databaseQuery,
                 provider,
-                props);
+                props,
+                lockProvider,
+                snapshotProvider);
     }
 
     @Test
@@ -123,6 +134,41 @@ class MrasSqlExecutionServiceTest {
         assertThat(result.ok()).isTrue();
         assertThat(result.data().get("status")).isEqualTo("empty");
         assertThat(result.data().get("noSample")).isEqualTo(true);
+    }
+
+    @Test
+    void boundDetailUsesSavedCardCountsAndExtractsOnlyOnce() {
+        when(databaseQuery.execute(eq(DatabaseRole.REAL), anyString()))
+                .thenReturn(List.of(
+                        Map.of(
+                                "__meets_numerator", 1,
+                                "__detail_numerator_count", 1L,
+                                "__DETAIL_DENOMINATOR_COUNT", "2",
+                                "ENCOUNTER_ID", 1L),
+                        Map.of(
+                                "__meets_numerator", 0,
+                                "__detail_numerator_count", 1L,
+                                "__DETAIL_DENOMINATOR_COUNT", "2",
+                                "ENCOUNTER_ID", 2L)));
+
+        ToolResult result = service.executeBoundDetail(
+                "HXZD-001-001", null,
+                new MrasDetailSqlExtractor(entityPageParser)
+                        .extract("HXZD-001-001", null).detailSql(),
+                "hash",
+                LocalDateTime.of(2025, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                1L, 2L);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.data().get("cardNumerator")).isEqualTo(1L);
+        assertThat(result.data().get("cardDenominator")).isEqualTo(2L);
+        assertThat(String.valueOf(result.data().get("rows")))
+                .doesNotContain("__detail_numerator_count")
+                .doesNotContain("__detail_denominator_count");
+        verify(syncDataService, times(1))
+                .syncEventData(org.mockito.ArgumentMatchers.any());
+        verify(databaseQuery, times(1)).execute(eq(DatabaseRole.REAL), anyString());
     }
 
     @Test

@@ -1,7 +1,5 @@
 package com.hospital.wikiagent.agent.mras;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -11,8 +9,8 @@ import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,16 +23,21 @@ import org.springframework.stereotype.Component;
 public class ConceptPageParser {
 
     private static final Logger log = LoggerFactory.getLogger(ConceptPageParser.class);
-    private static final String CONCEPTS_PATTERN =
-            "classpath:knowledge-index/concepts/*.md";
     private static final Pattern CODE_COMMENT = Pattern.compile(
             "<!--\\s*concept:\\s*(HXZD-\\d{3}-\\d{3})");
     private static final Pattern TITLE_CODE = Pattern.compile(
             "title:\\s*\"(HXZD-\\d{3}-\\d{3})");
 
     private final Map<String, ConceptPageData> conceptsByCode;
+    private final KnowledgeIndexResources resources;
 
     public ConceptPageParser() {
+        this(KnowledgeIndexResources.classpathDefault());
+    }
+
+    @Autowired
+    public ConceptPageParser(KnowledgeIndexResources resources) {
+        this.resources = resources;
         this.conceptsByCode = loadAll();
     }
 
@@ -52,28 +55,24 @@ public class ConceptPageParser {
 
     private Map<String, ConceptPageData> loadAll() {
         Map<String, ConceptPageData> map = new LinkedHashMap<>();
-        try {
-            var resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources(CONCEPTS_PATTERN);
-            for (Resource resource : resources) {
-                String filename = resource.getFilename();
-                if (filename == null) {
-                    continue;
-                }
-                try {
-                    String content = resource.getContentAsString(StandardCharsets.UTF_8);
-                    ConceptPageData data = parse(content);
-                    if (data != null) {
-                        map.putIfAbsent(data.code(), data);
-                    }
-                } catch (Exception exception) {
-                    log.warn("解析概念页失败 {}: {}", filename, exception.getMessage());
-                }
+        Resource[] conceptResources = resources.markdownResources("concepts");
+        for (Resource resource : conceptResources) {
+            String filename = resource.getFilename();
+            if (filename == null) {
+                continue;
             }
-        } catch (IOException exception) {
-            throw new UncheckedIOException("无法扫描 knowledge-index/concepts 目录", exception);
+            try {
+                String content = resource.getContentAsString(StandardCharsets.UTF_8);
+                ConceptPageData data = parse(content);
+                if (data != null) {
+                    map.putIfAbsent(data.code(), data);
+                }
+            } catch (Exception exception) {
+                log.warn("解析概念页失败 {}: {}", filename, exception.getMessage());
+            }
         }
-        log.info("知识库概念页加载完成: {} 个指标", map.size());
+        log.info("知识库概念页加载完成: {} 个指标, root={}",
+                map.size(), resources.description());
         return map;
     }
 

@@ -24,7 +24,7 @@ class RuleReadControllerTest {
         RuleReadController controller = new RuleReadController(auth, rules);
 
         assertThatThrownBy(() -> controller.effective(
-                "Bearer token", "MQSI2025_001", "hospital_002"))
+                "Bearer token", "MQSI2025_001", "hospital_002", null))
                 .isInstanceOf(HospitalAuthException.class)
                 .hasMessage("不能访问其他医院的指标规则");
     }

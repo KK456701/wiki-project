@@ -8,6 +8,8 @@ import {
   type EffectiveRule,
   type IndicatorDetailResult,
 } from '../api/agent'
+import IndicatorDataFlowPanel from './IndicatorDataFlowPanel.vue'
+import MetricDetailRenderer from './MetricDetailRenderer.vue'
 
 const props = defineProps<{
   results: BatchIndicatorResult[]
@@ -15,8 +17,8 @@ const props = defineProps<{
   modelId?: string
 }>()
 
-type TabKey = 'caliber' | 'method' | 'detail'
-type DetailGroup = 'numerator' | 'denominator'
+type TabKey = 'caliber' | 'flow' | 'detail'
+type DetailGroup = string
 
 interface CardState {
   activeTab: TabKey | ''
@@ -63,7 +65,7 @@ function groupStatus(group: CardGroup): string {
   return group.items[0]?.status ?? 'FAILED'
 }
 
-/** 口径 / 核算方式 / 明细面板下沉到每个口径，状态按 ruleId + profileId 缓存 */
+/** 口径 / 数据链路 / 明细面板下沉到每个口径，状态按 ruleId + profileId 缓存 */
 function stateOf(item: BatchIndicatorResult): CardState {
   const key = `${item.ruleId}::${item.profileId || 'default'}`
   if (!states[key]) {
@@ -101,19 +103,16 @@ function statRange(item: BatchIndicatorResult): string {
   return `${item.statStart.slice(0, 10)} 至 ${item.statEnd.slice(0, 10)}`
 }
 
-/** 口径 / 核算方式面板要展示的知识库字段（按顺序），空值自动跳过 */
+/** 口径面板展示业务定义和计算规则；SQL统一移到数据链路节点。 */
 const caliberFields: Array<[string, string]> = [
   ['definition', '指标定义'],
   ['caliber', '统计口径'],
   ['numeratorRule', '分子口径'],
   ['denominatorRule', '分母口径'],
-  ['significance', '监测意义'],
-  ['dataSource', '数据来源'],
-]
-
-const methodFields: Array<[string, string]> = [
   ['formula', '计算公式'],
   ['resultUnit', '结果单位'],
+  ['significance', '监测意义'],
+  ['dataSource', '数据来源'],
 ]
 
 function ruleText(rule: EffectiveRule | undefined, key: string): string {
@@ -129,7 +128,7 @@ async function toggleTab(item: BatchIndicatorResult, tab: TabKey) {
     return
   }
   state.activeTab = tab
-  if (tab === 'caliber' || tab === 'method') {
+  if (tab === 'caliber' || tab === 'flow') {
     await loadRule(item, state)
   } else {
     await loadDetail(item, state, state.detailGroup)
@@ -156,18 +155,143 @@ async function switchDetailGroup(item: BatchIndicatorResult, detailGroup: Detail
   await loadDetail(item, state, detailGroup)
 }
 
-async function loadDetail(item: BatchIndicatorResult, state: CardState, detailGroup: DetailGroup) {
-  // 不用本地缓存：每次展开/切换都重新请求，后端明细 SQL 也是每次重新生成
+type DetailKind =
+  'COUNT_RATIO' | 'SUM_CONTRIBUTION' | 'MEDIAN_SAMPLE' | 'DUAL_SOURCE' | 'RATE_COMPARISON'
+
+function groupKind(group: CardGroup): DetailKind {
+  return (group.items.find((item) => item.detailKind)?.detailKind || 'COUNT_RATIO') as DetailKind
+}
+
+type ResultOutcome = 'reached' | 'not_reached' | 'pending' | 'no_sample' | 'failed'
+
+function numeric(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value !== 'string') return null
+  const parsed = Number(value.replace(/[%倍分钟小时天]/g, '').trim())
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function itemOutcome(item: BatchIndicatorResult): ResultOutcome {
+  if (item.status === 'FAILED') return 'failed'
+  if (item.status === 'NO_SAMPLE') return 'no_sample'
+  const value = numeric(item.resultValue)
+  const target = numeric(item.targetValue)
+  if (value === null || target === null || !item.targetDirection) return 'pending'
+  const direction = item.targetDirection.replace(/\s/g, '')
+  const reached = direction.includes('<')
+    ? (direction.includes('=') ? value <= target : value < target)
+    : direction.includes('>')
+      ? (direction.includes('=') ? value >= target : value > target)
+      : value === target
+  return reached ? 'reached' : 'not_reached'
+}
+
+function outcomeLabel(item: BatchIndicatorResult): string {
+  const value = itemOutcome(item)
+  if (value === 'reached') return '达标'
+  if (value === 'not_reached') return '未达标'
+  if (value === 'pending') return '待确认'
+  if (value === 'no_sample') return '无样本'
+  return '计算失败'
+}
+
+function qualityLabel(item: BatchIndicatorResult): string {
+  if (item.status === 'FAILED') return '异常'
+  if (item.status === 'NO_SAMPLE') return '无可用样本'
+  if (item.dataFreshness === 'extraction_failed_stale') return '旧快照'
+  if (item.qualityStatus
+    && !['NORMAL', 'OK', 'PASS', 'SUCCESS', '正常'].includes(item.qualityStatus.toUpperCase())) {
+    return item.qualityStatus
+  }
+  return '正常'
+}
+
+function profileName(item: BatchIndicatorResult): string {
+  return item.profileLabel || (item.profileId ? item.profileId : '推荐方案（公版）')
+}
+
+function isOfficial(item: BatchIndicatorResult): boolean {
+  return !item.profileId || /公版|推荐方案|默认/.test(profileName(item))
+}
+
+function recommendedItem(group: CardGroup): BatchIndicatorResult {
+  const successful = group.items.filter((item) => item.status === 'SUCCESS')
+  const officialSuccess = successful.find(isOfficial)
+  if (officialSuccess) return officialSuccess
+  if (successful.length) return successful[0]
+  return group.items.find(isOfficial) || group.items[0]
+}
+
+function recommendation(group: CardGroup): string {
+  const chosen = recommendedItem(group)
+  if (group.items.length > 1) {
+    if (!isOfficial(chosen) && chosen.status === 'SUCCESS') {
+      return `建议优先核查“${profileName(chosen)}”的可用结果；公版口径当前无法正常核算。该建议仅用于排查，系统没有自动替换公版口径，正式采用前需业务负责人确认。`
+    }
+    return `建议以“${profileName(chosen)}”作为本次主视图，其他口径保留作对照。不同口径的结果不得混算，切换正式口径前需人工确认。`
+  }
+  if (chosen.status === 'FAILED') {
+    return `计算失败：${chosen.errorMessage || '数据源或执行链路未完成'} 建议先确认依赖表、知识库概览 SQL 和数据采集模块，修复后重跑；不得补造指标值。`
+  }
+  if (chosen.status === 'NO_SAMPLE') {
+    return '本周期没有可用样本，这属于无法计算，不代表未达标。建议确认统计窗口、源表采集覆盖和对应业务模块是否实际启用。'
+  }
+  if (chosen.dataFreshness === 'extraction_failed_stale') {
+    return '本次结果使用旧快照，不能直接作为正式结论。建议先恢复数据抽取并重跑，再依据新批次结果处置。'
+  }
+  if (itemOutcome(chosen) === 'not_reached') {
+    return '结果未达到当前目标。建议先核对已绑定明细是否反映真实业务，再制定改善措施；不要仅凭总数判断为数据问题。'
+  }
+  if (itemOutcome(chosen) === 'pending') {
+    return '结果已固化，但目标值或达标方向不足以自动判定。建议由业务负责人确认目标口径后再形成结论。'
+  }
+  return '结果达到当前目标且批次事实可用。建议保留本次报告与明细快照，按周期持续观察变化。'
+}
+
+function targetDisplay(item: BatchIndicatorResult): string {
+  if (item.targetValue === undefined || item.targetValue === null) return '待确认'
+  const unit = item.unit === 'percentage' || item.unit === 'percent'
+    ? '%' : item.unit === 'ratio' ? ' 倍' : ''
+  return `${item.targetDirection || ''}${item.targetValue}${unit}`
+}
+
+function medianDisplay(item: BatchIndicatorResult): string {
+  if (item.resultValue === undefined || item.resultValue === null) return '—'
+  const value = Number(item.resultValue)
+  return `${Number.isInteger(value) ? value : value.toFixed(2)} 分钟`
+}
+
+function sampleCount(item: BatchIndicatorResult): number | string {
+  if (item.sampleCount !== undefined) return item.sampleCount
+  const parsed = item.calculationDisplay?.match(/n\s*=\s*(\d+)/i)?.[1]
+  if (parsed) return Number(parsed)
+  return item.status === 'NO_SAMPLE' ? 0 : '—'
+}
+
+function rateParts(item: BatchIndicatorResult): [string, string] {
+  const normalized = (item.calculationDisplay || '').replace('：', ':')
+  const [left, right] = normalized.split(':', 2).map((part) => part.trim())
+  return [left || '—', right || '—']
+}
+
+async function loadDetail(
+  item: BatchIndicatorResult,
+  state: CardState,
+  detailGroup: DetailGroup,
+  page = 1,
+) {
+  if (state.details[detailGroup]?.page === page) return
   if (state.detailLoading) return
-  if (!item.statStart || !item.statEnd) {
-    state.detailError = '缺少统计区间，无法查询明细。'
+  if (!item.batchRunId || !item.statStart || !item.statEnd) {
+    state.detailError = '缺少批次运行上下文，无法查询与原卡片绑定的明细。'
     return
   }
   state.detailLoading = true
   state.detailError = ''
   try {
     state.details[detailGroup] = await fetchIndicatorDetails(
-      props.token, item.ruleId, detailGroup, item.statStart, item.statEnd, props.modelId, item.profileId)
+      props.token, item.ruleId, detailGroup, item.batchRunId,
+      item.statStart, item.statEnd, item.profileId, page, 50)
   } catch (error) {
     state.detailError = error instanceof Error ? error.message : '明细查询失败。'
   } finally {
@@ -175,16 +299,10 @@ async function loadDetail(item: BatchIndicatorResult, state: CardState, detailGr
   }
 }
 
-function detailColumns(detail: IndicatorDetailResult | undefined): string[] {
-  const first = detail?.rows?.[0]
-  return first ? Object.keys(first) : []
+async function changeDetailPage(item: BatchIndicatorResult, state: CardState, page: number) {
+  await loadDetail(item, state, state.detailGroup, page)
 }
 
-function cellText(row: Record<string, unknown>, column: string): string {
-  const value = row[column]
-  if (value === undefined || value === null) return ''
-  return String(value)
-}
 </script>
 
 <template>
@@ -205,158 +323,144 @@ function cellText(row: Record<string, unknown>, column: string): string {
         <span class="indicator-status" :data-status="groupStatus(group)">{{ statusLabel(groupStatus(group)) }}</span>
       </header>
 
-      <div
-        v-for="item in group.items"
-        :key="item.profileId || 'default'"
-        class="indicator-caliber-block"
-      >
-        <p v-if="group.items.length > 1 || item.profileLabel" class="indicator-caliber-head">
-          <em class="indicator-profile-label">{{ item.profileLabel || '默认口径' }}</em>
-          <span class="indicator-status" :data-status="item.status">{{ statusLabel(item.status) }}</span>
-        </p>
-
-        <div class="indicator-result-grid">
-          <div class="indicator-result-primary">
-            <span>指标值</span>
-            <p class="indicator-value">{{ formatValue(item) }}</p>
-            <small v-if="statRange(item)">{{ statRange(item) }}</small>
-          </div>
-          <div class="indicator-result-stat">
-            <span>分子</span>
-            <strong>{{ item.numeratorCount ?? '—' }}</strong>
-            <small>符合条件的患者人次</small>
-          </div>
-          <div class="indicator-result-stat">
-            <span>分母</span>
-            <strong>{{ item.denominatorCount ?? '—' }}</strong>
-            <small>统计范围内患者人次</small>
-          </div>
-          <div class="indicator-result-check" :data-status="item.status">
-            <span aria-hidden="true">{{ item.status === 'SUCCESS' ? '✓' : item.status === 'NO_SAMPLE' ? '!' : '×' }}</span>
-            <div>
-              <strong>{{ statusLabel(item.status) }}</strong>
-              <small>{{ item.status === 'SUCCESS' ? '结果已通过证据验证' : '请查看本卡片的状态说明' }}</small>
-            </div>
-          </div>
-        </div>
-
-        <div class="indicator-card-body">
-          <p v-if="item.calculationDisplay" class="indicator-calc">{{ item.calculationDisplay }}</p>
-          <p v-if="item.dataFreshness === 'extraction_failed_stale'" class="indicator-stale-warning">
-            ⚠️ 数据抽取失败，本结果基于中间表旧数据，仅供参考
-          </p>
-          <p v-if="item.errorMessage" class="indicator-error">{{ item.errorMessage }}</p>
-        </div>
-
-        <div class="indicator-card-actions">
-          <button
-            type="button"
-            :class="{ active: stateOf(item).activeTab === 'caliber' }"
-            @click="toggleTab(item, 'caliber')"
-          >指标口径</button>
-          <button
-            type="button"
-            :class="{ active: stateOf(item).activeTab === 'method' }"
-            @click="toggleTab(item, 'method')"
-          >核算方式</button>
-          <button
-            type="button"
-            :class="{ active: stateOf(item).activeTab === 'detail' }"
-            @click="toggleTab(item, 'detail')"
-          >明细</button>
-        </div>
-
-        <!-- 指标口径 -->
-        <div v-if="stateOf(item).activeTab === 'caliber'" class="indicator-panel">
-          <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
-          <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
-          <dl v-else class="indicator-fields">
-            <template v-for="[key, label] in caliberFields" :key="key">
-              <template v-if="ruleText(stateOf(item).rule, key)">
-                <dt>{{ label }}</dt>
-                <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
-              </template>
-            </template>
-          </dl>
-        </div>
-
-        <!-- 核算方式 -->
-        <div v-if="stateOf(item).activeTab === 'method'" class="indicator-panel">
-          <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取核算方式…</p>
-          <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
+      <div class="indicator-profile-table" role="table" :aria-label="`${group.ruleName}口径结果`">
+        <div
+          class="indicator-profile-row indicator-profile-columns"
+          :data-kind="groupKind(group)"
+          role="row"
+        >
+          <span role="columnheader">口径方案</span>
+          <template v-if="groupKind(group) === 'MEDIAN_SAMPLE'">
+            <span role="columnheader">中位数</span>
+            <span role="columnheader">有效样本</span>
+          </template>
+          <template v-else-if="groupKind(group) === 'DUAL_SOURCE'">
+            <span role="columnheader">实际开展</span>
+            <span role="columnheader">备案目录</span>
+            <span role="columnheader">开展率</span>
+          </template>
+          <template v-else-if="groupKind(group) === 'RATE_COMPARISON'">
+            <span role="columnheader">四级手术率 A/B</span>
+            <span role="columnheader">三级手术率 C/D</span>
+            <span role="columnheader">两率对比</span>
+          </template>
+          <template v-else-if="groupKind(group) === 'SUM_CONTRIBUTION'">
+            <span role="columnheader">成功贡献值</span>
+            <span role="columnheader">抢救总量</span>
+            <span role="columnheader">结果值</span>
+          </template>
           <template v-else>
-            <dl class="indicator-fields">
-              <template v-for="[key, label] in methodFields" :key="key">
-                <template v-if="ruleText(stateOf(item).rule, key)">
-                  <dt>{{ label }}</dt>
-                  <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
-                </template>
-              </template>
-              <template v-if="item.calculationDisplay">
-                <dt>本次核算</dt>
-                <dd>{{ item.calculationDisplay }}</dd>
-              </template>
-            </dl>
-            <details v-if="ruleText(stateOf(item).rule, 'standardSql')" class="indicator-sql">
-              <summary>查看核算 SQL</summary>
-              <pre>{{ ruleText(stateOf(item).rule, 'standardSql') }}</pre>
-            </details>
+            <span role="columnheader">分子</span>
+            <span role="columnheader">分母</span>
+            <span role="columnheader">结果值</span>
           </template>
+          <span role="columnheader">达标</span>
+          <span role="columnheader">数据质量</span>
+          <span role="columnheader">操作</span>
         </div>
-
-        <!-- 明细 -->
-        <div v-if="stateOf(item).activeTab === 'detail'" class="indicator-panel">
-          <div class="indicator-detail-groups">
-            <button
-              type="button"
-              :class="{ active: stateOf(item).detailGroup === 'numerator' }"
-              @click="switchDetailGroup(item, 'numerator')"
-            >分子明细</button>
-            <button
-              type="button"
-              :class="{ active: stateOf(item).detailGroup === 'denominator' }"
-              @click="switchDetailGroup(item, 'denominator')"
-            >分母明细</button>
-          </div>
-          <p v-if="stateOf(item).detailLoading" class="indicator-loading">正在查询患者明细（首次查询需生成明细 SQL，可能需要十几秒）…</p>
-          <p v-else-if="stateOf(item).detailError" class="indicator-error">{{ stateOf(item).detailError }}</p>
-          <template v-else-if="stateOf(item).details[stateOf(item).detailGroup]">
-            <p class="indicator-detail-summary">
-              共 {{ stateOf(item).details[stateOf(item).detailGroup]!.rowCount }} 条记录
-              <template v-if="stateOf(item).details[stateOf(item).detailGroup]!.truncated">（仅展示前 200 条）</template>
-            </p>
-            <p
-              v-if="stateOf(item).details[stateOf(item).detailGroup]!.sqlSource === 'mras_patient_detail'"
-              class="indicator-error"
-            >⚠ 分子/分母明细 SQL 生成失败，当前展示的是知识库通用患者明细，不区分分子/分母，行数仅供参考。</p>
-            <div
-              v-if="stateOf(item).details[stateOf(item).detailGroup]!.rows.length"
-              class="indicator-detail-table"
-            >
-              <table>
-                <thead>
-                  <tr>
-                    <th v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ column }}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(row, rowIndex) in stateOf(item).details[stateOf(item).detailGroup]!.rows" :key="rowIndex">
-                    <td v-for="column in detailColumns(stateOf(item).details[stateOf(item).detailGroup])" :key="column">{{ cellText(row, column) }}</td>
-                  </tr>
-                </tbody>
-              </table>
+        <template v-for="item in group.items" :key="item.profileId || 'default'">
+          <div
+            class="indicator-profile-row"
+            :class="{ recommended: recommendedItem(group) === item }"
+            :data-kind="groupKind(group)"
+            role="row"
+          >
+            <div class="indicator-profile-name" role="cell">
+              <strong>{{ profileName(item) }}</strong>
+              <em v-if="recommendedItem(group) === item">AI 推荐</em>
+              <small v-if="statRange(item)">{{ statRange(item) }}</small>
             </div>
-            <p v-else class="indicator-loading">统计区间内没有明细记录。</p>
-            <details
-              v-if="stateOf(item).details[stateOf(item).detailGroup]!.detailSql"
-              class="indicator-sql"
-            >
-              <summary>查看明细 SQL</summary>
-              <pre>{{ stateOf(item).details[stateOf(item).detailGroup]!.detailSql }}</pre>
-            </details>
-          </template>
-        </div>
+            <template v-if="groupKind(group) === 'MEDIAN_SAMPLE'">
+              <strong class="profile-result-value" role="cell">{{ medianDisplay(item) }}</strong>
+              <strong role="cell">{{ sampleCount(item) }}</strong>
+            </template>
+            <template v-else-if="groupKind(group) === 'RATE_COMPARISON'">
+              <strong role="cell">{{ rateParts(item)[0] }}</strong>
+              <strong role="cell">{{ rateParts(item)[1] }}</strong>
+              <strong class="profile-result-value" role="cell">
+                {{ item.calculationDisplay || '—' }}
+              </strong>
+            </template>
+            <template v-else>
+              <strong role="cell">{{ item.numeratorCount ?? '—' }}</strong>
+              <strong role="cell">{{ item.denominatorCount ?? '—' }}</strong>
+              <strong class="profile-result-value" role="cell">{{ formatValue(item) }}</strong>
+            </template>
+            <span class="profile-outcome" :data-outcome="itemOutcome(item)" role="cell">
+              {{ outcomeLabel(item) }}
+            </span>
+            <span class="profile-quality" :data-status="item.status" role="cell">
+              {{ qualityLabel(item) }}
+            </span>
+            <div class="indicator-row-actions" role="cell">
+              <button
+                type="button"
+                :class="{ active: stateOf(item).activeTab === 'caliber' }"
+                @click="toggleTab(item, 'caliber')"
+              >口径</button>
+              <button
+                type="button"
+                :class="{ active: stateOf(item).activeTab === 'flow' }"
+                @click="toggleTab(item, 'flow')"
+              >数据链路</button>
+              <button
+                type="button"
+                :class="{ active: stateOf(item).activeTab === 'detail' }"
+                @click="toggleTab(item, 'detail')"
+              >明细</button>
+            </div>
+          </div>
+
+          <div v-if="stateOf(item).activeTab" class="indicator-profile-panel">
+            <header>
+              <strong>{{ profileName(item) }}</strong>
+              <span>目标 {{ targetDisplay(item) }}</span>
+            </header>
+
+            <!-- 指标口径 -->
+            <div v-if="stateOf(item).activeTab === 'caliber'" class="indicator-panel">
+              <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在读取本院生效口径…</p>
+              <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
+              <dl v-else class="indicator-fields">
+                <template v-for="[key, label] in caliberFields" :key="key">
+                  <template v-if="ruleText(stateOf(item).rule, key)">
+                    <dt>{{ label }}</dt>
+                    <dd>{{ ruleText(stateOf(item).rule, key) }}</dd>
+                  </template>
+                </template>
+              </dl>
+            </div>
+
+            <!-- 数据链路 -->
+            <div v-if="stateOf(item).activeTab === 'flow'" class="indicator-panel">
+              <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在生成数据链路…</p>
+              <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
+              <IndicatorDataFlowPanel v-else :flow="stateOf(item).rule?.dataFlow" />
+            </div>
+
+            <!-- 明细 -->
+            <div v-if="stateOf(item).activeTab === 'detail'" class="indicator-panel">
+              <MetricDetailRenderer
+                :kind="item.detailKind"
+                :detail="stateOf(item).details[stateOf(item).detailGroup]"
+                :group="stateOf(item).detailGroup"
+                :loading="stateOf(item).detailLoading"
+                :error="stateOf(item).detailError"
+                @group="switchDetailGroup(item, $event)"
+                @page="changeDetailPage(item, stateOf(item), $event)"
+              />
+            </div>
+          </div>
+        </template>
       </div>
+
+      <p v-if="group.items.some((item) => item.calculationDisplay)" class="indicator-calc-summary">
+        {{ recommendedItem(group).calculationDisplay }}
+      </p>
+      <aside class="indicator-ai-advice" :data-status="groupStatus(group)">
+        <strong>AI 建议</strong>
+        <p>{{ recommendation(group) }}</p>
+      </aside>
     </article>
   </section>
 </template>

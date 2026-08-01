@@ -1,7 +1,5 @@
 package com.hospital.wikiagent.agent.mras;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -15,8 +13,8 @@ import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,8 +27,6 @@ import org.springframework.stereotype.Component;
 public class EntityPageParser {
 
     private static final Logger log = LoggerFactory.getLogger(EntityPageParser.class);
-    private static final String ENTITIES_PATTERN =
-            "classpath:knowledge-index/entities/*.md";
     private static final Pattern FILENAME_CODE = Pattern.compile(
             "^(HXZD-\\d{3}-\\d{3})(?:_(\\d{3}))?_(.+?)(?:_([^_]+))?\\.md$");
     private static final Pattern SQL_BLOCK = Pattern.compile(
@@ -40,8 +36,15 @@ public class EntityPageParser {
     private final Map<String, EntityPageData> entitiesByVariantCode;
     /** 按基础编码索引（如 HXZD-001-001），指向主方案。 */
     private final Map<String, EntityPageData> entitiesByBaseCode;
+    private final KnowledgeIndexResources resources;
 
     public EntityPageParser() {
+        this(KnowledgeIndexResources.classpathDefault());
+    }
+
+    @Autowired
+    public EntityPageParser(KnowledgeIndexResources resources) {
+        this.resources = resources;
         this.entitiesByVariantCode = loadAll();
         this.entitiesByBaseCode = buildBaseIndex();
     }
@@ -99,28 +102,24 @@ public class EntityPageParser {
 
     private Map<String, EntityPageData> loadAll() {
         Map<String, EntityPageData> map = new LinkedHashMap<>();
-        try {
-            var resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources(ENTITIES_PATTERN);
-            for (Resource resource : resources) {
-                String filename = resource.getFilename();
-                if (filename == null) {
-                    continue;
-                }
-                try {
-                    String content = resource.getContentAsString(StandardCharsets.UTF_8);
-                    EntityPageData data = parse(filename, content);
-                    if (data != null) {
-                        map.merge(data.variantCode(), data, EntityPageParser::preferWithSql);
-                    }
-                } catch (Exception exception) {
-                    log.warn("解析实体页失败 {}: {}", filename, exception.getMessage());
-                }
+        Resource[] entityResources = resources.markdownResources("entities");
+        for (Resource resource : entityResources) {
+            String filename = resource.getFilename();
+            if (filename == null) {
+                continue;
             }
-        } catch (IOException exception) {
-            throw new UncheckedIOException("无法扫描 knowledge-index/entities 目录", exception);
+            try {
+                String content = resource.getContentAsString(StandardCharsets.UTF_8);
+                EntityPageData data = parse(filename, content);
+                if (data != null) {
+                    map.merge(data.variantCode(), data, EntityPageParser::preferWithSql);
+                }
+            } catch (Exception exception) {
+                log.warn("解析实体页失败 {}: {}", filename, exception.getMessage());
+            }
         }
-        log.info("知识库实体页加载完成: {} 个实体（含变体）", map.size());
+        log.info("知识库实体页加载完成: {} 个实体（含变体）, root={}",
+                map.size(), resources.description());
         return map;
     }
 

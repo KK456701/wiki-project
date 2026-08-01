@@ -68,6 +68,18 @@ class AgentTraceServiceTest {
         second.put("input", Map.of("messages", java.util.List.of()));
         second.put("output", Map.of("answerLength", 12));
         observer.onEvent(second);
+        Map<String, Object> initialization = new LinkedHashMap<>();
+        initialization.put("event", "trace_node");
+        initialization.put("nodeName", "batch_data_initialization_validation");
+        initialization.put("nodeType", "database");
+        initialization.put("status", "warning");
+        initialization.put("output", Map.of(
+                "items", java.util.List.of(Map.of(
+                        "sql", "SELECT COUNT_BIG(1) FROM SAFE_SOURCE",
+                        "parameters", Map.of("statStart", "2026-01-01"),
+                        "databaseError", "login secret must stay hidden")),
+                "password", "do-not-store"));
+        observer.onEvent(initialization);
         service.finish("TRACE_001", new AgentRunResult(
                 "已完成", "final_answer", "TRACE_001", "SESSION_001", 1, null, null));
 
@@ -94,6 +106,13 @@ class AgentTraceServiceTest {
         assertThat(answerNode)
                 .containsEntry("flowStage", "answer")
                 .containsEntry("flowStageOrder", 6);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> initializationNode =
+                ((java.util.List<Map<String, Object>>) trace.get("nodes")).get(2);
+        assertThat(String.valueOf(initializationNode.get("outputData")))
+                .contains("SELECT COUNT_BIG(1) FROM SAFE_SOURCE")
+                .contains("statStart")
+                .doesNotContain("do-not-store");
         assertThatThrownBy(() -> service.get("TRACE_001", principal("hospital_002")))
                 .isInstanceOf(AgentTraceService.AgentTraceNotFoundException.class);
 

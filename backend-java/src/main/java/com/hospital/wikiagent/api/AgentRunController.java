@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/agent")
 public class AgentRunController {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentRunController.class);
+    static final long STREAM_TIMEOUT_MILLIS = 1_800_000L;
 
     private final HospitalAuthService auth;
     private final CompoundAgentRuntime runner;
@@ -84,28 +86,30 @@ public class AgentRunController {
         String traceId = id("TRACE_");
         String resolvedRequestId = requestId == null || requestId.isBlank() ? id("REQ_") : requestId;
         traces.start(traceId, request.sessionId(), principal, request.query());
-        SseEmitter emitter = new SseEmitter(300_000L);
+        SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MILLIS);
+        AtomicBoolean streamOpen = new AtomicBoolean(true);
+        emitter.onTimeout(() -> streamOpen.set(false));
+        emitter.onError(ignored -> streamOpen.set(false));
+        emitter.onCompletion(() -> streamOpen.set(false));
         streamExecutor.submit(() -> {
             try {
                 var result = runner.run(
                         runRequest(request, principal, resolvedRequestId, traceId),
-                        traces.observer(traceId, event -> send(emitter, event)));
+                        traces.observer(
+                                traceId,
+                                event -> sendIfOpen(emitter, streamOpen, event)));
                 traces.finish(traceId, result);
-                emitter.complete();
+                completeIfOpen(emitter, streamOpen);
             } catch (RuntimeException exception) {
                 traces.fail(traceId, exception.getMessage());
                 LOGGER.error("Java Agent stream failed, traceId={}", traceId, exception);
-                try {
-                    send(emitter, Map.of(
-                            "event", "agent_error",
-                            "traceId", traceId,
-                            "message", "Java Agent 运行失败。",
-                            "stopReason", "runtime_error",
-                            "status", "failed"));
-                    emitter.complete();
-                } catch (RuntimeException sendFailure) {
-                    emitter.completeWithError(sendFailure);
-                }
+                sendIfOpen(emitter, streamOpen, Map.of(
+                        "event", "agent_error",
+                        "traceId", traceId,
+                        "message", "Java Agent 运行失败。",
+                        "stopReason", "runtime_error",
+                        "status", "failed"));
+                completeIfOpen(emitter, streamOpen);
             }
         });
         return emitter;
@@ -121,13 +125,37 @@ public class AgentRunController {
                 requestId, traceId, null, "{}", "", principal);
     }
 
-    private static void send(SseEmitter emitter, Map<String, Object> event) {
+    /**
+     * SSE 只是运行进度的通知通道，客户端切换会话、刷新页面或超时不能反向中断
+     * 已持久化的批次任务。连接关闭后静默停止推送，后台仍继续计算、收尾并写入会话。
+     */
+    static void sendIfOpen(
+            SseEmitter emitter,
+            AtomicBoolean streamOpen,
+            Map<String, Object> event) {
+        if (!streamOpen.get()) {
+            return;
+        }
         try {
             emitter.send(SseEmitter.event()
                     .name(String.valueOf(event.getOrDefault("event", "agent_error")))
                     .data(event, MediaType.APPLICATION_JSON));
-        } catch (IOException exception) {
-            throw new IllegalStateException("SSE 连接已断开", exception);
+        } catch (IOException | IllegalStateException exception) {
+            streamOpen.set(false);
+            LOGGER.debug("SSE connection closed; background Agent run continues: {}",
+                    exception.getMessage());
+        }
+    }
+
+    private static void completeIfOpen(
+            SseEmitter emitter,
+            AtomicBoolean streamOpen) {
+        if (streamOpen.compareAndSet(true, false)) {
+            try {
+                emitter.complete();
+            } catch (IllegalStateException ignored) {
+                // 容器可能已先完成响应；后台运行结果不受影响。
+            }
         }
     }
 

@@ -63,10 +63,13 @@ function nodeMeta(node: ExecutionNode): string {
           <small>{{ categoryLabels[node.category] }}</small>
           <strong>{{ node.label }}<mark v-if="node.repeatCount && node.repeatCount > 1">×{{ node.repeatCount }}</mark></strong>
           <em v-if="nodeMeta(node)">{{ nodeMeta(node) }}</em>
+          <em v-if="node.status === 'failed' && node.errorMessage" class="execution-node-error">
+            {{ node.errorCode ? `${node.errorCode} · ` : '' }}{{ node.errorMessage }}
+          </em>
         </span>
         <span class="execution-node-status">
           <time v-if="node.durationMs !== undefined">{{ formatDuration(node.durationMs) }}</time>
-          <small>{{ node.status === 'failed' ? '失败' : node.status === 'warning' ? '需关注' : '已完成' }}</small>
+          <small>{{ node.status === 'running' ? '执行中' : node.status === 'failed' ? '失败' : node.status === 'warning' ? '需关注' : '已完成' }}</small>
         </span>
         <span class="execution-node-arrow" aria-hidden="true">›</span>
       </button>

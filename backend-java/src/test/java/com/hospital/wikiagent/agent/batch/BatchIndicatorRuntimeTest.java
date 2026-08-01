@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,6 +26,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.hospital.wikiagent.agent.batch.IndicatorExecutionResult.Status;
+import com.hospital.wikiagent.agent.initialization.BatchDataInitializationValidator;
+import com.hospital.wikiagent.agent.initialization.InitializationValidationReport;
+import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.Decision;
+import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.ProfileValidation;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationSnapshot;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeState;
@@ -53,6 +58,7 @@ class BatchIndicatorRuntimeTest {
     private AgentConversationMemory conversations;
     private AgentModelProperties properties;
     private MrasSqlExecutionService mrasExecution;
+    private BatchDataInitializationValidator initializationValidator;
     private BatchIndicatorRuntime runtime;
 
     private final List<Map<String, Object>> events = new CopyOnWriteArrayList<>();
@@ -71,9 +77,11 @@ class BatchIndicatorRuntimeTest {
         properties.setBatchWorkerConcurrency(2);
         properties.setBatchMaxIndicators(35);
         mrasExecution = mock(MrasSqlExecutionService.class);
+        initializationValidator = mock(BatchDataInitializationValidator.class);
         runtime = new BatchIndicatorRuntime(
                 rules, executor, new BatchResultAggregator(), jobStore,
-                timeResolver, properties, conversations, mrasExecution);
+                timeResolver, properties, conversations, mrasExecution,
+                initializationValidator);
 
         events.clear();
         active.set(0);
@@ -96,6 +104,20 @@ class BatchIndicatorRuntimeTest {
                         "profileName", "默认口径",
                         // extraction_contract 内层是知识 Profile 透传键，保持 snake
                         "extractionContract", Map.of("event_no", "CORE_DEFAULT")));
+        when(initializationValidator.validate(any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<BatchDataInitializationValidator.ValidationTarget> targets =
+                            invocation.getArgument(2);
+                    return new InitializationValidationReport(
+                            "BJOB_test", "hospital_001", START, END, 1,
+                            "NORMAL", true, true,
+                            targets.stream().map(target -> new ProfileValidation(
+                                    target.ruleId(), target.ruleName(), target.profileId(),
+                                    target.profileLabel(), Decision.RUNNABLE, "", "通过", null))
+                                    .toList(),
+                            List.of());
+                });
     }
 
     @Test
@@ -132,16 +154,69 @@ class BatchIndicatorRuntimeTest {
         assertThat(types.get(types.size() - 2)).isEqualTo("assistant_message");
         assertThat(types.get(types.size() - 1)).isEqualTo("agent_done");
         long progress = types.stream().filter("stage_update"::equals).count();
-        assertThat(progress).isEqualTo(3);
+        assertThat(progress).isEqualTo(4);
         Map<String, Object> start = events.stream()
                 .filter(event -> "agent_start".equals(event.get("event")))
                 .findFirst().orElseThrow();
         assertThat(start.get("batch")).isEqualTo(true);
         assertThat(start.get("subtaskCount")).isEqualTo(35);
+        assertThat(events).anyMatch(event ->
+                "stage_update".equals(event.get("event"))
+                        && "batch_data_initialization_validation".equals(event.get("nodeName"))
+                        && "running".equals(event.get("status")));
         assertThat(events.stream()
                 .filter(event -> "trace_node".equals(event.get("event")))
                 .filter(event -> "batch_indicator".equals(event.get("nodeName")))
                 .count()).isEqualTo(3);
+        List<String> nodeNames = events.stream()
+                .filter(event -> "trace_node".equals(event.get("event")))
+                .map(event -> String.valueOf(event.get("nodeName")))
+                .toList();
+        assertThat(nodeNames.indexOf("batch_data_initialization_validation"))
+                .isLessThan(nodeNames.indexOf("batch_indicator"));
+    }
+
+    @Test
+    void initializationBlocksAndNoSampleRemainInFinalResultsWithoutExecution() {
+        stubIndicators("R1", "R2", "R3");
+        stubExecutorSuccess();
+        doReturn(new InitializationValidationReport(
+                        "BJOB_test", "hospital_001", START, END, 7,
+                        "PARTIAL_BLOCKED", true, true,
+                        List.of(
+                                new ProfileValidation(
+                                        "R1", "指标一", "R1-default", "默认口径",
+                                        Decision.RUNNABLE, "", "通过", 10L),
+                                new ProfileValidation(
+                                        "R2", "指标二", "R2-default", "默认口径",
+                                        Decision.NO_SAMPLE, "NO_SAMPLE", "统计窗口内无数据", 0L),
+                                new ProfileValidation(
+                                        "R3", "指标三", "R3-default", "默认口径",
+                                        Decision.BLOCKED, "INIT_MISSING_COLUMN", "缺少计算字段", null)),
+                        List.of()))
+                .when(initializationValidator)
+                .validate(any(), any(), any(), any(), any(), any(), any());
+
+        AgentRunResult result = runtime.run(request(), observer, batchSpec());
+
+        assertThat(result.stepCount()).isEqualTo(3);
+        assertThat(result.answer())
+                .contains("3 项指标、3 个已审批口径")
+                .contains("1 个口径成功、1 个口径无样本、1 个口径失败");
+        verify(executor, times(1)).execute(
+                anyString(), anyString(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), eq(START), eq(END),
+                any(AgentRuntimeContext.class));
+        verify(jobStore, times(3)).recordTask(eq("BJOB_test"), anyInt(), any());
+        verify(jobStore).finishJob(eq("BJOB_test"), eq("PARTIAL_SUCCESS"), eq(1), eq(1), eq(1));
+        assertThat(events.stream()
+                .filter(event -> "batch_indicator_result".equals(event.get("event")))
+                .count()).isEqualTo(3);
+        assertThat(events).anyMatch(event ->
+                "stage_update".equals(event.get("event"))
+                        && "failed".equals(event.get("status"))
+                        && "INIT_MISSING_COLUMN".equals(event.get("errorCode"))
+                        && String.valueOf(event.get("errorMessage")).contains("缺少计算字段"));
     }
 
     @Test

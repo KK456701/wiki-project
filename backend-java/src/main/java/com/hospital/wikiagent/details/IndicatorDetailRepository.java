@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Repository
 public class IndicatorDetailRepository {
+    private static final int SNAPSHOT_ROW_INSERT_CHUNK = 200;
     private static final DateTimeFormatter SQL_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final JdbcTemplate jdbc;
@@ -86,6 +87,20 @@ public class IndicatorDetailRepository {
                       last_downloaded_at TIMESTAMP NULL,
                       error_message TEXT
                     )
+                    """);
+            jdbc.execute("""
+                    CREATE TABLE IF NOT EXISTS med_indicator_detail_snapshot_row (
+                      snapshot_id VARCHAR(64) NOT NULL,
+                      row_no BIGINT NOT NULL,
+                      meets_numerator INT NOT NULL,
+                      row_json TEXT NOT NULL,
+                      PRIMARY KEY (snapshot_id, row_no)
+                    )
+                    """);
+            jdbc.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_detail_snapshot_row_group
+                    ON med_indicator_detail_snapshot_row
+                      (snapshot_id, meets_numerator, row_no)
                     """);
         } catch (RuntimeException ignored) {
             // 详情能力会在实际调用时返回运行库错误，不阻止影子服务启动。
@@ -157,7 +172,35 @@ public class IndicatorDetailRepository {
             String createdBy,
             Instant createdAt,
             Instant expiresAt) {
-        if (snapshotByRun(context.runId()).isPresent()) {
+        beginSnapshot(
+                snapshotId,
+                context.runId(),
+                context.hospitalId(),
+                context.ruleId(),
+                relativePath,
+                createdBy,
+                createdAt,
+                expiresAt);
+    }
+
+    /**
+     * 复用同一张明细快照表保存批量指标详情。
+     *
+     * <p>批量指标没有 {@code med_sql_run_log}，其运行上下文来自
+     * {@code med_agent_batch_job/task}，因此这里接收已经完成医院/用户隔离校验后的
+     * 最小标量。调用方仍必须使用唯一的详情运行 ID，不能把批次 ID 直接复用给多个指标。</p>
+     */
+    @Transactional
+    public void beginSnapshot(
+            String snapshotId,
+            String runId,
+            String hospitalId,
+            String ruleId,
+            String relativePath,
+            String createdBy,
+            Instant createdAt,
+            Instant expiresAt) {
+        if (snapshotByRun(runId).isPresent()) {
             jdbc.update("""
                     UPDATE med_indicator_detail_snapshot
                     SET snapshot_id=?, hospital_id=?, rule_id=?, relative_path=?,
@@ -166,8 +209,8 @@ public class IndicatorDetailRepository {
                         created_by=?, created_at=?, expires_at=?, error_message=NULL
                     WHERE run_id=?
                     """,
-                    snapshotId, context.hospitalId(), context.ruleId(), relativePath, createdBy,
-                    Timestamp.from(createdAt), Timestamp.from(expiresAt), context.runId());
+                    snapshotId, hospitalId, ruleId, relativePath, createdBy,
+                    Timestamp.from(createdAt), Timestamp.from(expiresAt), runId);
             return;
         }
         jdbc.update("""
@@ -176,7 +219,7 @@ public class IndicatorDetailRepository {
                   status, created_by, created_at, expires_at
                 ) VALUES (?, ?, ?, ?, ?, 'creating', ?, ?, ?)
                 """,
-                snapshotId, context.runId(), context.hospitalId(), context.ruleId(),
+                snapshotId, runId, hospitalId, ruleId,
                 relativePath, createdBy, Timestamp.from(createdAt), Timestamp.from(expiresAt));
     }
 
@@ -200,6 +243,90 @@ public class IndicatorDetailRepository {
         jdbc.update(
                 "UPDATE med_indicator_detail_snapshot SET status='failed', error_message=? WHERE run_id=?",
                 limited(message), runId);
+    }
+
+    /**
+     * 保存快照行索引，供详情页稳定数据库分页。完整 gzip 文件仍是完整性校验和导出的
+     * 主快照，行表只承担当页查询，不访问源库。
+     */
+    @Transactional
+    public void replaceSnapshotRows(
+            String snapshotId,
+            List<Map<String, Object>> rows,
+            String numeratorFlagColumn) {
+        jdbc.update(
+                "DELETE FROM med_indicator_detail_snapshot_row WHERE snapshot_id=?",
+                snapshotId);
+        List<Object[]> values = new ArrayList<>(rows.size());
+        int rowNo = 0;
+        for (Map<String, Object> row : rows) {
+            Object flag = row.get(numeratorFlagColumn);
+            int meets = flag instanceof Number number
+                    ? (number.intValue() == 1 ? 1 : 0)
+                    : (flag != null && ("1".equals(flag.toString().strip())
+                            || "true".equalsIgnoreCase(flag.toString().strip())) ? 1 : 0);
+            values.add(new Object[] {
+                    snapshotId, ++rowNo, meets, json(row)
+            });
+        }
+        for (int start = 0; start < values.size(); start += SNAPSHOT_ROW_INSERT_CHUNK) {
+            int end = Math.min(values.size(), start + SNAPSHOT_ROW_INSERT_CHUNK);
+            StringBuilder sql = new StringBuilder("""
+                    INSERT INTO med_indicator_detail_snapshot_row
+                      (snapshot_id, row_no, meets_numerator, row_json)
+                    VALUES
+                    """);
+            List<Object> parameters = new ArrayList<>((end - start) * 4);
+            for (int index = start; index < end; index++) {
+                if (index > start) {
+                    sql.append(',');
+                }
+                sql.append("(?, ?, ?, ?)");
+                for (Object value : values.get(index)) {
+                    parameters.add(value);
+                }
+            }
+            jdbc.update(sql.toString(), parameters.toArray());
+        }
+    }
+
+    public List<Map<String, Object>> pageSnapshotRows(
+            String snapshotId,
+            boolean numeratorOnly,
+            int offset,
+            int pageSize) {
+        String sql = numeratorOnly
+                ? """
+                  SELECT row_json FROM med_indicator_detail_snapshot_row
+                  WHERE snapshot_id=? AND meets_numerator=1
+                  ORDER BY row_no
+                  LIMIT ? OFFSET ?
+                  """
+                : """
+                  SELECT row_json FROM med_indicator_detail_snapshot_row
+                  WHERE snapshot_id=?
+                  ORDER BY row_no
+                  LIMIT ? OFFSET ?
+                  """;
+        return jdbc.queryForList(sql, snapshotId, pageSize, offset).stream()
+                .map(row -> map(row.get("row_json")))
+                .map(value -> java.util.Collections.unmodifiableMap(
+                        new LinkedHashMap<>(value)))
+                .toList();
+    }
+
+    public int snapshotRowCount(String snapshotId, boolean numeratorOnly) {
+        String sql = numeratorOnly
+                ? """
+                  SELECT COUNT(1) FROM med_indicator_detail_snapshot_row
+                  WHERE snapshot_id=? AND meets_numerator=1
+                  """
+                : """
+                  SELECT COUNT(1) FROM med_indicator_detail_snapshot_row
+                  WHERE snapshot_id=?
+                  """;
+        Integer count = jdbc.queryForObject(sql, Integer.class, snapshotId);
+        return count == null ? 0 : count;
     }
 
     public Optional<ExportRecord> export(String exportId) {

@@ -98,6 +98,7 @@ if (Test-Path -LiteralPath $ConfigPath) {
         Set-EnvironmentDefault 'WIKI_RUNTIME_DB_URL' ('jdbc:sqlite:' + $databasePath)
     }
     Set-EnvironmentDefault 'WIKI_ADMIN_PASSWORD' (Get-YamlScalar $config 'admin_password')
+    Set-EnvironmentDefault 'WIKI_KNOWLEDGE_INDEX_ROOT' (Get-YamlScalar $config 'knowledge_index_root')
     Set-EnvironmentDefault 'AGENT_DEFAULT_MODEL' (Get-YamlScalar $config 'default_model')
     Set-EnvironmentDefault 'OLLAMA_MODEL' (Get-YamlScalar $config 'ollama_model')
     Set-EnvironmentDefault 'OLLAMA_BASE_URL' (Get-YamlScalar $config 'ollama_base_url')

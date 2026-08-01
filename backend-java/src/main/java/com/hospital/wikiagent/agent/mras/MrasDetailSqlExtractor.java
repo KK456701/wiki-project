@@ -83,6 +83,8 @@ public class MrasDetailSqlExtractor {
 
     /** 单结果集判定列名：1=命中分子，0=仅分母。上层据此过滤分子行、按行数与卡片对账。 */
     public static final String NUMERATOR_FLAG_COLUMN = "__meets_numerator";
+    public static final String NUMERATOR_COUNT_COLUMN = "__detail_numerator_count";
+    public static final String DENOMINATOR_COUNT_COLUMN = "__detail_denominator_count";
 
     /**
      * 提取结果。
@@ -97,14 +99,25 @@ public class MrasDetailSqlExtractor {
             boolean supported,
             String detailSql,
             String overviewSqlHash,
-            String unsupportedReason) {
+            String unsupportedReason,
+            MrasDetailKind detailKind,
+            List<String> identityColumns,
+            List<String> orderColumns,
+            String contractVersion) {
 
-        static DetailExtraction unsupported(String reason) {
-            return new DetailExtraction(false, null, null, reason);
+        static DetailExtraction unsupported(MrasDetailKind detailKind, String reason) {
+            return new DetailExtraction(false, null, null, reason, detailKind,
+                    List.of(), List.of(), MrasDetailContractRegistry.CONTRACT_VERSION);
         }
 
-        static DetailExtraction of(String detailSql, String overviewSqlHash) {
-            return new DetailExtraction(true, detailSql, overviewSqlHash, null);
+        static DetailExtraction of(
+                String detailSql,
+                String overviewSqlHash,
+                List<String> identityColumns,
+                List<String> orderColumns) {
+            return new DetailExtraction(true, detailSql, overviewSqlHash, null,
+                    MrasDetailKind.COUNT_RATIO, identityColumns, orderColumns,
+                    MrasDetailContractRegistry.CONTRACT_VERSION);
         }
     }
 
@@ -115,9 +128,20 @@ public class MrasDetailSqlExtractor {
      * @param profileId     口径变体编码（如 HXZD-015-001_002，可为 null 表示主方案）
      */
     public DetailExtraction extract(String indicatorCode, String profileId) {
+        MrasDetailKind detailKind = MrasDetailContractRegistry.kindFor(indicatorCode, profileId);
+        if (detailKind != MrasDetailKind.COUNT_RATIO) {
+            return DetailExtraction.unsupported(detailKind, switch (detailKind) {
+                case SUM_CONTRIBUTION -> "该指标需要按贡献值求和展示，不能使用普通行数分子/分母。";
+                case MEDIAN_SAMPLE -> "该指标需要展示中位数计算样本，不能使用普通分子/分母。";
+                case DUAL_SOURCE -> "该指标的分子与分母来自两个独立数据源，需要双查询计划。";
+                case RATE_COMPARISON -> "该指标比较两个独立率，需要展示四组明细。";
+                default -> "该指标暂不支持普通分子/分母明细。";
+            });
+        }
         EntityPageData entity = resolveEntity(indicatorCode, profileId);
         if (entity == null) {
-            return DetailExtraction.unsupported("知识库中没有指标 " + indicatorCode + " 的实体页。");
+            return DetailExtraction.unsupported(detailKind,
+                    "知识库中没有指标 " + indicatorCode + " 的实体页。");
         }
 
         // P0：只从「目标表-概览」口径提取（卡片分子/分母的真实来源），不回退科室统计 SQL。
@@ -125,30 +149,32 @@ public class MrasDetailSqlExtractor {
         // 回退会产生与卡片不一致的静默假阳性（如 HXZD-004-001：卡片 6/59，科室统计 30/155）。
         String source = entity.overviewSql();
         if (source == null || source.isBlank()) {
-            return DetailExtraction.unsupported("该指标缺少「目标表-概览」口径 SQL，无法生成与卡片同源的明细。");
+            return DetailExtraction.unsupported(detailKind,
+                    "该指标缺少「目标表-概览」口径 SQL，无法生成与卡片同源的明细。");
         }
         String sql = MrasSqlExecutionService.stripLeadingTrailingQuotes(source);
 
         String aggBody = findAggCteBody(sql);
         if (aggBody == null) {
-            return DetailExtraction.unsupported(
+            return DetailExtraction.unsupported(detailKind,
                     "未定位到分子/分母聚合口径（多为求和、中位数、时间等非比率型指标）。");
         }
 
         List<String> conditions = collectNumeratorConditions(aggBody);
         if (conditions.isEmpty()) {
-            return DetailExtraction.unsupported(
+            return DetailExtraction.unsupported(detailKind,
                     "该指标聚合口径无 COUNT(CASE WHEN) 分子判定（求和/时间/中位数等非比率指标）。");
         }
         if (conditions.size() >= 2) {
-            return DetailExtraction.unsupported(
+            return DetailExtraction.unsupported(detailKind,
                     "该指标存在多组不同分子判定（比率的比率等复合指标），无单一分子/分母口径。");
         }
         String condition = conditions.get(0);
 
         String fromClause = sliceFromToGroupBy(aggBody);
         if (fromClause == null) {
-            return DetailExtraction.unsupported("该指标聚合口径缺少 GROUP BY，无法机械转明细。");
+            return DetailExtraction.unsupported(detailKind,
+                    "该指标聚合口径缺少 GROUP BY，无法机械转明细。");
         }
 
         String dedupKey = distinctKey(aggBody);
@@ -160,7 +186,8 @@ public class MrasDetailSqlExtractor {
 
         log.info("确定性明细提取成功 {}（profileId={}）：去重键={}，分子判定={}",
                 indicatorCode, profileId, dedupKey == null ? "行级" : dedupKey, condition);
-        return DetailExtraction.of(detailSql, sha256(source));
+        List<String> identity = dedupKey == null ? List.of() : List.of(dedupKey);
+        return DetailExtraction.of(detailSql, sqlHash(source), identity, identity);
     }
 
     private EntityPageData resolveEntity(String indicatorCode, String profileId) {
@@ -180,8 +207,95 @@ public class MrasDetailSqlExtractor {
      * 及模板标记逐字保留，判定条件原样复制、不做语义改写。
      */
     private String buildRowLevelDetail(String fromClause, String condition) {
-        return "SELECT *, CASE WHEN (" + condition + ") THEN 1 ELSE 0 END AS \""
+        String alias = firstSourceAlias(fromClause);
+        String projection = alias == null ? "*" : alias + ".*";
+        return "SELECT " + projection + ", CASE WHEN (" + condition + ") THEN 1 ELSE 0 END AS \""
                 + NUMERATOR_FLAG_COLUMN + "\"\n" + fromClause;
+    }
+
+    /**
+     * 在数据库侧给同源母集追加分子/分母窗口计数。首次快照物化仍返回完整母集，
+     * 但 Java 不再自行按行统计卡片数量；空母集由调用方按 0/0 处理。
+     */
+    public static String withReconciliationCounts(String detailSql) {
+        return "SELECT __detail_source.*,\n"
+                + "  COUNT_BIG(1) OVER () AS \"" + DENOMINATOR_COUNT_COLUMN + "\",\n"
+                + "  SUM(CASE WHEN __detail_source.\"" + NUMERATOR_FLAG_COLUMN
+                + "\" = 1 THEN 1 ELSE 0 END) OVER () AS \""
+                + NUMERATOR_COUNT_COLUMN + "\"\n"
+                + "FROM (\n" + detailSql + "\n) __detail_source";
+    }
+
+    /**
+     * 找出 FROM 后第一个关系的别名，使行级 JOIN 查询只投影母集主关系列，避免外包一层
+     * 窗口查询时 JOIN 两侧同名列导致派生表列名冲突。无法安全定位时保留 SELECT *。
+     */
+    private static String firstSourceAlias(String fromClause) {
+        String text = fromClause == null ? "" : fromClause.strip();
+        if (!text.regionMatches(true, 0, "FROM", 0, 4)) {
+            return null;
+        }
+        int index = 4;
+        while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        if (index >= text.length()) {
+            return null;
+        }
+        if (text.charAt(index) == '(') {
+            int depth = 0;
+            boolean quoted = false;
+            for (; index < text.length(); index++) {
+                char current = text.charAt(index);
+                if (current == '\'') {
+                    quoted = !quoted;
+                } else if (!quoted && current == '(') {
+                    depth++;
+                } else if (!quoted && current == ')' && --depth == 0) {
+                    index++;
+                    break;
+                }
+            }
+        } else {
+            while (index < text.length() && !Character.isWhitespace(text.charAt(index))) {
+                index++;
+            }
+        }
+        while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+            index++;
+        }
+        String token = identifierToken(text, index);
+        if ("AS".equalsIgnoreCase(token)) {
+            index += token.length();
+            while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+                index++;
+            }
+            token = identifierToken(text, index);
+        }
+        if (token == null || token.isBlank()
+                || "WITH".equalsIgnoreCase(token)
+                || "WHERE".equalsIgnoreCase(token)
+                || "JOIN".equalsIgnoreCase(token)
+                || token.startsWith("#")) {
+            return null;
+        }
+        return token;
+    }
+
+    private static String identifierToken(String text, int start) {
+        if (start >= text.length()) {
+            return null;
+        }
+        int end = start;
+        while (end < text.length()) {
+            char current = text.charAt(end);
+            if (!(Character.isLetterOrDigit(current) || current == '_'
+                    || current == '[' || current == ']' || current == '"')) {
+                break;
+            }
+            end++;
+        }
+        return end == start ? null : text.substring(start, end);
     }
 
     /**
@@ -208,7 +322,7 @@ public class MrasDetailSqlExtractor {
     }
 
     /** 概览 SQL 的 sha256（十六进制小写），用于运行绑定核对明细与卡片同源。 */
-    private static String sha256(String text) {
+    public static String sqlHash(String text) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(text.getBytes(StandardCharsets.UTF_8)));

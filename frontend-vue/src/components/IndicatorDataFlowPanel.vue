@@ -1,0 +1,87 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+
+type FlowNode = Record<string, unknown>
+type FlowEdge = Record<string, unknown>
+
+const props = defineProps<{ flow?: unknown }>()
+
+const value = computed<Record<string, unknown>>(() =>
+  props.flow && typeof props.flow === 'object' && !Array.isArray(props.flow)
+    ? props.flow as Record<string, unknown> : {},
+)
+const nodes = computed<FlowNode[]>(() => Array.isArray(value.value.nodes)
+  ? value.value.nodes as FlowNode[] : [])
+const edges = computed<FlowEdge[]>(() => Array.isArray(value.value.edges)
+  ? value.value.edges as FlowEdge[] : [])
+const warnings = computed<string[]>(() => Array.isArray(value.value.warnings)
+  ? value.value.warnings.map(String) : [])
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : []
+}
+
+function databaseLabel(value: unknown): string {
+  const role = String(value || '')
+  if (role === 'BUSINESS') return '业务库'
+  if (role === 'REAL') return '真实库'
+  if (role === 'SYNC') return '同步任务'
+  if (role === 'KNOWLEDGE') return '知识库'
+  return role || '—'
+}
+
+function incomingLabel(nodeId: unknown): string {
+  return edges.value
+    .filter((edge) => String(edge.to || '') === String(nodeId || ''))
+    .map((edge) => String(edge.label || ''))
+    .filter(Boolean)
+    .join(' / ')
+}
+</script>
+
+<template>
+  <section class="indicator-flow-shell" :data-status="String(value.status || '')">
+    <header class="indicator-flow-head">
+      <div>
+        <span>数据流向</span>
+        <strong>{{ String(value.templateLabel || '链路尚未生成') }}</strong>
+      </div>
+      <em>{{ value.status === 'complete' ? '链路完整' : '配置不完整' }}</em>
+    </header>
+
+    <div v-if="warnings.length" class="indicator-flow-warnings">
+      <p v-for="warning in warnings" :key="warning">{{ warning }}</p>
+    </div>
+
+    <ol v-if="nodes.length" class="indicator-flow-list">
+      <li v-for="node in nodes" :key="String(node.id)" class="indicator-flow-node">
+        <span v-if="incomingLabel(node.id)" class="indicator-flow-edge">
+          {{ incomingLabel(node.id) }}
+        </span>
+        <article>
+          <header>
+            <b>{{ String(node.sequence || '').padStart(2, '0') }}</b>
+            <div>
+              <strong>{{ String(node.title || '未命名节点') }}</strong>
+              <small>{{ String(node.description || '') }}</small>
+            </div>
+            <em>{{ databaseLabel(node.databaseRole) }}</em>
+          </header>
+
+          <div v-if="strings(node.tableNames).length" class="indicator-flow-tables">
+            <code v-for="table in strings(node.tableNames)" :key="table">{{ table }}</code>
+          </div>
+
+          <details v-if="String(node.sql || '').trim()" class="indicator-flow-sql">
+            <summary>查看 {{ String(node.title || '节点') }} SQL</summary>
+            <div v-if="strings(node.parameters).length" class="indicator-flow-params">
+              参数：<code v-for="parameter in strings(node.parameters)" :key="parameter">:{{ parameter }}</code>
+            </div>
+            <pre>{{ String(node.sql) }}</pre>
+          </details>
+        </article>
+      </li>
+    </ol>
+    <p v-else class="indicator-flow-empty">当前口径没有可安全展示的数据链路。</p>
+  </section>
+</template>

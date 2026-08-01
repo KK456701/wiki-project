@@ -3,6 +3,7 @@ package com.hospital.wikiagent.agent.mras;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
@@ -17,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.extraction.HospitalExecutionLock;
+import com.hospital.wikiagent.agent.extraction.ExtractionSnapshotRegistry;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
@@ -42,6 +45,11 @@ import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 public class MrasSqlExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(MrasSqlExecutionService.class);
+    private static final java.util.Set<String> FULL_REFERENCE_TABLES = java.util.Set.of(
+            "BUSINESS_UNIT_X_BU_TYPE",
+            "MRAS_MEDTECH_PRO",
+            "MRAS_MEDTECH_PROC",
+            "CLIBASIC_SURGERY");
 
     private final EntityPageParser entityPageParser;
     private final ConceptPageParser conceptPageParser;
@@ -52,6 +60,8 @@ public class MrasSqlExecutionService {
     private final IndicatorDatabaseQueryClient databaseQuery;
     private final SyncDataService syncDataService; // 可为 null（sqlserver 未启用时）
     private final SqlServerProperties sqlServerProperties;
+    private final HospitalExecutionLock executionLock;
+    private final ExtractionSnapshotRegistry extractionSnapshots;
 
     public MrasSqlExecutionService(
             EntityPageParser entityPageParser,
@@ -62,7 +72,9 @@ public class MrasSqlExecutionService {
             SqlParameterBinder parameterBinder,
             IndicatorDatabaseQueryClient databaseQuery,
             ObjectProvider<SyncDataService> syncDataProvider,
-            SqlServerProperties sqlServerProperties) {
+            SqlServerProperties sqlServerProperties,
+            ObjectProvider<HospitalExecutionLock> executionLockProvider,
+            ObjectProvider<ExtractionSnapshotRegistry> extractionSnapshotProvider) {
         this.entityPageParser = entityPageParser;
         this.conceptPageParser = conceptPageParser;
         this.templateRenderer = templateRenderer;
@@ -72,6 +84,8 @@ public class MrasSqlExecutionService {
         this.databaseQuery = databaseQuery;
         this.syncDataService = syncDataProvider.getIfAvailable();
         this.sqlServerProperties = sqlServerProperties;
+        this.executionLock = executionLockProvider.getIfAvailable();
+        this.extractionSnapshots = extractionSnapshotProvider.getIfAvailable();
     }
 
     /**
@@ -80,6 +94,40 @@ public class MrasSqlExecutionService {
     public boolean supports(String indicatorCode) {
         EntityPageData entity = entityPageParser.getEntity(indicatorCode);
         return entity != null && entity.hasOverviewSql();
+    }
+
+    /**
+     * 仅完成本口径的数据抽取，供批量编排在概览计算前插入真实库快照校验。
+     * 后续 {@link #executeOverview} 会通过快照注册表幂等复用本次抽取。
+     */
+    public ToolResult prepareExtraction(
+            String indicatorCode,
+            String profileId,
+            LocalDateTime start,
+            LocalDateTime end) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
+            if (caliberRes == null) {
+                return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
+                        "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
+            }
+            long started = System.currentTimeMillis();
+            ExtractionOutcome extraction = ensureExtracted(
+                    caliberRes.entity(), start, end, caliberRes.caliberNo());
+            long durationMs = System.currentTimeMillis() - started;
+            if (!extraction.isSuccess()) {
+                return ToolResult.failure("unavailable", "SOURCE_EXTRACTION_FAILED",
+                        "指标 " + indicatorCode + " 数据抽取失败："
+                                + extraction.describeReason(), false);
+            }
+            return ToolResult.success("SOURCE_EXTRACTION_COMPLETED", "源数据抽取完成。", Map.of(
+                    "indicatorCode", indicatorCode,
+                    "profileId", profileId == null ? indicatorCode : profileId,
+                    "targetTable", physicalTargetTable(
+                            caliberRes.baseTable(), caliberRes.caliberNo()),
+                    "extractionDurationMs", durationMs,
+                    "status", "extracted"));
+        }
     }
 
     /**
@@ -116,6 +164,19 @@ public class MrasSqlExecutionService {
             LocalDateTime end,
             String deptFilter,
             String qualifiedFilter) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            return executeOverviewLocked(
+                    indicatorCode, profileId, start, end, deptFilter, qualifiedFilter);
+        }
+    }
+
+    private ToolResult executeOverviewLocked(
+            String indicatorCode,
+            String profileId,
+            LocalDateTime start,
+            LocalDateTime end,
+            String deptFilter,
+            String qualifiedFilter) {
 
         CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
         if (caliberRes == null) {
@@ -141,10 +202,19 @@ public class MrasSqlExecutionService {
             return caliberFailure;
         }
 
-        return executeSql(
+        ToolResult result = executeSql(
                 entity.overviewSql(), params, indicatorCode, "overview",
                 entity.name(), entity.dimension(), true, extraction.warning(), extractionDurationMs,
                 caliberRes.caliberNo, caliberRes.baseTable);
+        if (!result.ok()) {
+            return result;
+        }
+        Map<String, Object> data = new LinkedHashMap<>(result.data());
+        data.put("overviewSqlHash", MrasDetailSqlExtractor.sqlHash(entity.overviewSql()));
+        data.put("detailKind",
+                MrasDetailContractRegistry.kindFor(indicatorCode, profileId).name());
+        data.put("detailContractVersion", MrasDetailContractRegistry.CONTRACT_VERSION);
+        return ToolResult.success(result.code(), result.summary(), data);
     }
 
     /**
@@ -162,6 +232,17 @@ public class MrasSqlExecutionService {
      * 执行知识库科室统计查询，支持多口径 profileId。
      */
     public ToolResult executeDeptStat(
+            String indicatorCode,
+            String profileId,
+            LocalDateTime start,
+            LocalDateTime end,
+            String deptFilter) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            return executeDeptStatLocked(indicatorCode, profileId, start, end, deptFilter);
+        }
+    }
+
+    private ToolResult executeDeptStatLocked(
             String indicatorCode,
             String profileId,
             LocalDateTime start,
@@ -219,6 +300,19 @@ public class MrasSqlExecutionService {
             LocalDateTime end,
             String deptFilter,
             String qualifiedFilter) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            return executePatientDetailLocked(
+                    indicatorCode, profileId, start, end, deptFilter, qualifiedFilter);
+        }
+    }
+
+    private ToolResult executePatientDetailLocked(
+            String indicatorCode,
+            String profileId,
+            LocalDateTime start,
+            LocalDateTime end,
+            String deptFilter,
+            String qualifiedFilter) {
 
         CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
         if (caliberRes == null) {
@@ -267,6 +361,18 @@ public class MrasSqlExecutionService {
             LocalDateTime start,
             LocalDateTime end,
             String queryType) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            return executeGeneratedDetailLocked(
+                    indicatorCode, detailSql, start, end, queryType);
+        }
+    }
+
+    private ToolResult executeGeneratedDetailLocked(
+            String indicatorCode,
+            String detailSql,
+            LocalDateTime start,
+            LocalDateTime end,
+            String queryType) {
 
         if (detailSql == null || detailSql.isBlank()) {
             return ToolResult.failure("unavailable", "MRAS_GENERATED_SQL_EMPTY",
@@ -300,6 +406,19 @@ public class MrasSqlExecutionService {
      * @param queryType     查询类型（denominator_detail / numerator_detail）
      */
     public ToolResult executeExtractedDetail(
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            LocalDateTime start,
+            LocalDateTime end,
+            String queryType) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            return executeExtractedDetailLocked(
+                    indicatorCode, profileId, detailSql, start, end, queryType);
+        }
+    }
+
+    private ToolResult executeExtractedDetailLocked(
             String indicatorCode,
             String profileId,
             String detailSql,
@@ -412,6 +531,139 @@ public class MrasSqlExecutionService {
         return ToolResult.success(detail.code(), detail.summary(), data);
     }
 
+    /**
+     * 使用批次运行中已保存的卡片值对账明细。该路径不重跑概览，同一次请求只抽取一次。
+     */
+    public ToolResult executeBoundDetail(
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            String overviewSqlHash,
+            LocalDateTime start,
+            LocalDateTime end,
+            long expectedNumerator,
+            long expectedDenominator) {
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            ToolResult detail = executeExtractedDetail(
+                    indicatorCode,
+                    profileId,
+                    MrasDetailSqlExtractor.withReconciliationCounts(detailSql),
+                    start,
+                    end,
+                    "bound_detail");
+            if (!detail.ok()) {
+                return detail;
+            }
+            List<Map<String, Object>> rows = detailRows(detail.data());
+            long denominator = rows.isEmpty()
+                    ? 0L
+                    : rowLong(rows.get(0), MrasDetailSqlExtractor.DENOMINATOR_COUNT_COLUMN);
+            long numerator = rows.isEmpty()
+                    ? 0L
+                    : rowLong(rows.get(0), MrasDetailSqlExtractor.NUMERATOR_COUNT_COLUMN);
+            if (numerator != expectedNumerator || denominator != expectedDenominator) {
+                log.warn("批次绑定明细对账不一致 {}（profileId={}）：明细={}/{}，批次卡片={}/{}",
+                        indicatorCode, profileId, numerator, denominator,
+                        expectedNumerator, expectedDenominator);
+                return ToolResult.failure("error", "MRAS_DETAIL_COUNT_MISMATCH",
+                        "明细与原批次卡片不一致（明细 " + numerator + "/" + denominator
+                                + "，卡片 " + expectedNumerator + "/" + expectedDenominator
+                                + "），已拒绝返回。",
+                        false);
+            }
+            Map<String, Object> data = new LinkedHashMap<>(detail.data());
+            data.put("rows", stripReconciliationColumns(rows));
+            data.put("numeratorCount", numerator);
+            data.put("denominatorCount", denominator);
+            data.put("cardNumerator", expectedNumerator);
+            data.put("cardDenominator", expectedDenominator);
+            data.put("overviewSqlHash", overviewSqlHash);
+            return ToolResult.success(detail.code(), detail.summary(), data);
+        }
+    }
+
+    /**
+     * 特殊详情契约在同一次抽取、同一医院锁内顺序执行多个只读数据集。
+     * SUM/中位数通常只有一个数据集，双源和两率比较分别使用两个或四个数据集。
+     */
+    public ToolResult executeSpecialDetailQueries(
+            String indicatorCode,
+            String profileId,
+            Map<String, String> querySql,
+            LocalDateTime start,
+            LocalDateTime end) {
+        if (querySql == null || querySql.isEmpty()) {
+            return ToolResult.failure(
+                    "validation_failed",
+                    "MRAS_SPECIAL_DETAIL_EMPTY",
+                    "特殊详情查询计划为空。",
+                    false);
+        }
+        try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
+            CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
+            if (caliberRes == null) {
+                return ToolResult.failure(
+                        "unavailable",
+                        "MRAS_ENTITY_NOT_FOUND",
+                        "知识库中没有指标 " + indicatorCode + " 的实体页。",
+                        false);
+            }
+            EntityPageData entity = caliberRes.entity;
+            Map<String, Object> params = parameterMapper.mapParameters(start, end, null, null);
+            long extractionStarted = System.currentTimeMillis();
+            ExtractionOutcome extraction =
+                    ensureExtracted(entity, start, end, caliberRes.caliberNo);
+            long extractionDurationMs = System.currentTimeMillis() - extractionStarted;
+            ToolResult extractionFailure =
+                    caliberExtractionFailure(indicatorCode, caliberRes, extraction);
+            if (extractionFailure != null) {
+                return extractionFailure;
+            }
+
+            Map<String, Object> datasets = new LinkedHashMap<>();
+            long queryDurationMs = 0L;
+            for (Map.Entry<String, String> entry : querySql.entrySet()) {
+                ToolResult query = executeSql(
+                        entry.getValue(),
+                        params,
+                        indicatorCode,
+                        "special_detail_" + entry.getKey(),
+                        entity.name(),
+                        entity.dimension(),
+                        true,
+                        extraction.warning(),
+                        -1,
+                        caliberRes.caliberNo,
+                        caliberRes.baseTable);
+                if (!query.ok()) {
+                    return query;
+                }
+                datasets.put(entry.getKey(), detailRows(query.data()));
+                Object duration = query.data().get("durationMs");
+                if (duration instanceof Number number) {
+                    queryDurationMs += number.longValue();
+                }
+            }
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("indicatorCode", indicatorCode);
+            data.put("indicatorName", entity.name());
+            data.put("datasets", java.util.Collections.unmodifiableMap(datasets));
+            data.put("extractionDurationMs", extractionDurationMs);
+            data.put("queryDurationMs", queryDurationMs);
+            return ToolResult.success(
+                    "MRAS_SPECIAL_DETAIL_COMPLETED",
+                    "特殊指标详情查询完成。",
+                    data);
+        }
+    }
+
+    private HospitalExecutionLock.Lease acquireExecutionLock() {
+        if (executionLock != null) {
+            return executionLock.acquire(String.valueOf(sqlServerProperties.getHospitalSoid()));
+        }
+        return null;
+    }
+
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> detailRows(Map<String, Object> data) {
         Object raw = data.get("rows");
@@ -419,6 +671,44 @@ public class MrasSqlExecutionService {
             return (List<Map<String, Object>>) list;
         }
         return List.of();
+    }
+
+    private static List<Map<String, Object>> stripReconciliationColumns(
+            List<Map<String, Object>> rows) {
+        return rows.stream().map(row -> {
+            Map<String, Object> clean = new LinkedHashMap<>(row);
+            clean.keySet().removeIf(key ->
+                    key.equalsIgnoreCase(MrasDetailSqlExtractor.NUMERATOR_COUNT_COLUMN)
+                            || key.equalsIgnoreCase(
+                                    MrasDetailSqlExtractor.DENOMINATOR_COUNT_COLUMN));
+            return java.util.Collections.unmodifiableMap(clean);
+        }).toList();
+    }
+
+    private static long rowLong(Map<String, Object> row, String key) {
+        Object raw = row.get(key);
+        if (raw == null) {
+            raw = row.get(key.toUpperCase(java.util.Locale.ROOT));
+        }
+        if (raw == null) {
+            raw = row.entrySet().stream()
+                    .filter(entry -> entry.getKey() != null
+                            && entry.getKey().equalsIgnoreCase(key))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw != null) {
+            try {
+                return new BigDecimal(raw.toString().strip()).longValueExact();
+            } catch (ArithmeticException | NumberFormatException ignored) {
+                // 非整数值不能作为对账数量，交由调用方以 0 触发失败关闭。
+            }
+        }
+        return 0L;
     }
 
     /** 判定单结果集某行是否命中分子：读 {@code __meets_numerator} 列，1/"1"/"true" 视为命中。 */
@@ -643,7 +933,22 @@ public class MrasSqlExecutionService {
             return ExtractionOutcome.failed("未配置医院 SOID，本次未抽取源库数据");
         }
 
+        Map<String, String> extractionArtifacts = Map.of();
+        List<String> attemptedReferenceTables = new ArrayList<>();
         try {
+            String renderedSourceSql = templateRenderer.renderTemplate(
+                    stripLeadingTrailingQuotes(entity.sourceTableSql()),
+                    Map.of("syncType", "outHosp"));
+            extractionArtifacts = extractionArtifacts(
+                    entity, renderedSourceSql, hospitalSoid, start, end, caliberNo);
+            if (extractionSnapshots != null
+                    && extractionSnapshots.isCurrent(extractionArtifacts)) {
+                log.info("MRAS 指标 {} 复用已绑定的抽取快照: targetTable={} ({} ~ {})",
+                        entity.code(), physicalTargetTable(entity.targetTable(), caliberNo),
+                        start, end);
+                return ExtractionOutcome.success();
+            }
+
             SyncDataDto dto = new SyncDataDto();
             dto.setHospitalSOID(hospitalSoid);
             // 多口径时设置 caliber 编号，SyncDataService 会自动创建口径表（表名_N）
@@ -660,9 +965,7 @@ public class MrasSqlExecutionService {
             TableDataDto eventData = new TableDataDto();
             eventData.setEventNo(entity.eventNo());
             eventData.setTable(entity.targetTable());
-            eventData.setSqlScript(templateRenderer.renderTemplate(
-                    stripLeadingTrailingQuotes(entity.sourceTableSql()),
-                    Map.of("syncType", "outHosp")));
+            eventData.setSqlScript(renderedSourceSql);
             eventData.setStartTime(toDate(start));
             eventData.setEndTime(toDate(end));
             dto.setEventDataList(List.of(eventData));
@@ -671,11 +974,25 @@ public class MrasSqlExecutionService {
             if (entity.bizTables() != null && !entity.bizTables().isEmpty()) {
                 List<TableDataDto> bizList = new ArrayList<>();
                 for (String table : entity.bizTables()) {
+                    String normalizedTable = table.toUpperCase(java.util.Locale.ROOT);
+                    boolean reusableReference = FULL_REFERENCE_TABLES.contains(normalizedTable)
+                            && extractionSnapshots != null
+                            && extractionSnapshots.isReferenceCurrent(
+                                    hospitalSoid, normalizedTable, LocalDate.now());
+                    if (reusableReference) {
+                        log.info("MRAS 指标 {} 复用当日全量基础表 {}", entity.code(), table);
+                        continue;
+                    }
                     TableDataDto biz = new TableDataDto();
                     biz.setTable(table);
                     bizList.add(biz);
+                    if (FULL_REFERENCE_TABLES.contains(normalizedTable)) {
+                        attemptedReferenceTables.add(normalizedTable);
+                    }
                 }
-                dto.setBizDataList(bizList);
+                if (!bizList.isEmpty()) {
+                    dto.setBizDataList(bizList);
+                }
             }
 
             // eventTableList：关联拓展事件（部分指标需要的额外患者事件表）
@@ -698,13 +1015,57 @@ public class MrasSqlExecutionService {
             log.info("MRAS 指标 {} 开始抽取: targetTable={}, bizTables={} ({} ~ {})",
                     entity.code(), entity.targetTable(), entity.bizTables(), start, end);
             syncDataService.syncEventData(dto);
+            if (extractionSnapshots != null) {
+                extractionSnapshots.markCurrent(extractionArtifacts);
+                extractionSnapshots.markReferenceCurrent(
+                        hospitalSoid, attemptedReferenceTables, LocalDate.now());
+            }
             log.info("MRAS 指标 {} 抽取完成", entity.code());
             return ExtractionOutcome.success();
         } catch (Exception exception) {
+            if (extractionSnapshots != null && !extractionArtifacts.isEmpty()) {
+                extractionSnapshots.invalidate(extractionArtifacts.keySet());
+                extractionSnapshots.invalidateReferences(
+                        hospitalSoid, attemptedReferenceTables);
+            }
             log.warn("MRAS 指标 {} 抽取失败: {}", entity.code(), exception.getMessage());
             return ExtractionOutcome.failed(exception.getMessage());
         }
     }
+
+    /**
+     * 生成医院级唯一当前快照身份。指纹覆盖指标物理表、统计窗口、源表 SQL、
+     * 业务依赖和扩展事件；任一后续指标抽取都会覆盖该医院的当前身份。
+     */
+    private static Map<String, String> extractionArtifacts(
+            EntityPageData entity,
+            String renderedSourceSql,
+            long hospitalSoid,
+            LocalDateTime start,
+            LocalDateTime end,
+            int caliberNo) {
+        String physicalTarget = physicalTargetTable(entity.targetTable(), caliberNo);
+        String dependencies = entity.bizTables() == null
+                ? ""
+                : entity.bizTables().stream().sorted().reduce(
+                        "", (left, right) -> left + "|" + right);
+        String extended = entity.extendedEvents() == null
+                ? ""
+                : entity.extendedEvents().stream()
+                        .map(entry -> entry.getKey() + "=" + entry.getValue())
+                        .sorted()
+                        .reduce("", (left, right) -> left + "|" + right);
+        String fingerprint = MrasDetailSqlExtractor.sqlHash(
+                hospitalSoid + "|" + entity.code() + "|" + physicalTarget
+                        + "|" + start + "|" + end + "|" + renderedSourceSql
+                        + "|" + dependencies + "|" + extended);
+        return Map.of("mras-current:" + hospitalSoid, fingerprint);
+    }
+
+    private static String physicalTargetTable(String targetTable, int caliberNo) {
+        return caliberNo > 0 ? targetTable + "_" + caliberNo : targetTable;
+    }
+
 
     /**
      * 多口径抽取未成功时中断查询并报出真实原因。
@@ -839,6 +1200,7 @@ public class MrasSqlExecutionService {
         Long numerator = findLongByPrefix(first, "分子");
         Long denominator = findLongByPrefix(first, "分母");
         Number resultValue = findNumberByContains(first, "监测情况");
+        String resultDisplay = findStringByContains(first, "监测情况");
         Number targetValue = findNumberByContains(first, "目标值");
         String qualified = findStringByContains(first, "是否达标");
 
@@ -863,12 +1225,16 @@ public class MrasSqlExecutionService {
         data.put("numeratorCount", numerator);
         data.put("denominatorCount", denominator);
         data.put("resultValue", resultValue);
+        if (resultValue == null && resultDisplay != null && !resultDisplay.isBlank()) {
+            data.put("resultDisplay", resultDisplay);
+        }
         data.put("targetValue", targetValue);
         data.put("qualifiedLabel", qualified);
         // 分母为 0，或聚合行全为 NULL（统计区间内无任何样本进入聚合，如
         // SUM over 空集）都视为无样本，避免误报 SUCCESS 却没有任何数值。
         data.put("noSample", (denominator != null && denominator == 0)
-                || (numerator == null && denominator == null && resultValue == null));
+                || (numerator == null && denominator == null && resultValue == null
+                        && (resultDisplay == null || resultDisplay.isBlank())));
         data.put("rawFirstRow", first);
     }
 

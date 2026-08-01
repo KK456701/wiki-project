@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import com.hospital.wikiagent.agent.mras.ConceptPageParser;
 import com.hospital.wikiagent.agent.mras.EntityPageData;
 import com.hospital.wikiagent.agent.mras.EntityPageParser;
+import com.hospital.wikiagent.agent.mras.IndicatorDataFlowBuilder;
 import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 
@@ -40,15 +41,18 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
     private final EntityPageParser entityParser;
     private final ConceptPageParser conceptParser;
     private final MrasTemplateRenderer templateRenderer;
+    private final IndicatorDataFlowBuilder dataFlowBuilder;
 
     public MrasRuleKnowledgeSource(
             EntityPageParser entityParser,
             ConceptPageParser conceptParser,
-            MrasTemplateRenderer templateRenderer) {
+            MrasTemplateRenderer templateRenderer,
+            IndicatorDataFlowBuilder dataFlowBuilder) {
         super();
         this.entityParser = entityParser;
         this.conceptParser = conceptParser;
         this.templateRenderer = templateRenderer;
+        this.dataFlowBuilder = dataFlowBuilder;
         log.info("MrasRuleKnowledgeSource 初始化完成: {} 个实体, {} 个概念页",
                 entityParser.size(), conceptParser.size());
     }
@@ -147,6 +151,7 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
         result.put("sourceExtractSql", entity.sourceTableSql());
         result.put("departmentDetailSql", entity.deptStatSql());
         result.put("patientDetailSql", entity.patientDetailSql());
+        result.put("dataFlow", dataFlowBuilder.build(entity));
         result.put("sqlCapabilities", Map.of(
                 "overview", Map.of("status", hasSql ? "executable" : "unavailable")));
         result.put("extractionContract", buildExtractionContract(entity));
@@ -240,16 +245,17 @@ public class MrasRuleKnowledgeSource extends WikiRuleKnowledgeSource {
             variants = List.of(entity);
         }
         return variants.stream()
-                .filter(EntityPageData::hasOverviewSql)
                 .map(entity -> {
+                    boolean executable = entity.hasOverviewSql();
                     Map<String, Object> profile = new LinkedHashMap<>();
                     profile.put("profileId", entity.variantCode());
                     profile.put("profileName", entity.variantLabel());
                     profile.put("label", entity.variantLabel());
                     profile.put("status", "approved");
                     profile.put("governanceStatus", "approved");
-                    profile.put("executionStatus", "executable");
-                    profile.put("overviewRuntimeEligible", true);
+                    profile.put("executionStatus",
+                            executable ? "executable" : "documentation_only");
+                    profile.put("overviewRuntimeEligible", executable);
                     profile.put("parameterOverrides", Map.of());
                     profile.put("fieldRoleOverrides", Map.of());
                     profile.put("numeratorRule", extractPattern(entity.formula(), NUMERATOR_PATTERN));

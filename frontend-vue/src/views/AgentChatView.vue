@@ -6,13 +6,17 @@ import ExecutionPanel from '../components/ExecutionPanel.vue'
 import MarkdownMessage from '../components/MarkdownMessage.vue'
 import NodeDetailDrawer from '../components/NodeDetailDrawer.vue'
 import ClarificationChoices from '../components/ClarificationChoices.vue'
-import IndicatorResultCards from '../components/IndicatorResultCards.vue'
+import BatchExecutiveSummary from '../components/BatchExecutiveSummary.vue'
 import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
 import { useAgentStore, type ExecutionNode } from '../stores/agent'
 import {
   createDiagnosisReportExport,
   createUploadComparisonExport,
   downloadIndicatorExport,
+  prepareBatchAnalysis,
+  prepareIndicatorInspection,
+  type BatchAnalysisAction,
+  type InspectIndicatorAction,
   type SessionSummary,
 } from '../api/agent'
 
@@ -87,6 +91,46 @@ async function send(text = query.value) {
   await nextTick()
   conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
   await refreshSessionList()
+}
+
+async function sendSummaryAction(
+  payload: InspectIndicatorAction | BatchAnalysisAction,
+  requiresCloud = false,
+) {
+  if (requiresCloud) {
+    const cloud = store.capabilities?.models.find((model) =>
+      model.provider !== 'ollama' && model.id === 'aliyun-qwen-plus')
+      || store.capabilities?.models.find((model) => model.provider !== 'ollama')
+    if (!cloud) {
+      store.error = '当前没有可用的云端 API 模型，已停止排查，未调用本地模型。'
+      return
+    }
+    store.selectedModel = cloud.id
+  }
+  try {
+    if (payload.action !== 'inspect_indicator') {
+      const prepared = await prepareBatchAnalysis(store.token, payload)
+      store.appendResolvedAction(
+        `${prepared.displayPrompt}（审计 ${prepared.auditId}）`,
+        prepared.answer,
+      )
+      await nextTick()
+      conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+      return
+    }
+    const prepared = await prepareIndicatorInspection(store.token, {
+      ...payload,
+      modelId: store.selectedModel,
+    })
+    store.appendResolvedAction(
+      `进入指标排查：${payload.indicatorId}（审计 ${prepared.auditId}）`,
+      prepared.answer,
+    )
+    await nextTick()
+    conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '读取批次排查事实失败。'
+  }
 }
 
 async function continueFromClarification(messageId: string, values: string[]) {
@@ -209,7 +253,12 @@ async function exportDiagnosis(reportId?: string) {
             />
           </section>
 
-          <article v-for="message in store.messages" :key="message.id" class="message" :class="`is-${message.role}`">
+          <article
+            v-for="message in store.messages"
+            :key="message.id"
+            class="message"
+            :class="[`is-${message.role}`, { 'has-batch-results': message.batchResults?.length }]"
+          >
             <div class="message-avatar">{{ message.role === 'agent' ? 'AI' : '你' }}</div>
             <div class="message-card">
               <header class="message-head">
@@ -257,11 +306,12 @@ async function exportDiagnosis(reportId?: string) {
                 :content="message.content || '正在读取规则与证据…'"
               />
               <div v-else-if="message.role !== 'agent'" class="message-content">{{ message.content }}</div>
-              <IndicatorResultCards
+              <BatchExecutiveSummary
                 v-if="message.role === 'agent' && message.batchResults?.length"
                 :results="message.batchResults"
                 :token="store.token"
                 :model-id="store.selectedModel"
+                @action="sendSummaryAction"
               />
               <ClarificationChoices
                 v-if="message.role === 'agent' && message.clarification"

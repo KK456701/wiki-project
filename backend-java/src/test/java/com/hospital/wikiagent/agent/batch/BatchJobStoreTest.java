@@ -71,6 +71,25 @@ class BatchJobStoreTest {
     }
 
     @Test
+    void persistsMedianSampleCountForTypedCards() {
+        String jobId = store.createJob(
+                "session_1", "hospital_001", "user_1", "q", 1, null, null);
+        store.recordTask(jobId, 0, new IndicatorExecutionResult(
+                "M1", "危急值报告时间", Status.SUCCESS,
+                12.5, null, null, "median_duration", "minute",
+                "中位数，n=5", 5L, 30, "<=",
+                "2026-01-01 00:00:00", "2026-04-01 00:00:00", "RUN_M1",
+                null, null, 10, "normal", null, null,
+                null, null, null, null, "MEDIAN_SAMPLE", "v1"));
+
+        BatchJobStore.BatchTaskSnapshot task = store.loadTasks(
+                jobId, "hospital_001", "user_1").get(0);
+
+        assertThat(task.sampleCount()).isEqualTo(5L);
+        assertThat(task.detailKind()).isEqualTo("MEDIAN_SAMPLE");
+    }
+
+    @Test
     void finishJobUpdatesSummaryAndTimestamp() {
         String jobId = store.createJob(
                 "session_1", "hospital_001", "user_1", "q", 3, null, null);

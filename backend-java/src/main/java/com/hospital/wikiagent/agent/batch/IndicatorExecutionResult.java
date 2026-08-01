@@ -30,7 +30,10 @@ public record IndicatorExecutionResult(
         String profileLabel,
         String extractionId,
         String extractionStatus,
-        String eventNo) {
+        String eventNo,
+        String overviewSqlHash,
+        String detailKind,
+        String detailContractVersion) {
 
     /** 单指标执行结论的有限状态。 */
     public enum Status {
@@ -66,6 +69,44 @@ public record IndicatorExecutionResult(
         extractionStatus = extractionStatus == null || extractionStatus.isBlank()
                 ? null : extractionStatus.strip();
         eventNo = eventNo == null || eventNo.isBlank() ? null : eventNo.strip();
+        overviewSqlHash = overviewSqlHash == null || overviewSqlHash.isBlank()
+                ? null : overviewSqlHash.strip();
+        detailKind = detailKind == null || detailKind.isBlank() ? null : detailKind.strip();
+        detailContractVersion = detailContractVersion == null || detailContractVersion.isBlank()
+                ? null : detailContractVersion.strip();
+    }
+
+    /** 兼容尚未携带明细契约元数据的既有调用。 */
+    public IndicatorExecutionResult(
+            String ruleId,
+            String ruleName,
+            Status status,
+            Double resultValue,
+            Long numerator,
+            Long denominator,
+            String valueType,
+            String unit,
+            String calculationDisplay,
+            Long sampleCount,
+            Object targetValue,
+            String targetDirection,
+            String statStart,
+            String statEnd,
+            String runId,
+            String errorCode,
+            String errorMessage,
+            long durationMs,
+            String dataFreshness,
+            String profileId,
+            String profileLabel,
+            String extractionId,
+            String extractionStatus,
+            String eventNo) {
+        this(ruleId, ruleName, status, resultValue, numerator, denominator,
+                valueType, unit, calculationDisplay, sampleCount, targetValue,
+                targetDirection, statStart, statEnd, runId, errorCode, errorMessage,
+                durationMs, dataFreshness, profileId, profileLabel, extractionId,
+                extractionStatus, eventNo, null, null, null);
     }
 
     /** 兼容尚未携带 Profile 与抽取元数据的结构化调用。 */
@@ -92,7 +133,8 @@ public record IndicatorExecutionResult(
         this(ruleId, ruleName, status, resultValue, numerator, denominator,
                 valueType, unit, calculationDisplay, sampleCount, targetValue,
                 targetDirection, statStart, statEnd, runId, errorCode, errorMessage,
-                durationMs, dataFreshness, null, null, null, null, null);
+                durationMs, dataFreshness, null, null, null, null, null,
+                null, null, null);
     }
 
     /** 兼容尚不携带快照新鲜度的结构化调用。 */
@@ -118,7 +160,8 @@ public record IndicatorExecutionResult(
         this(ruleId, ruleName, status, resultValue, numerator, denominator,
                 valueType, unit, calculationDisplay, sampleCount, targetValue,
                 targetDirection, statStart, statEnd, runId, errorCode, errorMessage,
-                durationMs, null, null, null, null, null, null);
+                durationMs, null, null, null, null, null, null,
+                null, null, null);
     }
 
     /** 兼容既有普通比例结果构造入口。 */
@@ -141,7 +184,8 @@ public record IndicatorExecutionResult(
         this(ruleId, ruleName, status, resultValue, numerator, denominator,
                 null, unit, null, null, targetValue, targetDirection,
                 statStart, statEnd, runId, errorCode, errorMessage, durationMs,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null,
+                null, null, null);
     }
 
     /** 构造一个失败结果（不携带数值）。 */
@@ -151,7 +195,8 @@ public record IndicatorExecutionResult(
                 ruleId, ruleName, Status.FAILED, null, null, null,
                 null, null, null, null, null, null,
                 null, null, null, code, message, 0,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null,
+                null, null, null);
     }
 
     public static IndicatorExecutionResult failed(
@@ -166,7 +211,27 @@ public record IndicatorExecutionResult(
                 ruleId, ruleName, Status.FAILED, null, null, null,
                 null, null, null, null, null, null,
                 null, null, null, code, message, 0,
-                null, profileId, profileLabel, null, null, eventNo);
+                null, profileId, profileLabel, null, null, eventNo,
+                null, null, null);
+    }
+
+    /** 构造一个在初始化校验阶段已确认无源数据的结果。 */
+    public static IndicatorExecutionResult noSample(
+            String ruleId,
+            String ruleName,
+            String profileId,
+            String profileLabel,
+            String eventNo,
+            String code,
+            String message,
+            String statStart,
+            String statEnd) {
+        return new IndicatorExecutionResult(
+                ruleId, ruleName, Status.NO_SAMPLE, null, 0L, 0L,
+                null, null, null, 0L, null, null,
+                statStart, statEnd, null, code, message, 0,
+                null, profileId, profileLabel, null, null, eventNo,
+                null, null, null);
     }
 
     public boolean ok() {

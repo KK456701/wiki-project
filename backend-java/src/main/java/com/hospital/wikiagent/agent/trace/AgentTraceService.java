@@ -524,13 +524,18 @@ public class AgentTraceService {
         long traceStart = starts.getOrDefault(traceId, started);
         AtomicInteger sequence = sequences.computeIfAbsent(traceId, ignored -> new AtomicInteger());
         String errorCode = text(event.get("errorCode"));
+        String nodeName = first(text(event.get("nodeName")), "unknown");
+        boolean exposeValidationSql = Set.of(
+                "batch_data_initialization_validation",
+                "real_snapshot_data_validation").contains(nodeName);
         try {
             repository.node(new AgentTraceRepository.TraceNode(
                     traceId, first(text(event.get("nodeId")), id("NODE_")),
-                    first(text(event.get("nodeName")), "unknown"),
+                    nodeName,
                     first(text(event.get("nodeType")), "code"),
                     first(text(event.get("status")), "success"),
-                    safeJson(event.get("input")), safeJson(event.get("output")),
+                    safeJson(event.get("input")),
+                    safeJson(event.get("output"), exposeValidationSql),
                     errorCode, shorten(text(event.get("errorMessage")), 2000),
                     text(event.get("toolName")), text(event.get("dbSource")),
                     text(event.get("sqlId")), text(event.get("runId")),
@@ -547,8 +552,12 @@ public class AgentTraceService {
     }
 
     private String safeJson(Object value) {
+        return safeJson(value, false);
+    }
+
+    private String safeJson(Object value, boolean exposeValidationSql) {
         if (value == null) return "{}";
-        Object safe = sanitize(value);
+        Object safe = sanitize(value, exposeValidationSql);
         try {
             // TEXT 字段能够保存完整 JSON；不再按字符数裁剪，避免长上下文或历史 SQL
             // 在关键位置被截断。安全边界仍由 sanitize 的字段级脱敏负责。
@@ -559,19 +568,24 @@ public class AgentTraceService {
     }
 
     private Object sanitize(Object value) {
+        return sanitize(value, false);
+    }
+
+    private Object sanitize(Object value, boolean exposeValidationSql) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> safe = new LinkedHashMap<>();
             map.forEach((key, item) -> {
                 String name = String.valueOf(key);
                 String lower = name.toLowerCase();
-                boolean secret = sensitiveKey(lower);
-                safe.put(name, secret ? "[已脱敏]" : sanitize(item));
+                boolean secret = sensitiveKey(lower)
+                        && !(exposeValidationSql && sqlKey(lower));
+                safe.put(name, secret ? "[已脱敏]" : sanitize(item, exposeValidationSql));
             });
             return safe;
         }
         if (value instanceof Iterable<?> values) {
             List<Object> safe = new ArrayList<>();
-            for (Object item : values) safe.add(sanitize(item));
+            for (Object item : values) safe.add(sanitize(item, exposeValidationSql));
             return safe;
         }
         return value;
@@ -716,6 +730,8 @@ public class AgentTraceService {
             case "dual_period_validation" -> "校验统计范围";
             case "source_extraction_prepare" -> "准备源数据抽取";
             case "source_data_extraction" -> "抽取数据到真实库";
+            case "batch_data_initialization_validation" -> "数据初始化校验";
+            case "real_snapshot_data_validation" -> "校验真实库本次数据";
             case "business_overview" -> "计算业务库概览";
             case "real_overview" -> "计算真实库概览";
             case "dual_comparison" -> "核对双库结果";
@@ -763,6 +779,8 @@ public class AgentTraceService {
             case "dual_period_validation" -> "在访问抽取接口和 DBHub 前强制校验统计区间不超过一个自然月。";
             case "source_extraction_prepare" -> "固定发布版本、规则、Profile、源 SQL 哈希和幂等键。";
             case "source_data_extraction" -> "调用受控抽取网关一次；后续诊断复用本轮抽取回执。";
+            case "batch_data_initialization_validation" -> "抽取前核对双库结构，并检查业务源库的数据量、空值和关联覆盖率。";
+            case "real_snapshot_data_validation" -> "抽取后核对真实库快照、写入行数及其与业务源查询行数的一致性。";
             case "business_overview" -> "在业务库执行已验证的同一份概览 SQL。";
             case "real_overview" -> "在真实库执行与业务库相同的概览 SQL 和参数。";
             case "dual_comparison" -> "分子和分母必须同时相等；仅比例相等仍属于不一致。";
@@ -801,6 +819,11 @@ public class AgentTraceService {
                         "raw_sql", "rawsql", "generated_sql", "generatedsql",
                         "raw_rows", "rawrows", "rows",
                         "patient_rows", "patientrows").contains(key);
+    }
+
+    private static boolean sqlKey(String key) {
+        return List.of("sql", "sql_text", "sqltext", "sql_preview", "sqlpreview",
+                "raw_sql", "rawsql", "generated_sql", "generatedsql").contains(key);
     }
 
     private static LocalDateTime at(long epochMs) {

@@ -82,14 +82,22 @@ export interface AgentEvent {
   resultValue?: number
   numeratorCount?: number
   denominatorCount?: number
+  sampleCount?: number
+  targetValue?: number | string
+  targetDirection?: string
   unit?: string
   calculationDisplay?: string
   statStart?: string
   statEnd?: string
+  batchRunId?: string
   runId?: string
   dataFreshness?: string
+  qualityStatus?: string
   errorCode?: string
   errorMessage?: string
+  overviewSqlHash?: string
+  detailKind?: string
+  detailContractVersion?: string
 }
 
 export interface UploadResult {
@@ -242,10 +250,14 @@ function authHeaders(token: string): HeadersInit {
 }
 
 async function readJson<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => ({})) as T & { detail?: string | { message?: string } }
+  const data = await response.json().catch(() => ({})) as T & {
+    code?: string
+    message?: string
+    detail?: string | { message?: string }
+  }
   if (!response.ok) {
     const detail = data.detail
-    const message = typeof detail === 'string' ? detail : detail?.message
+    const message = data.message || (typeof detail === 'string' ? detail : detail?.message)
     throw new Error(message || `请求失败（HTTP ${response.status}）`)
   }
   return data
@@ -284,37 +296,175 @@ export async function fetchEffectiveRule(
 }
 
 export interface IndicatorDetailResult {
+  batchRunId: string
   ruleId: string
   ruleName?: string
-  group: 'numerator' | 'denominator'
+  group: string
   statStart: string
   statEnd: string
-  rowCount: number
-  rows: Record<string, unknown>[]
+  page?: number
+  pageSize?: number
+  rowCount?: number
+  rows?: Record<string, unknown>[]
   truncated?: boolean
+  snapshotId?: string
+  snapshotReused?: boolean
+  durationMs?: number
   sqlSource: string
-  detailSql?: string
+  detailKind?: string
+  detailContractVersion?: string
+  cardNumerator?: number
+  cardDenominator?: number
+  detailNumerator?: number
+  detailDenominator?: number
+  overviewSqlHash?: string
+  numeratorContributionTotal?: number
+  denominatorContributionTotal?: number
+  medianValue?: number
+  sampleCount?: number
+  actualCount?: number
+  registeredCount?: number
+  actualRows?: Record<string, unknown>[]
+  registeredRows?: Record<string, unknown>[]
+  level4Rate?: string
+  level3Rate?: string
+  resultDisplay?: string
+  level4Hit?: Record<string, unknown>[]
+  level4Total?: Record<string, unknown>[]
+  level3Hit?: Record<string, unknown>[]
+  level3Total?: Record<string, unknown>[]
+  groupCounts?: Record<string, number>
 }
 
 /** 按指标 + 统计区间直接查询分子/分母患者明细（卡片「明细」按钮） */
 export async function fetchIndicatorDetails(
   token: string,
   ruleId: string,
-  group: 'numerator' | 'denominator',
+  group: string,
+  batchRunId: string,
   start: string,
   end: string,
-  modelId?: string,
   profileId?: string,
+  page = 1,
+  pageSize = 50,
 ): Promise<IndicatorDetailResult> {
-  const query = new URLSearchParams({ group, start, end })
-  // 明细 SQL 由所选模型现场合成：把用户当前选的模型透传给后端，选什么模型就用什么模型
-  if (modelId) query.set('modelId', modelId)
+  const query = new URLSearchParams({
+    group,
+    batchRunId,
+    start,
+    end,
+    page: String(page),
+    pageSize: String(pageSize),
+  })
   // 传入 profileId 时按口径变体查询，让同一指标的每个口径各自查各自的明细
   if (profileId) query.set('profileId', profileId)
   const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/details?${query}`, {
     headers: authHeaders(token),
   })
   return readJson<IndicatorDetailResult>(response)
+}
+
+export interface InspectIndicatorAction {
+  action: 'inspect_indicator'
+  batchRunId: string
+  indicatorId: string
+  profileId?: string
+  modelId?: string
+}
+
+export interface PreparedIndicatorInspection {
+  action: string
+  auditId: string
+  requiredModelProvider: 'cloud_api'
+  modelId: string
+  facts: Record<string, unknown>
+  prompt: string
+  answer: string
+}
+
+/** 将重点指标点击动作绑定到服务端保存的批次事实，并生成云端解释提示。 */
+export async function prepareIndicatorInspection(
+  token: string,
+  action: InspectIndicatorAction,
+): Promise<PreparedIndicatorInspection> {
+  const response = await fetch('/api/agent/actions/inspect-indicator', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(action),
+  })
+  return readJson<PreparedIndicatorInspection>(response)
+}
+
+export interface BatchAnalysisAction {
+  action: 'batch_confirmation_checklist' | 'batch_data_quality_review'
+  batchRunId: string
+}
+
+export interface PreparedBatchAnalysis {
+  action: BatchAnalysisAction['action']
+  auditId: string
+  batchRunId: string
+  displayPrompt: string
+  answer: string
+}
+
+/** 固定批次快捷动作：由服务端读取已保存事实并生成确定性回答，不走自由问句解析。 */
+export async function prepareBatchAnalysis(
+  token: string,
+  action: BatchAnalysisAction,
+): Promise<PreparedBatchAnalysis> {
+  const response = await fetch('/api/agent/actions/analyze-batch', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(action),
+  })
+  return readJson<PreparedBatchAnalysis>(response)
+}
+
+export interface BatchReportSnapshot {
+  reportId: string
+  version: number
+  reportStatus: 'DRAFT' | 'FORMAL'
+  batchRunId: string
+  statStart: string
+  statEnd: string
+  generatedAt: string
+  total: number
+  counts: Record<string, number>
+  tasks: Record<string, unknown>[]
+  statement: string
+}
+
+export async function createBatchReportSnapshot(
+  token: string,
+  batchRunId: string,
+): Promise<BatchReportSnapshot> {
+  const response = await fetch(`/api/batch-runs/${encodeURIComponent(batchRunId)}/reports`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return readJson<BatchReportSnapshot>(response)
+}
+
+export async function downloadBatchReport(
+  token: string,
+  reportId: string,
+  format: 'docx' | 'pdf' | 'xlsx',
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(
+    `/api/batch-reports/${encodeURIComponent(reportId)}/download?format=${format}`,
+    { headers: authHeaders(token) },
+  )
+  if (!response.ok) {
+    await readJson(response)
+  }
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+  return {
+    blob: await response.blob(),
+    fileName: encoded ? decodeURIComponent(encoded) : plain || `核心指标报告.${format}`,
+  }
 }
 
 export async function uploadIndicatorFile(token: string, file: File): Promise<UploadResult> {

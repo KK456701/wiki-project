@@ -43,6 +43,8 @@ export interface ExecutionNode {
   subtaskId?: string
   occurrence: number
   repeatCount?: number
+  errorCode?: string
+  errorMessage?: string
 }
 
 interface StageTransition {
@@ -84,6 +86,7 @@ export interface ChatMessage {
 }
 
 export interface BatchIndicatorResult {
+  batchRunId?: string
   ruleId: string
   ruleName: string
   profileId?: string
@@ -94,14 +97,21 @@ export interface BatchIndicatorResult {
   resultValue?: number
   numeratorCount?: number
   denominatorCount?: number
+  sampleCount?: number
+  targetValue?: number | string
+  targetDirection?: string
   unit?: string
   calculationDisplay?: string
   statStart?: string
   statEnd?: string
   runId?: string
   dataFreshness?: string
+  qualityStatus?: string
   errorCode?: string
   errorMessage?: string
+  overviewSqlHash?: string
+  detailKind?: string
+  detailContractVersion?: string
 }
 
 const toolLabels: Record<string, string> = {
@@ -166,6 +176,8 @@ const nodeLabels: Record<string, string> = {
   compound_subtask: '执行指标子任务',
   compound_merge: '按输入顺序合并结果',
   batch_indicator_enumerate: '确认本次指标清单',
+  batch_data_initialization_validation: '数据初始化校验',
+  real_snapshot_data_validation: '校验真实库本次数据',
   batch_indicator: '完成单项指标计算',
   batch_result_merge: '汇总本次计算结果',
 }
@@ -199,6 +211,8 @@ const dataNodeNames = new Set([
   'real_overview',
   'mras_patient_detail',
   'batch_indicator_enumerate',
+  'batch_data_initialization_validation',
+  'real_snapshot_data_validation',
   'batch_indicator',
 ])
 
@@ -243,7 +257,8 @@ function executionCategory(event: AgentEvent): ExecutionNodeCategory | null {
   if (status === 'failed' || status === 'error') return 'failure'
   if (nodeName === 'batch_indicator'
       && !event.subtaskId
-      && (event.message || '').startsWith('正在计算指标')) return null
+      && ((event.message || '').startsWith('正在计算指标')
+        || (event.message || '').startsWith('完成指标计算'))) return null
   if (event.nodeType === 'llm') return 'llm'
   if (ruleNodeNames.has(nodeName)
       || (nodeName === 'tool_result' && ruleTools.has(toolName))) return 'rule'
@@ -261,14 +276,29 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
   const nodes = message.executionNodes || (message.executionNodes = [])
   const nodeName = event.nodeName || 'unknown'
   const subtaskId = event.subtaskId || 'root'
+  const state = executionNodeState(event.status)
+  const runningNode = nodes.find((node) =>
+    node.nodeName === nodeName
+    && (node.subtaskId || 'root') === subtaskId
+    && node.status === 'running',
+  )
+  if (runningNode) {
+    runningNode.label = label
+    runningNode.status = state
+    runningNode.durationMs = event.durationMs
+    runningNode.toolName = event.toolName
+    runningNode.capability = event.capability
+    runningNode.modelId = event.modelId
+    runningNode.errorCode = event.errorCode
+    runningNode.errorMessage = event.errorMessage
+    return
+  }
   const repeatedBatchNode = subtaskId.includes(':batch:')
     ? nodes.find((node) => node.nodeName === nodeName && node.category === category)
     : undefined
   if (repeatedBatchNode) {
     repeatedBatchNode.label = label
-    repeatedBatchNode.status = event.status === 'failed' || event.status === 'error'
-      ? 'failed'
-      : 'success'
+    repeatedBatchNode.status = state
     repeatedBatchNode.durationMs = event.durationMs
     repeatedBatchNode.toolName = event.toolName
     repeatedBatchNode.capability = event.capability
@@ -276,6 +306,8 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     repeatedBatchNode.subtaskId = subtaskId
     repeatedBatchNode.occurrence = 0
     repeatedBatchNode.repeatCount = (repeatedBatchNode.repeatCount || 1) + 1
+    repeatedBatchNode.errorCode = event.errorCode
+    repeatedBatchNode.errorMessage = event.errorMessage
     return
   }
   const occurrence = nodes.filter((node) =>
@@ -287,18 +319,23 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     nodeType: event.nodeType || 'code',
     label,
     category,
-    status: event.status === 'failed' || event.status === 'error'
-      ? 'failed'
-      : event.status === 'warning' || event.status === 'incomplete'
-        ? 'warning'
-        : 'success',
+    status: state,
     durationMs: event.durationMs,
     toolName: event.toolName,
     capability: event.capability,
     modelId: event.modelId,
     subtaskId,
     occurrence,
+    errorCode: event.errorCode,
+    errorMessage: event.errorMessage,
   })
+}
+
+function executionNodeState(status?: string): StageState {
+  if (status === 'running') return 'running'
+  if (status === 'failed' || status === 'error') return 'failed'
+  if (status === 'warning' || status === 'incomplete') return 'warning'
+  return 'success'
 }
 
 // 毫秒级代码节点会在同一帧内连续到达；保留短暂驻留时间，确保状态文字可被看到。
@@ -372,9 +409,34 @@ function makeId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(16).slice(2)}`
 }
 
+const PERSISTENCE_POLL_INTERVAL_MS = 2_000
+const PERSISTENCE_WAIT_TIMEOUT_MS = 30 * 60 * 1_000
+
+async function waitForPersistedTurn(
+  token: string,
+  sessionId: string,
+  minimumMessageCount: number,
+): Promise<boolean> {
+  const deadline = Date.now() + PERSISTENCE_WAIT_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const messages = await getSessionMessages(token, sessionId)
+      const latest = messages[messages.length - 1]
+      if (messages.length >= minimumMessageCount && latest?.role === 'assistant') {
+        return true
+      }
+    } catch {
+      // SSE 已断开时，短暂的历史接口失败不应把仍在后台运行的批次误判为失败。
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, PERSISTENCE_POLL_INTERVAL_MS))
+  }
+  return false
+}
+
 /** 把持久化的批量卡片载荷（与 SSE batch_indicator_result 同形态）转为前端卡片数据 */
 function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
   return {
+    batchRunId: raw.batchRunId as string | undefined,
     ruleId: String(raw.ruleId ?? ''),
     ruleName: String(raw.ruleName ?? ''),
     profileId: raw.profileId as string | undefined,
@@ -385,14 +447,21 @@ function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
     resultValue: raw.resultValue as number | undefined,
     numeratorCount: raw.numeratorCount as number | undefined,
     denominatorCount: raw.denominatorCount as number | undefined,
+    sampleCount: raw.sampleCount as number | undefined,
+    targetValue: raw.targetValue as number | string | undefined,
+    targetDirection: raw.targetDirection as string | undefined,
     unit: raw.unit as string | undefined,
     calculationDisplay: raw.calculationDisplay as string | undefined,
     statStart: raw.statStart as string | undefined,
     statEnd: raw.statEnd as string | undefined,
     runId: raw.runId as string | undefined,
     dataFreshness: raw.dataFreshness as string | undefined,
+    qualityStatus: raw.qualityStatus as string | undefined,
     errorCode: raw.errorCode as string | undefined,
     errorMessage: raw.errorMessage as string | undefined,
+    overviewSqlHash: raw.overviewSqlHash as string | undefined,
+    detailKind: raw.detailKind as string | undefined,
+    detailContractVersion: raw.detailContractVersion as string | undefined,
   }
 }
 
@@ -553,12 +622,32 @@ export const useAgentStore = defineStore('agent', {
         evidence: [],
       })
     },
+    appendResolvedAction(userContent: string, agentContent: string) {
+      this.messages.push(
+        {
+          id: makeId('message'),
+          role: 'user',
+          content: userContent,
+          status: 'complete',
+          evidence: [],
+        },
+        {
+          id: makeId('message'),
+          role: 'agent',
+          content: agentContent,
+          status: 'complete',
+          evidence: [],
+        },
+      )
+    },
     async send(query: string) {
       const normalized = query.trim()
       if (!normalized || this.running) return
       // 记录本轮请求所属的会话与消息标识。切换对话会把消息列表整个替换，
       // 导致进行中的消息被摘掉；完成后需要能判断是否要重新拉取。
       const requestSessionId = this.sessionId
+      const minimumPersistedMessageCount = this.messages.length + 2
+      let restoreFromPersistence = false
       const pendingClarification = [...this.messages].reverse().find(
         (message) => message.role === 'agent'
           && message.awaitingClarification
@@ -584,12 +673,41 @@ export const useAgentStore = defineStore('agent', {
       this.activeRunMessages[requestSessionId] = activeMessage
 
       try {
-        await streamAgent(this.token, {
-          query: normalized,
-          sessionId: this.sessionId,
-          modelId: this.selectedModel,
-          fileKey: this.latestFileKey,
-        }, (event) => this.applyEvent(activeMessage, event))
+        let streamError: unknown
+        try {
+          await streamAgent(this.token, {
+            query: normalized,
+            sessionId: this.sessionId,
+            modelId: this.selectedModel,
+            fileKey: this.latestFileKey,
+          }, (event) => this.applyEvent(activeMessage, event))
+        } catch (error) {
+          streamError = error
+        }
+
+        // 浏览器切换会话、代理连接波动或 SSE 提前结束时，后台批次仍会继续并最终
+        // 持久化。只要已经收到过运行事件，就保持会话的“处理中”状态并轮询历史，
+        // 直到本轮 assistant 结果落库；这样切回会话不会只剩用户问题。
+        if (!activeMessage.pendingTerminalStatus
+            && (activeMessage.traceId || activeMessage.batchResults?.length)) {
+          activeMessage.content = '实时连接已结束，后台仍在继续计算，正在等待最终结果写入…'
+          setStage(activeMessage, '后台继续计算，等待结果写入', 'storage', 'warning')
+          const persisted = await waitForPersistedTurn(
+            this.token,
+            requestSessionId,
+            minimumPersistedMessageCount,
+          )
+          if (!persisted) {
+            throw streamError instanceof Error
+              ? streamError
+              : new Error('后台计算等待超时，请稍后从历史对话重新打开结果。')
+          }
+          restoreFromPersistence = true
+          activeMessage.pendingTerminalStatus = 'complete'
+        } else if (streamError) {
+          throw streamError
+        }
+
         const terminalStatus = activeMessage.pendingTerminalStatus || 'complete'
         if (activeMessage.awaitingClarification) {
           setStage(activeMessage, '等待你选择', 'done', 'warning', undefined, 'complete')
@@ -620,7 +738,8 @@ export const useAgentStore = defineStore('agent', {
         // 如果本轮消息已被切换动作摘掉、且用户仍停留在该会话，
         // 完成后从后端重新拉取消息，保证结果能正常显示。
         if (this.sessionId === requestSessionId
-            && !this.messages.some((message) => message.id === agentMessage.id)) {
+            && (restoreFromPersistence
+              || !this.messages.some((message) => message.id === agentMessage.id))) {
           await this.restoreSession(requestSessionId).catch(() => undefined)
         }
       }
@@ -651,11 +770,12 @@ export const useAgentStore = defineStore('agent', {
           : backendLabel
         appendExecutionNode(message, event, label)
         setStage(message, label, stageKind(event.nodeType),
-          event.status === 'failed' ? 'failed' : 'success', event.durationMs)
+          executionNodeState(event.status), event.durationMs)
       }
       if (event.event === 'batch_indicator_result') {
         if (!message.batchResults) message.batchResults = []
         const incoming: BatchIndicatorResult = {
+          batchRunId: event.batchRunId,
           ruleId: event.ruleId || '',
           ruleName: event.ruleName || '',
           profileId: event.profileId,
@@ -666,14 +786,21 @@ export const useAgentStore = defineStore('agent', {
           resultValue: event.resultValue,
           numeratorCount: event.numeratorCount,
           denominatorCount: event.denominatorCount,
+          sampleCount: event.sampleCount,
+          targetValue: event.targetValue,
+          targetDirection: event.targetDirection,
           unit: event.unit,
           calculationDisplay: event.calculationDisplay,
           statStart: event.statStart,
           statEnd: event.statEnd,
           runId: event.runId,
           dataFreshness: event.dataFreshness,
+          qualityStatus: event.qualityStatus,
           errorCode: event.errorCode,
           errorMessage: event.errorMessage,
+          overviewSqlHash: event.overviewSqlHash,
+          detailKind: event.detailKind,
+          detailContractVersion: event.detailContractVersion,
         }
         // 同一指标+口径重复推送时原地替换，避免叠出同形卡片；
         // 不同口径（profileId 不同）各自保留一张卡片。
