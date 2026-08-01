@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,6 +22,8 @@ import com.hospital.wikiagent.agent.initialization.MrasSqlLineageAnalyzer.JoinEd
 import com.hospital.wikiagent.agent.initialization.MrasSqlLineageAnalyzer.SqlLineage;
 import com.hospital.wikiagent.agent.mras.EntityPageData;
 import com.hospital.wikiagent.agent.mras.EntityPageParser;
+import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver;
+import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver.FlowType;
 import com.hospital.wikiagent.agent.mras.MrasParameterMapper;
 import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
@@ -55,6 +58,7 @@ public class BatchDataInitializationValidator {
     private final IndicatorDatabaseQueryClient query;
     private final DbHubProperties dbHub;
     private final KnowledgeDataDictionary dictionary;
+    private final IndicatorDataFlowTypeResolver flowTypes;
 
     public BatchDataInitializationValidator(
             EntityPageParser entities,
@@ -66,7 +70,8 @@ public class BatchDataInitializationValidator {
             MetadataCatalogClient metadata,
             IndicatorDatabaseQueryClient query,
             DbHubProperties dbHub,
-            KnowledgeDataDictionary dictionary) {
+            KnowledgeDataDictionary dictionary,
+            IndicatorDataFlowTypeResolver flowTypes) {
         this.entities = entities;
         this.lineageAnalyzer = lineageAnalyzer;
         this.templateRenderer = templateRenderer;
@@ -77,6 +82,7 @@ public class BatchDataInitializationValidator {
         this.query = query;
         this.dbHub = dbHub;
         this.dictionary = dictionary;
+        this.flowTypes = flowTypes;
     }
 
     public InitializationValidationReport validate(
@@ -87,16 +93,35 @@ public class BatchDataInitializationValidator {
             LocalDateTime end,
             String statStart,
             String statEnd) {
+        return validate(batchRunId, hospitalId, targets, start, end, statStart, statEnd,
+                ignored -> { });
+    }
+
+    public InitializationValidationReport validate(
+            String batchRunId,
+            String hospitalId,
+            List<ValidationTarget> targets,
+            LocalDateTime start,
+            LocalDateTime end,
+            String statStart,
+            String statEnd,
+            Consumer<ValidationProgress> progress) {
         long started = System.currentTimeMillis();
+        progress.accept(new ValidationProgress("LINEAGE", "正在解析口径依赖", 0, targets.size()));
         List<WorkProfile> work = targets.stream()
                 .map(target -> prepare(target, start, end))
                 .toList();
         List<ValidationItem> items = new ArrayList<>();
 
+        int structureChecks = requiredTables(work, DatabaseRole.BUSINESS).size()
+                + requiredTables(work, DatabaseRole.REAL).size();
+        progress.accept(new ValidationProgress("SCHEMA", "正在检查双库表和字段", 0, structureChecks));
         CatalogSnapshot business = loadCatalog(
                 DatabaseRole.BUSINESS, requiredTables(work, DatabaseRole.BUSINESS));
         CatalogSnapshot real = loadCatalog(
                 DatabaseRole.REAL, requiredTables(work, DatabaseRole.REAL));
+        progress.accept(new ValidationProgress("SCHEMA", "双库表和字段检查完成",
+                structureChecks, structureChecks));
         if (business.error() != null) {
             items.add(connectionFailure(DatabaseRole.BUSINESS, statStart, statEnd, business.error()));
         }
@@ -104,16 +129,40 @@ public class BatchDataInitializationValidator {
             items.add(connectionFailure(DatabaseRole.REAL, statStart, statEnd, real.error()));
         }
 
+        progress.accept(new ValidationProgress("BUSINESS_DATA", "正在检查业务库数据质量", 0,
+                requiredTables(work, DatabaseRole.BUSINESS).size()));
         Map<String, TableStats> businessStats = business.error() == null
                 ? loadBusinessStats(work, business, items, statStart, statEnd) : Map.of();
         Map<String, JoinStats> joinStats = business.error() == null
                 ? loadJoinStats(work, business, items, statStart, statEnd) : Map.of();
         Map<String, SourceCount> sourceCounts = business.error() == null
                 ? loadSourceCounts(work, items, start, end, statStart, statEnd) : Map.of();
+        int businessObjects = requiredTables(work, DatabaseRole.BUSINESS).size();
+        progress.accept(new ValidationProgress("BUSINESS_DATA", "业务库数据质量检查完成",
+                businessObjects, businessObjects));
 
+        progress.accept(new ValidationProgress("SUMMARY", "正在汇总逐口径校验结果", 0, work.size()));
         List<ProfileValidation> profiles = new ArrayList<>();
+        int summarized = 0;
         for (WorkProfile profile : work) {
             List<String> blockers = new ArrayList<>();
+            FlowType flowType = profile.entity() == null
+                    ? FlowType.INCOMPLETE : flowTypes.resolve(profile.entity());
+            if (flowType == FlowType.INCOMPLETE) {
+                String message = "知识库明确未配置可执行概览 SQL，本口径未实现，本次跳过。";
+                items.add(item("NOT_IMPLEMENTED", "SKIPPED", DatabaseRole.REAL, profile,
+                        "", "", "", "当前口径", statStart, statEnd,
+                        null, null, null, null, null, null, false, "跳过",
+                        "PROFILE_NOT_IMPLEMENTED", message, "", Map.of(), 0, null, ""));
+                profiles.add(new ProfileValidation(
+                        profile.target().ruleId(), profile.target().ruleName(),
+                        profile.target().profileId(), profile.target().profileLabel(),
+                        Decision.SKIPPED, "PROFILE_NOT_IMPLEMENTED", message, null,
+                        flowType.name()));
+                progress.accept(new ValidationProgress("SUMMARY", "正在汇总逐口径校验结果",
+                        ++summarized, work.size()));
+                continue;
+            }
             if (profile.entity() == null) {
                 blockers.add("知识库实体不存在");
                 items.add(item("UNSUPPORTED", "BLOCKED", DatabaseRole.BUSINESS, profile,
@@ -121,8 +170,9 @@ public class BatchDataInitializationValidator {
                         null, null, null, null, null, null, true, "阻断",
                         "INIT_LINEAGE_UNCERTAIN", "知识库中没有可解析的指标实体。",
                         "", Map.of(), 0, null, ""));
-            } else if (profile.entity().targetTable() == null
-                    || profile.entity().targetTable().isBlank()) {
+            } else if (flowType != FlowType.DIRECT_REAL_QUERY
+                    && (profile.entity().targetTable() == null
+                    || profile.entity().targetTable().isBlank())) {
                 blockers.add("知识库未配置真实库目标表");
                 items.add(item("UNSUPPORTED", "BLOCKED", DatabaseRole.REAL, profile,
                         "", "", "", "当前口径", statStart, statEnd,
@@ -131,14 +181,27 @@ public class BatchDataInitializationValidator {
                         "知识库实体未配置真实库目标表，无法验证抽取落表结构。",
                         "", Map.of(), 0, null, ""));
             }
-            if (business.error() != null) blockers.add("业务库不可访问");
+            if (business.error() != null && flowType != FlowType.DIRECT_REAL_QUERY) {
+                blockers.add("业务库不可访问");
+            }
             if (real.error() != null) blockers.add("真实库不可访问");
 
-            inspectStructure(profile, profile.sourceLineage(), business, DatabaseRole.BUSINESS,
-                    blockers, items, statStart, statEnd);
+            if (flowType != FlowType.DIRECT_REAL_QUERY) {
+                inspectStructure(profile, profile.sourceLineage(), business, DatabaseRole.BUSINESS,
+                        blockers, items, statStart, statEnd);
+            }
             inspectStructure(profile, profile.overviewLineage(), real, DatabaseRole.REAL,
                     blockers, items, statStart, statEnd);
-            appendDataFindings(profile, businessStats, joinStats, items, statStart, statEnd);
+            if (flowType != FlowType.DIRECT_REAL_QUERY) {
+                appendDataFindings(profile, businessStats, joinStats, items, statStart, statEnd);
+            } else {
+                items.add(item("UPSTREAM_NOT_REGISTERED", "WARNING", DatabaseRole.REAL, profile,
+                        "", "", "", "真实库已有表", statStart, statEnd,
+                        null, null, null, null, null, null, false, "继续",
+                        "INIT_UPSTREAM_SYNC_NOT_REGISTERED",
+                        "本指标直接查询真实库已有表；当前知识库未登记其上游同步 SQL。",
+                        "", Map.of(), 0, null, ""));
+            }
 
             SourceCount sourceCount = sourceCounts.get(profile.target().profileId());
             if (sourceCount != null && sourceCount.error() != null) {
@@ -174,13 +237,16 @@ public class BatchDataInitializationValidator {
                     profile.target().ruleId(), profile.target().ruleName(),
                     profile.target().profileId(), profile.target().profileLabel(),
                     decision, errorCode, message,
-                    sourceCount == null ? null : sourceCount.count()));
+                    sourceCount == null ? null : sourceCount.count(), flowType.name()));
+            progress.accept(new ValidationProgress("SUMMARY", "正在汇总逐口径校验结果",
+                    ++summarized, work.size()));
         }
 
         long blocked = profiles.stream().filter(p -> p.decision() == Decision.BLOCKED).count();
         boolean warnings = items.stream().anyMatch(item -> "WARNING".equals(item.severity()));
         String quality = blocked == profiles.size() && !profiles.isEmpty()
                 ? "ALL_BLOCKED" : blocked > 0 ? "PARTIAL_BLOCKED" : warnings ? "WARNING" : "NORMAL";
+        progress.accept(new ValidationProgress("DONE", "数据初始化校验完成", work.size(), work.size()));
         return new InitializationValidationReport(
                 batchRunId, hospitalId, statStart, statEnd,
                 System.currentTimeMillis() - started, quality,
@@ -430,6 +496,8 @@ public class BatchDataInitializationValidator {
         Map<String, Object> params = parameterMapper.mapTimeOnly(start, end);
         for (WorkProfile profile : work) {
             if (profile.entity() == null || !profile.sourceLineage().certain()) continue;
+            if (flowTypes.resolve(profile.entity()) == FlowType.DIRECT_REAL_QUERY
+                    || profile.sourceSql() == null || profile.sourceSql().isBlank()) continue;
             String rendered = profile.sourceSql();
             ReadOnlySqlValidator.ValidationResult validation = sqlValidator.validateReadOnly(rendered);
             if (!validation.ok()) {
@@ -491,13 +559,12 @@ public class BatchDataInitializationValidator {
                     Map.of(), 0, null, ""));
             return;
         }
-        for (String warning : lineage.warnings()) {
-            if (!warning.contains("无法安全归属物理表")) continue;
+        for (String warning : lineage.unresolvedReferences()) {
             items.add(item("UNSUPPORTED", "WARNING", role, profile,
                     "", "", "", "当前口径", statStart, statEnd,
                     null, null, null, null, null, null, false, "继续",
                     "INIT_ALIAS_SCOPE_UNCERTAIN",
-                    warning + "；已跳过无法安全归属的字段空值和关联覆盖检查。",
+                    warning + "；已跳过该字段的空值率或关联覆盖检查，不代表数据库异常。",
                     role == DatabaseRole.BUSINESS ? profile.sourceSql() : profile.overviewSql(),
                     Map.of(), 0, null, ""));
         }
@@ -568,11 +635,17 @@ public class BatchDataInitializationValidator {
                         if (nullCount != null && nullCount > 0 && stats.total() != null) {
                             double rate = stats.total() == 0 ? 0D
                                     : nullCount.doubleValue() / stats.total().doubleValue();
+                            List<String> roles = profile.sourceLineage().roles(table, field)
+                                    .stream().map(Enum::name).toList();
+                            boolean displayOnly = !roles.isEmpty()
+                                    && roles.stream().allMatch("SELECT_ONLY"::equals);
                             items.add(item("NULL_RATE", "WARNING", DatabaseRole.BUSINESS, profile,
                                     table, field, dictionary.fieldLabel(table, field), "全表",
                                     statStart, statEnd, null, stats.total(), nullCount,
                                     null, null, rate, false, "继续", "INIT_FIELD_HAS_NULL",
-                                    "关键字段存在空值，请结合本院业务确认是否可接受。",
+                                    displayOnly
+                                            ? "该字段仅用于明细展示；空值不会改变本次分子、分母，但会造成明细信息不完整。"
+                                            : "该字段参与时间、筛选、分子分母、去重、分组或关联；存在空值，需结合本院业务确认是否可接受。",
                                     stats.sql(), Map.of(), stats.durationMs(), stats.returnedRows(), ""));
                         }
                     });
@@ -612,13 +685,20 @@ public class BatchDataInitializationValidator {
             String code, String message, String sql, Map<String, Object> parameters,
             long duration, Long returnedRows, String databaseError) {
         ValidationTarget target = profile.target();
+        List<String> fieldRoles = field.isBlank() ? List.of()
+                : (role == DatabaseRole.BUSINESS ? profile.sourceLineage() : profile.overviewLineage())
+                        .roles(table, field).stream().map(Enum::name).toList();
+        String impactLevel = impactLevel(category, severity, affects, fieldRoles);
+        String queryScope = queryScope(scope);
+        String physicalObjectKey = physicalObjectKey(role, category, table, field, code, target);
         return new ValidationItem(category, severity, role,
                 target.ruleId(), target.ruleName(), target.profileId(), target.profileLabel(),
                 table.isBlank() ? "" : dictionary.sourceSystem(table),
                 table, field, fieldLabel, scope, statStart, statEnd,
                 actual, total, nullCount, matched, unmatched, rate,
                 affects, action, code, message, sql, parameters,
-                duration, returnedRows, databaseError);
+                duration, returnedRows, databaseError, impactLevel, fieldRoles,
+                queryScope, physicalObjectKey, "DETERMINISTIC_SQL_PROBE");
     }
 
     private ValidationItem connectionFailure(
@@ -627,7 +707,44 @@ public class BatchDataInitializationValidator {
                 "", "", "", "", "", "", "", "", "数据库连接",
                 statStart, statEnd, null, null, null, null, null, null,
                 true, "阻断", "INIT_DATABASE_UNAVAILABLE",
-                "数据库元数据读取失败。", "", Map.of(), 0, null, error);
+                "数据库元数据读取失败。", "", Map.of(), 0, null, error,
+                "CONFIRMED", List.of(), "DATABASE_CONNECTION",
+                role.name() + "|DATABASE_CONNECTION", "DATABASE_METADATA");
+    }
+
+    private static String impactLevel(
+            String category, String severity, boolean affects, List<String> roles) {
+        if (affects || "BLOCKED".equals(severity) || "NO_SAMPLE".equals(severity)) {
+            return "CONFIRMED";
+        }
+        if ("UNSUPPORTED".equals(category) || "UPSTREAM_NOT_REGISTERED".equals(category)) {
+            return "UNKNOWN";
+        }
+        if ("NULL_RATE".equals(category) && !roles.isEmpty()
+                && roles.stream().allMatch("SELECT_ONLY"::equals)) {
+            return "DISPLAY_ONLY";
+        }
+        if ("NULL_RATE".equals(category) || "JOIN_COVERAGE".equals(category)
+                || "NO_DATA".equals(category)) return "POSSIBLE";
+        return "NO_IMPACT";
+    }
+
+    private static String queryScope(String scope) {
+        if (scope == null) return "UNKNOWN";
+        if (scope.contains("本次统计窗口")) return "STAT_WINDOW";
+        if (scope.contains("全表")) return "FULL_TABLE";
+        if (scope.contains("结构")) return "SCHEMA";
+        if (scope.contains("连接")) return "DATABASE_CONNECTION";
+        return "PROFILE";
+    }
+
+    private static String physicalObjectKey(
+            DatabaseRole role, String category, String table, String field,
+            String code, ValidationTarget target) {
+        if (table != null && !table.isBlank()) {
+            return role.name() + "|" + category + "|" + upper(table) + "|" + upper(field);
+        }
+        return role.name() + "|" + category + "|" + code + "|" + target.profileId();
     }
 
     private String metadataTableSql(DatabaseRole role, String table) {
@@ -705,8 +822,8 @@ public class BatchDataInitializationValidator {
         Set<String> merged = new LinkedHashSet<>(fields.getOrDefault(targetTable, List.of()));
         merged.addAll(referenced);
         fields.put(targetTable, List.copyOf(merged));
-        return new SqlLineage(lineage.tables(), Map.copyOf(fields), lineage.joins(),
-                lineage.ctes(), lineage.warnings());
+        return new SqlLineage(lineage.tables(), Map.copyOf(fields), lineage.fieldRolesByTable(),
+                lineage.joins(), lineage.ctes(), lineage.warnings(), lineage.unresolvedReferences());
     }
 
     static String topLevelSelectList(String sql) {
@@ -903,11 +1020,15 @@ public class BatchDataInitializationValidator {
     }
 
     private static SqlLineage emptyLineage() {
-        return new SqlLineage(List.of(), Map.of(), List.of(), List.of(), List.of("知识库实体不存在"));
+        return new SqlLineage(List.of(), Map.of(), Map.of(), List.of(), List.of(),
+                List.of("知识库实体不存在"), List.of());
     }
 
     public record ValidationTarget(
             String ruleId, String ruleName, String profileId, String profileLabel) {}
+
+    public record ValidationProgress(
+            String phase, String message, int completed, int total) {}
 
     public record RealSnapshotValidation(
             boolean ok, String errorCode, String message, Map<String, Object> output) {}

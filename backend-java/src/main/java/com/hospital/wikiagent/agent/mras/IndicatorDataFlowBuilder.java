@@ -11,7 +11,9 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
+import com.hospital.wikiagent.agent.initialization.KnowledgeDataDictionary;
 import com.hospital.wikiagent.agent.initialization.MrasSqlLineageAnalyzer;
+import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver.FlowType;
 
 /**
  * 根据当前生效实体 SQL 生成前端可展示的数据链路。
@@ -26,40 +28,32 @@ public class IndicatorDataFlowBuilder {
     private static final Pattern PARAMETER = Pattern.compile("(?<!:):([A-Za-z_][A-Za-z0-9_]*)");
 
     private final MrasSqlLineageAnalyzer lineageAnalyzer;
+    private final IndicatorDataFlowTypeResolver typeResolver;
+    private final KnowledgeDataDictionary dictionary;
 
-    public IndicatorDataFlowBuilder(MrasSqlLineageAnalyzer lineageAnalyzer) {
+    public IndicatorDataFlowBuilder(
+            MrasSqlLineageAnalyzer lineageAnalyzer,
+            IndicatorDataFlowTypeResolver typeResolver,
+            KnowledgeDataDictionary dictionary) {
         this.lineageAnalyzer = lineageAnalyzer;
+        this.typeResolver = typeResolver;
+        this.dictionary = dictionary;
     }
 
     public Map<String, Object> build(EntityPageData entity) {
         var sourceLineage = lineageAnalyzer.analyze(entity.sourceTableSql());
-        boolean hasOverview = entity.hasOverviewSql();
-        boolean hasSource = present(entity.sourceTableSql());
-        boolean hasTarget = present(entity.targetTable());
-        boolean usesEvent = sourceLineage.tables().contains(PATIENT_EVENT)
-                || !entity.extendedEvents().isEmpty();
-
-        String templateType;
+        FlowType flowType = typeResolver.resolve(entity);
+        String templateType = flowType.name();
         String status;
         List<String> warnings = new ArrayList<>();
-        if (!hasOverview) {
-            templateType = "INCOMPLETE";
+        if (flowType == FlowType.INCOMPLETE) {
             status = "incomplete";
             warnings.add("当前口径未配置概览 SQL，不能形成可执行统计链路。");
-        } else if (hasTarget && hasSource && usesEvent) {
-            templateType = "EVENT_TO_TARGET";
-            status = "complete";
-        } else if (hasTarget && hasSource) {
-            templateType = "DIRECT_TO_TARGET";
-            status = "complete";
-        } else if (!hasTarget && hasOverview) {
-            templateType = "DIRECT_REAL_QUERY";
-            status = "complete";
-            warnings.add("本指标没有独立中间表；上游同步 SQL 未在当前指标知识库登记。");
         } else {
-            templateType = "INCOMPLETE";
-            status = "incomplete";
-            warnings.add("源表 SQL 或目标表配置不完整，无法安全确定数据链路。");
+            status = "complete";
+            if (flowType == FlowType.DIRECT_REAL_QUERY) {
+                warnings.add("本指标没有独立中间表；上游同步 SQL 未在当前指标知识库登记。");
+            }
         }
 
         List<Map<String, Object>> nodes = new ArrayList<>();
@@ -188,11 +182,18 @@ public class IndicatorDataFlowBuilder {
                 lineageAnalyzer.analyze(sql).tables(), type, sql, parameters(sql), description);
     }
 
-    private static Map<String, Object> tableNode(
+    private Map<String, Object> tableNode(
             String id, int sequence, String title, String databaseRole,
             List<String> tables, String description) {
-        return node(id, sequence, title, "TABLE", databaseRole,
-                tables, "", "", List.of(), description);
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        for (String table : tables == null ? List.<String>of() : tables) {
+            String value = dictionary.tableDescription(table);
+            if (!value.isBlank()) descriptions.put(table, value);
+        }
+        Map<String, Object> value = new LinkedHashMap<>(node(id, sequence, title, "TABLE", databaseRole,
+                tables, "", "", List.of(), description));
+        value.put("tableDescriptions", Map.copyOf(descriptions));
+        return Map.copyOf(value);
     }
 
     private static Map<String, Object> node(

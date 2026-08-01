@@ -56,11 +56,11 @@ const initializationItems = computed<Record<string, unknown>[]>(() => {
 const impactSummary = computed(() => ({
   confirmed: impactProfileCount('CONFIRMED'),
   possible: impactProfileCount('POSSIBLE'),
-  noImpact: impactProfileCount('NO_IMPACT'),
+  displayOnly: impactProfileCount('DISPLAY_ONLY'),
   unknown: impactProfileCount('UNKNOWN'),
   confirmedChecks: impactItems('CONFIRMED').length,
   possibleChecks: impactItems('POSSIBLE').length,
-  noImpactChecks: impactItems('NO_IMPACT').length,
+  displayOnlyChecks: impactItems('DISPLAY_ONLY').length,
   unknownChecks: impactItems('UNKNOWN').length,
 }))
 const realSnapshotNodes = computed(() => traceNodes.value
@@ -84,24 +84,28 @@ const validationGroups = computed(() => [
     label: '确定影响计算',
     hint: '已经导致无样本或阻断，系统不会返回一个看似正常的错误结果。',
     items: impactItems('CONFIRMED'),
+    profiles: impactProfiles('CONFIRMED'),
   },
   {
     key: 'POSSIBLE',
     label: '可能影响结果',
     hint: '存在空值、关联缺口或空表，需要结合字段作用和医院业务确认。',
     items: impactItems('POSSIBLE'),
+    profiles: impactProfiles('POSSIBLE'),
   },
   {
-    key: 'NO_IMPACT',
-    label: '不影响结果',
-    hint: '已经证明只涉及展示信息，不参与筛选、关联、分子或分母。',
-    items: impactItems('NO_IMPACT'),
+    key: 'DISPLAY_ONLY',
+    label: '仅影响明细展示',
+    hint: '姓名等展示字段存在问题，但没有证据表明它会改变本次分子、分母。',
+    items: impactItems('DISPLAY_ONLY'),
+    profiles: impactProfiles('DISPLAY_ONLY'),
   },
   {
     key: 'UNKNOWN',
     label: '无法判断',
     hint: '程序无法安全生成该项质量检查；这不等于数据异常。',
     items: impactItems('UNKNOWN'),
+    profiles: impactProfiles('UNKNOWN'),
   },
 ])
 
@@ -196,6 +200,10 @@ function asRecords(value: unknown): Record<string, unknown>[] {
 }
 
 function impactLevel(item: Record<string, unknown>): string {
+  const explicit = String(item.impactLevel || '').toUpperCase()
+  if (['CONFIRMED', 'POSSIBLE', 'DISPLAY_ONLY', 'UNKNOWN', 'NO_IMPACT'].includes(explicit)) {
+    return explicit
+  }
   const severity = String(item.severity || '').toUpperCase()
   const category = String(item.category || '').toUpperCase()
   if (item.affectsCalculation === true || severity === 'BLOCKED' || severity === 'NO_SAMPLE') {
@@ -217,6 +225,46 @@ function impactProfileCount(level: string): number {
     .filter(Boolean)).size
 }
 
+function impactProfiles(level: string) {
+  const profiles = new Map<string, { key: string; ruleId: string; ruleName: string; profileId: string; profileLabel: string; items: Record<string, unknown>[]; categories: { key: string; label: string; items: Record<string, unknown>[] }[] }>()
+  for (const item of impactItems(level)) {
+    const key = String(item.profileId || item.ruleId || 'unknown')
+    const profile = profiles.get(key) || {
+      key,
+      ruleId: String(item.ruleId || '—'),
+      ruleName: String(item.ruleName || ''),
+      profileId: String(item.profileId || ''),
+      profileLabel: String(item.profileLabel || item.profileId || '默认口径'),
+      items: [],
+      categories: [],
+    }
+    profile.items.push(item)
+    profiles.set(key, profile)
+  }
+  return [...profiles.values()].map((profile) => {
+    const categories = new Map<string, Record<string, unknown>[]>()
+    for (const item of profile.items) {
+      const category = String(item.category || 'OTHER')
+      categories.set(category, [...(categories.get(category) || []), item])
+    }
+    profile.categories = [...categories.entries()].map(([key, items]) => ({
+      key,
+      label: categoryText(key),
+      items,
+    }))
+    return profile
+  })
+}
+
+function profileWindowCount(profileId: string): string {
+  const profile = asRecords(initializationOutput.value.profiles)
+    .find((item) => String(item.profileId || '') === profileId)
+  if (!profile || profile.businessSourceCount === null || profile.businessSourceCount === undefined) {
+    return '本次窗口数据量未能安全生成'
+  }
+  return `本次统计窗口源记录 ${Number(profile.businessSourceCount).toLocaleString()} 条`
+}
+
 function categoryText(value: unknown): string {
   const category = String(value || '')
   if (category === 'MISSING_TABLE') return '缺少数据表'
@@ -225,6 +273,9 @@ function categoryText(value: unknown): string {
   if (category === 'NULL_RATE') return '字段存在空值'
   if (category === 'JOIN_COVERAGE') return '关联未完全匹配'
   if (category === 'UNSUPPORTED') return '检查未完成'
+  if (category === 'NOT_IMPLEMENTED') return '口径未实现'
+  if (category === 'UPSTREAM_NOT_REGISTERED') return '上游同步链路未登记'
+  if (category === 'DATABASE_CONNECTION') return '数据库连接异常'
   return '校验信息'
 }
 
@@ -233,7 +284,24 @@ function impactText(item: Record<string, unknown>): string {
   if (level === 'CONFIRMED') return '确定影响当前计算'
   if (level === 'POSSIBLE') return '可能影响结果，计算继续'
   if (level === 'UNKNOWN') return '无法判断，不代表数据异常'
-  return '已证明不影响结果'
+  if (level === 'DISPLAY_ONLY') return '仅影响明细展示，不改变分子分母'
+  return '未发现影响结果的证据'
+}
+
+function fieldRolesText(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) return '未识别字段作用'
+  const labels: Record<string, string> = {
+    TIME_FILTER: '统计时间', NUMERATOR_CONDITION: '分子判定', DENOMINATOR_SCOPE: '分母范围',
+    JOIN_KEY: '表关联', GROUP_KEY: '分组', DISTINCT_KEY: '去重', SELECT_ONLY: '明细展示',
+  }
+  return value.map((role) => labels[String(role)] || String(role)).join('、')
+}
+
+function scopeText(item: Record<string, unknown>): string {
+  const scope = String(item.queryScope || '')
+  if (scope === 'STAT_WINDOW') return '本次统计窗口'
+  if (scope === 'FULL_TABLE') return '全表基础质量'
+  return String(item.scope || '当前口径')
 }
 
 function severityRank(value: unknown): number {
@@ -372,6 +440,7 @@ function statusText(value?: unknown): string {
             <div><strong>{{ Number(initializationOutput.runnableCount || 0) }}</strong><span>可继续</span></div>
             <div><strong>{{ Number(initializationOutput.noSampleCount || 0) }}</strong><span>无样本</span></div>
             <div><strong>{{ Number(initializationOutput.blockedCount || 0) }}</strong><span>被阻断</span></div>
+            <div><strong>{{ Number(initializationOutput.skippedCount || 0) }}</strong><span>未实现/跳过</span></div>
             <div><strong>{{ Number(initializationOutput.missingTableCount || 0) }}</strong><span>缺表</span></div>
             <div><strong>{{ Number(initializationOutput.missingColumnCount || 0) }}</strong><span>缺字段</span></div>
             <div><strong>{{ Number(initializationOutput.emptySourceCount || 0) }}</strong><span>无数据</span></div>
@@ -386,16 +455,26 @@ function statusText(value?: unknown): string {
               <strong>{{ impactSummary.possible }}</strong><span>个口径可能受影响</span>
               <small>{{ impactSummary.possibleChecks }} 条空值、关联或空表检查</small>
             </div>
-            <div data-impact="none">
-              <strong>{{ impactSummary.noImpact }}</strong><span>个口径确认不受影响</span>
-              <small>仅展示字段等非计算信息</small>
+            <div data-impact="display">
+              <strong>{{ impactSummary.displayOnly }}</strong><span>个口径仅影响展示</span>
+              <small>{{ impactSummary.displayOnlyChecks }} 条姓名等展示字段检查</small>
             </div>
             <div data-impact="unknown">
               <strong>{{ impactSummary.unknown }}</strong><span>个口径暂无法判断</span>
               <small>{{ impactSummary.unknownChecks }} 项检查未完成</small>
             </div>
           </section>
-          <p class="initialization-count-note">口径数在每一类内去重；同一口径可同时存在“可能影响”和“无法判断”，四类数字不能相加。展开后显示逐字段、逐关联证据，同一字段被多个口径使用时会出现多条检查。</p>
+          <section class="initialization-glossary" aria-label="术语说明">
+            <h3>怎么看这份校验</h3>
+            <dl>
+              <div><dt>确定影响</dt><dd>已导致该口径阻断或本次窗口无样本。</dd></div>
+              <div><dt>可能影响</dt><dd>参与时间、筛选、分子分母、去重、分组或关联的字段存在问题。</dd></div>
+              <div><dt>仅影响展示</dt><dd>姓名等明细展示字段为空，不改变分子分母。</dd></div>
+              <div><dt>无法判断</dt><dd>程序证据不足，未完成该项检查；不表示数据库有问题。</dd></div>
+            </dl>
+            <p>一个指标会使用多张表和多个字段，所以可能出现多条证据。页面先按指标合并，展开后才显示字段详情；顶部物理对象数量已去重。</p>
+          </section>
+          <p class="initialization-count-note">同一口径可同时存在“可能影响”和“无法判断”，分级数字不能相加；同一物理字段被多个口径引用时，详情保留每个引用关系。</p>
 
           <section class="initialization-connection-strip">
             <span :data-ok="Boolean(initializationOutput.businessConnected)">业务库 {{ initializationOutput.businessConnected ? '已连接' : '不可用' }}</span>
@@ -436,10 +515,21 @@ function statusText(value?: unknown): string {
             </summary>
             <template v-if="isGroupOpen(group.key)">
               <p v-if="group.items.length === 0" class="initialization-empty">未发现</p>
-              <article
-                v-for="(item, itemIndex) in group.items"
+              <details
+                v-for="profile in group.profiles"
                 v-else
-                :key="`${group.key}-${String(item.profileId || '')}-${String(item.tableName || '')}-${String(item.fieldName || '')}-${itemIndex}`"
+                :key="`${group.key}-${profile.key}`"
+                class="initialization-profile"
+              >
+                <summary>
+                  <div><strong>{{ profile.ruleId }} · {{ profile.ruleName }}</strong><span>{{ profile.profileLabel }} · {{ profileWindowCount(profile.profileId) }}</span></div>
+                  <b>{{ profile.items.length }} 条证据</b>
+                </summary>
+                <section v-for="category in profile.categories" :key="category.key" class="initialization-category">
+                  <h4>{{ category.label }} <span>{{ category.items.length }}</span></h4>
+              <article
+                v-for="(item, itemIndex) in category.items"
+                :key="`${group.key}-${profile.key}-${category.key}-${String(item.tableName || '')}-${String(item.fieldName || '')}-${itemIndex}`"
                 class="validation-item"
                 :data-severity="String(item.severity || item.decision || 'NORMAL')"
               >
@@ -453,7 +543,8 @@ function statusText(value?: unknown): string {
               <p>{{ String(item.profileLabel || item.profileId || '默认口径') }}</p>
               <dl>
                 <div><dt>对象</dt><dd><code>{{ String(item.tableName || '—') }}{{ item.fieldName ? `.${String(item.fieldName)}` : '' }}</code><span v-if="item.fieldLabel">{{ String(item.fieldLabel) }}</span></dd></div>
-                <div><dt>来源 / 范围</dt><dd>{{ String(item.sourceSystem || '未登记') }} · {{ String(item.scope || '—') }}</dd></div>
+                <div><dt>来源 / 范围</dt><dd>{{ String(item.sourceSystem || '未登记') }} · <span class="scope-chip" :data-scope="String(item.queryScope || '')">{{ scopeText(item) }}</span></dd></div>
+                <div v-if="Array.isArray(item.fieldRoles) && item.fieldRoles.length"><dt>字段作用</dt><dd>{{ fieldRolesText(item.fieldRoles) }}</dd></div>
                 <div v-if="item.actualCount !== null && item.actualCount !== undefined"><dt>实际数量</dt><dd>{{ Number(item.actualCount).toLocaleString() }}</dd></div>
                 <div v-if="item.nullCount !== null && item.nullCount !== undefined"><dt>空值</dt><dd>{{ Number(item.nullCount).toLocaleString() }} / {{ Number(item.totalCount || 0).toLocaleString() }}（{{ percent(item.rate) }}）</dd></div>
                 <div v-if="item.matchedCount !== null && item.matchedCount !== undefined"><dt>关联覆盖</dt><dd>{{ Number(item.matchedCount).toLocaleString() }} / {{ Number(item.totalCount || 0).toLocaleString() }}，未匹配 {{ Number(item.unmatchedCount || 0).toLocaleString() }}（{{ percent(item.rate) }}）</dd></div>
@@ -474,6 +565,8 @@ function statusText(value?: unknown): string {
                 <p v-if="item.databaseError" class="node-detail-warning">{{ String(item.databaseError) }}</p>
               </details>
               </article>
+                </section>
+              </details>
             </template>
           </details>
 
@@ -503,7 +596,7 @@ function statusText(value?: unknown): string {
                 <b>{{ asRecord(snapshot.outputData).matched === false ? '不一致' : '一致' }}</b>
               </div>
               <dl>
-                <div><dt>目标表</dt><dd><code>{{ String(asRecord(snapshot.outputData).tableName || '—') }}</code></dd></div>
+                <div><dt>校验对象</dt><dd><code>{{ String(asRecord(snapshot.outputData).tableName || '真实库已有表（直接查询）') }}</code></dd></div>
                 <div><dt>业务库源行数</dt><dd>{{ String(asRecord(snapshot.outputData).businessSourceCount ?? '未生成') }}</dd></div>
                 <div><dt>真实库写入行数</dt><dd>{{ String(asRecord(snapshot.outputData).realRowCount ?? '—') }}</dd></div>
                 <div><dt>状态</dt><dd>{{ statusText(snapshot.status) }}</dd></div>
@@ -529,7 +622,7 @@ function statusText(value?: unknown): string {
           </section>
 
           <details class="node-params">
-            <summary><strong>原始校验证据</strong><span>完整 Trace 输出</span></summary>
+            <summary><strong>技术原始数据（实施排查用）</strong><span>完整 Trace、SQL、参数和错误，默认折叠</span></summary>
             <pre>{{ pretty(outputData) }}</pre>
           </details>
           </template>

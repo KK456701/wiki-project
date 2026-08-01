@@ -23,7 +23,7 @@ public record InitializationValidationReport(
         List<ProfileValidation> profiles,
         List<ValidationItem> items) {
 
-    public enum Decision { RUNNABLE, NO_SAMPLE, BLOCKED }
+    public enum Decision { RUNNABLE, NO_SAMPLE, BLOCKED, SKIPPED }
 
     public record ProfileValidation(
             String ruleId,
@@ -33,7 +33,8 @@ public record InitializationValidationReport(
             Decision decision,
             String errorCode,
             String message,
-            Long businessSourceCount) {}
+            Long businessSourceCount,
+            String executionType) {}
 
     public record ValidationItem(
             String category,
@@ -64,7 +65,12 @@ public record InitializationValidationReport(
             Map<String, Object> parameters,
             long durationMs,
             Long returnedRows,
-            String databaseError) {}
+            String databaseError,
+            String impactLevel,
+            List<String> fieldRoles,
+            String queryScope,
+            String physicalObjectKey,
+            String evidenceSource) {}
 
     public ProfileValidation decision(String profileId) {
         return profiles.stream()
@@ -76,6 +82,7 @@ public record InitializationValidationReport(
         long runnable = count(Decision.RUNNABLE);
         long noSample = count(Decision.NO_SAMPLE);
         long blocked = count(Decision.BLOCKED);
+        long skipped = count(Decision.SKIPPED);
         Map<String, Object> output = new LinkedHashMap<>();
         output.put("batchRunId", batchRunId == null ? "" : batchRunId);
         output.put("qualityStatus", qualityStatus);
@@ -84,12 +91,16 @@ public record InitializationValidationReport(
         output.put("runnableCount", runnable);
         output.put("noSampleCount", noSample);
         output.put("blockedCount", blocked);
+        output.put("skippedCount", skipped);
         output.put("missingTableCount", categoryCount("MISSING_TABLE"));
         output.put("missingColumnCount", categoryCount("MISSING_COLUMN"));
         output.put("emptySourceCount", categoryCount("NO_DATA"));
         output.put("nullFieldCount", categoryCount("NULL_RATE"));
         output.put("joinGapCount", categoryCount("JOIN_COVERAGE"));
         output.put("unsupportedCount", categoryCount("UNSUPPORTED"));
+        output.put("distinctNullFieldCount", distinctObjectCount("NULL_RATE"));
+        output.put("distinctJoinGapCount", distinctObjectCount("JOIN_COVERAGE"));
+        output.put("distinctUnsupportedCount", distinctObjectCount("UNSUPPORTED"));
         output.put("businessConnected", businessConnected);
         output.put("realConnected", realConnected);
         output.put("durationMs", durationMs);
@@ -108,5 +119,11 @@ public record InitializationValidationReport(
 
     private long categoryCount(String category) {
         return items.stream().filter(item -> category.equals(item.category())).count();
+    }
+
+    private long distinctObjectCount(String category) {
+        return items.stream().filter(item -> category.equals(item.category()))
+                .map(ValidationItem::physicalObjectKey).filter(value -> value != null && !value.isBlank())
+                .distinct().count();
     }
 }

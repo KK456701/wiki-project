@@ -11,6 +11,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.initialization.MrasSqlLineageAnalyzer;
+import com.hospital.wikiagent.agent.initialization.KnowledgeDataDictionary;
 
 class IndicatorDataFlowBuilderTest {
 
@@ -21,8 +22,13 @@ class IndicatorDataFlowBuilderTest {
     static void loadBackupKnowledgeIndex() {
         String root = Path.of("src/main/resources/knowledge-index_backup_20260801_150233")
                 .toAbsolutePath().normalize().toString();
-        entities = new EntityPageParser(new KnowledgeIndexResources(root));
-        builder = new IndicatorDataFlowBuilder(new MrasSqlLineageAnalyzer());
+        KnowledgeIndexResources resources = new KnowledgeIndexResources(root);
+        entities = new EntityPageParser(resources);
+        MrasSqlLineageAnalyzer analyzer = new MrasSqlLineageAnalyzer();
+        builder = new IndicatorDataFlowBuilder(
+                analyzer,
+                new IndicatorDataFlowTypeResolver(analyzer),
+                new KnowledgeDataDictionary(resources));
     }
 
     @Test

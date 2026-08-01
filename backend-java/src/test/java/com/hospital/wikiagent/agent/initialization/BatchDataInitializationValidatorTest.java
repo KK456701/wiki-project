@@ -19,6 +19,7 @@ import com.hospital.wikiagent.agent.initialization.BatchDataInitializationValida
 import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.Decision;
 import com.hospital.wikiagent.agent.mras.EntityPageData;
 import com.hospital.wikiagent.agent.mras.EntityPageParser;
+import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver;
 import com.hospital.wikiagent.agent.mras.MrasParameterMapper;
 import com.hospital.wikiagent.agent.mras.MrasTemplateRenderer;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
@@ -46,10 +47,12 @@ class BatchDataInitializationValidatorTest {
         when(entities.getEntity(anyString())).thenReturn(entity());
 
         DbHubProperties properties = new DbHubProperties();
+        MrasSqlLineageAnalyzer analyzer = new MrasSqlLineageAnalyzer();
         validator = new BatchDataInitializationValidator(
-                entities, new MrasSqlLineageAnalyzer(), new MrasTemplateRenderer(),
+                entities, analyzer, new MrasTemplateRenderer(),
                 new MrasParameterMapper(), new ReadOnlySqlValidator(),
-                new SqlParameterBinder(), metadata, query, properties, dictionary);
+                new SqlParameterBinder(), metadata, query, properties, dictionary,
+                new IndicatorDataFlowTypeResolver(analyzer));
     }
 
     @Test
@@ -84,18 +87,31 @@ class BatchDataInitializationValidatorTest {
     }
 
     @Test
-    void missingRealTargetTableIsBlockedBeforeExtraction() {
+    void directRealQueryDoesNotRequireTargetTableOrBusinessSourceSql() {
         when(entities.getEntity(anyString())).thenReturn(entityWithTarget(""));
         stubCatalog(true);
         when(query.execute(any(), anyString())).thenReturn(List.of(Map.of("total_count", 10L)));
 
         InitializationValidationReport report = validate();
 
-        assertThat(report.profiles().get(0).decision()).isEqualTo(Decision.BLOCKED);
+        assertThat(report.profiles().get(0).decision()).isEqualTo(Decision.RUNNABLE);
         assertThat(report.items()).anyMatch(item ->
-                "INIT_LINEAGE_UNCERTAIN".equals(item.errorCode())
+                "INIT_UPSTREAM_SYNC_NOT_REGISTERED".equals(item.errorCode())
                         && item.databaseRole() == DatabaseRole.REAL
-                        && item.message().contains("未配置真实库目标表"));
+                        && item.message().contains("上游同步"));
+    }
+
+    @Test
+    void incompleteProfileProducesOneExplicitSkippedRecord() {
+        when(entities.getEntity(anyString())).thenReturn(entityWithoutSql());
+
+        InitializationValidationReport report = validate();
+
+        assertThat(report.profiles().get(0).decision()).isEqualTo(Decision.SKIPPED);
+        assertThat(report.items()).singleElement().satisfies(item -> {
+            assertThat(item.errorCode()).isEqualTo("PROFILE_NOT_IMPLEMENTED");
+            assertThat(item.action()).isEqualTo("跳过");
+        });
     }
 
     @Test
@@ -202,6 +218,13 @@ class BatchDataInitializationValidatorTest {
                 "SELECT COUNT(1) FROM TARGET t "
                         + "WHERE t.EVENT_AT BETWEEN :marptBeginAt AND :marptEndAt",
                 "", "", "CORE_TEST", targetTable, List.of(), List.of());
+    }
+
+    private static EntityPageData entityWithoutSql() {
+        return new EntityPageData(
+                "HXZD-TEST", "测试指标", "", "HXZD-TEST", "可选方案（未实现）",
+                "", "", "", "", "", "", "", "", "",
+                "", "", "", "", "CORE_TEST", "", List.of(), List.of());
     }
 
     private static ValidationTarget target() {

@@ -35,6 +35,11 @@ public class KnowledgeDataDictionary {
         return label == null ? "未登记" : label.sourceSystem();
     }
 
+    public String tableDescription(String tableName) {
+        TableLabel label = tables.get(upper(tableName));
+        return label == null ? "" : label.description();
+    }
+
     public String fieldLabel(String tableName, String fieldName) {
         FieldLabel label = fields.get(upper(tableName) + "." + upper(fieldName));
         return label == null ? "" : label.name();

@@ -168,12 +168,25 @@ public class BatchIndicatorRuntime {
                 "nodeType", "code",
                 "subtaskId", "root",
                 "status", "running",
-                "message", "正在校验业务库与真实库（0/" + executionTargets.size() + " 个口径）"));
+                "message", "数据初始化校验 · 正在解析本次口径依赖"));
         InitializationValidationReport initialization = initializationValidator.validate(
                 batchRunId,
                 request.principal().hospitalId(),
                 executionTargets.stream().map(BatchIndicatorRuntime::validationTarget).toList(),
-                resolved.startTime(), resolved.endTime(), statStart, statEnd);
+                resolved.startTime(), resolved.endTime(), statStart, statEnd,
+                progress -> emit(observer, "stage_update", traceId, progress.completed(), Map.of(
+                        "nodeName", "batch_data_initialization_validation",
+                        "nodeType", "code",
+                        "subtaskId", "root",
+                        // DONE 仍维持 running，由紧随其后的持久化 Trace 事件原位收口；
+                        // 若这里先置 success，前端会把同一节点误建成“进度节点 + 结果节点”两条。
+                        "status", "running",
+                        "phase", progress.phase(),
+                        "completed", progress.completed(),
+                        "total", progress.total(),
+                        "message", "数据初始化校验 · " + progress.message()
+                                + (progress.total() > 0 && progress.completed() > 0
+                                    ? "（" + progress.completed() + "/" + progress.total() + "）" : ""))));
         String validationStatus = "ALL_BLOCKED".equals(initialization.qualityStatus())
                 ? "failed"
                 : "NORMAL".equals(initialization.qualityStatus()) ? "success" : "warning";
@@ -303,6 +316,12 @@ public class BatchIndicatorRuntime {
                                     target.profileId(), target.profileLabel(), target.eventNo(),
                                     validation.errorCode(), validation.message());
                         } else if (validation != null
+                                && validation.decision() == Decision.SKIPPED) {
+                            result = IndicatorExecutionResult.failed(
+                                    ruleId, ruleName,
+                                    target.profileId(), target.profileLabel(), target.eventNo(),
+                                    validation.errorCode(), validation.message());
+                        } else if (validation != null
                                 && validation.decision() == Decision.NO_SAMPLE) {
                             result = IndicatorExecutionResult.noSample(
                                     ruleId, ruleName,
@@ -312,7 +331,7 @@ public class BatchIndicatorRuntime {
                             result = executeViaMras(
                                     ruleId, ruleName, target, statStart, statEnd,
                                     observer, traceId, subtaskId,
-                                    validation == null ? null : validation.businessSourceCount());
+                                    validation);
                         } else if (target.profileId() == null) {
                             result = executor.execute(
                                     ruleId, ruleName, subtaskId, timeText,
@@ -439,32 +458,48 @@ public class BatchIndicatorRuntime {
             ProfileExecutionTarget target,
             String statStart, String statEnd,
             AgentRunObserver observer, String traceId, String subtaskId,
-            Long businessSourceCount) {
+            ProfileValidation validation) {
         long started = System.currentTimeMillis();
         LocalDateTime start = LocalDateTime.parse(statStart, TIME_FORMAT);
         LocalDateTime end = LocalDateTime.parse(statEnd, TIME_FORMAT);
 
-        ToolResult extraction = mrasExecution.prepareExtraction(
-                ruleId, target.profileId(), start, end);
-        emitExtractionTrace(observer, traceId, subtaskId, target, extraction);
-        if (!extraction.ok()) {
-            return IndicatorExecutionResult.failed(
-                    ruleId, ruleName,
-                    target.profileId(), target.profileLabel(), target.eventNo(),
-                    extraction.code(), extraction.summary());
-        }
+        boolean directReal = validation != null
+                && "DIRECT_REAL_QUERY".equals(validation.executionType());
+        if (directReal) {
+            Map<String, Object> directOutput = new LinkedHashMap<>();
+            directOutput.put("ruleId", ruleId);
+            directOutput.put("profileId", target.profileId());
+            directOutput.put("profileLabel", target.profileLabel());
+            directOutput.put("matched", true);
+            directOutput.put("validationMode", "DIRECT_REAL_QUERY");
+            directOutput.put("message", "本口径直接查询真实库已有表，无独立抽取快照需要核对。");
+            emitTrace(observer, traceId, "real_snapshot_data_validation",
+                    "success", System.currentTimeMillis(), subtaskId,
+                    profileTraceInput(target), Map.copyOf(directOutput));
+        } else {
+            ToolResult extraction = mrasExecution.prepareExtraction(
+                    ruleId, target.profileId(), start, end);
+            emitExtractionTrace(observer, traceId, subtaskId, target, extraction);
+            if (!extraction.ok()) {
+                return IndicatorExecutionResult.failed(
+                        ruleId, ruleName,
+                        target.profileId(), target.profileLabel(), target.eventNo(),
+                        extraction.code(), extraction.summary());
+            }
 
-        long snapshotStarted = System.currentTimeMillis();
-        RealSnapshotValidation snapshot = initializationValidator.validateRealSnapshot(
-                validationTarget(target), businessSourceCount, start, end);
-        emitTrace(observer, traceId, "real_snapshot_data_validation",
-                snapshot.ok() ? "success" : "failed", snapshotStarted, subtaskId,
-                profileTraceInput(target), snapshot.output());
-        if (!snapshot.ok()) {
-            return IndicatorExecutionResult.failed(
-                    ruleId, ruleName,
-                    target.profileId(), target.profileLabel(), target.eventNo(),
-                    snapshot.errorCode(), snapshot.message());
+            long snapshotStarted = System.currentTimeMillis();
+            RealSnapshotValidation snapshot = initializationValidator.validateRealSnapshot(
+                    validationTarget(target),
+                    validation == null ? null : validation.businessSourceCount(), start, end);
+            emitTrace(observer, traceId, "real_snapshot_data_validation",
+                    snapshot.ok() ? "success" : "failed", snapshotStarted, subtaskId,
+                    profileTraceInput(target), snapshot.output());
+            if (!snapshot.ok()) {
+                return IndicatorExecutionResult.failed(
+                        ruleId, ruleName,
+                        target.profileId(), target.profileLabel(), target.eventNo(),
+                        snapshot.errorCode(), snapshot.message());
+            }
         }
 
         ToolResult toolResult = mrasExecution.executeOverview(

@@ -104,7 +104,7 @@ class BatchIndicatorRuntimeTest {
                         "profileName", "默认口径",
                         // extraction_contract 内层是知识 Profile 透传键，保持 snake
                         "extractionContract", Map.of("event_no", "CORE_DEFAULT")));
-        when(initializationValidator.validate(any(), any(), any(), any(), any(), any(), any()))
+        when(initializationValidator.validate(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
                     List<BatchDataInitializationValidator.ValidationTarget> targets =
@@ -114,7 +114,8 @@ class BatchIndicatorRuntimeTest {
                             "NORMAL", true, true,
                             targets.stream().map(target -> new ProfileValidation(
                                     target.ruleId(), target.ruleName(), target.profileId(),
-                                    target.profileLabel(), Decision.RUNNABLE, "", "通过", null))
+                                    target.profileLabel(), Decision.RUNNABLE, "", "通过", null,
+                                    "DIRECT_TO_TARGET"))
                                     .toList(),
                             List.of());
                 });
@@ -186,16 +187,18 @@ class BatchIndicatorRuntimeTest {
                         List.of(
                                 new ProfileValidation(
                                         "R1", "指标一", "R1-default", "默认口径",
-                                        Decision.RUNNABLE, "", "通过", 10L),
+                                        Decision.RUNNABLE, "", "通过", 10L, "DIRECT_TO_TARGET"),
                                 new ProfileValidation(
                                         "R2", "指标二", "R2-default", "默认口径",
-                                        Decision.NO_SAMPLE, "NO_SAMPLE", "统计窗口内无数据", 0L),
+                                        Decision.NO_SAMPLE, "NO_SAMPLE", "统计窗口内无数据", 0L,
+                                        "DIRECT_TO_TARGET"),
                                 new ProfileValidation(
                                         "R3", "指标三", "R3-default", "默认口径",
-                                        Decision.BLOCKED, "INIT_MISSING_COLUMN", "缺少计算字段", null)),
+                                        Decision.BLOCKED, "INIT_MISSING_COLUMN", "缺少计算字段", null,
+                                        "DIRECT_TO_TARGET")),
                         List.of()))
                 .when(initializationValidator)
-                .validate(any(), any(), any(), any(), any(), any(), any());
+                .validate(any(), any(), any(), any(), any(), any(), any(), any());
 
         AgentRunResult result = runtime.run(request(), observer, batchSpec());
 

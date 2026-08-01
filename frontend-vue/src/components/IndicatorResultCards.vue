@@ -367,7 +367,7 @@ async function changeDetailPage(item: BatchIndicatorResult, state: CardState, pa
           >
             <div class="indicator-profile-name" role="cell">
               <strong>{{ profileName(item) }}</strong>
-              <em v-if="recommendedItem(group) === item">AI 推荐</em>
+              <em v-if="recommendedItem(group) === item">系统推荐</em>
               <small v-if="statRange(item)">{{ statRange(item) }}</small>
             </div>
             <template v-if="groupKind(group) === 'MEDIAN_SAMPLE'">
@@ -458,7 +458,7 @@ async function changeDetailPage(item: BatchIndicatorResult, state: CardState, pa
         {{ recommendedItem(group).calculationDisplay }}
       </p>
       <aside class="indicator-ai-advice" :data-status="groupStatus(group)">
-        <strong>AI 建议</strong>
+        <strong>系统建议 / 口径使用提示</strong>
         <p>{{ recommendation(group) }}</p>
       </aside>
     </article>

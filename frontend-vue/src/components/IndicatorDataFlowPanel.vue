@@ -37,6 +37,20 @@ function incomingLabel(nodeId: unknown): string {
     .filter(Boolean)
     .join(' / ')
 }
+
+function descriptions(node: FlowNode): Record<string, string> {
+  return node.tableDescriptions && typeof node.tableDescriptions === 'object'
+    ? node.tableDescriptions as Record<string, string> : {}
+}
+
+function isTableNode(node: FlowNode): boolean {
+  return String(node.nodeType || '') === 'TABLE'
+}
+
+function sqlSummary(node: FlowNode): string {
+  if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') return '查看源表抽取脚本'
+  return `查看${String(node.title || '节点').replace(/\s*SQL$/i, '')} SQL`
+}
 </script>
 
 <template>
@@ -68,12 +82,18 @@ function incomingLabel(nodeId: unknown): string {
             <em>{{ databaseLabel(node.databaseRole) }}</em>
           </header>
 
-          <div v-if="strings(node.tableNames).length" class="indicator-flow-tables">
-            <code v-for="table in strings(node.tableNames)" :key="table">{{ table }}</code>
+          <div v-if="isTableNode(node) && strings(node.tableNames).length" class="indicator-flow-tables">
+            <code v-for="table in strings(node.tableNames)" :key="table">
+              <strong>{{ table }}</strong>
+              <small v-if="descriptions(node)[table]">{{ descriptions(node)[table] }}</small>
+            </code>
           </div>
+          <p v-else-if="strings(node.tableNames).length" class="indicator-flow-table-reference">
+            读取上述 {{ strings(node.tableNames).length }} 张物理表
+          </p>
 
           <details v-if="String(node.sql || '').trim()" class="indicator-flow-sql">
-            <summary>查看 {{ String(node.title || '节点') }} SQL</summary>
+            <summary>{{ sqlSummary(node) }}</summary>
             <div v-if="strings(node.parameters).length" class="indicator-flow-params">
               参数：<code v-for="parameter in strings(node.parameters)" :key="parameter">:{{ parameter }}</code>
             </div>
