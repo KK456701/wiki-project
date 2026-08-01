@@ -367,7 +367,8 @@ async function changeDetailPage(item: BatchIndicatorResult, state: CardState, pa
           >
             <div class="indicator-profile-name" role="cell">
               <strong>{{ profileName(item) }}</strong>
-              <em v-if="recommendedItem(group) === item">系统推荐</em>
+              <em v-if="recommendedItem(group) === item && !isOfficial(item)">系统候选建议</em>
+              <em v-else-if="isOfficial(item)">公版主口径</em>
               <small v-if="statRange(item)">{{ statRange(item) }}</small>
             </div>
             <template v-if="groupKind(group) === 'MEDIAN_SAMPLE'">

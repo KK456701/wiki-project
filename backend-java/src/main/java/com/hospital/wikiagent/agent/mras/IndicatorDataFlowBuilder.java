@@ -25,6 +25,8 @@ import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver.FlowType;
 public class IndicatorDataFlowBuilder {
 
     private static final String PATIENT_EVENT = "MRAS_PATIENT_EVENT";
+    private static final Set<String> STATISTIC_PARAMETER_TABLES = Set.of(
+            "MRAS_TARGET_DEFINITION");
     private static final Pattern PARAMETER = Pattern.compile("(?<!:):([A-Za-z_][A-Za-z0-9_]*)");
 
     private final MrasSqlLineageAnalyzer lineageAnalyzer;
@@ -74,6 +76,9 @@ public class IndicatorDataFlowBuilder {
         result.put("templateLabel", templateLabel(templateType));
         result.put("status", status);
         result.put("warnings", List.copyOf(warnings));
+        List<String> overviewTables = lineageAnalyzer.analyze(entity.overviewSql()).tables();
+        result.put("primaryTables", primaryTables(overviewTables));
+        result.put("parameterTables", parameterTables(overviewTables));
         result.put("nodes", List.copyOf(nodes));
         result.put("edges", List.copyOf(edges));
         return Map.copyOf(result);
@@ -157,9 +162,24 @@ public class IndicatorDataFlowBuilder {
             List<Map<String, Object>> nodes,
             List<Map<String, String>> edges,
             String upstream) {
-        nodes.add(sqlNode("overview-sql", nodes.size() + 1, "概览统计 SQL",
+        List<String> overviewTables = lineageAnalyzer.analyze(entity.overviewSql()).tables();
+        List<String> parameters = parameterTables(overviewTables);
+        if (!parameters.isEmpty()) {
+            nodes.add(tableNode("statistic-parameters", nodes.size() + 1,
+                    "统计参数表", "REAL", parameters,
+                    "提供目标值、比较方向等统计参数，不承载患者统计记录。"));
+        }
+        Map<String, Object> overviewNode = new LinkedHashMap<>(sqlNode(
+                "overview-sql", nodes.size() + 1, "概览统计 SQL",
                 "OVERVIEW_SQL", "REAL", entity.overviewSql(), "生成正式指标结果"));
+        overviewNode.put("primaryTables", primaryTables(overviewTables));
+        overviewNode.put("parameterTables", parameters);
+        overviewNode.put("tableDescriptions", tableDescriptions(overviewTables));
+        nodes.add(Map.copyOf(overviewNode));
         edge(edges, upstream, "overview-sql", "统计");
+        if (!parameters.isEmpty()) {
+            edge(edges, "statistic-parameters", "overview-sql", "提供目标值");
+        }
         nodes.add(node("result", nodes.size() + 1, "指标结果", "RESULT", "REAL",
                 List.of(), "", "", List.of(), "正式卡片结果。"));
         edge(edges, "overview-sql", "result", "输出");
@@ -185,15 +205,32 @@ public class IndicatorDataFlowBuilder {
     private Map<String, Object> tableNode(
             String id, int sequence, String title, String databaseRole,
             List<String> tables, String description) {
+        Map<String, String> descriptions = tableDescriptions(tables);
+        Map<String, Object> value = new LinkedHashMap<>(node(id, sequence, title, "TABLE", databaseRole,
+                tables, "", "", List.of(), description));
+        value.put("tableDescriptions", Map.copyOf(descriptions));
+        return Map.copyOf(value);
+    }
+
+    private Map<String, String> tableDescriptions(List<String> tables) {
         Map<String, String> descriptions = new LinkedHashMap<>();
         for (String table : tables == null ? List.<String>of() : tables) {
             String value = dictionary.tableDescription(table);
             if (!value.isBlank()) descriptions.put(table, value);
         }
-        Map<String, Object> value = new LinkedHashMap<>(node(id, sequence, title, "TABLE", databaseRole,
-                tables, "", "", List.of(), description));
-        value.put("tableDescriptions", Map.copyOf(descriptions));
-        return Map.copyOf(value);
+        return Map.copyOf(descriptions);
+    }
+
+    private static List<String> primaryTables(List<String> tables) {
+        return (tables == null ? List.<String>of() : tables).stream()
+                .filter(table -> !STATISTIC_PARAMETER_TABLES.contains(table))
+                .toList();
+    }
+
+    private static List<String> parameterTables(List<String> tables) {
+        return (tables == null ? List.<String>of() : tables).stream()
+                .filter(STATISTIC_PARAMETER_TABLES::contains)
+                .toList();
     }
 
     private static Map<String, Object> node(

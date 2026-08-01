@@ -33,7 +33,14 @@ const prewarmed = ref(0)
 const prewarmTotal = ref(0)
 let prewarmGeneration = 0
 
-type Outcome = 'reached' | 'not_reached' | 'pending' | 'no_sample' | 'failed'
+type ProfileOutcome = 'reached' | 'not_reached' | 'pending' | 'no_sample' | 'failed'
+type IndicatorOutcome = 'reached' | 'not_reached' | 'pending'
+
+interface IndicatorGroup {
+  ruleId: string
+  items: BatchIndicatorResult[]
+  formal: BatchIndicatorResult
+}
 
 interface AttentionItem {
   result: BatchIndicatorResult
@@ -44,7 +51,30 @@ interface AttentionItem {
   priority: number
 }
 
-const total = computed(() => props.results.length)
+function profileName(item: BatchIndicatorResult): string {
+  return item.profileLabel || item.profileId || '推荐方案（公版）'
+}
+
+function isOfficial(item: BatchIndicatorResult): boolean {
+  return !item.profileId || /公版|推荐方案|默认/.test(profileName(item))
+}
+
+const indicatorGroups = computed<IndicatorGroup[]>(() => {
+  const grouped = new Map<string, BatchIndicatorResult[]>()
+  for (const item of props.results) {
+    const values = grouped.get(item.ruleId) || []
+    values.push(item)
+    grouped.set(item.ruleId, values)
+  }
+  return [...grouped.entries()].map(([ruleId, items]) => ({
+    ruleId,
+    items,
+    formal: items.find(isOfficial) || items[0],
+  }))
+})
+
+const total = computed(() => indicatorGroups.value.length)
+const profileTotal = computed(() => props.results.length)
 const batchRunId = computed(() => props.results.find((item) => item.batchRunId)?.batchRunId || '')
 const statPeriod = computed(() => {
   const result = props.results.find((item) => item.statStart && item.statEnd)
@@ -59,7 +89,7 @@ function numeric(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function outcome(item: BatchIndicatorResult): Outcome {
+function outcome(item: BatchIndicatorResult): ProfileOutcome {
   if (item.status === 'FAILED') return 'failed'
   if (item.status === 'NO_SAMPLE') return 'no_sample'
   const value = numeric(item.resultValue)
@@ -74,22 +104,32 @@ function outcome(item: BatchIndicatorResult): Outcome {
   return reached ? 'reached' : 'not_reached'
 }
 
+function indicatorOutcome(group: IndicatorGroup): IndicatorOutcome {
+  // 多口径指标只有公版口径形成正式达标结论；备选即使可算也只是候选。
+  if (group.items.length > 1 && !isOfficial(group.formal)) return 'pending'
+  const value = outcome(group.formal)
+  return value === 'reached' || value === 'not_reached' ? value : 'pending'
+}
+
 const counts = computed(() => {
-  const values: Record<Outcome, number> = {
+  const values: Record<IndicatorOutcome, number> = {
     reached: 0,
     not_reached: 0,
     pending: 0,
-    no_sample: 0,
-    failed: 0,
   }
-  for (const item of props.results) values[outcome(item)]++
+  for (const group of indicatorGroups.value) values[indicatorOutcome(group)]++
   return values
 })
 
-const qualityAbnormal = computed(() => props.results.filter((item) =>
-  item.dataFreshness === 'extraction_failed_stale'
-  || item.status === 'FAILED'
-  || item.status === 'NO_SAMPLE').length)
+function qualityAbnormal(item: BatchIndicatorResult): boolean {
+  if (item.status !== 'SUCCESS' || item.dataFreshness === 'extraction_failed_stale') return true
+  return Boolean(item.qualityStatus
+    && !['NORMAL', 'OK', 'PASS', 'SUCCESS', '正常'].includes(item.qualityStatus.toUpperCase()))
+}
+
+const qualityAbnormalCount = computed(() => indicatorGroups.value
+  .filter((group) => qualityAbnormal(group.formal)).length)
+const qualityNormalCount = computed(() => total.value - qualityAbnormalCount.value)
 
 const attentionItems = computed<AttentionItem[]>(() => {
   const items: AttentionItem[] = []
@@ -313,7 +353,7 @@ watch(visibleAttentionItems, (items) => {
   <section class="batch-executive">
     <div class="batch-completion">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
-      <span>已解析参数 / 完成 {{ total }} 项指标 / 结果已按批次固化</span>
+      <span>已解析参数 / 完成 {{ total }} 个指标（{{ profileTotal }} 个口径）/ 结果已按批次固化</span>
       <code v-if="batchRunId">{{ batchRunId }}</code>
       <small class="prewarm-status" :data-state="prewarmState">
         {{ prewarmState === 'running' ? `后台预热 ${prewarmed}/${prewarmTotal}`
@@ -330,26 +370,25 @@ watch(visibleAttentionItems, (items) => {
           <p>{{ statPeriod }} · 所有数量均由当前批次动态生成</p>
         </div>
         <button type="button" class="report-text-link" @click="openReport">
-          查看全部 {{ total }} 项
+          查看全部 {{ total }} 个指标
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
         </button>
       </header>
 
       <div class="executive-metrics">
-        <div><strong>{{ total }}</strong><span>覆盖口径</span></div>
+        <div><strong>{{ total }}</strong><span>覆盖指标</span></div>
         <div data-tone="success"><strong>{{ counts.reached }}</strong><span>达标</span></div>
         <div data-tone="danger"><strong>{{ counts.not_reached }}</strong><span>未达标</span></div>
         <div data-tone="warning"><strong>{{ counts.pending }}</strong><span>待确认</span></div>
-        <div data-tone="muted"><strong>{{ counts.no_sample + counts.failed }}</strong><span>无法计算</span></div>
         <div data-tone="quality">
-          <strong>{{ total - qualityAbnormal }}<small>/{{ qualityAbnormal }}</small></strong>
-          <span>质量正常/异常</span>
+          <strong>{{ qualityNormalCount }}<small>/{{ qualityAbnormalCount }}</small></strong>
+          <span>数据质量（正/异）</span>
         </div>
       </div>
 
       <div class="executive-findings">
-        <p><span>01</span><b>数量闭合</b>：达标、未达标、待确认和无法计算合计 {{ total }} 项。</p>
-        <p><span>02</span><b>质量独立判断</b>：{{ qualityAbnormal }} 项存在数据质量或可用性问题，不与达标状态混淆。</p>
+        <p><span>01</span><b>数量闭合</b>：达标、未达标和待确认合计 {{ total }} 个覆盖指标。</p>
+        <p><span>02</span><b>质量独立判断</b>：{{ qualityAbnormalCount }} 个指标存在确定性数据质量或可用性问题，不与达标状态混淆。</p>
         <p><span>03</span><b>详情运行绑定</b>：分子、分母与后续报告均绑定批次 {{ batchRunId || '—' }}。</p>
       </div>
 
@@ -394,7 +433,7 @@ watch(visibleAttentionItems, (items) => {
       <footer class="executive-actions">
         <button type="button" class="primary-report" @click="openReport">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6" /></svg>
-          查看完整报告（{{ total }} 项）
+          查看完整报告（{{ total }} 个指标）
         </button>
       </footer>
     </article>
@@ -427,7 +466,7 @@ watch(visibleAttentionItems, (items) => {
               批次报告 · {{ reportSnapshot?.reportStatus === 'FORMAL' ? '正式' : '草稿' }}
               <template v-if="reportSnapshot"> · V{{ reportSnapshot.version }}</template>
             </span>
-            <h2>完整调研报告（{{ total }} 项）</h2>
+            <h2>完整调研报告（{{ total }} 个指标）</h2>
             <p>{{ statPeriod }} · {{ batchRunId }}</p>
           </div>
           <button type="button" aria-label="关闭完整报告" @click="reportOpen = false">×</button>
@@ -458,11 +497,11 @@ watch(visibleAttentionItems, (items) => {
           <section class="report-overview">
             <h3>一、总体情况</h3>
             <div class="executive-metrics compact">
-              <div><strong>{{ total }}</strong><span>覆盖口径</span></div>
+              <div><strong>{{ total }}</strong><span>覆盖指标</span></div>
               <div data-tone="success"><strong>{{ counts.reached }}</strong><span>达标</span></div>
               <div data-tone="danger"><strong>{{ counts.not_reached }}</strong><span>未达标</span></div>
               <div data-tone="warning"><strong>{{ counts.pending }}</strong><span>待确认</span></div>
-              <div data-tone="muted"><strong>{{ counts.no_sample + counts.failed }}</strong><span>无法计算</span></div>
+              <div data-tone="quality"><strong>{{ qualityNormalCount }}<small>/{{ qualityAbnormalCount }}</small></strong><span>数据质量（正/异）</span></div>
             </div>
           </section>
           <section>

@@ -47,6 +47,14 @@ function isTableNode(node: FlowNode): boolean {
   return String(node.nodeType || '') === 'TABLE'
 }
 
+function inputTables(node: FlowNode): Array<{ table: string; role: 'data' | 'parameter' }> {
+  const parameters = new Set(strings(node.parameterTables))
+  return strings(node.tableNames).map((table) => ({
+    table,
+    role: parameters.has(table) ? 'parameter' : 'data',
+  }))
+}
+
 function sqlSummary(node: FlowNode): string {
   if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') return '查看源表抽取脚本'
   return `查看${String(node.title || '节点').replace(/\s*SQL$/i, '')} SQL`
@@ -68,7 +76,12 @@ function sqlSummary(node: FlowNode): string {
     </div>
 
     <ol v-if="nodes.length" class="indicator-flow-list">
-      <li v-for="node in nodes" :key="String(node.id)" class="indicator-flow-node">
+      <li
+        v-for="node in nodes"
+        :key="String(node.id)"
+        class="indicator-flow-node"
+        :data-node-role="String(node.id) === 'statistic-parameters' ? 'parameter' : 'process'"
+      >
         <span v-if="incomingLabel(node.id)" class="indicator-flow-edge">
           {{ incomingLabel(node.id) }}
         </span>
@@ -88,9 +101,18 @@ function sqlSummary(node: FlowNode): string {
               <small v-if="descriptions(node)[table]">{{ descriptions(node)[table] }}</small>
             </code>
           </div>
-          <p v-else-if="strings(node.tableNames).length" class="indicator-flow-table-reference">
-            读取上述 {{ strings(node.tableNames).length }} 张物理表
-          </p>
+          <div v-else-if="inputTables(node).length" class="indicator-flow-inputs">
+            <span>本节点实际输入</span>
+            <code
+              v-for="input in inputTables(node)"
+              :key="`${String(node.id)}-${input.table}`"
+              :data-role="input.role"
+            >
+              <small>{{ input.role === 'parameter' ? '统计参数' : '统计数据' }}</small>
+              <strong>{{ input.table }}</strong>
+              <em v-if="descriptions(node)[input.table]">{{ descriptions(node)[input.table] }}</em>
+            </code>
+          </div>
 
           <details v-if="String(node.sql || '').trim()" class="indicator-flow-sql">
             <summary>{{ sqlSummary(node) }}</summary>

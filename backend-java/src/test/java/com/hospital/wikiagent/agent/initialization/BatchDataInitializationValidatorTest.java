@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import com.hospital.wikiagent.agent.initialization.BatchDataInitializationValidator.ValidationTarget;
 import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.Decision;
+import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.ValidationItem;
 import com.hospital.wikiagent.agent.mras.EntityPageData;
 import com.hospital.wikiagent.agent.mras.EntityPageParser;
 import com.hospital.wikiagent.agent.mras.IndicatorDataFlowTypeResolver;
@@ -173,6 +174,37 @@ class BatchDataInitializationValidatorTest {
         assertThat(selectList)
                 .contains("AS bizId", "AS surgLevelCode")
                 .doesNotContain("SURGERY_GRADE_CODE");
+    }
+
+    @Test
+    void sameAliasScopeRootCauseIsGroupedWithoutDroppingSymbols() {
+        List<ValidationItem> grouped = BatchDataInitializationValidator.groupEvidenceItems(List.of(
+                aliasItem("查询块 SELECT@0 / 派生表 T6 / 输出字段 T6.SHOULDNUM 无法追溯"),
+                aliasItem("查询块 SELECT@0 / 派生表 T6 / 输出字段 T6.NORMALNUM 无法追溯"),
+                aliasItem("查询块 SELECT@0 / 派生表 T2 / 输出字段 T2.RN 无法追溯")));
+
+        assertThat(grouped).singleElement().satisfies(item -> {
+            assertThat(item.evidenceCount()).isEqualTo(3);
+            assertThat(item.unresolvedSymbols())
+                    .containsExactly("T6.SHOULDNUM", "T6.NORMALNUM", "T2.RN");
+            assertThat(item.queryBlockPaths()).hasSize(2);
+            assertThat(item.message()).contains("3项");
+        });
+    }
+
+    private static ValidationItem aliasItem(String message) {
+        return new ValidationItem(
+                "UNSUPPORTED", "WARNING", DatabaseRole.BUSINESS,
+                "HXZD-002-001", "患者入院8小时内查房率", "HXZD-002-001",
+                "推荐方案（公版）", "", "", "", "", "当前口径",
+                "2025-01-01", "2026-01-01", null, null, null, null, null, null,
+                false, "继续", "INIT_ALIAS_SCOPE_UNCERTAIN", message, "SELECT 1",
+                Map.of(), 0, null, "", "UNKNOWN", List.of(), "PROFILE",
+                "BUSINESS|UNSUPPORTED|HXZD-002-001", "DETERMINISTIC_SQL_PROBE",
+                "BUSINESS|UNSUPPORTED|HXZD-002-001", "派生计算字段无法追溯",
+                List.of(message.substring("查询块 ".length(), message.indexOf(" / 输出字段"))),
+                List.of(message.substring(message.indexOf("输出字段 ") + 5,
+                        message.indexOf(" 无法追溯"))), 1);
     }
 
     private InitializationValidationReport validate() {

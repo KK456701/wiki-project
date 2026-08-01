@@ -298,6 +298,7 @@ async function exportDiagnosis(reportId?: string) {
                 v-if="message.role === 'agent'"
                 :message="message"
                 @select="openNode(message.traceId, $event)"
+                @restore="store.restoreExecution($event)"
               />
 
               <!-- 批量指标结果只展示卡片，隐藏文字汇总（实时推送与历史恢复一致） -->

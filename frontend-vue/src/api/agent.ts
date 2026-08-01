@@ -98,6 +98,15 @@ export interface AgentEvent {
   overviewSqlHash?: string
   detailKind?: string
   detailContractVersion?: string
+  phase?: string
+  completed?: number
+  checkedObjectCount?: number
+  indicatorCount?: number
+  profileCount?: number
+  runnableCount?: number
+  noSampleCount?: number
+  blockedCount?: number
+  skippedCount?: number
 }
 
 export interface UploadResult {
@@ -433,6 +442,29 @@ export interface BatchReportSnapshot {
   counts: Record<string, number>
   tasks: Record<string, unknown>[]
   statement: string
+}
+
+export interface BatchRunSnapshot {
+  job: {
+    batchRunId: string
+    traceId: string
+    total: number
+    status: string
+    statStart?: string
+    statEnd?: string
+  }
+  tasks: Array<Record<string, unknown>>
+}
+
+/** 读取已持久化的批次与 Trace 引用，供历史会话恢复核算证据链。 */
+export async function loadBatchRun(
+  token: string,
+  batchRunId: string,
+): Promise<BatchRunSnapshot> {
+  const response = await fetch(`/api/agent/batches/${encodeURIComponent(batchRunId)}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<BatchRunSnapshot>(response)
 }
 
 export async function createBatchReportSnapshot(

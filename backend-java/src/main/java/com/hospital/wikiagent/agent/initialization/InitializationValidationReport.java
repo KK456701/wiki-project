@@ -70,7 +70,12 @@ public record InitializationValidationReport(
             List<String> fieldRoles,
             String queryScope,
             String physicalObjectKey,
-            String evidenceSource) {}
+            String evidenceSource,
+            String evidenceGroupId,
+            String issueSummary,
+            List<String> queryBlockPaths,
+            List<String> unresolvedSymbols,
+            int evidenceCount) {}
 
     public ProfileValidation decision(String profileId) {
         return profiles.stream()

@@ -138,7 +138,7 @@ class BatchIndicatorRuntimeTest {
         verify(jobStore).createJob(
                 eq("storage_key"), eq("hospital_001"), eq("user_1"), anyString(),
                 eq(3), eq(START), eq(END), eq("TRACE_1"));
-        verify(jobStore, times(3)).recordTask(eq("BJOB_test"), anyInt(), any());
+        verify(jobStore, times(3)).recordTask(eq("BJOB_test"), anyInt(), any(), anyString());
         verify(jobStore).finishJob(eq("BJOB_test"), eq("COMPLETED"), eq(3), eq(0), eq(0));
     }
 
@@ -210,7 +210,7 @@ class BatchIndicatorRuntimeTest {
                 anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), anyString(), eq(START), eq(END),
                 any(AgentRuntimeContext.class));
-        verify(jobStore, times(3)).recordTask(eq("BJOB_test"), anyInt(), any());
+        verify(jobStore, times(3)).recordTask(eq("BJOB_test"), anyInt(), any(), anyString());
         verify(jobStore).finishJob(eq("BJOB_test"), eq("PARTIAL_SUCCESS"), eq(1), eq(1), eq(1));
         assertThat(events.stream()
                 .filter(event -> "batch_indicator_result".equals(event.get("event")))
@@ -281,7 +281,7 @@ class BatchIndicatorRuntimeTest {
                 anyString(), anyString(), eq(START), eq(END),
                 any(AgentRuntimeContext.class));
         verify(jobStore, times(2))
-                .recordTask(eq("BJOB_test"), anyInt(), any());
+                .recordTask(eq("BJOB_test"), anyInt(), any(), anyString());
     }
 
     @Test
@@ -330,7 +330,7 @@ class BatchIndicatorRuntimeTest {
                     anyString(), anyString(), eq(START), eq(END),
                     any(AgentRuntimeContext.class));
             verify(jobStore, times(count))
-                    .recordTask(eq("BJOB_test"), anyInt(), any());
+                    .recordTask(eq("BJOB_test"), anyInt(), any(), anyString());
             clearInvocations(executor, jobStore, conversations);
         }
     }

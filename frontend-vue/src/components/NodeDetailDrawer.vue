@@ -265,6 +265,10 @@ function profileWindowCount(profileId: string): string {
   return `本次统计窗口源记录 ${Number(profile.businessSourceCount).toLocaleString()} 条`
 }
 
+function evidenceTotal(items: Record<string, unknown>[]): number {
+  return items.reduce((sum, item) => sum + Math.max(1, Number(item.evidenceCount || 1)), 0)
+}
+
 function categoryText(value: unknown): string {
   const category = String(value || '')
   if (category === 'MISSING_TABLE') return '缺少数据表'
@@ -523,7 +527,7 @@ function statusText(value?: unknown): string {
               >
                 <summary>
                   <div><strong>{{ profile.ruleId }} · {{ profile.ruleName }}</strong><span>{{ profile.profileLabel }} · {{ profileWindowCount(profile.profileId) }}</span></div>
-                  <b>{{ profile.items.length }} 条证据</b>
+                  <b>{{ profile.items.length }} 类问题 · {{ evidenceTotal(profile.items) }} 条原始证据</b>
                 </summary>
                 <section v-for="category in profile.categories" :key="category.key" class="initialization-category">
                   <h4>{{ category.label }} <span>{{ category.items.length }}</span></h4>
@@ -534,7 +538,7 @@ function statusText(value?: unknown): string {
                 :data-severity="String(item.severity || item.decision || 'NORMAL')"
               >
               <div class="validation-item-title">
-                <span>{{ databaseText(item.databaseRole) }} · {{ categoryText(item.category) }}</span>
+                <span>{{ databaseText(item.databaseRole) }} · {{ String(item.issueSummary || categoryText(item.category)) }}</span>
                 <b>{{ String(item.action || '继续') }}</b>
               </div>
               <button type="button" class="validation-indicator-link" @click="focusExecution(item.profileId)">
@@ -545,6 +549,8 @@ function statusText(value?: unknown): string {
                 <div><dt>对象</dt><dd><code>{{ String(item.tableName || '—') }}{{ item.fieldName ? `.${String(item.fieldName)}` : '' }}</code><span v-if="item.fieldLabel">{{ String(item.fieldLabel) }}</span></dd></div>
                 <div><dt>来源 / 范围</dt><dd>{{ String(item.sourceSystem || '未登记') }} · <span class="scope-chip" :data-scope="String(item.queryScope || '')">{{ scopeText(item) }}</span></dd></div>
                 <div v-if="Array.isArray(item.fieldRoles) && item.fieldRoles.length"><dt>字段作用</dt><dd>{{ fieldRolesText(item.fieldRoles) }}</dd></div>
+                <div v-if="Array.isArray(item.unresolvedSymbols) && item.unresolvedSymbols.length"><dt>未解析字段</dt><dd class="evidence-token-list"><code v-for="symbol in item.unresolvedSymbols" :key="String(symbol)">{{ String(symbol) }}</code></dd></div>
+                <div v-if="Array.isArray(item.queryBlockPaths) && item.queryBlockPaths.length"><dt>查询位置</dt><dd><span v-for="path in item.queryBlockPaths" :key="String(path)" class="evidence-path">{{ String(path) }}</span></dd></div>
                 <div v-if="item.actualCount !== null && item.actualCount !== undefined"><dt>实际数量</dt><dd>{{ Number(item.actualCount).toLocaleString() }}</dd></div>
                 <div v-if="item.nullCount !== null && item.nullCount !== undefined"><dt>空值</dt><dd>{{ Number(item.nullCount).toLocaleString() }} / {{ Number(item.totalCount || 0).toLocaleString() }}（{{ percent(item.rate) }}）</dd></div>
                 <div v-if="item.matchedCount !== null && item.matchedCount !== undefined"><dt>关联覆盖</dt><dd>{{ Number(item.matchedCount).toLocaleString() }} / {{ Number(item.totalCount || 0).toLocaleString() }}，未匹配 {{ Number(item.unmatchedCount || 0).toLocaleString() }}（{{ percent(item.rate) }}）</dd></div>

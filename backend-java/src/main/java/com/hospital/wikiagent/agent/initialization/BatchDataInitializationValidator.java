@@ -48,6 +48,9 @@ public class BatchDataInitializationValidator {
     private static final Pattern URI_CREDENTIALS = Pattern.compile(
             "(?i)([a-z][a-z0-9+.-]*://)[^/@\\s]+@"
     );
+    private static final Pattern UNRESOLVED_OUTPUT = Pattern.compile(
+            "查询块\\s+(.+?)\\s+/\\s+输出字段\\s+([^\\s；]+)\\s+无法追溯"
+    );
     private final EntityPageParser entities;
     private final MrasSqlLineageAnalyzer lineageAnalyzer;
     private final MrasTemplateRenderer templateRenderer;
@@ -251,7 +254,7 @@ public class BatchDataInitializationValidator {
                 batchRunId, hospitalId, statStart, statEnd,
                 System.currentTimeMillis() - started, quality,
                 business.error() == null, real.error() == null,
-                List.copyOf(profiles), List.copyOf(items));
+                List.copyOf(profiles), groupEvidenceItems(items));
     }
 
     public RealSnapshotValidation validateRealSnapshot(
@@ -691,6 +694,7 @@ public class BatchDataInitializationValidator {
         String impactLevel = impactLevel(category, severity, affects, fieldRoles);
         String queryScope = queryScope(scope);
         String physicalObjectKey = physicalObjectKey(role, category, table, field, code, target);
+        EvidenceGroup evidence = evidenceGroup(code, message, physicalObjectKey);
         return new ValidationItem(category, severity, role,
                 target.ruleId(), target.ruleName(), target.profileId(), target.profileLabel(),
                 table.isBlank() ? "" : dictionary.sourceSystem(table),
@@ -698,7 +702,9 @@ public class BatchDataInitializationValidator {
                 actual, total, nullCount, matched, unmatched, rate,
                 affects, action, code, message, sql, parameters,
                 duration, returnedRows, databaseError, impactLevel, fieldRoles,
-                queryScope, physicalObjectKey, "DETERMINISTIC_SQL_PROBE");
+                queryScope, physicalObjectKey, "DETERMINISTIC_SQL_PROBE",
+                evidence.groupId(), evidence.summary(), evidence.queryBlockPaths(),
+                evidence.unresolvedSymbols(), 1);
     }
 
     private ValidationItem connectionFailure(
@@ -709,8 +715,84 @@ public class BatchDataInitializationValidator {
                 true, "阻断", "INIT_DATABASE_UNAVAILABLE",
                 "数据库元数据读取失败。", "", Map.of(), 0, null, error,
                 "CONFIRMED", List.of(), "DATABASE_CONNECTION",
-                role.name() + "|DATABASE_CONNECTION", "DATABASE_METADATA");
+                role.name() + "|DATABASE_CONNECTION", "DATABASE_METADATA",
+                role.name() + "|DATABASE_CONNECTION", "数据库连接失败",
+                List.of(), List.of(), 1);
     }
+
+    private static EvidenceGroup evidenceGroup(
+            String code, String message, String physicalObjectKey) {
+        if (!"INIT_ALIAS_SCOPE_UNCERTAIN".equals(code)) {
+            return new EvidenceGroup(physicalObjectKey, "", List.of(), List.of());
+        }
+        Matcher matcher = UNRESOLVED_OUTPUT.matcher(message == null ? "" : message);
+        if (!matcher.find()) {
+            return new EvidenceGroup(
+                    physicalObjectKey, "派生计算字段无法追溯", List.of(), List.of());
+        }
+        return new EvidenceGroup(
+                physicalObjectKey,
+                "派生计算字段无法追溯",
+                List.of(matcher.group(1).strip()),
+                List.of(matcher.group(2).strip()));
+    }
+
+    /**
+     * 同一口径、同一数据库侧的派生输出追溯失败属于一个根因。页面只展示一张问题卡，
+     * 但查询块路径和未解析符号全部保留，不能通过去重把证据静默丢掉。
+     */
+    static List<ValidationItem> groupEvidenceItems(List<ValidationItem> source) {
+        List<ValidationItem> result = new ArrayList<>();
+        Map<String, Integer> positions = new LinkedHashMap<>();
+        for (ValidationItem item : source) {
+            if (!"INIT_ALIAS_SCOPE_UNCERTAIN".equals(item.errorCode())) {
+                result.add(item);
+                continue;
+            }
+            String key = String.join("|",
+                    item.databaseRole().name(), item.ruleId(),
+                    item.profileId() == null ? "" : item.profileId(),
+                    item.category(), item.errorCode());
+            Integer position = positions.get(key);
+            if (position == null) {
+                positions.put(key, result.size());
+                result.add(item);
+                continue;
+            }
+            result.set(position, mergeEvidence(result.get(position), item));
+        }
+        return List.copyOf(result);
+    }
+
+    private static ValidationItem mergeEvidence(ValidationItem first, ValidationItem next) {
+        Set<String> paths = new LinkedHashSet<>(first.queryBlockPaths());
+        paths.addAll(next.queryBlockPaths());
+        Set<String> symbols = new LinkedHashSet<>(first.unresolvedSymbols());
+        symbols.addAll(next.unresolvedSymbols());
+        int count = first.evidenceCount() + next.evidenceCount();
+        String details = symbols.isEmpty()
+                ? "" : "：" + String.join("、", symbols);
+        String message = "派生计算字段无法追溯（" + count + "项）" + details
+                + "；已跳过这些字段的空值率或关联覆盖检查，不代表数据库异常。";
+        return new ValidationItem(
+                first.category(), first.severity(), first.databaseRole(),
+                first.ruleId(), first.ruleName(), first.profileId(), first.profileLabel(),
+                first.sourceSystem(), first.tableName(), first.fieldName(), first.fieldLabel(),
+                first.scope(), first.statStart(), first.statEnd(), first.actualCount(),
+                first.totalCount(), first.nullCount(), first.matchedCount(), first.unmatchedCount(),
+                first.rate(), first.affectsCalculation(), first.action(), first.errorCode(),
+                message, first.sql(), first.parameters(), first.durationMs(), first.returnedRows(),
+                first.databaseError(), first.impactLevel(), first.fieldRoles(), first.queryScope(),
+                first.physicalObjectKey(), first.evidenceSource(), first.evidenceGroupId(),
+                "派生计算字段无法追溯（" + count + "项）", List.copyOf(paths),
+                List.copyOf(symbols), count);
+    }
+
+    private record EvidenceGroup(
+            String groupId,
+            String summary,
+            List<String> queryBlockPaths,
+            List<String> unresolvedSymbols) {}
 
     private static String impactLevel(
             String category, String severity, boolean affects, List<String> roles) {

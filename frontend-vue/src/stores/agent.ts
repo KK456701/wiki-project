@@ -8,6 +8,8 @@ import {
   listSessions,
   getSessionMessages,
   deleteSession,
+  loadAgentRun,
+  loadBatchRun,
   type AgentCapabilities,
   type AgentClarification,
   type AgentEvent,
@@ -43,6 +45,13 @@ export interface ExecutionNode {
   subtaskId?: string
   occurrence: number
   repeatCount?: number
+  successCount?: number
+  warningCount?: number
+  failedCount?: number
+  progressCompleted?: number
+  progressTotal?: number
+  indicatorCount?: number
+  profileCount?: number
   errorCode?: string
   errorMessage?: string
 }
@@ -83,6 +92,8 @@ export interface ChatMessage {
   clarificationResolved?: boolean
   batchResults?: BatchIndicatorResult[]
   executionNodes?: ExecutionNode[]
+  executionRef?: { batchRunId: string; traceId?: string }
+  executionRestoreStatus?: 'idle' | 'loading' | 'ready' | 'expired'
 }
 
 export interface BatchIndicatorResult {
@@ -216,6 +227,14 @@ const dataNodeNames = new Set([
   'batch_indicator',
 ])
 
+// 这些节点会为每个口径各发一组 Trace 事件，页面只保留一个阶段节点，
+// repeatCount 仅用于计算该阶段处理了多少个口径。
+const profileStageNodeNames = new Set([
+  'source_data_extraction',
+  'real_snapshot_data_validation',
+  'batch_indicator',
+])
+
 const dataTools = new Set([
   'prepare_indicator_sql',
   'trial_run_indicator_sql',
@@ -254,6 +273,10 @@ function executionCategory(event: AgentEvent): ExecutionNodeCategory | null {
   const status = event.status || ''
   const nodeName = event.nodeName || ''
   const toolName = event.toolName || ''
+  // 逐口径批处理节点即使有跳过、无样本或局部失败，也仍属于同一个数据阶段；
+  // 非预期系统故障会由 batch_indicator_result 另建“系统异常”节点。
+  if (['source_data_extraction', 'real_snapshot_data_validation', 'batch_indicator']
+    .includes(nodeName)) return 'data'
   if (status === 'failed' || status === 'error') return 'failure'
   if (nodeName === 'batch_indicator'
       && !event.subtaskId
@@ -291,9 +314,13 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     runningNode.modelId = event.modelId
     runningNode.errorCode = event.errorCode
     runningNode.errorMessage = event.errorMessage
+    runningNode.progressCompleted = event.completed
+    runningNode.progressTotal = event.total
+    runningNode.indicatorCount = event.indicatorCount
+    runningNode.profileCount = event.profileCount
     return
   }
-  const repeatedBatchNode = subtaskId.includes(':batch:')
+  const repeatedBatchNode = (profileStageNodeNames.has(nodeName) || subtaskId.includes(':batch:'))
     ? nodes.find((node) => node.nodeName === nodeName && node.category === category)
     : undefined
   if (repeatedBatchNode) {
@@ -306,6 +333,9 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     repeatedBatchNode.subtaskId = subtaskId
     repeatedBatchNode.occurrence = 0
     repeatedBatchNode.repeatCount = (repeatedBatchNode.repeatCount || 1) + 1
+    if (state === 'failed') repeatedBatchNode.failedCount = (repeatedBatchNode.failedCount ?? 0) + 1
+    else if (state === 'warning') repeatedBatchNode.warningCount = (repeatedBatchNode.warningCount ?? 0) + 1
+    else repeatedBatchNode.successCount = (repeatedBatchNode.successCount ?? 0) + 1
     repeatedBatchNode.errorCode = event.errorCode
     repeatedBatchNode.errorMessage = event.errorMessage
     return
@@ -328,6 +358,13 @@ function appendExecutionNode(message: ChatMessage, event: AgentEvent, label: str
     occurrence,
     errorCode: event.errorCode,
     errorMessage: event.errorMessage,
+    successCount: state === 'success' ? 1 : 0,
+    warningCount: state === 'warning' ? 1 : 0,
+    failedCount: state === 'failed' ? 1 : 0,
+    progressCompleted: event.completed,
+    progressTotal: event.total,
+    indicatorCount: event.indicatorCount,
+    profileCount: event.profileCount,
   })
 }
 
@@ -336,6 +373,58 @@ function executionNodeState(status?: string): StageState {
   if (status === 'failed' || status === 'error') return 'failed'
   if (status === 'warning' || status === 'incomplete') return 'warning'
   return 'success'
+}
+
+function isUnexpectedSystemFailure(result: BatchIndicatorResult): boolean {
+  if (result.status !== 'FAILED') return false
+  const code = (result.errorCode || '').toUpperCase()
+  if (code === 'PROFILE_NOT_IMPLEMENTED') return false
+  if (code.startsWith('INIT_') && code !== 'INIT_DATABASE_UNAVAILABLE') return false
+  return true
+}
+
+function appendSystemFailureNode(message: ChatMessage, result: BatchIndicatorResult) {
+  if (!isUnexpectedSystemFailure(result)) return
+  const id = `system-failure-${result.ruleId}-${result.profileId || 'default'}`
+  if (message.executionNodes?.some((node) => node.id === id)) return
+  const nodes = message.executionNodes || (message.executionNodes = [])
+  nodes.push({
+    id,
+    nodeName: 'batch_system_failure',
+    nodeType: 'code',
+    label: `系统异常：${result.ruleName || result.ruleId}`,
+    category: 'failure',
+    status: 'failed',
+    subtaskId: result.profileId,
+    occurrence: 0,
+    failedCount: 1,
+    errorCode: result.errorCode,
+    errorMessage: result.errorMessage,
+  })
+}
+
+function executionNodesFromTrace(trace: Record<string, unknown>): ExecutionNode[] {
+  const holder: ChatMessage = {
+    id: 'trace-restore', role: 'agent', content: '', status: 'complete', evidence: [],
+  }
+  const rawNodes = Array.isArray(trace.nodes) ? trace.nodes : []
+  for (const raw of rawNodes) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const node = raw as Record<string, unknown>
+    const nodeName = String(node.nodeName || '')
+    appendExecutionNode(holder, {
+      event: 'stage_update',
+      traceId: String(trace.traceId || ''),
+      nodeName,
+      nodeType: String(node.nodeType || 'code'),
+      status: String(node.status || 'success'),
+      durationMs: Number(node.durationMs || 0),
+      subtaskId: String(node.subtaskId || 'root'),
+      indicatorCount: Number((node.outputData as Record<string, unknown> | undefined)?.indicatorCount || 0) || undefined,
+      profileCount: Number((node.outputData as Record<string, unknown> | undefined)?.profileCount || 0) || undefined,
+    }, nodeLabels[nodeName] || nodeName || '运行节点')
+  }
+  return holder.executionNodes || []
 }
 
 // 毫秒级代码节点会在同一帧内连续到达；保留短暂驻留时间，确保状态文字可被看到。
@@ -585,13 +674,18 @@ export const useAgentStore = defineStore('agent', {
           // 持久化的批量卡片载荷与 SSE batch_indicator_result 同形态，
           // 恢复后卡片组件渲染效果与实时推送一致。
           const rawBatch = Array.isArray(message.batchResults) ? message.batchResults : []
+          const restoredResults = rawBatch.length ? rawBatch.map(toBatchResult) : undefined
+          const restoredBatchRunId = restoredResults?.find((item) => item.batchRunId)?.batchRunId
           return {
             id: makeId('message'),
             role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
             content: message.content || '',
             status: 'complete' as const,
             evidence: [],
-            batchResults: rawBatch.length ? rawBatch.map(toBatchResult) : undefined,
+            batchResults: restoredResults,
+            executionRef: restoredBatchRunId
+              ? { batchRunId: restoredBatchRunId } : undefined,
+            executionRestoreStatus: restoredBatchRunId ? 'idle' as const : undefined,
           }
         })
         // 如果该会话仍有后台运行中的请求，把实时消息重新挂回列表，
@@ -601,6 +695,28 @@ export const useAgentStore = defineStore('agent', {
         }
       } catch (error) {
         this.error = error instanceof Error ? error.message : '恢复会话失败'
+      }
+    },
+    /** 按已持久化 batchRunId 回读 trace，切换会话后不重新执行指标。 */
+    async restoreExecution(message: ChatMessage) {
+      if (message.status === 'running' || message.executionNodes?.length
+          || message.executionRestoreStatus === 'loading') return
+      const batchRunId = message.executionRef?.batchRunId
+        || message.batchResults?.find((item) => item.batchRunId)?.batchRunId
+      if (!batchRunId) return
+      message.executionRestoreStatus = 'loading'
+      try {
+        const batch = await loadBatchRun(this.token, batchRunId)
+        const traceId = batch.job.traceId
+        if (!traceId) throw new Error('批次未保存运行证据编号。')
+        const trace = await loadAgentRun(this.token, traceId)
+        message.traceId = traceId
+        message.executionRef = { batchRunId, traceId }
+        message.executionNodes = executionNodesFromTrace(trace)
+        for (const result of message.batchResults || []) appendSystemFailureNode(message, result)
+        message.executionRestoreStatus = 'ready'
+      } catch {
+        message.executionRestoreStatus = 'expired'
       }
     },
     /** 删除指定会话 */
@@ -802,6 +918,12 @@ export const useAgentStore = defineStore('agent', {
           detailKind: event.detailKind,
           detailContractVersion: event.detailContractVersion,
         }
+        if (incoming.batchRunId) {
+          message.executionRef = {
+            batchRunId: incoming.batchRunId,
+            traceId: message.traceId,
+          }
+        }
         // 同一指标+口径重复推送时原地替换，避免叠出同形卡片；
         // 不同口径（profileId 不同）各自保留一张卡片。
         const existing = message.batchResults.findIndex(
@@ -812,6 +934,7 @@ export const useAgentStore = defineStore('agent', {
         } else {
           message.batchResults.push(incoming)
         }
+        appendSystemFailureNode(message, incoming)
         setStage(message,
           `已完成 ${event.done}/${event.total}：${event.ruleName || ''}`,
           'code', event.status === 'FAILED' ? 'warning' : 'success')

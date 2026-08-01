@@ -599,6 +599,11 @@ public class AgentTraceService {
      */
     private static Map<String, Object> stageUpdate(String traceId, Map<String, Object> event) {
         String nodeName = text(event.get("nodeName"));
+        Map<String, Object> output = event.get("output") instanceof Map<?, ?> raw
+                ? raw.entrySet().stream().collect(java.util.stream.Collectors.toMap(
+                        entry -> String.valueOf(entry.getKey()), Map.Entry::getValue,
+                        (left, right) -> right, LinkedHashMap::new))
+                : Map.of();
         Map<String, Object> value = eventValues(
                 "event", "stage_update",
                 "traceId", traceId,
@@ -610,7 +615,13 @@ public class AgentTraceService {
                 "toolName", text(event.get("toolName")),
                 "capability", text(event.get("capability")),
                 "modelId", text(event.get("modelId")),
-                "subtaskId", text(event.get("subtaskId")));
+                "subtaskId", text(event.get("subtaskId")),
+                "indicatorCount", output.get("indicatorCount"),
+                "profileCount", output.get("profileCount"),
+                "runnableCount", output.get("runnableCount"),
+                "noSampleCount", output.get("noSampleCount"),
+                "blockedCount", output.get("blockedCount"),
+                "skippedCount", output.get("skippedCount"));
         return Map.copyOf(value);
     }
 

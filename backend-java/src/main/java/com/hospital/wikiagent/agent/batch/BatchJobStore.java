@@ -84,6 +84,7 @@ public class BatchJobStore {
             ensureTaskColumn("unit", "VARCHAR(40)");
             ensureTaskColumn("target_direction", "VARCHAR(16)");
             ensureTaskColumn("quality_status", "VARCHAR(64)");
+            ensureTaskColumn("data_freshness", "VARCHAR(64)");
             ensureTaskColumn("overview_sql_hash", "VARCHAR(64)");
             ensureTaskColumn("knowledge_release_id", "VARCHAR(128)");
             ensureTaskColumn("detail_kind", "VARCHAR(64)");
@@ -139,6 +140,13 @@ public class BatchJobStore {
      * 记录单个指标任务的执行结果。
      */
     public void recordTask(String jobId, int position, IndicatorExecutionResult result) {
+        recordTask(jobId, position, result,
+                result.status() == IndicatorExecutionResult.Status.SUCCESS
+                        ? "NORMAL" : "ABNORMAL");
+    }
+
+    public void recordTask(
+            String jobId, int position, IndicatorExecutionResult result, String qualityStatus) {
         jdbc.update("""
                 INSERT INTO med_agent_batch_task
                   (job_id, position, rule_id, rule_name, status, result_value,
@@ -147,9 +155,9 @@ public class BatchJobStore {
                    event_no, extraction_id, snapshot_status, stat_start, stat_end,
                    unit, target_direction, quality_status, overview_sql_hash,
                    detail_kind, detail_contract_version, calculation_display,
-                   sample_count)
+                   sample_count, data_freshness)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 jobId, position, result.ruleId(), result.ruleName(), result.status().name(),
                 result.resultValue(), result.numerator(), result.denominator(),
@@ -159,9 +167,9 @@ public class BatchJobStore {
                 result.profileId(), result.profileLabel(), result.eventNo(),
                 result.extractionId(), result.extractionStatus(),
                 result.statStart(), result.statEnd(), result.unit(), result.targetDirection(),
-                result.dataFreshness(), result.overviewSqlHash(), result.detailKind(),
+                qualityStatus, result.overviewSqlHash(), result.detailKind(),
                 result.detailContractVersion(), result.calculationDisplay(),
-                result.sampleCount());
+                result.sampleCount(), result.dataFreshness());
     }
 
     /**
@@ -249,6 +257,7 @@ public class BatchJobStore {
                 longValue(row.get("sample_count")),
                 nullableText(row.get("unit")), nullableText(row.get("target_value")),
                 nullableText(row.get("target_direction")), nullableText(row.get("quality_status")),
+                nullableText(row.get("data_freshness")),
                 nullableText(row.get("stat_start")), nullableText(row.get("stat_end")),
                 nullableText(row.get("overview_sql_hash")), nullableText(row.get("detail_kind")),
                 nullableText(row.get("detail_contract_version")),
@@ -314,6 +323,7 @@ public class BatchJobStore {
             String targetValue,
             String targetDirection,
             String qualityStatus,
+            String dataFreshness,
             String statStart,
             String statEnd,
             String overviewSqlHash,
@@ -323,6 +333,21 @@ public class BatchJobStore {
             String calculationDisplay,
             String errorCode,
             String errorMessage) {
+        /** 兼容尚未持久化 data_freshness 的既有测试与调用。 */
+        public BatchTaskSnapshot(
+                String batchRunId, int position, String ruleId, String ruleName,
+                String profileId, String profileName, String status, Double resultValue,
+                Long numeratorCount, Long denominatorCount, Long sampleCount, String unit,
+                String targetValue, String targetDirection, String qualityStatus,
+                String statStart, String statEnd, String overviewSqlHash, String detailKind,
+                String detailContractVersion, String detailSnapshotId,
+                String calculationDisplay, String errorCode, String errorMessage) {
+            this(batchRunId, position, ruleId, ruleName, profileId, profileName, status,
+                    resultValue, numeratorCount, denominatorCount, sampleCount, unit,
+                    targetValue, targetDirection, qualityStatus, null, statStart, statEnd,
+                    overviewSqlHash, detailKind, detailContractVersion, detailSnapshotId,
+                    calculationDisplay, errorCode, errorMessage);
+        }
     }
 
     private void ensureJobColumn(String name, String type) {

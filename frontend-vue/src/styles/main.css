@@ -230,7 +230,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .indicator-flow-tables code strong { font: 650 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .indicator-flow-tables code small { color: #6c817b; font: 8px/1.35 system-ui, sans-serif; }
 .indicator-flow-params code { padding: 2px 6px; color: #176b5d; background: #edf8f5; border: 1px solid #c5e1da; font-size: 10px; }
-.indicator-flow-table-reference { margin: 8px 0 0; color: #7a8a86; font-size: 9px; }
+.indicator-flow-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px; margin-top: 10px; }
+.indicator-flow-inputs > span { grid-column: 1 / -1; color: #71827d; font-size: 9px; }
+.indicator-flow-inputs code { display: grid; gap: 2px; padding: 7px 9px; border: 1px solid #c8ddd7; background: #f3faf8; }
+.indicator-flow-inputs code[data-role="parameter"] { border-color: #e3ce9d; background: #fff9e9; }
+.indicator-flow-inputs code small { color: #758782; font: 8px system-ui, sans-serif; }
+.indicator-flow-inputs code strong { color: #245e51; font: 650 10px ui-monospace, SFMono-Regular, Consolas, monospace; }
+.indicator-flow-inputs code[data-role="parameter"] strong { color: #8a5a16; }
+.indicator-flow-inputs code em { color: #778783; font: normal 8px/1.35 system-ui, sans-serif; }
+.indicator-flow-node[data-node-role="parameter"] { margin-left: 22px; }
+.indicator-flow-node[data-node-role="parameter"]::after { border-color: #c58a2f; }
+.indicator-flow-node[data-node-role="parameter"] > article { border-color: #e2cfaa; background: #fffdf7; }
 .indicator-flow-sql { margin-top: 10px; border-top: 1px dashed #cfddd9; }
 .indicator-flow-sql summary { padding-top: 9px; color: #16695b; cursor: pointer; font-size: 12px; }
 .indicator-flow-params { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; color: #657873; font-size: 11px; }
@@ -845,6 +855,17 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .execution-node[data-state="running"] { border-color: #9bc9c0; background: #f2fbf8; }
 .execution-node[data-state="running"] .execution-node-status small { color: #08785f; }
 .execution-node[data-state="failed"] .execution-node-status small { color: var(--danger); }
+.execution-node.is-initialization {
+  min-height: 72px;
+  margin-block: 11px 4px;
+  border: 1px solid #69a99c;
+  border-left: 5px solid #087b68;
+  background: linear-gradient(100deg, #edf9f5 0%, #f9fdfb 62%, #eef8f4 100%);
+  box-shadow: 0 9px 22px rgba(15, 105, 89, .10);
+}
+.execution-node.is-initialization > b { width: 34px; height: 34px; background: #087b68; }
+.execution-node.is-initialization .execution-node-copy small { color: #08725f; font-size: 9px; }
+.execution-node.is-initialization .execution-node-copy strong { color: #0d4e43; font-size: 13px; white-space: normal; }
 .execution-empty {
   margin: 0;
   padding: 14px;
@@ -1386,6 +1407,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .validation-item dd .scope-chip[data-scope="STAT_WINDOW"] { color: #176c59; background: #e5f5ef; }
 .validation-item dd .scope-chip[data-scope="FULL_TABLE"] { color: #7b622c; background: #faf2df; }
 .validation-item code { color: #305f53; font: 9px Consolas, monospace; }
+.validation-item .evidence-token-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.validation-item .evidence-token-list code { padding: 2px 5px; border: 1px solid #d9e5e1; background: #f4f8f7; }
+.validation-item .evidence-path { display: block; margin: 0 0 3px; color: #526d65; }
 .validation-sql { overflow: hidden; margin-top: 3px; border: 1px solid #dce7e3; border-radius: 5px; background: #f7faf9; }
 .validation-sql summary { padding: 8px 10px; color: #42675e; font-size: 9px; cursor: pointer; }
 .validation-sql-purpose { margin: 0; padding: 8px 10px; border-top: 1px solid #e4ecea; color: #627872; background: #fff; font-size: 8px; line-height: 1.5; }
@@ -1545,7 +1569,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .executive-metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 11px;
   padding: 16px 23px;
 }

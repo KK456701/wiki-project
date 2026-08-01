@@ -73,4 +73,20 @@ class IndicatorDataFlowBuilderTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("知识库目录不存在");
     }
+
+    @Test
+    void overviewSeparatesPatientDataFromTargetParameters() {
+        Map<String, Object> flow = builder.build(entities.getEntity("HXZD-002-001"));
+
+        assertThat(flow.get("primaryTables")).asList()
+                .contains("MRAS_BUSINESS_WARDROUND")
+                .doesNotContain("MRAS_TARGET_DEFINITION");
+        assertThat(flow.get("parameterTables")).asList()
+                .containsExactly("MRAS_TARGET_DEFINITION");
+        assertThat(flow.get("nodes")).asList().anySatisfy(node -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> value = (Map<String, Object>) node;
+            assertThat(value.get("id")).isEqualTo("statistic-parameters");
+        });
+    }
 }

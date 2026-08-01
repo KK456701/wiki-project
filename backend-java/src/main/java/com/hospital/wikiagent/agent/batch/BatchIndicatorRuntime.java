@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -243,8 +244,10 @@ public class BatchIndicatorRuntime {
         // 切换会话后前端可从消息历史直接恢复卡片展示。
         List<Map<String, Object>> cardPayloads = new ArrayList<>();
         for (int index = 0; index < results.size(); index++) {
+            IndicatorExecutionResult result = results.get(index);
             cardPayloads.add(indicatorResultPayload(
-                    index + 1, results.size(), results.get(index), batchRunId));
+                    index + 1, results.size(), result, batchRunId,
+                    qualityStatus(initialization, result)));
         }
         conversations.appendAssistant(
                 conversation, request.principal(), answer, memoryState, cardPayloads);
@@ -350,7 +353,8 @@ public class BatchIndicatorRuntime {
                                 "BATCH_INDICATOR_ERROR",
                                 exception.getMessage());
                     }
-                    recordTask(batchRunId, position, result);
+                    String qualityStatus = qualityStatus(initialization, result);
+                    recordTask(batchRunId, position, result, qualityStatus);
                     Map<String, Object> traceOutput = new LinkedHashMap<>();
                     traceOutput.put("status", result.status().name());
                     if (result.runId() != null) {
@@ -368,6 +372,7 @@ public class BatchIndicatorRuntime {
                     if (result.extractionStatus() != null) {
                         traceOutput.put("snapshotStatus", result.extractionStatus());
                     }
+                    traceOutput.put("qualityStatus", qualityStatus);
                     if (!viaMras) {
                         emitProfileWorkflowTrace(
                                 observer, traceId, subtaskId, target, result);
@@ -380,7 +385,8 @@ public class BatchIndicatorRuntime {
                     emitProgress(observer, traceId, completed.incrementAndGet(), total,
                             taskDisplay(target), result);
                     emitIndicatorResult(
-                            observer, traceId, completed.get(), total, result, batchRunId);
+                            observer, traceId, completed.get(), total, result, batchRunId,
+                            qualityStatus);
                     return result;
                 });
             }
@@ -699,12 +705,13 @@ public class BatchIndicatorRuntime {
     }
 
     private void recordTask(
-            String batchRunId, int position, IndicatorExecutionResult result) {
+            String batchRunId, int position, IndicatorExecutionResult result,
+            String qualityStatus) {
         if (batchRunId == null) {
             return;
         }
         try {
-            jobStore.recordTask(batchRunId, position, result);
+            jobStore.recordTask(batchRunId, position, result, qualityStatus);
         } catch (RuntimeException exception) {
             LOGGER.warn("批次 {} 第 {} 项持久化失败：{}",
                     batchRunId, position + 1, exception.getMessage());
@@ -889,9 +896,10 @@ public class BatchIndicatorRuntime {
             int done,
             int total,
             IndicatorExecutionResult result,
-            String batchRunId) {
+            String batchRunId,
+            String qualityStatus) {
         emit(observer, "batch_indicator_result", traceId, done,
-                indicatorResultPayload(done, total, result, batchRunId));
+                indicatorResultPayload(done, total, result, batchRunId, qualityStatus));
     }
 
     /**
@@ -910,6 +918,16 @@ public class BatchIndicatorRuntime {
             int total,
             IndicatorExecutionResult result,
             String batchRunId) {
+        return indicatorResultPayload(done, total, result, batchRunId,
+                result.status() == Status.SUCCESS ? "NORMAL" : "ABNORMAL");
+    }
+
+    static Map<String, Object> indicatorResultPayload(
+            int done,
+            int total,
+            IndicatorExecutionResult result,
+            String batchRunId,
+            String qualityStatus) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("ruleId", result.ruleId());
         payload.put("ruleName", result.ruleName());
@@ -964,6 +982,7 @@ public class BatchIndicatorRuntime {
         if (result.dataFreshness() != null) {
             payload.put("dataFreshness", result.dataFreshness());
         }
+        payload.put("qualityStatus", qualityStatus);
         if (result.errorCode() != null) {
             payload.put("errorCode", result.errorCode());
         }
@@ -980,6 +999,26 @@ public class BatchIndicatorRuntime {
             payload.put("detailContractVersion", result.detailContractVersion());
         }
         return payload;
+    }
+
+    /**
+     * 数据质量只依据确定性事实分级。无法完成检查不等于数据异常，纯展示字段空值也
+     * 不改变分子分母；已确认或可能影响计算的数据问题，以及无法形成可信结果的执行
+     * 状态，统一归入异常。
+     */
+    private static String qualityStatus(
+            InitializationValidationReport initialization,
+            IndicatorExecutionResult result) {
+        if (result.status() != Status.SUCCESS
+                || "extraction_failed_stale".equals(result.dataFreshness())) {
+            return "ABNORMAL";
+        }
+        boolean dataProblem = initialization.items().stream()
+                .filter(item -> result.ruleId().equals(item.ruleId()))
+                .filter(item -> Objects.equals(result.profileId(), item.profileId()))
+                .anyMatch(item -> "CONFIRMED".equals(item.impactLevel())
+                        || "POSSIBLE".equals(item.impactLevel()));
+        return dataProblem ? "ABNORMAL" : "NORMAL";
     }
 
     private static Map<String, Object> withBatchRunId(
