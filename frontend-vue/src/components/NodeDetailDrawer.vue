@@ -545,6 +545,15 @@ function statusText(value?: unknown): string {
                 {{ String(item.ruleId || '—') }} · {{ String(item.ruleName || '') }}
               </button>
               <p>{{ String(item.profileLabel || item.profileId || '默认口径') }}</p>
+              <aside v-if="item.repairSuggestion" class="validation-repair-advice">
+                <div><strong>建议怎么修</strong><span>{{ String(item.repairOwner || '按提示排查') }}</span></div>
+                <p>{{ String(item.repairSuggestion) }}</p>
+                <details v-if="item.knowledgePatchTemplate">
+                  <summary>确实需要补知识库时，查看填写模板</summary>
+                  <p>请先人工确认真实表和字段。尖括号内容没有确认前不能写入正式知识库。</p>
+                  <pre>{{ String(item.knowledgePatchTemplate) }}</pre>
+                </details>
+              </aside>
               <dl>
                 <div><dt>对象</dt><dd><code>{{ String(item.tableName || '—') }}{{ item.fieldName ? `.${String(item.fieldName)}` : '' }}</code><span v-if="item.fieldLabel">{{ String(item.fieldLabel) }}</span></dd></div>
                 <div><dt>来源 / 范围</dt><dd>{{ String(item.sourceSystem || '未登记') }} · <span class="scope-chip" :data-scope="String(item.queryScope || '')">{{ scopeText(item) }}</span></dd></div>

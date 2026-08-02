@@ -141,7 +141,8 @@ async function loadRule(item: BatchIndicatorResult, state: CardState) {
   state.ruleError = ''
   try {
     // 按口径变体读取，让同一指标的每个口径各自返回自己的口径 / 核算方式
-    state.rule = await fetchEffectiveRule(props.token, item.ruleId, item.profileId)
+    state.rule = await fetchEffectiveRule(
+      props.token, item.ruleId, item.profileId, item.statStart, item.statEnd)
   } catch (error) {
     state.ruleError = error instanceof Error ? error.message : '口径读取失败。'
   } finally {

@@ -56,8 +56,8 @@ function inputTables(node: FlowNode): Array<{ table: string; role: 'data' | 'par
 }
 
 function sqlSummary(node: FlowNode): string {
-  if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') return '查看源表抽取脚本'
-  return `查看${String(node.title || '节点').replace(/\s*SQL$/i, '')} SQL`
+  if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') return '查看可直接执行的源表查询脚本'
+  return `查看可直接执行的${String(node.title || '节点').replace(/\s*SQL$/i, '')} SQL`
 }
 </script>
 
@@ -116,8 +116,15 @@ function sqlSummary(node: FlowNode): string {
 
           <details v-if="String(node.sql || '').trim()" class="indicator-flow-sql">
             <summary>{{ sqlSummary(node) }}</summary>
+            <p v-if="node.sqlExecutable" class="indicator-flow-sql-help">
+              可直接复制到 Navicat 的 SQL Server 查询窗口执行。数据库、schema 和本次统计时间已写进脚本；脚本只复现查询，不执行系统清表和同步写入。
+            </p>
+            <div v-if="node.sqlExecutable" class="indicator-flow-sql-target">
+              <span>数据库：<code>{{ String(node.databaseName || '—') }}</code></span>
+              <span>schema：<code>{{ String(node.schemaName || '—') }}</code></span>
+            </div>
             <div v-if="strings(node.parameters).length" class="indicator-flow-params">
-              参数：<code v-for="parameter in strings(node.parameters)" :key="parameter">:{{ parameter }}</code>
+              脚本变量：<code v-for="parameter in strings(node.parameters)" :key="parameter">@{{ parameter }}</code>
             </div>
             <pre>{{ String(node.sql) }}</pre>
           </details>

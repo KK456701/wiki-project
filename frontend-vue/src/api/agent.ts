@@ -295,9 +295,16 @@ export async function fetchEffectiveRule(
   token: string,
   ruleId: string,
   profileId?: string,
+  statStart?: string,
+  statEnd?: string,
 ): Promise<EffectiveRule> {
   // 传入 profileId 时按口径变体读取，让同一指标的多个口径各自返回自己的口径 / 核算方式
-  const suffix = profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''
+  const query = new URLSearchParams()
+  if (profileId) query.set('profileId', profileId)
+  if (statStart) query.set('statStart', statStart)
+  if (statEnd) query.set('statEnd', statEnd)
+  const queryText = query.toString()
+  const suffix = queryText ? `?${queryText}` : ''
   const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/effective${suffix}`, {
     headers: authHeaders(token),
   })
