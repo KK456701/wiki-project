@@ -189,13 +189,42 @@ async function diagnosisAction(
   diagnosisBusy.value = snapshot.caseId
   store.error = ''
   try {
-    const updated = await actOnDiagnosisCase(store.token, snapshot.caseId, action, payload)
-    diagnosisCases.value = diagnosisCases.value.map((item) =>
-      item.caseId === updated.caseId ? updated : item)
+    let updated = await actOnDiagnosisCase(store.token, snapshot.caseId, action, payload)
+    replaceDiagnosisSnapshot(updated)
+    if (action === 'CONFIRM_CALIBER' || action === 'RECHECK_GATE' || action === 'RUN_BASE_CHECKS') {
+      updated = await advanceDiagnosisGates(updated)
+    }
   } catch (error) {
     store.error = error instanceof Error ? error.message : '异常排查步骤执行失败。'
   } finally {
     diagnosisBusy.value = ''
+  }
+}
+
+function replaceDiagnosisSnapshot(snapshot: DiagnosisCaseSnapshot) {
+  diagnosisCases.value = diagnosisCases.value.map((item) =>
+    item.caseId === snapshot.caseId ? snapshot : item)
+}
+
+function currentGateNumber(step: string): number {
+  if (step === 'GATE_1_SCHEMA') return 1
+  if (step === 'GATE_2_EVENT') return 2
+  if (step === 'GATE_3_VALUE') return 3
+  return 0
+}
+
+async function advanceDiagnosisGates(initial: DiagnosisCaseSnapshot): Promise<DiagnosisCaseSnapshot> {
+  let current = initial
+  for (;;) {
+    const gate = currentGateNumber(current.currentStep)
+    if (!gate) return current
+    const existing = current.gateResults.find((item) => Number(item.gate) === gate)
+    if (String(existing?.status || '') === 'BLOCKED') return current
+    await nextTick()
+    current = await actOnDiagnosisCase(store.token, current.caseId, 'RUN_GATE', { gate })
+    replaceDiagnosisSnapshot(current)
+    const result = current.gateResults.find((item) => Number(item.gate) === gate)
+    if (String(result?.status || '') === 'BLOCKED') return current
   }
 }
 

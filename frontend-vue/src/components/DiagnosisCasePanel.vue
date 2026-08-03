@@ -25,24 +25,11 @@ const expectedResult = ref('')
 const expectedMembership = ref('UNKNOWN')
 const templateCopied = ref(false)
 
-const steps = [
-  { key: 'CALIBER_CONFIRMATION', label: '确认统计口径', short: '准备' },
-  { key: 'GATE_1_SCHEMA', label: '表和字段校验', short: '第一步' },
-  { key: 'GATE_2_EVENT', label: '事件和抽取脚本校验（暂未启用）', short: '第二步' },
-  { key: 'GATE_3_VALUE', label: '数值和现场常量校验', short: '第三步' },
-  { key: 'CASE_INPUT', label: '登记具体案例', short: '案例' },
-  { key: 'CASE_CALIBER_CLARIFICATION', label: '澄清案例统计口径', short: '澄清' },
-  { key: 'CASE_INVESTIGATION', label: '具体案例查因', short: '查因' },
-  { key: 'CHANGE_PROPOSAL', label: '修改要求与候选 SQL', short: '修改' },
-  { key: 'SHADOW_TRIAL', label: '影子重跑与对账', short: '试跑' },
-  { key: 'RELEASE_APPROVAL', label: '审批并发布医院口径', short: '发布' },
+const baseSteps = [
+  { gate: 1, key: 'GATE_1_SCHEMA', label: '数据结构校验' },
+  { gate: 2, key: 'GATE_2_EVENT', label: '事件与抽取校验' },
+  { gate: 3, key: 'GATE_3_VALUE', label: '数据可用性校验' },
 ]
-
-const currentIndex = computed(() => {
-  if (props.snapshot.currentStep === 'COMPLETED') return steps.length
-  if (props.snapshot.currentStep === 'BASE_CHECKS_RESULT' || props.snapshot.currentStep.startsWith('GATE_')) return 3
-  return Math.max(0, steps.findIndex((item) => item.key === props.snapshot.currentStep))
-})
 
 const blockedGateCount = computed(() => props.snapshot.gateResults.filter((item) => String(item.status) === 'BLOCKED').length)
 const caseTemplate = `记录类型：就诊号 / 事件号 / 医嘱号 / 手术号
@@ -55,12 +42,9 @@ function gate(number: number): Record<string, unknown> | undefined {
   return props.snapshot.gateResults.find((item) => Number(item.gate) === number)
 }
 
-function gateState(number: number): string {
-  return String(gate(number)?.status || 'WAITING')
-}
-
-function runBaseChecks() {
-  emit('action', 'RUN_BASE_CHECKS', {})
+function retryCurrentGate() {
+  const number = baseSteps.find((item) => item.key === props.snapshot.currentStep)?.gate || 1
+  emit('action', 'RECHECK_GATE', { gate: number })
 }
 
 function submitCase() {
@@ -114,6 +98,32 @@ function confirmCause() {
   })
 }
 
+function closeAsCorrect() {
+  emit('action', 'CLOSE_AS_CORRECT', {
+    conclusion: causeText.value.trim() || '业务记录、真实库中间表和指标判定一致，当前计算正确。',
+  })
+}
+
+function stepState(number: number): string {
+  const result = gate(number)
+  if (String(result?.status || '') === 'PASSED') return 'PASSED'
+  if (String(result?.status || '') === 'BLOCKED') return 'BLOCKED'
+  const step = baseSteps.find((item) => item.gate === number)
+  if (props.busy && step?.key === props.snapshot.currentStep) return 'RUNNING'
+  return 'WAITING'
+}
+
+function stepStateText(number: number): string {
+  return { PASSED: '已通过', BLOCKED: '需处理', RUNNING: '检查中', WAITING: '等待前置' }[stepState(number)] || '等待前置'
+}
+
+const baseChecksStarted = computed(() => props.snapshot.currentStep !== 'CALIBER_CONFIRMATION')
+const currentBaseGate = computed(() => baseSteps.find((item) => item.key === props.snapshot.currentStep)?.gate || 0)
+const currentGateHasResult = computed(() => currentBaseGate.value > 0 && Boolean(gate(currentBaseGate.value)))
+function successFactSummary(): string {
+  return baseSteps.map((item) => String(gate(item.gate)?.message || '')).filter(Boolean).join('；')
+}
+
 function buildCandidate() {
   emit('action', 'BUILD_CANDIDATE', {
     type: changeType.value,
@@ -134,21 +144,21 @@ function pretty(value: unknown): string {
     <article class="message is-agent diagnosis-context-message">
       <div class="message-avatar">AI</div>
       <div class="message-card diagnosis-context-card">
-        <header class="diagnosis-case-head"><div><span class="diagnosis-kicker">异常排查任务 · {{ snapshot.caseId }}</span><h3>{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h3><p>{{ snapshot.caseInput.symptom || '系统将先完成三步基础检查，再引导登记具体案例。' }}</p></div><span class="diagnosis-release">口径版本 {{ snapshot.knowledgeReleaseId }}</span></header>
-        <ol class="diagnosis-rail" aria-label="排查步骤"><li v-for="(step, index) in steps" :key="step.key" :class="{ active: index === currentIndex, done: index < currentIndex }"><i>{{ index < currentIndex ? '✓' : index + 1 }}</i><span>{{ step.short }}</span></li></ol>
+        <header class="diagnosis-case-head"><div><span class="diagnosis-kicker">异常排查任务 · {{ snapshot.caseId }}</span><h3>{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h3><p>{{ snapshot.caseInput.symptom || '先完成异常排查基础校验；全部通过后，系统再引导登记具体案例。' }}</p></div><span class="diagnosis-release">口径版本 {{ snapshot.knowledgeReleaseId }}</span></header>
+        <section v-if="baseChecksStarted" class="diagnosis-base-flow" aria-label="异常排查基础校验"><strong>异常排查基础校验</strong><ol><li v-for="item in baseSteps" :key="item.key" :data-state="stepState(item.gate)"><i>{{ stepState(item.gate) === 'PASSED' ? '✓' : stepState(item.gate) === 'BLOCKED' ? '!' : item.gate }}</i><span>{{ item.label }}</span><em>{{ stepStateText(item.gate) }}</em></li></ol></section>
       </div>
     </article>
 
     <article v-if="snapshot.currentStep === 'CALIBER_CONFIRMATION'" class="message is-agent">
-      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 准备检查</strong></div><h4>先确认当前生效统计口径</h4><dl class="caliber-facts"><div><dt>分子</dt><dd>{{ snapshot.caliberSnapshot.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母</dt><dd>{{ snapshot.caliberSnapshot.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">确认口径并自动完成三步基础检查</button></div>
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 准备校验</strong></div><h4>先确认当前生效统计口径</h4><dl class="caliber-facts"><div><dt>分子</dt><dd>{{ snapshot.caliberSnapshot.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母</dt><dd>{{ snapshot.caliberSnapshot.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">确认口径并开始基础校验</button></div>
     </article>
 
-    <article v-if="snapshot.currentStep === 'BASE_CHECKS_RESULT' || snapshot.currentStep.startsWith('GATE_')" class="message is-agent">
-      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 三步基础检查回复</strong><span>{{ blockedGateCount }} 步需要处理</span></div><p>三步已经自动执行。请先处理标红问题；第二步暂未启用，不查询数据库，也不作为异常。</p><section v-for="number in [1, 2, 3]" :key="number" class="diagnosis-gate-summary"><header><strong>第{{ ['一', '二', '三'][number - 1] }}步 · {{ steps[number].label }}</strong><em :data-state="gateState(number)">{{ gate(number)?.skipped ? '暂未启用' : gateState(number) === 'BLOCKED' ? '需要处理' : '已通过' }}</em></header><div class="diagnosis-result" :data-state="gateState(number)"><strong>{{ gate(number)?.message || '未生成检查结果' }}</strong><code v-if="gate(number)?.errorCode">{{ gate(number)?.errorCode }}</code></div><div v-if="gate(number)?.repairSuggestion" class="diagnosis-repair"><strong>下一步怎么处理</strong><p>{{ gate(number)?.repairSuggestion }}</p></div><details v-if="gate(number)" class="diagnosis-technical"><summary>查看校验 SQL 与原始证据</summary><pre>{{ pretty(gate(number)?.facts) }}</pre></details></section><button type="button" class="diagnosis-primary" :disabled="busy" @click="runBaseChecks">修复后重新执行全部三步</button></div>
+    <article v-if="snapshot.currentStep.startsWith('GATE_')" class="message is-agent">
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 异常排查基础校验</strong><span>{{ blockedGateCount ? `${blockedGateCount}步需处理` : busy ? '自动检查中' : '等待继续' }}</span></div><p>系统按顺序自动校验；发现阻断问题时停在当前步骤，修复后只重跑这一项。</p><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary"><header><strong>{{ item.label }}</strong><em :data-state="stepState(item.gate)">{{ stepStateText(item.gate) }}</em></header><div class="diagnosis-result" :data-state="stepState(item.gate)"><strong>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</strong><code v-if="gate(item.gate)?.errorCode">{{ gate(item.gate)?.errorCode }}</code></div><div v-if="gate(item.gate)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(item.gate)?.repairSuggestion }}</p></div><details v-if="gate(item.gate)" class="diagnosis-technical"><summary>查看校验 SQL 与原始证据</summary><pre>{{ pretty(gate(item.gate)?.facts) }}</pre></details></section><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验当前步骤</button><button v-else-if="!currentGateHasResult && !busy" type="button" class="diagnosis-primary" @click="retryCurrentGate">继续基础校验</button></div>
     </article>
 
     <template v-if="snapshot.currentStep === 'CASE_INPUT'">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 三步基础检查回复</strong><span>可以继续</span></div><p>第一步已通过，第二步暂未启用并已安全跳过，第三步已通过。下一步请提供一条医院认为结果不对的记录。</p><pre class="diagnosis-template">{{ caseTemplate }}</pre><button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button><details class="diagnosis-technical"><summary>查看三步基础检查产物</summary><div class="diagnosis-gate-list"><p v-for="number in [1, 2, 3]" :key="number"><strong>第{{ ['一', '二', '三'][number - 1] }}步：</strong>{{ gate(number)?.skipped ? '暂未启用' : gate(number)?.message }}</p></div></details></div></article>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 基础校验结论</strong><span>可以继续</span></div><p>{{ successFactSummary() }}。现在请提供一条具体案例。</p><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary compact"><header><strong>{{ item.label }}</strong><em data-state="PASSED">已通过</em></header><div class="diagnosis-result" data-state="PASSED"><strong>{{ gate(item.gate)?.message }}</strong></div><details class="diagnosis-technical"><summary>查看 SQL 与原始证据</summary><pre>{{ pretty(gate(item.gate)?.facts) }}</pre></details></section><pre class="diagnosis-template">{{ caseTemplate }}</pre><button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button></div></article>
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 提供具体案例</strong></div><div class="diagnosis-case-grid"><label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label><label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label><label class="wide">异常现象<textarea v-model="symptom" rows="2" maxlength="1000" placeholder="例如：这条作废会诊被计入了分子"></textarea></label><label class="wide">医院认为的正确结果<textarea v-model="expectedResult" rows="2" maxlength="1000" placeholder="例如：该记录不应进入分子和分母"></textarea></label></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>三项填写完整后发送，系统会单独回复案例口径澄清。</p><button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !symptom.trim() || !expectedResult.trim()" @click="submitCase">发送案例</button></div></article>
     </template>
 
@@ -160,7 +170,7 @@ function pretty(value: unknown): string {
     <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请查询原业务</strong></div><p>请核对业务表是否存在该记录、关键状态和时间、抽取或中间表是否存在、是否重复，以及按当前口径应归入哪里。</p><p><strong>本轮产物：</strong>业务记录 → 抽取结果 → 真实库中间表 → 分子分母判定的证据链，以及一条有证据支持的具体原因。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="collectAutomaticEvidence">系统先沿数据链路自动取证</button></div></article>
       <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 查询结果</strong></div><p>{{ item.summary }}</p></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.modelId ? '系统 · AI分析' : '系统 · 程序证据' }}</strong></div><p>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看业务库、真实库和统计结果证据</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
-      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 原业务查询结果</strong></div><textarea v-model="evidenceText" rows="4" placeholder="业务表查询结果：…&#10;抽取或中间表结果：…&#10;按当前口径的判断：…&#10;证据 SQL（可选）：…"></textarea><button type="button" class="diagnosis-secondary" :disabled="busy || !evidenceText.trim()" @click="submitEvidence">发送查询结果</button><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="证据对上后，填写已确认的具体原因"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim() || !snapshot.evidence.length" @click="confirmCause">确认原因，进入修改</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>至少一条查询证据，且具体原因能被证据支持。</p></div></article>
+      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 原业务查询结果</strong></div><textarea v-model="evidenceText" rows="4" placeholder="业务表查询结果：…&#10;抽取或中间表结果：…&#10;按当前口径的判断：…&#10;证据 SQL（可选）：…"></textarea><button type="button" class="diagnosis-secondary" :disabled="busy || !evidenceText.trim()" @click="submitEvidence">发送查询结果</button><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="证据对上后，填写已确认的具体原因；若证据证明计算正确，可直接结束"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim() || !snapshot.evidence.length" @click="confirmCause">确认原因，进入修改</button><button type="button" class="diagnosis-secondary" :disabled="busy || !snapshot.evidence.length" @click="closeAsCorrect">确认结果正确，结束本次排查</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>至少一条查询证据，且具体原因能被证据支持；计算正确时无需修改 SQL。</p></div></article>
     </template>
 
     <template v-if="snapshot.currentStep === 'CHANGE_PROPOSAL'">
@@ -175,6 +185,6 @@ function pretty(value: unknown): string {
     </template>
 
     <article v-if="snapshot.currentStep === 'RELEASE_APPROVAL'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>发布将生成不可变医院增量包并原子切换 active 版本。</p><details class="diagnosis-technical"><summary>查看影子试跑报告</summary><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details><button type="button" class="diagnosis-primary danger" :disabled="busy" @click="emit('action', 'APPROVE_RELEASE', { confirmed: true })">确认发布医院口径</button></div></article>
-    <article v-if="snapshot.currentStep === 'COMPLETED'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 医院口径已发布</strong></div><pre>{{ pretty(snapshot.releaseResult) }}</pre></div></article>
+    <article v-if="snapshot.currentStep === 'COMPLETED'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · {{ snapshot.releaseResult.outcome === 'CALCULATION_CONFIRMED_CORRECT' ? '当前计算已确认正确' : '医院口径已发布' }}</strong></div><pre>{{ pretty(snapshot.releaseResult) }}</pre></div></article>
   </div>
 </template>
