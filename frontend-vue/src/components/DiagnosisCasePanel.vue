@@ -37,8 +37,11 @@ const steps = [
 
 const currentIndex = computed(() => {
   if (props.snapshot.currentStep === 'COMPLETED') return steps.length
+  if (props.snapshot.currentStep === 'BASE_CHECKS_RESULT' || props.snapshot.currentStep.startsWith('GATE_')) return 3
   return Math.max(0, steps.findIndex((item) => item.key === props.snapshot.currentStep))
 })
+
+const blockedGateCount = computed(() => props.snapshot.gateResults.filter((item) => String(item.status) === 'BLOCKED').length)
 
 function gate(number: number): Record<string, unknown> | undefined {
   return props.snapshot.gateResults.find((item) => Number(item.gate) === number)
@@ -48,8 +51,8 @@ function gateState(number: number): string {
   return String(gate(number)?.status || 'WAITING')
 }
 
-function runGate(number: number) {
-  emit('action', gate(number) ? 'RECHECK_GATE' : 'RUN_GATE', { gate: number })
+function runBaseChecks() {
+  emit('action', 'RUN_BASE_CHECKS', {})
 }
 
 function submitCase() {
@@ -126,23 +129,25 @@ function pretty(value: unknown): string {
     <article v-if="snapshot.currentStep === 'CALIBER_CONFIRMATION'" class="diagnosis-step-card is-current">
       <header><span>准备</span><h4>先确认系统理解的统计口径</h4></header>
       <dl class="caliber-facts"><div><dt>分子</dt><dd>{{ snapshot.caliberSnapshot.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母</dt><dd>{{ snapshot.caliberSnapshot.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl>
-      <button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">确认口径，进入第一步</button>
+      <button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">确认口径并自动完成三步基础检查</button>
     </article>
 
-    <template v-for="number in [1, 2, 3]" :key="number">
-      <article v-if="snapshot.currentStep === `GATE_${number}_${number === 1 ? 'SCHEMA' : number === 2 ? 'EVENT' : 'VALUE'}`" class="diagnosis-step-card is-current">
-        <header><span>第{{ ['一', '二', '三'][number - 1] }}步</span><h4>{{ steps[number].label }}</h4><em :data-state="gateState(number)">{{ gate(number)?.skipped ? '已跳过' : gateState(number) === 'BLOCKED' ? '需要处理' : gateState(number) === 'PASSED' ? '已通过' : number === 2 ? '暂未启用' : '等待检查' }}</em></header>
-        <p class="diagnosis-guidance">{{ number === 1 ? '先确认双库的表、字段、类型和长度。这里有确定问题时不能继续。' : number === 2 ? '现场事件表字段、启用值和重复判定规则尚在核对，本步骤暂不查询数据库，也不作为异常。' : '检查本次统计窗口是否有数据、关键字段是否为空，并列出需要现场核对的模板或元素 ID。' }}</p>
-        <div v-if="gate(number)" class="diagnosis-result" :data-state="gateState(number)"><strong>{{ gate(number)?.message }}</strong><code v-if="gate(number)?.errorCode">{{ gate(number)?.errorCode }}</code></div>
-        <div v-if="gate(number)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(number)?.repairSuggestion }}</p></div>
+    <article v-if="snapshot.currentStep === 'BASE_CHECKS_RESULT' || snapshot.currentStep.startsWith('GATE_')" class="diagnosis-step-card is-current">
+      <header><span>基础检查</span><h4>三步检查结论</h4><em data-state="BLOCKED">{{ blockedGateCount }} 步需要处理</em></header>
+      <p class="diagnosis-guidance">系统已经自动完成三步检查。请先处理下面标红的问题；第二步当前暂未启用，不查询数据库，也不影响后续判断。</p>
+      <section v-for="number in [1, 2, 3]" :key="number" class="diagnosis-gate-summary">
+        <header><strong>第{{ ['一', '二', '三'][number - 1] }}步 · {{ steps[number].label }}</strong><em :data-state="gateState(number)">{{ gate(number)?.skipped ? '暂未启用' : gateState(number) === 'BLOCKED' ? '需要处理' : '已通过' }}</em></header>
+        <div class="diagnosis-result" :data-state="gateState(number)"><strong>{{ gate(number)?.message || '未生成检查结果' }}</strong><code v-if="gate(number)?.errorCode">{{ gate(number)?.errorCode }}</code></div>
+        <div v-if="gate(number)?.repairSuggestion" class="diagnosis-repair"><strong>下一步怎么处理</strong><p>{{ gate(number)?.repairSuggestion }}</p></div>
         <details v-if="gate(number)" class="diagnosis-technical"><summary>查看校验 SQL 与原始证据</summary><pre>{{ pretty(gate(number)?.facts) }}</pre></details>
-        <button type="button" class="diagnosis-primary" :disabled="busy" @click="runGate(number)">{{ number === 2 ? '跳过第二步，进入第三步' : gate(number) ? '修复后重新检查' : '开始检查' }}</button>
-      </article>
-    </template>
+      </section>
+      <button type="button" class="diagnosis-primary" :disabled="busy" @click="runBaseChecks">修复后重新执行全部三步</button>
+    </article>
 
     <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="diagnosis-step-card is-current">
       <header><span>案例</span><h4>三步基础检查已通过，请登记一个具体案例</h4><em data-state="PASSED">基础检查通过</em></header>
-      <p class="diagnosis-guidance">现在再提供一条医院认为结果不对的记录。后续只围绕这条记录核对业务表、事件结果、真实库中间表和最终判定。</p>
+      <p class="diagnosis-guidance">第一步已通过，第二步暂未启用并已安全跳过，第三步已通过。下一步请提供一条医院认为结果不对的记录，后续只围绕这条记录核对业务表、事件结果、真实库中间表和最终判定。</p>
+      <details class="diagnosis-technical"><summary>查看三步基础检查结论</summary><div class="diagnosis-gate-list"><p v-for="number in [1, 2, 3]" :key="number"><strong>第{{ ['一', '二', '三'][number - 1] }}步：</strong>{{ gate(number)?.skipped ? '暂未启用' : gate(number)?.message }}</p></div></details>
       <div class="diagnosis-case-grid">
         <label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label>
         <label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label>
