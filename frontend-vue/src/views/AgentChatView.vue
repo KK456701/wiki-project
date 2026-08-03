@@ -419,16 +419,13 @@ async function exportDiagnosis(reportId?: string) {
             </div>
           </article>
 
-          <article v-for="item in diagnosisCases" :key="item.caseId" class="message is-agent has-diagnosis-case">
-            <div class="message-avatar">AI</div>
-            <div class="message-card">
-              <DiagnosisCasePanel
-                :snapshot="item"
-                :busy="diagnosisBusy === item.caseId"
-                @action="(action, payload) => diagnosisAction(item, action, payload)"
-              />
-            </div>
-          </article>
+          <DiagnosisCasePanel
+            v-for="item in diagnosisCases"
+            :key="item.caseId"
+            :snapshot="item"
+            :busy="diagnosisBusy === item.caseId"
+            @action="(action, payload) => diagnosisAction(item, action, payload)"
+          />
         </div>
 
         <div v-if="guidedOpen" class="composer-guided-popover">

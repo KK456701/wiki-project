@@ -1506,14 +1506,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-case-grid label, .diagnosis-change-grid label { display: grid; gap: 7px; color: #31534d; font-size: 12px; font-weight: 700; }
 .diagnosis-case-grid label.wide { grid-column: 1 / -1; }
 .diagnosis-case-grid input, .diagnosis-case-grid select, .diagnosis-case-grid textarea,
-.diagnosis-change-grid select, .diagnosis-step-card textarea { width: 100%; border: 1px solid #bfd1cc; border-radius: 9px; background: #fff; padding: 10px 12px; color: var(--ink); font: inherit; resize: vertical; }
+.diagnosis-change-grid select, .diagnosis-turn-card textarea, .diagnosis-turn-card select { width: 100%; border: 1px solid #bfd1cc; border-radius: 9px; background: #fff; padding: 10px 12px; color: var(--ink); font: inherit; resize: vertical; }
 .diagnosis-case-grid input:focus, .diagnosis-case-grid select:focus, .diagnosis-case-grid textarea:focus,
-.diagnosis-step-card textarea:focus { outline: 3px solid rgba(20, 132, 112, .17); border-color: #148470; }
+.diagnosis-turn-card textarea:focus, .diagnosis-turn-card select:focus { outline: 3px solid rgba(20, 132, 112, .17); border-color: #148470; }
 .diagnosis-order-note { margin: 0; padding: 10px 12px; border-left: 3px solid #148470; background: #eef8f5; color: #31534d; font-size: 12px; }
 .composer-guided-popover { position: absolute; right: 24px; bottom: 82px; left: 24px; z-index: 8; max-height: min(680px, calc(100vh - 130px)); overflow: auto; padding: 18px; border: 1px solid #cbdad6; border-radius: 14px; background: rgba(248, 252, 251, .98); box-shadow: 0 24px 70px rgba(19, 58, 50, .22); backdrop-filter: blur(12px); }
 .composer-guided-popover .guided-panel { margin-top: 0; }.diagnosis-launch-button { white-space: nowrap; border: 1px solid #16836f; border-radius: 8px; padding: 9px 12px; color: #126655; background: #fff; font-weight: 800; }
-.message.has-diagnosis-case .message-card { max-width: min(1120px, calc(100% - 58px)); width: 100%; padding: 0; border-left-width: 1px; overflow: hidden; }
-.diagnosis-case-panel { --diag-green: #0f766e; --diag-blue: #1d4ed8; --diag-amber: #b45309; --diag-red: #b42318; background: #f7faf9; }
+.diagnosis-case-thread { display: contents; --diag-green: #0f766e; --diag-blue: #1d4ed8; --diag-amber: #b45309; --diag-red: #b42318; }
+.app-shell .diagnosis-context-card { width: min(100%, 1120px); max-width: calc(100% - 44px); padding: 0; overflow: hidden; border-left-width: 1px; }
+.diagnosis-turn-card h4 { margin: 0 0 14px; color: #173f38; font-size: 17px; }
+.diagnosis-turn-card > p { line-height: 1.7; }
 .diagnosis-case-head { display: flex; justify-content: space-between; gap: 24px; padding: 24px 26px 20px; border-bottom: 1px solid #d9e4e1; background: linear-gradient(100deg, #f0faf7 0%, #fff 64%); }
 .diagnosis-case-head h3 { margin: 5px 0 7px; color: #123d36; font-size: 22px; }
 .diagnosis-case-head p { margin: 0; color: #526b67; line-height: 1.6; }
@@ -1552,12 +1554,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-gate-summary > header em[data-state='BLOCKED'] { color: #a33b20; background: #fff0eb; }
 .diagnosis-gate-list { padding: 2px 12px 10px; color: #435d58; }
 .diagnosis-gate-list p { margin: 8px 0; line-height: 1.6; }
-.diagnosis-dialogue-turn { position: relative; width: min(92%, 900px); margin: 14px 0; padding: 15px 17px; border-radius: 12px; line-height: 1.65; }
-.diagnosis-dialogue-turn > b:first-child { display: block; margin-bottom: 7px; color: #244d45; font-size: 12px; }
-.diagnosis-dialogue-turn p { margin: 7px 0; color: #425f59; }
-.diagnosis-dialogue-turn.is-system { margin-right: auto; border: 1px solid #cfe1dc; border-top-left-radius: 3px; background: #f0f8f5; }
-.diagnosis-dialogue-turn.is-user { margin-left: auto; border: 1px solid #ccdcf3; border-top-right-radius: 3px; background: #f3f7fd; }
-.diagnosis-dialogue-turn.is-readonly { opacity: .88; }
 .diagnosis-template { margin: 9px 0; padding: 12px 14px; border: 1px dashed #a8c7bf; border-radius: 8px; white-space: pre-wrap; color: #36554f; background: rgba(255,255,255,.72); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .diagnosis-text-action { border: 0; padding: 4px 0; color: #116f60; background: transparent; font-weight: 700; cursor: pointer; }
 .diagnosis-pass-rule { margin-top: 12px !important; padding-top: 10px; border-top: 1px dashed #c8d8d4; font-size: 12px; }
