@@ -94,6 +94,7 @@ export interface ChatMessage {
   executionNodes?: ExecutionNode[]
   executionRef?: { batchRunId: string; traceId?: string }
   executionRestoreStatus?: 'idle' | 'loading' | 'ready' | 'expired'
+  diagnosisCaseId?: string
 }
 
 export interface BatchIndicatorResult {
@@ -676,16 +677,18 @@ export const useAgentStore = defineStore('agent', {
           const rawBatch = Array.isArray(message.batchResults) ? message.batchResults : []
           const restoredResults = rawBatch.length ? rawBatch.map(toBatchResult) : undefined
           const restoredBatchRunId = restoredResults?.find((item) => item.batchRunId)?.batchRunId
+          const diagnosisMatch = (message.content || '').match(/\{\{diagnosis_case:(DCASE_[A-Za-z0-9_]+)}}/)
           return {
             id: makeId('message'),
             role: (message.role === 'assistant' ? 'agent' : 'user') as 'agent' | 'user',
-            content: message.content || '',
+            content: (message.content || '').replace(/\{\{diagnosis_case:DCASE_[A-Za-z0-9_]+}}/, ''),
             status: 'complete' as const,
             evidence: [],
             batchResults: restoredResults,
             executionRef: restoredBatchRunId
               ? { batchRunId: restoredBatchRunId } : undefined,
             executionRestoreStatus: restoredBatchRunId ? 'idle' as const : undefined,
+            diagnosisCaseId: diagnosisMatch?.[1],
           }
         })
         // 如果该会话仍有后台运行中的请求，把实时消息重新挂回列表，

@@ -122,9 +122,10 @@ const counts = computed(() => {
 })
 
 function qualityAbnormal(item: BatchIndicatorResult): boolean {
-  if (item.status !== 'SUCCESS' || item.dataFreshness === 'extraction_failed_stale') return true
-  return Boolean(item.qualityStatus
-    && !['NORMAL', 'OK', 'PASS', 'SUCCESS', '正常'].includes(item.qualityStatus.toUpperCase()))
+  // 已证实的数据问题会使口径进入无样本或失败；成功口径上的旧版
+  // ABNORMAL 可能只是 POSSIBLE 告警，不能继续把历史批次全部判异常。
+  if (item.errorCode === 'PROFILE_NOT_IMPLEMENTED') return false
+  return item.status !== 'SUCCESS' || item.dataFreshness === 'extraction_failed_stale'
 }
 
 const qualityAbnormalCount = computed(() => indicatorGroups.value
@@ -239,7 +240,7 @@ function inspectWithAi(item: BatchIndicatorResult) {
     batchRunId: item.batchRunId || '',
     indicatorId: item.ruleId,
     profileId: item.profileId,
-  }, true)
+  })
 }
 
 function generateChecklist() {
@@ -388,7 +389,7 @@ watch(visibleAttentionItems, (items) => {
 
       <div class="executive-findings">
         <p><span>01</span><b>数量闭合</b>：达标、未达标和待确认合计 {{ total }} 个覆盖指标。</p>
-        <p><span>02</span><b>质量独立判断</b>：{{ qualityAbnormalCount }} 个指标存在确定性数据质量或可用性问题，不与达标状态混淆。</p>
+        <p><span>02</span><b>质量独立判断</b>：正常表示未发现确定性数据问题；无样本、已证实的数据问题或抽取/快照/计算故障计为异常。“可能影响”和“无法判断”保留证据，但不自动判异常。</p>
         <p><span>03</span><b>详情运行绑定</b>：分子、分母与后续报告均绑定批次 {{ batchRunId || '—' }}。</p>
       </div>
 

@@ -8,6 +8,7 @@ import NodeDetailDrawer from '../components/NodeDetailDrawer.vue'
 import ClarificationChoices from '../components/ClarificationChoices.vue'
 import BatchExecutiveSummary from '../components/BatchExecutiveSummary.vue'
 import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
+import DiagnosisCasePanel from '../components/DiagnosisCasePanel.vue'
 import { useAgentStore, type ExecutionNode } from '../stores/agent'
 import {
   createDiagnosisReportExport,
@@ -15,7 +16,12 @@ import {
   downloadIndicatorExport,
   prepareBatchAnalysis,
   prepareIndicatorInspection,
+  actOnDiagnosisCase,
+  createDiagnosisCase,
+  loadDiagnosisCase,
   type BatchAnalysisAction,
+  type CreateDiagnosisCaseInput,
+  type DiagnosisCaseSnapshot,
   type InspectIndicatorAction,
   type SessionSummary,
 } from '../api/agent'
@@ -30,6 +36,9 @@ const exportingComparison = ref('')
 const exportingDiagnosis = ref('')
 const sessionList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(true)
+const guidedOpen = ref(false)
+const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
+const diagnosisBusy = ref('')
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
 // 侧边栏实际渲染的列表：后端会话列表 + 正在处理但还未写入列表的会话。
@@ -60,6 +69,7 @@ onMounted(async () => {
     // 访客模式，忽略刷新失败
   }
   await refreshSessionList()
+  await restoreDiagnosisCases(store.sessionId)
 })
 
 async function refreshSessionList() {
@@ -68,12 +78,14 @@ async function refreshSessionList() {
 
 async function switchSession(sessionId: string) {
   await store.restoreSession(sessionId)
+  await restoreDiagnosisCases(sessionId)
   await nextTick()
   conversation.value?.scrollTo({ top: conversation.value.scrollHeight })
 }
 
 async function startNewSession() {
   await store.newSession()
+  diagnosisCases.value = []
   await refreshSessionList()
 }
 
@@ -130,6 +142,60 @@ async function sendSummaryAction(
     conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
   } catch (error) {
     store.error = error instanceof Error ? error.message : '读取批次排查事实失败。'
+  }
+}
+
+function diagnosisStorageKey(sessionId: string): string {
+  return `diagnosisCases:${sessionId}`
+}
+
+function rememberDiagnosisCase(sessionId: string, caseId: string) {
+  const key = diagnosisStorageKey(sessionId)
+  const values = JSON.parse(localStorage.getItem(key) || '[]') as string[]
+  if (!values.includes(caseId)) localStorage.setItem(key, JSON.stringify([...values, caseId]))
+}
+
+async function restoreDiagnosisCases(sessionId: string) {
+  const localIds = JSON.parse(localStorage.getItem(diagnosisStorageKey(sessionId)) || '[]') as string[]
+  const messageIds = store.messages.map((message) => message.diagnosisCaseId).filter(Boolean) as string[]
+  const ids = [...new Set([...localIds, ...messageIds])]
+  if (ids.length) localStorage.setItem(diagnosisStorageKey(sessionId), JSON.stringify(ids))
+  const loaded = await Promise.all(ids.map((caseId) => loadDiagnosisCase(store.token, caseId).catch(() => null)))
+  diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
+}
+
+async function startDiagnosis(input: CreateDiagnosisCaseInput) {
+  diagnosisBusy.value = 'creating'
+  store.error = ''
+  try {
+    const created = await createDiagnosisCase(store.token, input)
+    guidedOpen.value = false
+    diagnosisCases.value.push(created)
+    rememberDiagnosisCase(store.sessionId, created.caseId)
+    await nextTick()
+    conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '异常排查任务创建失败。'
+  } finally {
+    diagnosisBusy.value = ''
+  }
+}
+
+async function diagnosisAction(
+  snapshot: DiagnosisCaseSnapshot,
+  action: string,
+  payload: Record<string, unknown>,
+) {
+  diagnosisBusy.value = snapshot.caseId
+  store.error = ''
+  try {
+    const updated = await actOnDiagnosisCase(store.token, snapshot.caseId, action, payload)
+    diagnosisCases.value = diagnosisCases.value.map((item) =>
+      item.caseId === updated.caseId ? updated : item)
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '异常排查步骤执行失败。'
+  } finally {
+    diagnosisBusy.value = ''
   }
 }
 
@@ -248,14 +314,18 @@ async function exportDiagnosis(reportId?: string) {
             <p>按引导选择指标和时间范围即可开始。每一步口径、数据来源与核算结果都可追溯。</p>
             <GuidedTaskPanel
               :token="store.token"
+              :session-id="store.sessionId"
+              :model-id="store.selectedModel"
               :disabled="store.running"
               @send="send($event)"
+              @start-diagnosis="startDiagnosis"
             />
           </section>
 
           <article
             v-for="message in store.messages"
             :key="message.id"
+            v-show="!message.diagnosisCaseId"
             class="message"
             :class="[`is-${message.role}`, { 'has-batch-results': message.batchResults?.length }]"
           >
@@ -348,11 +418,33 @@ async function exportDiagnosis(reportId?: string) {
               >{{ exportingDiagnosis === reportId ? '正在生成诊断明细…' : '导出诊断明细 Excel →' }}</button>
             </div>
           </article>
+
+          <article v-for="item in diagnosisCases" :key="item.caseId" class="message is-agent has-diagnosis-case">
+            <div class="message-avatar">AI</div>
+            <div class="message-card">
+              <DiagnosisCasePanel
+                :snapshot="item"
+                :busy="diagnosisBusy === item.caseId"
+                @action="(action, payload) => diagnosisAction(item, action, payload)"
+              />
+            </div>
+          </article>
         </div>
 
+        <div v-if="guidedOpen" class="composer-guided-popover">
+          <GuidedTaskPanel
+            :token="store.token"
+            :session-id="store.sessionId"
+            :model-id="store.selectedModel"
+            :disabled="store.running"
+            @send="send($event)"
+            @start-diagnosis="startDiagnosis"
+          />
+        </div>
         <form class="composer" @submit.prevent="send()">
           <input ref="uploadInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="uploadFile" />
           <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
+          <button type="button" class="diagnosis-launch-button" @click="guidedOpen = !guidedOpen">异常排查</button>
           <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
           <textarea v-model="query" rows="1" maxlength="5000" placeholder="输入指标、统计时间或对比要求…" @keydown.ctrl.enter.prevent="send()"></textarea>
           <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>

@@ -282,6 +282,78 @@ export interface IndicatorItem {
   ruleName: string
 }
 
+export interface DiagnosisCaseSnapshot {
+  caseId: string
+  hospitalId: string
+  userId: string
+  sessionId: string
+  status: string
+  currentStep: string
+  ruleId: string
+  profileId: string
+  knowledgeReleaseId: string
+  modelId: string
+  caseInput: Record<string, unknown>
+  caliberSnapshot: Record<string, unknown>
+  caseExpectedClassification: Record<string, unknown>
+  gateResults: Array<Record<string, unknown>>
+  evidence: Array<Record<string, unknown>>
+  causeConclusion: Record<string, unknown>
+  changeProposal: Record<string, unknown>
+  candidateSql: Record<string, unknown>
+  shadowTrial: Record<string, unknown>
+  releaseResult: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateDiagnosisCaseInput {
+  sessionId: string
+  ruleId: string
+  profileId: string
+  statStart: string
+  statEnd: string
+  modelId: string
+  caseInput: Record<string, unknown>
+  expectedClassification?: Record<string, unknown>
+}
+
+export async function createDiagnosisCase(
+  token: string,
+  input: CreateDiagnosisCaseInput,
+): Promise<DiagnosisCaseSnapshot> {
+  const response = await fetch('/api/diagnosis/cases', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return readJson<DiagnosisCaseSnapshot>(response)
+}
+
+export async function loadDiagnosisCase(
+  token: string,
+  caseId: string,
+): Promise<DiagnosisCaseSnapshot> {
+  const response = await fetch(`/api/diagnosis/cases/${encodeURIComponent(caseId)}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<DiagnosisCaseSnapshot>(response)
+}
+
+export async function actOnDiagnosisCase(
+  token: string,
+  caseId: string,
+  action: string,
+  payload: Record<string, unknown> = {},
+): Promise<DiagnosisCaseSnapshot> {
+  const response = await fetch(`/api/diagnosis/cases/${encodeURIComponent(caseId)}/actions`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, payload }),
+  })
+  return readJson<DiagnosisCaseSnapshot>(response)
+}
+
 /** 获取全部活跃指标（供引导面板渲染指标多选列表） */
 export async function listIndicators(token: string): Promise<IndicatorItem[]> {
   const response = await fetch('/api/kb/rules/list', { headers: authHeaders(token) })
