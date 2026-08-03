@@ -26,7 +26,7 @@ const expectedResult = ref('')
 const steps = [
   { key: 'CALIBER_CONFIRMATION', label: '确认统计口径', short: '准备' },
   { key: 'GATE_1_SCHEMA', label: '表和字段校验', short: '第一步' },
-  { key: 'GATE_2_EVENT', label: '事件和抽取脚本校验', short: '第二步' },
+  { key: 'GATE_2_EVENT', label: '事件和抽取脚本校验（暂未启用）', short: '第二步' },
   { key: 'GATE_3_VALUE', label: '数值和现场常量校验', short: '第三步' },
   { key: 'CASE_INPUT', label: '登记具体案例', short: '案例' },
   { key: 'CASE_INVESTIGATION', label: '具体案例查因', short: '查因' },
@@ -131,12 +131,12 @@ function pretty(value: unknown): string {
 
     <template v-for="number in [1, 2, 3]" :key="number">
       <article v-if="snapshot.currentStep === `GATE_${number}_${number === 1 ? 'SCHEMA' : number === 2 ? 'EVENT' : 'VALUE'}`" class="diagnosis-step-card is-current">
-        <header><span>第{{ ['一', '二', '三'][number - 1] }}步</span><h4>{{ steps[number].label }}</h4><em :data-state="gateState(number)">{{ gateState(number) === 'BLOCKED' ? '需要处理' : gateState(number) === 'PASSED' ? '已通过' : '等待检查' }}</em></header>
-        <p class="diagnosis-guidance">{{ number === 1 ? '先确认双库的表、字段、类型和长度。这里有确定问题时不能继续。' : number === 2 ? '核对当前方案期望事件、现场启用事件、抽取脚本和重复风险。' : '检查本次统计窗口是否有数据、关键字段是否为空，并列出需要现场核对的模板或元素 ID。' }}</p>
+        <header><span>第{{ ['一', '二', '三'][number - 1] }}步</span><h4>{{ steps[number].label }}</h4><em :data-state="gateState(number)">{{ gate(number)?.skipped ? '已跳过' : gateState(number) === 'BLOCKED' ? '需要处理' : gateState(number) === 'PASSED' ? '已通过' : number === 2 ? '暂未启用' : '等待检查' }}</em></header>
+        <p class="diagnosis-guidance">{{ number === 1 ? '先确认双库的表、字段、类型和长度。这里有确定问题时不能继续。' : number === 2 ? '现场事件表字段、启用值和重复判定规则尚在核对，本步骤暂不查询数据库，也不作为异常。' : '检查本次统计窗口是否有数据、关键字段是否为空，并列出需要现场核对的模板或元素 ID。' }}</p>
         <div v-if="gate(number)" class="diagnosis-result" :data-state="gateState(number)"><strong>{{ gate(number)?.message }}</strong><code v-if="gate(number)?.errorCode">{{ gate(number)?.errorCode }}</code></div>
         <div v-if="gate(number)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(number)?.repairSuggestion }}</p></div>
         <details v-if="gate(number)" class="diagnosis-technical"><summary>查看校验 SQL 与原始证据</summary><pre>{{ pretty(gate(number)?.facts) }}</pre></details>
-        <button type="button" class="diagnosis-primary" :disabled="busy" @click="runGate(number)">{{ gate(number) ? '修复后重新检查' : '开始检查' }}</button>
+        <button type="button" class="diagnosis-primary" :disabled="busy" @click="runGate(number)">{{ number === 2 ? '跳过第二步，进入第三步' : gate(number) ? '修复后重新检查' : '开始检查' }}</button>
       </article>
     </template>
 
