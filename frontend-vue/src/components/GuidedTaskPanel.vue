@@ -19,6 +19,39 @@ const loading = ref(false)
 const loadError = ref('')
 const search = ref('')
 const selected = ref<string[]>([])
+type DiagnosisType = 'schema' | 'event' | 'value' | 'mismatch'
+const diagnosisType = ref<DiagnosisType | ''>('')
+const diagnosisTypes: Array<{
+  value: DiagnosisType
+  title: string
+  description: string
+  prompt: string
+}> = [
+  {
+    value: 'schema',
+    title: '表或字段有问题',
+    description: '检查缺表、缺字段，以及字段类型或长度不符合脚本要求。',
+    prompt: '按表和字段问题排查，重点检查缺表、缺字段、字段类型和字段长度',
+  },
+  {
+    value: 'event',
+    title: '事件或抽取脚本有问题',
+    description: '检查脚本报错、事件多配少配、重复数据和写入失败。',
+    prompt: '按事件和抽取脚本问题排查，重点检查脚本报错、事件多配或少配、重复数据以及写入失败',
+  },
+  {
+    value: 'value',
+    title: '结果没数据或偏高偏低',
+    description: '检查关键字段空值、现场模板ID和元素ID是否与公版不同。',
+    prompt: '按指标数值异常排查，重点检查无数据、结果偏高偏低、关键字段空值、病历模板ID和病历元素ID',
+  },
+  {
+    value: 'mismatch',
+    title: '结果与医院对不上',
+    description: '启动双库验证，检查同步缺失、数据变化和统计口径差异。',
+    prompt: '按结果与医院不一致排查并启动双库验证，重点检查数据未同步、数据被更改和统计口径不一致',
+  },
+]
 
 // 时间范围下拉：预设常用范围 + 自定义月份区间。
 // 预设生成的文本必须是后端 TimeRangeResolver 能确定解析的表达；
@@ -58,7 +91,10 @@ const timeText = computed(() => {
 })
 
 const canSubmit = computed(() =>
-  !props.disabled && selected.value.length > 0 && Boolean(timeText.value))
+  !props.disabled
+  && selected.value.length > 0
+  && Boolean(timeText.value)
+  && (task.value !== 'diagnose' || Boolean(diagnosisType.value)))
 
 onMounted(async () => {
   loading.value = true
@@ -81,6 +117,7 @@ function pickTask(value: 'calc' | 'diagnose') {
   task.value = task.value === value ? '' : value
   selected.value = []
   search.value = ''
+  diagnosisType.value = ''
 }
 
 function toggleIndicator(ruleId: string) {
@@ -106,11 +143,12 @@ function submit() {
     .filter((item) => selected.value.includes(item.ruleId))
     .map((item) => item.ruleName)
   const allSelected = names.length === indicators.value.length && names.length > 1
+  const selectedDiagnosis = diagnosisTypes.find((item) => item.value === diagnosisType.value)
   const query = task.value === 'calc'
     ? allSelected
       ? `计算${timeText.value}全部指标的结果`
       : `计算${timeText.value}${names.join('、')}的结果`
-    : `排查${timeText.value}${names.join('、')}结果异常的原因`
+    : `排查${timeText.value}${names.join('、')}：${selectedDiagnosis?.prompt || '分析结果异常原因'}`
   emit('send', query)
   task.value = ''
   selected.value = []
@@ -143,9 +181,29 @@ function submit() {
     </div>
 
     <div v-if="task" class="guided-steps">
+      <div v-if="task === 'diagnose'" class="guided-step">
+        <h4>
+          第一步：选择遇到的问题
+          <small>按现场现象选择，不需要判断技术原因</small>
+        </h4>
+        <div class="guided-diagnosis-grid">
+          <button
+            v-for="item in diagnosisTypes"
+            :key="item.value"
+            type="button"
+            class="guided-diagnosis"
+            :class="{ 'is-selected': diagnosisType === item.value }"
+            @click="diagnosisType = item.value"
+          >
+            <strong>{{ item.title }}</strong>
+            <span>{{ item.description }}</span>
+          </button>
+        </div>
+      </div>
+
       <div class="guided-step">
         <h4>
-          第一步：选择指标
+          {{ task === 'diagnose' ? '第二步' : '第一步' }}：选择指标
           <small v-if="task === 'calc'">可多选，已选 {{ selected.length }} 个</small>
           <small v-else>排查故障一次只选一个</small>
         </h4>
@@ -179,7 +237,7 @@ function submit() {
       </div>
 
       <div class="guided-step">
-        <h4>第二步：选择时间范围</h4>
+        <h4>{{ task === 'diagnose' ? '第三步' : '第二步' }}：选择时间范围</h4>
         <div class="guided-time-row">
           <select v-model="timeChoice">
             <option v-for="preset in timePresets" :key="preset.label" :value="preset.label">{{ preset.label }}</option>

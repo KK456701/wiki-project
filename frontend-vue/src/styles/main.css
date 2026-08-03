@@ -152,6 +152,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .guided-task strong { color: var(--teal-dark); font-size: 17px; }
 .guided-task span { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .guided-task:disabled { opacity: .55; cursor: not-allowed; }
+.guided-diagnosis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.guided-diagnosis { display: grid; gap: 6px; padding: 14px 16px; text-align: left; color: var(--ink); border: 1px solid #c9d8d4; border-radius: 10px; background: #fff; }
+.guided-diagnosis:hover { border-color: var(--teal); background: #f6fbf9; }
+.guided-diagnosis.is-selected { border-color: var(--teal); background: #eaf7f3; box-shadow: inset 3px 0 0 var(--teal); }
+.guided-diagnosis strong { color: var(--teal-dark); font-size: 14px; }
+.guided-diagnosis span { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .guided-steps { display: grid; gap: 16px; padding: 18px; border: 1px solid #c8d8d3; border-top: 4px solid var(--teal); background: #f8fbfa; }
 .guided-step h4 { display: flex; align-items: baseline; gap: 9px; margin: 0 0 10px; color: #173b34; font-size: 14px; }
 .guided-step h4 small { color: var(--amber); font-size: 11px; font-weight: 400; }
@@ -172,7 +178,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .guided-submit { width: max-content; padding: 12px 30px; color: white; border: 0; background: var(--teal); font-size: 14px; font-weight: 800; }
 .guided-submit:hover:not(:disabled) { background: var(--teal-dark); }
 .guided-submit:disabled { opacity: .5; cursor: not-allowed; }
-@media (max-width: 720px) { .guided-tasks, .guided-indicator-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .guided-tasks, .guided-indicator-grid, .guided-diagnosis-grid { grid-template-columns: 1fr; } }
 
 .indicator-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-top: 14px; }
 .indicator-card { display: grid; gap: 10px; align-content: start; padding: 14px 16px; background: white; border: 1px solid var(--line); border-top: 4px solid var(--teal); }
