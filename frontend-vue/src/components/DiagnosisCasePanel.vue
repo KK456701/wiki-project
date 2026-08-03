@@ -18,12 +18,17 @@ const changeType = ref('SQL_CHANGE')
 const changeLayer = ref('SOURCE_EXTRACT')
 const requirements = ref('')
 const candidateSql = ref('')
+const recordField = ref('ENCOUNTER_ID')
+const recordId = ref('')
+const symptom = ref('')
+const expectedResult = ref('')
 
 const steps = [
   { key: 'CALIBER_CONFIRMATION', label: '确认统计口径', short: '准备' },
   { key: 'GATE_1_SCHEMA', label: '表和字段校验', short: '第一步' },
   { key: 'GATE_2_EVENT', label: '事件和抽取脚本校验', short: '第二步' },
   { key: 'GATE_3_VALUE', label: '数值和现场常量校验', short: '第三步' },
+  { key: 'CASE_INPUT', label: '登记具体案例', short: '案例' },
   { key: 'CASE_INVESTIGATION', label: '具体案例查因', short: '查因' },
   { key: 'CHANGE_PROPOSAL', label: '修改要求与候选 SQL', short: '修改' },
   { key: 'SHADOW_TRIAL', label: '影子重跑与对账', short: '试跑' },
@@ -45,6 +50,18 @@ function gateState(number: number): string {
 
 function runGate(number: number) {
   emit('action', gate(number) ? 'RECHECK_GATE' : 'RUN_GATE', { gate: number })
+}
+
+function submitCase() {
+  if (!recordId.value.trim() || !symptom.value.trim() || !expectedResult.value.trim()) return
+  emit('action', 'SUBMIT_CASE', {
+    recordField: recordField.value,
+    recordId: recordId.value.trim(),
+    symptom: symptom.value.trim(),
+    expectedResult: expectedResult.value.trim(),
+    businessUniqueKey: recordField.value,
+    expectedClassification: { status: 'WAITING_CONFIRMATION' },
+  })
 }
 
 function submitEvidence() {
@@ -94,7 +111,8 @@ function pretty(value: unknown): string {
       <div>
         <span class="diagnosis-kicker">异常排查任务 · {{ snapshot.caseId }}</span>
         <h3>{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h3>
-        <p>{{ snapshot.caseInput.symptom }} <strong>期望：{{ snapshot.caseInput.expectedResult }}</strong></p>
+        <p v-if="snapshot.caseInput.symptom">{{ snapshot.caseInput.symptom }} <strong>期望：{{ snapshot.caseInput.expectedResult }}</strong></p>
+        <p v-else>先完成三步基础检查；全部通过后再登记一条具体案例。</p>
       </div>
       <span class="diagnosis-release">口径版本 {{ snapshot.knowledgeReleaseId }}</span>
     </header>
@@ -107,19 +125,32 @@ function pretty(value: unknown): string {
 
     <article v-if="snapshot.currentStep === 'CALIBER_CONFIRMATION'" class="diagnosis-step-card is-current">
       <header><span>准备</span><h4>先确认系统理解的统计口径</h4></header>
-      <dl class="caliber-facts"><div><dt>分子</dt><dd>{{ snapshot.caliberSnapshot.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母</dt><dd>{{ snapshot.caliberSnapshot.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div><div><dt>案例预期</dt><dd>{{ snapshot.caseExpectedClassification.status || '等待实施人员确认' }}</dd></div></dl>
+      <dl class="caliber-facts"><div><dt>分子</dt><dd>{{ snapshot.caliberSnapshot.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母</dt><dd>{{ snapshot.caliberSnapshot.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl>
       <button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">确认口径，进入第一步</button>
     </article>
 
     <template v-for="number in [1, 2, 3]" :key="number">
       <article v-if="snapshot.currentStep === `GATE_${number}_${number === 1 ? 'SCHEMA' : number === 2 ? 'EVENT' : 'VALUE'}`" class="diagnosis-step-card is-current">
         <header><span>第{{ ['一', '二', '三'][number - 1] }}步</span><h4>{{ steps[number].label }}</h4><em :data-state="gateState(number)">{{ gateState(number) === 'BLOCKED' ? '需要处理' : gateState(number) === 'PASSED' ? '已通过' : '等待检查' }}</em></header>
-        <p class="diagnosis-guidance">{{ number === 1 ? '先确认双库的表、字段、类型和长度。这里有确定问题时不能继续。' : number === 2 ? '核对当前方案期望事件、现场启用事件、抽取脚本和重复风险。' : '围绕这条具体记录核对源数据、关键空值和现场模板或元素 ID。' }}</p>
+        <p class="diagnosis-guidance">{{ number === 1 ? '先确认双库的表、字段、类型和长度。这里有确定问题时不能继续。' : number === 2 ? '核对当前方案期望事件、现场启用事件、抽取脚本和重复风险。' : '检查本次统计窗口是否有数据、关键字段是否为空，并列出需要现场核对的模板或元素 ID。' }}</p>
         <div v-if="gate(number)" class="diagnosis-result" :data-state="gateState(number)"><strong>{{ gate(number)?.message }}</strong><code v-if="gate(number)?.errorCode">{{ gate(number)?.errorCode }}</code></div>
+        <div v-if="gate(number)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(number)?.repairSuggestion }}</p></div>
         <details v-if="gate(number)" class="diagnosis-technical"><summary>查看校验 SQL 与原始证据</summary><pre>{{ pretty(gate(number)?.facts) }}</pre></details>
         <button type="button" class="diagnosis-primary" :disabled="busy" @click="runGate(number)">{{ gate(number) ? '修复后重新检查' : '开始检查' }}</button>
       </article>
     </template>
+
+    <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="diagnosis-step-card is-current">
+      <header><span>案例</span><h4>三步基础检查已通过，请登记一个具体案例</h4><em data-state="PASSED">基础检查通过</em></header>
+      <p class="diagnosis-guidance">现在再提供一条医院认为结果不对的记录。后续只围绕这条记录核对业务表、事件结果、真实库中间表和最终判定。</p>
+      <div class="diagnosis-case-grid">
+        <label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label>
+        <label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label>
+        <label class="wide">异常现象<textarea v-model="symptom" rows="2" maxlength="1000" placeholder="例如：这条作废会诊被计入了分子"></textarea></label>
+        <label class="wide">医院认为的正确结果<textarea v-model="expectedResult" rows="2" maxlength="1000" placeholder="例如：该记录不应进入分子和分母"></textarea></label>
+      </div>
+      <button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !symptom.trim() || !expectedResult.trim()" @click="submitCase">登记案例，开始具体查因</button>
+    </article>
 
     <article v-if="snapshot.currentStep === 'CASE_INVESTIGATION'" class="diagnosis-step-card is-current">
       <header><span>查因</span><h4>沿数据链路核对这条案例</h4><em data-state="PASSED">前三步已通过</em></header>

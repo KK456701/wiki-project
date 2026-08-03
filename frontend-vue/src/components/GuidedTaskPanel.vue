@@ -21,11 +21,6 @@ const loading = ref(false)
 const loadError = ref('')
 const search = ref('')
 const selected = ref<string[]>([])
-const recordField = ref('ENCOUNTER_ID')
-const recordId = ref('')
-const symptom = ref('')
-const expectedResult = ref('')
-
 const timeChoice = ref('本月')
 const customStart = ref('')
 const customEnd = ref('')
@@ -56,9 +51,7 @@ const timeText = computed(() => {
 const canSubmit = computed(() =>
   !props.disabled
   && selected.value.length > 0
-  && Boolean(timeText.value)
-  && (task.value !== 'diagnose' || Boolean(
-    recordId.value.trim() && symptom.value.trim() && expectedResult.value.trim())))
+  && Boolean(timeText.value))
 
 onMounted(async () => {
   loading.value = true
@@ -86,9 +79,6 @@ function pickTask(value: 'calc' | 'diagnose') {
   task.value = task.value === value ? '' : value
   selected.value = []
   search.value = ''
-  recordId.value = ''
-  symptom.value = ''
-  expectedResult.value = ''
 }
 
 function toggleIndicator(ruleId: string) {
@@ -120,14 +110,8 @@ function submit() {
       statStart: period.start,
       statEnd: period.end,
       modelId: props.modelId,
-      caseInput: {
-        recordField: recordField.value,
-        recordId: recordId.value.trim(),
-        symptom: symptom.value.trim(),
-        expectedResult: expectedResult.value.trim(),
-        businessUniqueKey: recordField.value,
-      },
-      expectedClassification: { status: 'WAITING_CONFIRMATION' },
+      caseInput: {},
+      expectedClassification: {},
     })
   } else {
     const allSelected = names.length === indicators.value.length && names.length > 1
@@ -183,7 +167,7 @@ function localIso(value: Date): string {
         <strong>算指标</strong><span>选择一个或多个指标，按时间范围计算结果</span>
       </button>
       <button type="button" class="guided-task" :class="{ 'is-active': task === 'diagnose' }" :disabled="disabled" @click="pickTask('diagnose')">
-        <strong>开始异常排查</strong><span>登记一条具体案例，按三个步骤顺序核实原因</span>
+        <strong>开始异常排查</strong><span>先完成表字段、事件和数值检查，通过后再登记具体案例</span>
       </button>
     </div>
 
@@ -219,16 +203,7 @@ function localIso(value: Date): string {
         </div>
       </div>
 
-      <div v-if="task === 'diagnose'" class="guided-step diagnosis-case-step">
-        <h4>第三步：登记一个具体案例 <small>三个校验步骤会围绕这条记录展开</small></h4>
-        <div class="diagnosis-case-grid">
-          <label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label>
-          <label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label>
-          <label class="wide">异常现象<textarea v-model="symptom" rows="2" maxlength="1000" placeholder="例如：这条作废会诊被计入了分子"></textarea></label>
-          <label class="wide">医院认为的正确结果<textarea v-model="expectedResult" rows="2" maxlength="1000" placeholder="例如：该记录不应进入分子和分母"></textarea></label>
-        </div>
-        <p class="diagnosis-order-note">系统将依次检查：表和字段 → 事件与抽取脚本 → 数值与现场常量。前三步通过后才进入案例查因。</p>
-      </div>
+      <p v-if="task === 'diagnose'" class="diagnosis-order-note">开始后系统将依次检查：表和字段 → 事件与抽取脚本 → 数值与现场常量。有问题会停在对应步骤并给出修复建议；全部通过后才要求填写具体案例。</p>
 
       <button type="button" class="guided-submit" :disabled="!canSubmit" @click="submit">{{ task === 'calc' ? '开始计算' : '开始异常排查' }}</button>
     </div>
