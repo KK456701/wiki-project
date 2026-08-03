@@ -22,6 +22,8 @@ const recordField = ref('ENCOUNTER_ID')
 const recordId = ref('')
 const symptom = ref('')
 const expectedResult = ref('')
+const expectedMembership = ref('UNKNOWN')
+const templateCopied = ref(false)
 
 const steps = [
   { key: 'CALIBER_CONFIRMATION', label: '确认统计口径', short: '准备' },
@@ -29,6 +31,7 @@ const steps = [
   { key: 'GATE_2_EVENT', label: '事件和抽取脚本校验（暂未启用）', short: '第二步' },
   { key: 'GATE_3_VALUE', label: '数值和现场常量校验', short: '第三步' },
   { key: 'CASE_INPUT', label: '登记具体案例', short: '案例' },
+  { key: 'CASE_CALIBER_CLARIFICATION', label: '澄清案例统计口径', short: '澄清' },
   { key: 'CASE_INVESTIGATION', label: '具体案例查因', short: '查因' },
   { key: 'CHANGE_PROPOSAL', label: '修改要求与候选 SQL', short: '修改' },
   { key: 'SHADOW_TRIAL', label: '影子重跑与对账', short: '试跑' },
@@ -42,6 +45,11 @@ const currentIndex = computed(() => {
 })
 
 const blockedGateCount = computed(() => props.snapshot.gateResults.filter((item) => String(item.status) === 'BLOCKED').length)
+const caseTemplate = `记录类型：就诊号 / 事件号 / 医嘱号 / 手术号
+记录编号：
+异常现象：
+医院认为的正确结果：
+已有查询、SQL或截图（可选）：`
 
 function gate(number: number): Record<string, unknown> | undefined {
   return props.snapshot.gateResults.find((item) => Number(item.gate) === number)
@@ -64,6 +72,19 @@ function submitCase() {
     expectedResult: expectedResult.value.trim(),
     businessUniqueKey: recordField.value,
     expectedClassification: { status: 'WAITING_CONFIRMATION' },
+  })
+}
+
+async function copyCaseTemplate() {
+  await navigator.clipboard.writeText(caseTemplate)
+  templateCopied.value = true
+  window.setTimeout(() => { templateCopied.value = false }, 1500)
+}
+
+function confirmCaseCaliber() {
+  emit('action', 'CONFIRM_CASE_CALIBER', {
+    confirmed: true,
+    hospitalExpectedMembership: expectedMembership.value,
   })
 }
 
@@ -146,43 +167,80 @@ function pretty(value: unknown): string {
 
     <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="diagnosis-step-card is-current">
       <header><span>案例</span><h4>三步基础检查已通过，请登记一个具体案例</h4><em data-state="PASSED">基础检查通过</em></header>
-      <p class="diagnosis-guidance">第一步已通过，第二步暂未启用并已安全跳过，第三步已通过。下一步请提供一条医院认为结果不对的记录，后续只围绕这条记录核对业务表、事件结果、真实库中间表和最终判定。</p>
-      <details class="diagnosis-technical"><summary>查看三步基础检查结论</summary><div class="diagnosis-gate-list"><p v-for="number in [1, 2, 3]" :key="number"><strong>第{{ ['一', '二', '三'][number - 1] }}步：</strong>{{ gate(number)?.skipped ? '暂未启用' : gate(number)?.message }}</p></div></details>
-      <div class="diagnosis-case-grid">
-        <label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label>
-        <label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label>
-        <label class="wide">异常现象<textarea v-model="symptom" rows="2" maxlength="1000" placeholder="例如：这条作废会诊被计入了分子"></textarea></label>
-        <label class="wide">医院认为的正确结果<textarea v-model="expectedResult" rows="2" maxlength="1000" placeholder="例如：该记录不应进入分子和分母"></textarea></label>
+      <div class="diagnosis-dialogue-turn is-system">
+        <b>系统回复</b>
+        <p>第一步已通过，第二步暂未启用并已安全跳过，第三步已通过。基础环境暂未发现阻断项，可以开始核对具体记录。</p>
+        <strong>下一步请提供</strong>
+        <pre class="diagnosis-template">{{ caseTemplate }}</pre>
+        <button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button>
+        <details class="diagnosis-technical"><summary>查看三步基础检查产物</summary><div class="diagnosis-gate-list"><p v-for="number in [1, 2, 3]" :key="number"><strong>第{{ ['一', '二', '三'][number - 1] }}步：</strong>{{ gate(number)?.skipped ? '暂未启用' : gate(number)?.message }}</p></div></details>
       </div>
-      <button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !symptom.trim() || !expectedResult.trim()" @click="submitCase">登记案例，开始具体查因</button>
+      <div class="diagnosis-dialogue-turn is-user">
+        <b>实施人员回复 · 提供具体案例</b>
+        <div class="diagnosis-case-grid">
+          <label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label>
+          <label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label>
+          <label class="wide">异常现象<textarea v-model="symptom" rows="2" maxlength="1000" placeholder="例如：这条作废会诊被计入了分子"></textarea></label>
+          <label class="wide">医院认为的正确结果<textarea v-model="expectedResult" rows="2" maxlength="1000" placeholder="例如：该记录不应进入分子和分母"></textarea></label>
+        </div>
+        <p class="diagnosis-pass-rule"><strong>进入下一步的条件：</strong>记录标识、异常现象和医院认为的正确结果填写完整。</p>
+        <button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !symptom.trim() || !expectedResult.trim()" @click="submitCase">发送案例，等待系统澄清口径</button>
+      </div>
+    </article>
+
+    <article v-if="snapshot.currentStep === 'CASE_CALIBER_CLARIFICATION'" class="diagnosis-step-card is-current">
+      <header><span>澄清</span><h4>系统按当前生效口径解释这条案例</h4><em>等待确认</em></header>
+      <div class="diagnosis-dialogue-turn is-user is-readonly"><b>实施人员提供的案例</b><p>{{ snapshot.caseInput.recordField }}={{ snapshot.caseInput.recordId }} · {{ snapshot.caseInput.symptom }}</p><small>医院认为：{{ snapshot.caseInput.expectedResult }}</small></div>
+      <div class="diagnosis-dialogue-turn is-system">
+        <b>系统回复 · 案例口径澄清</b>
+        <p>系统会按固定顺序判断：先看统计时间，再看是否进入分母，最后看是否命中分子。不能因为命中某个分子条件就跳过分母和排除条件。</p>
+        <dl class="caliber-facts"><div><dt>分母范围</dt><dd>{{ snapshot.caseExpectedClassification.denominatorRule || '知识库未单独描述' }}</dd></div><div><dt>分子条件</dt><dd>{{ snapshot.caseExpectedClassification.numeratorRule || '知识库未单独描述' }}</dd></div></dl>
+        <strong>本轮产物</strong><p>已冻结该案例使用的口径版本、统计窗口、分母和分子判断顺序。下一轮请按这些条件查询原业务记录。</p>
+      </div>
+      <div class="diagnosis-dialogue-turn is-user">
+        <b>实施人员确认</b>
+        <label>医院认为这条记录应该归入哪里<select v-model="expectedMembership"><option value="UNKNOWN">暂不确定，先查询</option><option value="NUMERATOR">应进入分子和分母</option><option value="DENOMINATOR_ONLY">只进入分母</option><option value="EXCLUDED">分子分母都不应进入</option></select></label>
+        <p class="diagnosis-pass-rule"><strong>进入下一步的条件：</strong>确认已经理解上述口径；下一步必须提供业务查询结果或系统自动取证。</p>
+        <button type="button" class="diagnosis-primary" :disabled="busy" @click="confirmCaseCaliber">我已理解，进入原业务查因</button>
+      </div>
     </article>
 
     <article v-if="snapshot.currentStep === 'CASE_INVESTIGATION'" class="diagnosis-step-card is-current">
       <header><span>查因</span><h4>沿数据链路核对这条案例</h4><em data-state="PASSED">前三步已通过</em></header>
-      <p class="diagnosis-guidance">粘贴实施人员在业务系统或 Navicat 查询到的事实。AI会解释证据并指出下一步，但不能把猜测标成已确认。</p>
-      <button type="button" class="diagnosis-primary" :disabled="busy" @click="collectAutomaticEvidence">系统先沿数据链路自动取证</button>
-      <div v-for="item in snapshot.evidence" :key="String(item.evidenceId)" class="diagnosis-evidence">
-        <strong>{{ item.summary }}</strong><p v-if="item.aiAnalysis"><b>AI分析</b>{{ item.aiAnalysis }}</p><small>{{ item.modelId || '程序证据' }}</small>
+      <div class="diagnosis-dialogue-turn is-system">
+        <b>系统回复 · 请查询原业务</b>
+        <p>请围绕这一条记录核对：业务表是否存在、关键状态和时间是什么、抽取或中间表是否存在、是否重复、最后按口径应归入哪里。可以先让系统自动取证，也可以粘贴你在 Navicat 查询到的事实。</p>
+        <strong>本轮产物</strong><p>业务记录 → 抽取结果 → 真实库中间表 → 分子分母判定的证据链，以及一条有证据支持的具体原因。</p>
+        <button type="button" class="diagnosis-primary" :disabled="busy" @click="collectAutomaticEvidence">系统先沿数据链路自动取证</button>
+      </div>
+      <div v-for="item in snapshot.evidence" :key="String(item.evidenceId)" class="diagnosis-dialogue-turn is-system diagnosis-evidence">
+        <b>{{ item.modelId ? '系统回复 · AI分析' : '系统回复 · 程序证据' }}</b><strong>{{ item.summary }}</strong><p v-if="item.aiAnalysis">{{ item.aiAnalysis }}</p>
         <details v-if="item.stages" class="diagnosis-technical"><summary>查看业务库、真实库和统计结果证据</summary><pre>{{ pretty(item.stages) }}</pre></details>
       </div>
-      <textarea v-model="evidenceText" rows="4" placeholder="例如：在业务表找到该会诊，状态为作废；在真实库中间表仍能找到同一就诊号…"></textarea>
-      <button type="button" class="diagnosis-secondary" :disabled="busy || !evidenceText.trim()" @click="submitEvidence">提交证据并让当前模型解释</button>
-      <div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="证据对上后，填写已确认的具体原因"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim() || !snapshot.evidence.length" @click="confirmCause">确认原因，进入修改</button></div>
+      <div class="diagnosis-dialogue-turn is-user">
+        <b>实施人员回复 · 原业务查询结果</b>
+        <textarea v-model="evidenceText" rows="4" placeholder="业务表查询结果：…&#10;抽取或中间表结果：…&#10;按当前口径的判断：…&#10;证据 SQL（可选）：…"></textarea>
+        <button type="button" class="diagnosis-secondary" :disabled="busy || !evidenceText.trim()" @click="submitEvidence">发送查询结果，让系统解释</button>
+        <div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="证据对上后，填写已确认的具体原因"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim() || !snapshot.evidence.length" @click="confirmCause">确认原因，进入修改</button></div>
+        <p class="diagnosis-pass-rule"><strong>进入下一步的条件：</strong>至少有一条查询证据，并且具体原因能够被证据支持；只有猜测不能进入修改。</p>
+      </div>
     </article>
 
     <article v-if="snapshot.currentStep === 'CHANGE_PROPOSAL'" class="diagnosis-step-card is-current">
       <header><span>修改</span><h4>提交修改要求或完整候选 SQL</h4></header>
-      <div class="diagnosis-change-grid"><label>问题分支<select v-model="changeType"><option value="DATA_REPAIR">数据修复</option><option value="EVENT_CONFIG">事件配置</option><option value="SQL_CHANGE">SQL 修改</option><option value="CALIBER_CHANGE">医院口径变更</option></select></label><label v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'">只修改一层<select v-model="changeLayer"><option value="SOURCE_EXTRACT">抽取 SQL</option><option value="OVERVIEW">统计 SQL</option></select></label></div>
-      <textarea v-model="requirements" rows="3" placeholder="写清新增/删除条件、字段、操作符和值，以及对案例的预期影响"></textarea>
-      <textarea v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'" v-model="candidateSql" class="diagnosis-sql-input" rows="8" placeholder="可选：粘贴完整 SELECT；留空时由当前选择的模型根据要求生成"></textarea>
-      <button type="button" class="diagnosis-primary" :disabled="busy || !requirements.trim()" @click="buildCandidate">生成并校验候选方案</button>
+      <div class="diagnosis-dialogue-turn is-system"><b>系统回复 · 原因已经确认</b><p>{{ snapshot.causeConclusion.conclusion }}</p><strong>下一步请提供</strong><p>说明要改抽取还是统计、增加或删除什么条件、使用什么字段和值，以及这条案例修改后应该怎样变化。最好附完整只读 SQL。</p></div>
+      <div class="diagnosis-dialogue-turn is-user"><b>实施人员回复 · 修改要求</b><div class="diagnosis-change-grid"><label>问题分支<select v-model="changeType"><option value="DATA_REPAIR">数据修复</option><option value="EVENT_CONFIG">事件配置</option><option value="SQL_CHANGE">SQL 修改</option><option value="CALIBER_CHANGE">医院口径变更</option></select></label><label v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'">只修改一层<select v-model="changeLayer"><option value="SOURCE_EXTRACT">抽取 SQL</option><option value="OVERVIEW">统计 SQL</option></select></label></div>
+        <textarea v-model="requirements" rows="3" placeholder="写清新增/删除条件、字段、操作符和值，以及对案例的预期影响"></textarea>
+        <textarea v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'" v-model="candidateSql" class="diagnosis-sql-input" rows="8" placeholder="可选：粘贴完整 SELECT；留空时由当前选择的模型根据要求生成"></textarea>
+        <p class="diagnosis-pass-rule"><strong>本轮产物：</strong>原 SQL、完整候选 SQL、差异说明和程序安全校验结果。校验不通过不能试跑。</p>
+        <button type="button" class="diagnosis-primary" :disabled="busy || !requirements.trim()" @click="buildCandidate">发送要求，由系统组装并校验 SQL</button></div>
     </article>
 
     <article v-if="snapshot.currentStep === 'SHADOW_TRIAL'" class="diagnosis-step-card is-current">
-      <header><span>试跑</span><h4>在独立影子表重跑并对账</h4></header><p>正式中间表和当前卡片不会被覆盖。系统会比较记录集合、重复记录、分子分母和案例前后变化。</p>
+      <header><span>试跑</span><h4>在独立影子表重跑并对账</h4></header><div class="diagnosis-dialogue-turn is-system"><b>系统回复 · 候选语句已生成并通过安全校验</b><p>正式中间表和当前卡片不会被覆盖。系统将比较记录集合、重复记录、分子、分母、结果值和案例前后变化。</p></div>
       <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical"><summary>查看候选 SQL</summary><pre>{{ snapshot.candidateSql.sql }}</pre></details>
       <details v-if="Object.keys(snapshot.shadowTrial).length" class="diagnosis-technical"><summary>查看试跑对账</summary><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details>
-      <button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'RUN_SHADOW_TRIAL', {})">开始影子试跑</button>
+      <div class="diagnosis-dialogue-turn is-user"><b>实施人员确认 · 使用新语句重跑</b><p class="diagnosis-pass-rule"><strong>进入发布的条件：</strong>案例变化符合预期、没有无法解释的重复、输出结构兼容、分子分母可对账。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'RUN_SHADOW_TRIAL', {})">确认，使用候选语句影子重跑</button></div>
     </article>
 
     <article v-if="snapshot.currentStep === 'RELEASE_APPROVAL'" class="diagnosis-step-card is-current">
