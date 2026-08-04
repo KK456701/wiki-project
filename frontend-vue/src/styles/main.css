@@ -1553,6 +1553,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-gate-summary > header em { margin-left: auto; padding: 4px 8px; border-radius: 999px; background: #eef2f1; color: #657975; font-style: normal; font-size: 11px; }
 .diagnosis-gate-summary > header em[data-state='PASSED'] { color: #087249; background: #e9f8f0; }
 .diagnosis-gate-summary > header em[data-state='BLOCKED'] { color: #a33b20; background: #fff0eb; }
+.diagnosis-base-conclusion { margin: 16px 0; padding: 13px 15px; border-left: 4px solid #16836f; color: #234d45; background: #edf8f4; line-height: 1.65; }
+.diagnosis-caliber-section { margin: 14px 0; padding: 14px; border: 1px solid #dce6e3; border-radius: 10px; background: #fbfcfc; }
+.diagnosis-caliber-section h4, .diagnosis-evidence-group h4 { margin: 0 0 9px; color: #244d45; font-size: 14px; }
+.diagnosis-caliber-section > p, .diagnosis-evidence-group p { margin: 6px 0; line-height: 1.65; }
+.diagnosis-flow-path { padding: 10px 12px; border-radius: 8px; color: #24574d; background: #edf7f4; font-weight: 700; }
+.diagnosis-help { color: #667d78; font-size: 12px; }
+.diagnosis-evidence-group { margin: 12px 0; padding: 11px 13px; border-radius: 9px; background: #f4f8f7; }
 .diagnosis-gate-list { padding: 2px 12px 10px; color: #435d58; }
 .diagnosis-gate-list p { margin: 8px 0; line-height: 1.6; }
 .diagnosis-template { margin: 9px 0; padding: 12px 14px; border: 1px dashed #a8c7bf; border-radius: 8px; white-space: pre-wrap; color: #36554f; background: rgba(255,255,255,.72); font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; }
