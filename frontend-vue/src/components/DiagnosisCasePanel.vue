@@ -46,8 +46,10 @@ const baseSteps = [
 const blockedGateCount = computed(() => props.snapshot.gateResults.filter((item) => String(item.status) === 'BLOCKED').length)
 const caseTemplate = `记录类型：就诊号 / 事件号 / 医嘱号 / 手术号
 记录编号：
-问题说明（包括医院认为应如何计算）：
+问题说明（现象与医院认为的正确处理）：
 已有查询、SQL或截图（可选）：`
+const isConsultationWordExample = computed(() => props.snapshot.ruleId === 'HXZD-003-004')
+const wordRequirement = '排除会诊状态为399329839的已作废会诊；只抽取会诊完成时间不为空的数据；只抽取会诊后首条医嘱时间不为空的数据。'
 
 function gate(number: number): Record<string, unknown> | undefined {
   return props.snapshot.gateResults.find((item) => Number(item.gate) === number)
@@ -63,14 +65,24 @@ function submitCase() {
   emit('action', 'SUBMIT_CASE', {
     recordField: recordField.value,
     recordId: recordId.value.trim(),
-    // The API retains its two historical fields for compatibility.  The
-    // implementer writes the case once; the same statement is the reported
-    // problem and the expected outcome used by the shadow-trial check.
+    // The historical API field is retained as an empty compatibility value.
+    // Candidate SQL is driven only by the later implementation requirement.
     symptom: caseDescription.value.trim(),
-    expectedResult: caseDescription.value.trim(),
+    expectedResult: '',
     businessUniqueKey: recordField.value,
     expectedClassification: { status: 'WAITING_CONFIRMATION' },
   })
+}
+
+function fillWordExample() {
+  recordField.value = 'ENCOUNTER_ID'
+  recordId.value = '484625508177383425'
+  caseDescription.value = '该患者存在已作废、未完成的普通会诊记录，但仍被抽取到普通会诊中间表；医院认为这类记录不应被抽取。'
+}
+
+function fillWordRequirement() {
+  investigationLayer.value = 'SOURCE_EXTRACT'
+  investigationRequirement.value = wordRequirement
 }
 
 async function copyCaseTemplate() {
@@ -241,7 +253,7 @@ function buildCandidate() {
     layer: changeLayer.value,
     requirements: requirements.value.trim(),
     sql: candidateSql.value.trim(),
-    expectedCaseEffect: String(props.snapshot.caseInput.expectedResult || ''),
+    expectedCaseEffect: requirements.value.trim(),
   })
 }
 
@@ -264,8 +276,8 @@ function pretty(value: unknown): string {
     </article>
 
     <template v-if="caseInputReached">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请提供一条具体案例</strong></div><p>请填写一个能在业务库定位的编号，以及问题说明（把医院认为应如何计算一起写在这里）。</p><pre class="diagnosis-template">{{ caseTemplate }}</pre><button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button></div></article>
-      <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 提供具体案例</strong></div><div class="diagnosis-case-grid"><label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label><label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label><label class="wide">问题说明<textarea v-model="caseDescription" rows="4" maxlength="1200" placeholder="例如：该患者存在已作废、未完成的普通会诊记录，但仍被计入总次数；医院认为这类记录不应进入分子和分母。"></textarea></label></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>填写记录编号和问题说明后发送，系统会单独回复当前口径澄清。</p><button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !caseDescription.trim()" @click="submitCase">发送案例</button></div></article>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请提供一条具体案例</strong></div><p><strong>问题说明只用于：</strong>说明看到的异常、医院认为应怎样处理，供后续口径澄清和审计查看；它不会直接改 SQL。</p><p><strong>真正用于改 SQL 的条件：</strong>在下一步“需要纳入或排除哪些数据”填写，系统只按那里的明确条件生成候选语句。</p><pre class="diagnosis-template">{{ caseTemplate }}</pre><button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button><template v-if="isConsultationWordExample"><p class="diagnosis-help">Word 参考案例来自中江县人民医院；如果当前库没有这条就诊号，系统会提示无记录，不应据此判断本院抽取有问题。</p><button type="button" class="diagnosis-text-action" @click="fillWordExample">填入 Word 参考案例</button></template></div></article>
+      <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 提供具体案例</strong></div><div class="diagnosis-case-grid"><label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label><label>记录标识<input v-model="recordId" maxlength="100" placeholder="输入现场可定位的编号" /></label><label class="wide">问题说明<textarea v-model="caseDescription" rows="4" maxlength="1200" placeholder="例如：该患者存在已作废、未完成的普通会诊记录，但仍被抽取到中间表；医院认为这类记录不应被抽取。"></textarea></label></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>填写记录编号和问题说明后发送，系统会单独回复当前口径澄清。</p><button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim() || !caseDescription.trim()" @click="submitCase">发送案例</button></div></article>
     </template>
 
     <template v-if="caseSubmitted">
@@ -274,7 +286,7 @@ function pretty(value: unknown): string {
     </template>
 
     <template v-if="investigationReached">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div><p><strong>先判断哪一层可能有问题：</strong></p><ul><li><strong>抽取 SQL：</strong>业务数据同步到真实库中间表时多抽或少抽。</li><li><strong>目标表概览 SQL：</strong>中间表数据正确，但分子、分母或结果计算不对。</li><li><strong>暂不确定：</strong>目前还不能判断，先提交已知的业务要求。</li></ul><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><div class="diagnosis-change-grid"><label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本</option><option value="OVERVIEW">目标表概览 SQL 脚本</option><option value="UNKNOWN">暂不确定</option></select></label></div><label><strong>需要纳入或排除哪些数据</strong><textarea v-model="investigationRequirement" class="diagnosis-evidence-template-input" rows="5" placeholder="例如：排除已作废会诊；只保留会诊完成时间不为空、会诊医嘱ID不为空的数据。"></textarea></label><label><strong>实施提供的验证 SELECT（可选）</strong><textarea v-model="investigationSql" class="diagnosis-sql-input" rows="8" placeholder="可粘贴现场已经验证过的只读 SELECT；不知道可以不填。"></textarea></label><p class="diagnosis-pass-rule"><strong>发送后：</strong>系统先保存要求，再生成候选 SQL并在影子环境试跑；正式口径和正式结果不会被修改。</p><button type="button" class="diagnosis-primary" :disabled="busy || !investigationRequirement.trim()" @click="submitEvidence">生成候选 SQL并影子试跑</button></template></div></article>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div><p><strong>默认改抽取 SQL：</strong>大多数结果不对，原因是业务数据多抽、少抽或重复写入中间表。只有已确认中间表数据正确、但分子分母计算错误时，才选择统计 SQL。</p><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><div class="diagnosis-change-grid"><label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本（默认）</option><option value="OVERVIEW">统计 SQL（仅中间表正确时）</option><option value="UNKNOWN">暂不确定</option></select></label></div><label><strong>需要纳入或排除哪些数据</strong><textarea v-model="investigationRequirement" class="diagnosis-evidence-template-input" rows="5" placeholder="例如：排除已作废会诊；只抽取会诊完成时间和会诊后首条医嘱时间都不为空的数据。"></textarea></label><label><strong>实施提供的验证 SELECT（可选）</strong><textarea v-model="investigationSql" class="diagnosis-sql-input" rows="8" placeholder="可粘贴现场已经验证过的只读 SELECT；不知道可以不填。"></textarea></label><template v-if="isConsultationWordExample"><p class="diagnosis-help">Word 参考条件已对应到当前抽取 SQL：作废状态 → A.CONSULT_STATUS_CODE；完成时间 → D.CONSULT_COMPLETED_AT；首条医嘱时间 → t2.PRESCRIBED_AT。</p><button type="button" class="diagnosis-text-action" @click="fillWordRequirement">填入 Word 参考条件</button></template><p class="diagnosis-pass-rule"><strong>发送后：</strong>系统只按本栏明确条件生成候选抽取 SQL并在影子环境试跑；正式口径和正式结果不会被修改。</p><button type="button" class="diagnosis-primary" :disabled="busy || !investigationRequirement.trim()" @click="submitEvidence">生成候选 SQL并影子试跑</button></template></div></article>
       <template v-if="pendingRequirementVisible() && pendingRequirement">
         <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 排查要求</strong><span>{{ pendingRequirement.layerLabel }}</span></div><p>{{ pendingRequirement.requirement }}</p><details v-if="pendingRequirement.validationSql" class="diagnosis-technical"><summary>查看实施验证 SQL</summary><pre>{{ pendingRequirement.validationSql }}</pre></details></div></article>
         <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 正在生成候选 SQL</strong></div><p>已收到。正在基于当前正式脚本生成候选语句，并在影子环境试跑；正式结果不会被修改。</p></div></article>
