@@ -1561,6 +1561,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-detail-panel { margin-top: 10px; padding: 12px; border: 1px solid #d4e4df; border-radius: 9px; background: #fff; overflow-x: auto; }
 .diagnosis-guide { padding: 12px 14px; border-left: 3px solid var(--teal); background: #f2f8f6; white-space: pre-wrap; }
 .diagnosis-evidence-template-input { min-height: 330px; font-family: inherit; line-height: 1.65; }
+.diagnosis-input-template { margin: 12px 0; padding: 14px; border: 1px solid #d6e5e1; border-radius: 10px; background: #f8fbfa; }
+.diagnosis-input-template > header { display: flex; align-items: center; gap: 12px; margin-bottom: 5px; color: #244d45; }
+.diagnosis-input-template > header > span { margin-left: auto; color: #6d827e; font-size: 11px; }
+.diagnosis-input-template > header .diagnosis-text-action { margin-left: auto; }
+.diagnosis-input-template > p { margin: 4px 0 10px; color: #667d78; font-size: 12px; line-height: 1.55; }
+.diagnosis-input-template .diagnosis-evidence-template-input { min-height: 170px; }
+.diagnosis-template-warning { margin: 10px 0; padding: 10px 12px; border-left: 3px solid #d98324; color: #7c4b12; background: #fff7e8; font-size: 12px; line-height: 1.6; }
 .diagnosis-flow-path { padding: 10px 12px; border-radius: 8px; color: #24574d; background: #edf7f4; font-weight: 700; }
 .diagnosis-help { color: #667d78; font-size: 12px; }
 .diagnosis-evidence-group { margin: 12px 0; padding: 11px 13px; border-radius: 9px; background: #f4f8f7; }
