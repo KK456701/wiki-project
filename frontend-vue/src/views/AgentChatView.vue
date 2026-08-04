@@ -111,7 +111,7 @@ async function sendSummaryAction(
 ) {
   if (requiresCloud) {
     const cloud = store.capabilities?.models.find((model) =>
-      model.provider !== 'ollama' && model.id === 'aliyun-qwen-plus')
+      model.provider !== 'ollama' && model.id === 'aliyun-qwen-distill-7b')
       || store.capabilities?.models.find((model) => model.provider !== 'ollama')
     if (!cloud) {
       store.error = '当前没有可用的云端 API 模型，已停止排查，未调用本地模型。'
