@@ -56,8 +56,12 @@ function inputTables(node: FlowNode): Array<{ table: string; role: 'data' | 'par
 }
 
 function sqlSummary(node: FlowNode): string {
-  if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') return '查看可直接执行的源表查询脚本'
-  return `查看可直接执行的${String(node.title || '节点').replace(/\s*SQL$/i, '')} SQL`
+  const executable = Boolean(node.sqlExecutable)
+  if (String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL') {
+    return executable ? '查看可直接执行的源表查询 SQL' : '查看知识库源表抽取模板'
+  }
+  const title = String(node.title || '节点').replace(/\s*SQL$/i, '')
+  return executable ? `查看可直接执行的${title} SQL` : `查看${title} SQL 模板`
 }
 </script>
 
