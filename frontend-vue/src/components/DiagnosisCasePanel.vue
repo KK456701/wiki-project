@@ -19,14 +19,9 @@ const emit = defineEmits<{
   action: [action: string, payload: Record<string, unknown>]
 }>()
 
-const investigationTemplate = `1. 这条记录在业务上实际发生了什么：
-2. 用现有抽取 SQL 查询：查到 / 没查到
-3. 真实库中间表：有 / 没有 / 有多条
-4. 按医院业务，这条记录应该被抽取还是排除：
-5. 你认为现有抽取 SQL 多抽或少抽了什么（不知道可留空）：
-
-可选：粘贴查询结果、截图文字或 SQL 报错：`
-const evidenceText = ref(investigationTemplate)
+const investigationLayer = ref('SOURCE_EXTRACT')
+const investigationRequirement = ref('')
+const investigationSql = ref('')
 const causeText = ref('')
 const changeType = ref('SQL_CHANGE')
 const changeLayer = ref('SOURCE_EXTRACT')
@@ -116,13 +111,27 @@ function detailPageCount(detail?: IndicatorDetailResult): number {
 }
 
 function submitEvidence() {
-  if (!evidenceText.value.trim() || evidenceText.value.trim() === investigationTemplate) return
+  if (!investigationRequirement.value.trim()) return
+  const layerLabel = {
+    SOURCE_EXTRACT: '抽取 SQL 脚本',
+    OVERVIEW: '目标表概览 SQL 脚本',
+    UNKNOWN: '暂不确定',
+  }[investigationLayer.value] || '暂不确定'
+  const summary = [
+    `怀疑问题层级：${layerLabel}`,
+    `实施提供的业务要求：${investigationRequirement.value.trim()}`,
+    investigationSql.value.trim() ? `实施提供的验证 SQL：\n${investigationSql.value.trim()}` : '',
+  ].filter(Boolean).join('\n\n')
   emit('action', 'SUBMIT_EVIDENCE', {
-    type: 'IMPLEMENTER_QUERY_RESULT',
-    summary: evidenceText.value.trim(),
+    type: 'IMPLEMENTER_SQL_REQUIREMENT',
+    suspectedLayer: investigationLayer.value,
+    summary,
+    requirement: investigationRequirement.value.trim(),
+    validationSql: investigationSql.value.trim(),
     requestAiAnalysis: true,
   })
-  evidenceText.value = investigationTemplate
+  investigationRequirement.value = ''
+  investigationSql.value = ''
 }
 
 function confirmCause() {
@@ -172,11 +181,6 @@ const caseSubmitted = computed(() => Boolean(String(props.snapshot.caseInput.rec
 const investigationReached = computed(() => (
   stageRank.value >= stageOrder.indexOf('CASE_INVESTIGATION')
   || props.snapshot.evidence.length > 0
-))
-const investigationGuide = computed(() => (
-  props.snapshot.caseExpectedClassification.investigationGuideVersion === 'EXTRACTION_CHECK_V2'
-    ? String(props.snapshot.caseExpectedClassification.investigationGuide || '')
-    : '请核对业务实际、现有抽取 SQL 查询结果和真实库中间表，判断这条记录是否被多抽或少抽。'
 ))
 const currentBaseGate = computed(() => baseSteps.find((item) => item.key === props.snapshot.currentStep)?.gate || 0)
 const currentGateHasResult = computed(() => currentBaseGate.value > 0 && Boolean(gate(currentBaseGate.value)))
@@ -243,8 +247,8 @@ function pretty(value: unknown): string {
     </template>
 
     <template v-if="investigationReached">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 抽取结果核对指导</strong><span>{{ snapshot.caseExpectedClassification.investigationGuideVersion === 'EXTRACTION_CHECK_V2' ? '由当前小模型整理' : '简明核对说明' }}</span></div><p class="diagnosis-guide">{{ investigationGuide }}</p><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><p><strong>只需填写下面这些事实，不要求实施人员重新编写 SQL：</strong></p><textarea v-model="evidenceText" class="diagnosis-evidence-template-input" rows="10"></textarea><p class="diagnosis-pass-rule"><strong>发送后：</strong>小模型只会判断“多抽、少抽、抽取一致或证据不足”，不会替代程序修改 SQL。</p><button type="button" class="diagnosis-primary" :disabled="busy || !evidenceText.trim() || evidenceText.trim() === investigationTemplate" @click="submitEvidence">发送抽取核对结果</button></template></div></article>
-      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : item.modelId ? '系统 · 查询结果分析' : '系统 · 程序证据' }}</strong></div><template v-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template><p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div><p><strong>先判断哪一层可能有问题：</strong></p><ul><li><strong>抽取 SQL：</strong>业务数据同步到真实库中间表时多抽或少抽。</li><li><strong>目标表概览 SQL：</strong>中间表数据正确，但分子、分母或结果计算不对。</li><li><strong>暂不确定：</strong>目前还不能判断，先提交已知的业务要求。</li></ul><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><div class="diagnosis-change-grid"><label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本</option><option value="OVERVIEW">目标表概览 SQL 脚本</option><option value="UNKNOWN">暂不确定</option></select></label></div><label><strong>需要纳入或排除哪些数据</strong><textarea v-model="investigationRequirement" class="diagnosis-evidence-template-input" rows="5" placeholder="例如：排除已作废会诊；只保留会诊完成时间不为空、会诊医嘱ID不为空的数据。"></textarea></label><label><strong>实施提供的验证 SELECT（可选）</strong><textarea v-model="investigationSql" class="diagnosis-sql-input" rows="8" placeholder="可粘贴现场已经验证过的只读 SELECT；不知道可以不填。"></textarea></label><p class="diagnosis-pass-rule"><strong>发送后：</strong>小模型只分析这份实施要求属于抽取还是概览问题、证据是否足够，不会自行编造表和字段。</p><button type="button" class="diagnosis-primary" :disabled="busy || !investigationRequirement.trim()" @click="submitEvidence">发送实施排查要求</button></template></div></article>
+      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : item.modelId ? '系统 · 实施要求分析' : '系统 · 程序证据' }}</strong></div><template v-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template><p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
       <article v-if="snapshot.currentStep === 'CASE_INVESTIGATION' && snapshot.evidence.length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 确认排查结论</strong></div><p>请结合现场查询结果和上方的小模型分析，填写能够被证据支持的具体原因；如果证据证明抽取一致，可以直接结束。</p><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="例如：现有抽取 SQL 少抽了作废状态未过滤前的某类记录"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim()" @click="confirmCause">确认抽取问题，进入修改</button><button type="button" class="diagnosis-secondary" :disabled="busy" @click="closeAsCorrect">确认抽取一致，结束排查</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>只有已确认多抽或少抽，才进入抽取 SQL 修改。</p></div></article>
     </template>
 
