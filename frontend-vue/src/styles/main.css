@@ -1559,6 +1559,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-caliber-section > p, .diagnosis-evidence-group p { margin: 6px 0; line-height: 1.65; }
 .diagnosis-detail-actions { margin: 12px 0; flex-wrap: wrap; }
 .diagnosis-detail-panel { margin-top: 10px; padding: 12px; border: 1px solid #d4e4df; border-radius: 9px; background: #fff; overflow-x: auto; }
+.diagnosis-guide { padding: 12px 14px; border-left: 3px solid var(--teal); background: #f2f8f6; white-space: pre-wrap; }
+.diagnosis-evidence-template-input { min-height: 330px; font-family: inherit; line-height: 1.65; }
 .diagnosis-flow-path { padding: 10px 12px; border-radius: 8px; color: #24574d; background: #edf7f4; font-weight: 700; }
 .diagnosis-help { color: #667d78; font-size: 12px; }
 .diagnosis-evidence-group { margin: 12px 0; padding: 11px 13px; border-radius: 9px; background: #f4f8f7; }

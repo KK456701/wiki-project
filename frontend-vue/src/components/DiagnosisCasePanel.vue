@@ -19,7 +19,26 @@ const emit = defineEmits<{
   action: [action: string, payload: Record<string, unknown>]
 }>()
 
-const evidenceText = ref('')
+const investigationTemplate = `一、业务库查询结果
+是否找到记录：
+关键时间：
+关键状态：
+其他影响口径的字段：
+
+二、抽取或中间表查询结果
+是否找到记录：
+是否存在重复：
+分子判定字段：
+分母判定字段：
+
+三、按当前口径的人工判断
+该记录应进入：
+判断依据：
+
+四、补充证据
+实际执行的 SQL：
+截图或错误信息：`
+const evidenceText = ref(investigationTemplate)
 const causeText = ref('')
 const changeType = ref('SQL_CHANGE')
 const changeLayer = ref('SOURCE_EXTRACT')
@@ -109,21 +128,13 @@ function detailPageCount(detail?: IndicatorDetailResult): number {
 }
 
 function submitEvidence() {
-  if (!evidenceText.value.trim()) return
+  if (!evidenceText.value.trim() || evidenceText.value.trim() === investigationTemplate) return
   emit('action', 'SUBMIT_EVIDENCE', {
     type: 'IMPLEMENTER_QUERY_RESULT',
     summary: evidenceText.value.trim(),
     requestAiAnalysis: true,
   })
-  evidenceText.value = ''
-}
-
-function collectAutomaticEvidence() {
-  emit('action', 'SUBMIT_EVIDENCE', {
-    type: 'AUTOMATIC_DATA_FLOW',
-    runAutomatic: true,
-    requestAiAnalysis: false,
-  })
+  evidenceText.value = investigationTemplate
 }
 
 function confirmCause() {
@@ -219,9 +230,9 @@ function pretty(value: unknown): string {
     </template>
 
     <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请查询原业务</strong></div><p>请核对业务表是否存在该记录、关键状态和时间、抽取或中间表是否存在、是否重复，以及按当前口径应归入哪里。</p><p><strong>本轮产物：</strong>业务记录 → 抽取结果 → 真实库中间表 → 分子分母判定的证据链，以及一条有证据支持的具体原因。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="collectAutomaticEvidence">核对这条案例数据</button></div></article>
-      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : item.modelId ? '系统 · AI分析' : '系统 · 程序证据' }}</strong></div><template v-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template><p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
-      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 原业务查询结果</strong></div><textarea v-model="evidenceText" rows="4" placeholder="业务表查询结果：…&#10;抽取或中间表结果：…&#10;按当前口径的判断：…&#10;证据 SQL（可选）：…"></textarea><button type="button" class="diagnosis-secondary" :disabled="busy || !evidenceText.trim()" @click="submitEvidence">发送查询结果</button><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="证据对上后，填写已确认的具体原因；若证据证明计算正确，可直接结束"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim() || !snapshot.evidence.length" @click="confirmCause">确认原因，进入修改</button><button type="button" class="diagnosis-secondary" :disabled="busy || !snapshot.evidence.length" @click="closeAsCorrect">确认结果正确，结束本次排查</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>至少一条查询证据，且具体原因能被证据支持；计算正确时无需修改 SQL。</p></div></article>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 现场查询指导</strong><span>由当前小模型生成</span></div><p class="diagnosis-guide">{{ snapshot.caseExpectedClassification.investigationGuide || '请按照当前口径的数据链路，依次核对业务记录、中间表记录和分子分母判定字段。' }}</p><p><strong>请查询后直接填写下面的模板：</strong></p><textarea v-model="evidenceText" class="diagnosis-evidence-template-input" rows="16"></textarea><p class="diagnosis-pass-rule"><strong>发送后：</strong>填写内容会作为一条实施人员消息发送，小模型会根据回填事实分析具体原因和仍缺少的证据。</p><button type="button" class="diagnosis-primary" :disabled="busy || !evidenceText.trim() || evidenceText.trim() === investigationTemplate" @click="submitEvidence">发送现场查询结果</button></div></article>
+      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : item.modelId ? '系统 · 查询结果分析' : '系统 · 程序证据' }}</strong></div><template v-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template><p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
+      <article v-if="snapshot.evidence.length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 确认排查结论</strong></div><p>请结合现场查询结果和上方的小模型分析，填写能够被证据支持的具体原因；如果证据证明计算正确，可以直接结束。</p><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="填写已确认的具体原因；若证据证明计算正确，可直接结束"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim()" @click="confirmCause">确认原因，进入修改</button><button type="button" class="diagnosis-secondary" :disabled="busy" @click="closeAsCorrect">确认结果正确，结束本次排查</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>具体原因必须能被已经提交的查询证据支持。</p></div></article>
     </template>
 
     <template v-if="snapshot.currentStep === 'CHANGE_PROPOSAL'">
