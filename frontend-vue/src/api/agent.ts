@@ -302,6 +302,7 @@ export interface DiagnosisCaseSnapshot {
   changeProposal: Record<string, unknown>
   candidateSql: Record<string, unknown>
   shadowTrial: Record<string, unknown>
+  draftResult: Record<string, unknown>
   releaseResult: Record<string, unknown>
   createdAt: string
   updatedAt: string
