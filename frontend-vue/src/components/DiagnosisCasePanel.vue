@@ -38,6 +38,7 @@ const detailPages = ref<Partial<Record<'numerator' | 'denominator', IndicatorDet
 const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detailError = ref('')
+const pendingRequirement = ref<Record<string, string> | null>(null)
 
 const baseSteps = [
   { gate: 1, key: 'GATE_1_SCHEMA', label: '数据结构校验' },
@@ -122,6 +123,14 @@ function submitEvidence() {
     `实施提供的业务要求：${investigationRequirement.value.trim()}`,
     investigationSql.value.trim() ? `实施提供的验证 SQL：\n${investigationSql.value.trim()}` : '',
   ].filter(Boolean).join('\n\n')
+  // Render this user turn immediately. The request can then complete without
+  // making the implementer wait for a model response before seeing their input.
+  pendingRequirement.value = {
+    summary,
+    layerLabel,
+    requirement: investigationRequirement.value.trim(),
+    validationSql: investigationSql.value.trim(),
+  }
   emit('action', 'SUBMIT_EVIDENCE', {
     type: 'IMPLEMENTER_SQL_REQUIREMENT',
     suspectedLayer: investigationLayer.value,
@@ -200,6 +209,32 @@ function evidenceDisplay(item: Record<string, unknown>): Record<string, unknown>
     ? item.display as Record<string, unknown> : {}
 }
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {}
+}
+
+function isRequirementEvidence(item: Record<string, unknown>): boolean {
+  return String(item.type || '') === 'IMPLEMENTER_SQL_REQUIREMENT'
+}
+
+function pendingRequirementVisible(): boolean {
+  if (!pendingRequirement.value) return false
+  return !props.snapshot.evidence.some((item) => String(item.summary || '') === pendingRequirement.value?.summary)
+}
+
+function resultEntries(value: unknown): Array<{ key: string, value: string }> {
+  const source = Array.isArray(value) ? record(value[0]) : record(value)
+  return Object.entries(source)
+    .filter(([key, item]) => !['sql', 'errorMessage'].includes(key) && item !== null && item !== '')
+    .slice(0, 6)
+    .map(([key, item]) => ({ key, value: String(item) }))
+}
+
+function executableSqlDisplay(value: string): string {
+  return value || '当前无法生成可直接复制的 SQL Server 查询脚本。'
+}
+
 function flowPath(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '当前知识库未生成可展示的数据链路'
   const nodes = Array.isArray((value as Record<string, unknown>).nodes)
@@ -248,7 +283,20 @@ function pretty(value: unknown): string {
 
     <template v-if="investigationReached">
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div><p><strong>先判断哪一层可能有问题：</strong></p><ul><li><strong>抽取 SQL：</strong>业务数据同步到真实库中间表时多抽或少抽。</li><li><strong>目标表概览 SQL：</strong>中间表数据正确，但分子、分母或结果计算不对。</li><li><strong>暂不确定：</strong>目前还不能判断，先提交已知的业务要求。</li></ul><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><div class="diagnosis-change-grid"><label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本</option><option value="OVERVIEW">目标表概览 SQL 脚本</option><option value="UNKNOWN">暂不确定</option></select></label></div><label><strong>需要纳入或排除哪些数据</strong><textarea v-model="investigationRequirement" class="diagnosis-evidence-template-input" rows="5" placeholder="例如：排除已作废会诊；只保留会诊完成时间不为空、会诊医嘱ID不为空的数据。"></textarea></label><label><strong>实施提供的验证 SELECT（可选）</strong><textarea v-model="investigationSql" class="diagnosis-sql-input" rows="8" placeholder="可粘贴现场已经验证过的只读 SELECT；不知道可以不填。"></textarea></label><p class="diagnosis-pass-rule"><strong>发送后：</strong>小模型只分析这份实施要求属于抽取还是概览问题、证据是否足够，不会自行编造表和字段。</p><button type="button" class="diagnosis-primary" :disabled="busy || !investigationRequirement.trim()" @click="submitEvidence">发送实施排查要求</button></template></div></article>
-      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)"><article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong></div></article><article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : item.modelId ? '系统 · 实施要求分析' : '系统 · 程序证据' }}</strong></div><template v-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template><p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article></template>
+      <template v-if="pendingRequirementVisible() && pendingRequirement">
+        <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 排查要求</strong><span>{{ pendingRequirement.layerLabel }}</span></div><p>{{ pendingRequirement.requirement }}</p><details v-if="pendingRequirement.validationSql" class="diagnosis-technical"><summary>查看实施验证 SQL</summary><pre>{{ pendingRequirement.validationSql }}</pre></details></div></article>
+        <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 正在登记要求</strong></div><p>已收到。正在整理当前正式脚本和本次正式计算结果。</p></div></article>
+      </template>
+      <template v-for="item in snapshot.evidence" :key="String(item.evidenceId)">
+        <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card">
+          <template v-if="isRequirementEvidence(item)"><div class="message-head"><strong>实施人员 · 排查要求</strong><span>{{ record(item.sqlContext).layerLabel || '暂不确定' }}</span></div><p>{{ item.requirement }}</p><details v-if="item.validationSql" class="diagnosis-technical"><summary>查看实施验证 SQL</summary><pre>{{ item.validationSql }}</pre></details></template>
+          <strong v-else>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '核对这条案例数据' : item.summary }}</strong>
+        </div></article>
+        <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ item.type === 'AUTOMATIC_DATA_FLOW' ? '系统 · 案例数据核对结果' : isRequirementEvidence(item) ? '系统 · 实施要求分析' : item.modelId ? '系统 · 实施要求分析' : '系统 · 程序证据' }}</strong></div>
+          <template v-if="isRequirementEvidence(item)"><p><strong>判断：</strong>{{ record(item.requirementAnalysis).judgement }}</p><p><strong>本轮要求：</strong>{{ record(item.requirementAnalysis).requirement }}</p><p><strong>下一步：</strong>{{ record(item.requirementAnalysis).nextAction }}</p><details v-if="record(item.sqlContext).available" class="diagnosis-technical"><summary>{{ record(item.sqlContext).layerLabel }}（可直接复制到 Navicat）</summary><pre>{{ executableSqlDisplay(String(record(item.sqlContext).executableSql || '')) }}</pre></details><section v-if="resultEntries(record(item.sqlContext).currentResult).length" class="diagnosis-result-compare"><h4>当前正式结果</h4><dl><div v-for="entry in resultEntries(record(item.sqlContext).currentResult)" :key="entry.key"><dt>{{ entry.key }}</dt><dd>{{ entry.value }}</dd></div></dl></section></template>
+          <template v-else-if="item.type === 'AUTOMATIC_DATA_FLOW'"><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).found).length"><h4>查到了什么</h4><p v-for="line in stringList(evidenceDisplay(item).found)" :key="line">✓ {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).notFound).length"><h4>哪些环节没找到记录</h4><p v-for="line in stringList(evidenceDisplay(item).notFound)" :key="line">• {{ line }}</p></section><section class="diagnosis-evidence-group" v-if="stringList(evidenceDisplay(item).unfinished).length"><h4>哪些查询没完成</h4><p v-for="line in stringList(evidenceDisplay(item).unfinished)" :key="line">! {{ line }}</p></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ evidenceDisplay(item).conclusion || item.summary }}</p><p><strong>下一步：</strong>{{ evidenceDisplay(item).nextAction || '根据证据继续核对。' }}</p></template>
+          <p v-else>{{ item.aiAnalysis || item.summary }}</p><details v-if="item.stages" class="diagnosis-technical"><summary>查看取证详情（实施排查用）</summary><pre>{{ pretty(item.stages) }}</pre></details></div></article>
+      </template>
       <article v-if="snapshot.currentStep === 'CASE_INVESTIGATION' && snapshot.evidence.length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 确认排查结论</strong></div><p>请结合现场查询结果和上方的小模型分析，填写能够被证据支持的具体原因；如果证据证明抽取一致，可以直接结束。</p><div class="diagnosis-confirm-cause"><textarea v-model="causeText" rows="3" placeholder="例如：现有抽取 SQL 少抽了作废状态未过滤前的某类记录"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !causeText.trim()" @click="confirmCause">确认抽取问题，进入修改</button><button type="button" class="diagnosis-secondary" :disabled="busy" @click="closeAsCorrect">确认抽取一致，结束排查</button></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>只有已确认多抽或少抽，才进入抽取 SQL 修改。</p></div></article>
     </template>
 
@@ -258,9 +306,9 @@ function pretty(value: unknown): string {
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 修改要求</strong></div><div class="diagnosis-change-grid"><label>问题分支<select v-model="changeType"><option value="DATA_REPAIR">数据修复</option><option value="EVENT_CONFIG">事件配置</option><option value="SQL_CHANGE">SQL 修改</option><option value="CALIBER_CHANGE">医院口径变更</option></select></label><label v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'">只修改一层<select v-model="changeLayer"><option value="SOURCE_EXTRACT">抽取 SQL</option><option value="OVERVIEW">统计 SQL</option></select></label></div><textarea v-model="requirements" rows="3" placeholder="写清新增/删除条件、字段、操作符和值，以及对案例的预期影响"></textarea><textarea v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'" v-model="candidateSql" class="diagnosis-sql-input" rows="8" placeholder="可选：粘贴完整 SELECT；留空时由当前选择的模型根据要求生成"></textarea><p class="diagnosis-pass-rule"><strong>本轮产物：</strong>原 SQL、候选 SQL、差异说明和程序校验结果。校验不通过不能试跑。</p><button type="button" class="diagnosis-primary" :disabled="busy || !requirements.trim()" @click="buildCandidate">发送要求，由系统组装 SQL</button></div></article>
     </template>
 
-    <template v-if="snapshot.currentStep === 'SHADOW_TRIAL'">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 候选语句已生成</strong></div><p>候选语句已通过安全校验。正式中间表和当前卡片不会被覆盖。</p><details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical"><summary>查看候选 SQL</summary><pre>{{ snapshot.candidateSql.sql }}</pre></details><details v-if="Object.keys(snapshot.shadowTrial).length" class="diagnosis-technical"><summary>查看试跑对账</summary><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details></div></article>
-      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 确认影子重跑</strong></div><p class="diagnosis-pass-rule"><strong>进入发布：</strong>案例变化符合预期、没有无法解释的重复、输出结构兼容、分子分母可对账。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'RUN_SHADOW_TRIAL', {})">使用候选语句影子重跑</button></div></article>
+    <template v-if="snapshot.currentStep === 'SHADOW_TRIAL' || snapshot.currentStep === 'RELEASE_APPROVAL'">
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 候选语句已生成</strong></div><p>候选语句已通过安全校验。正式中间表和当前卡片不会被覆盖。</p><section class="diagnosis-result-compare"><h4>原结果与试跑结果</h4><dl><div v-for="entry in resultEntries(snapshot.candidateSql.baselineResult)" :key="`old-${entry.key}`"><dt>原结果 · {{ entry.key }}</dt><dd>{{ entry.value }}</dd></div><div v-for="entry in resultEntries(snapshot.shadowTrial.candidateResult)" :key="`new-${entry.key}`"><dt>试跑结果 · {{ entry.key }}</dt><dd>{{ entry.value }}</dd></div><div v-if="!Object.keys(snapshot.shadowTrial).length"><dt>试跑结果</dt><dd>尚未运行影子试跑</dd></div></dl></section><details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical"><summary>原 SQL（当前正式脚本，可直接复制到 Navicat）</summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.originalSqlExecutable || '')) }}</pre></details><details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical"><summary>候选 SQL（本次试跑脚本，可直接复制到 Navicat）</summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.candidateSqlExecutable || '')) }}</pre></details><p class="diagnosis-help">{{ snapshot.candidateSql.rawSqlNotice }}</p><details v-if="Object.keys(snapshot.shadowTrial).length" class="diagnosis-technical"><summary>查看完整影子试跑对账</summary><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details></div></article>
+      <article v-if="snapshot.currentStep === 'SHADOW_TRIAL'" class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 确认影子重跑</strong></div><p class="diagnosis-pass-rule"><strong>进入发布：</strong>案例变化符合预期、没有无法解释的重复、输出结构兼容、分子分母可对账。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'RUN_SHADOW_TRIAL', {})">使用候选语句影子重跑</button></div></article>
     </template>
 
     <article v-if="snapshot.currentStep === 'RELEASE_APPROVAL'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>发布将生成不可变医院增量包并原子切换 active 版本。</p><details class="diagnosis-technical"><summary>查看影子试跑报告</summary><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details><button type="button" class="diagnosis-primary danger" :disabled="busy" @click="emit('action', 'APPROVE_RELEASE', { confirmed: true })">确认发布医院口径</button></div></article>
