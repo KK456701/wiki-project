@@ -354,6 +354,26 @@ export async function actOnDiagnosisCase(
   return readJson<DiagnosisCaseSnapshot>(response)
 }
 
+/** 查询异常排查基础校验所冻结的分子或分母明细。 */
+export async function fetchDiagnosisCaseDetails(
+  token: string,
+  caseId: string,
+  group: 'numerator' | 'denominator',
+  page = 1,
+  pageSize = 50,
+): Promise<IndicatorDetailResult> {
+  const query = new URLSearchParams({
+    group,
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  const response = await fetch(
+    `/api/diagnosis/cases/${encodeURIComponent(caseId)}/details?${query}`,
+    { headers: authHeaders(token) },
+  )
+  return readJson<IndicatorDetailResult>(response)
+}
+
 /** 获取全部活跃指标（供引导面板渲染指标多选列表） */
 export async function listIndicators(token: string): Promise<IndicatorItem[]> {
   const response = await fetch('/api/kb/rules/list', { headers: authHeaders(token) })

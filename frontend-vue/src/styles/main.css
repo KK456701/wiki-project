@@ -1557,6 +1557,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-caliber-section { margin: 14px 0; padding: 14px; border: 1px solid #dce6e3; border-radius: 10px; background: #fbfcfc; }
 .diagnosis-caliber-section h4, .diagnosis-evidence-group h4 { margin: 0 0 9px; color: #244d45; font-size: 14px; }
 .diagnosis-caliber-section > p, .diagnosis-evidence-group p { margin: 6px 0; line-height: 1.65; }
+.diagnosis-detail-actions { margin: 12px 0; flex-wrap: wrap; }
+.diagnosis-detail-panel { margin-top: 10px; padding: 12px; border: 1px solid #d4e4df; border-radius: 9px; background: #fff; overflow-x: auto; }
 .diagnosis-flow-path { padding: 10px 12px; border-radius: 8px; color: #24574d; background: #edf7f4; font-weight: 700; }
 .diagnosis-help { color: #667d78; font-size: 12px; }
 .diagnosis-evidence-group { margin: 12px 0; padding: 11px 13px; border-radius: 9px; background: #f4f8f7; }

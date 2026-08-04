@@ -452,6 +452,7 @@ async function exportDiagnosis(reportId?: string) {
             v-for="item in diagnosisCases"
             :key="item.caseId"
             :snapshot="item"
+            :token="store.token"
             :busy="diagnosisBusy === item.caseId"
             @action="(action, payload) => diagnosisAction(item, action, payload)"
           />
