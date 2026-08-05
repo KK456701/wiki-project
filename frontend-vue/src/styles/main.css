@@ -1488,6 +1488,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-capability-grid section:first-child { border-left: 3px solid #14936f; }
 .diagnosis-capability-grid section:last-child { border-left: 3px solid #d98324; }
 .diagnosis-capability-grid p { margin: 5px 0 0; color: #607771; font-size: 12px; line-height: 1.55; }
+.diagnosis-capability-examples { display: grid; gap: 8px; margin-top: 10px; }
+.diagnosis-capability-examples button { display: grid; gap: 3px; width: 100%; padding: 10px 11px; border: 1px solid #cfe4de; border-radius: 8px; background: #f7fcfa; color: #294f47; text-align: left; cursor: pointer; }
+.diagnosis-capability-examples button:hover { border-color: #69b49f; background: #eef9f5; }
+.diagnosis-capability-examples button:focus-visible { outline: 3px solid rgb(20 147 111 / 22%); outline-offset: 2px; }
+.diagnosis-capability-examples button span { color: #607771; font-size: 11px; line-height: 1.45; }
+.diagnosis-capability-examples button em { color: #08785d; font-size: 11px; font-style: normal; font-weight: 800; }
+.diagnosis-unsupported-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.diagnosis-unsupported-list li { display: grid; gap: 3px; padding: 9px 10px; border: 1px solid #f0ddc8; border-radius: 8px; background: #fffaf4; }
+.diagnosis-unsupported-list li strong { color: #75491c; font-size: 12px; }
+.diagnosis-unsupported-list li span { color: #7a6a59; font-size: 11px; line-height: 1.45; }
 .diagnosis-condition-row { display: grid; grid-template-columns: minmax(190px, 1.3fr) minmax(140px, .8fr) minmax(180px, 1fr) auto; gap: 8px; align-items: end; margin-top: 9px; padding: 10px; border: 1px solid #dce9e5; border-radius: 9px; background: #fff; }
 .diagnosis-condition-row label { display: grid; gap: 6px; color: #31534d; font-size: 12px; font-weight: 700; }
 .diagnosis-condition-row input { width: 100%; border: 1px solid #bfd1cc; border-radius: 9px; padding: 10px 12px; color: var(--ink); font: inherit; }

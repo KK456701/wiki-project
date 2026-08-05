@@ -25,6 +25,19 @@ type InvestigationCondition = {
   operator: PredicateOperator
   value: string
 }
+type CapabilityExample = {
+  id: string
+  title: string
+  explanation: string
+  requirement: string
+  treatment: 'EXCLUDE' | 'INCLUDE'
+  condition: InvestigationCondition
+}
+type UnsupportedCapability = {
+  id: string
+  title: string
+  reason: string
+}
 
 const investigationLayer = ref('SOURCE_EXTRACT')
 const investigationTreatment = ref<'EXCLUDE' | 'INCLUDE'>('EXCLUDE')
@@ -174,6 +187,64 @@ const candidateRuleFields = computed(() => {
     ? values.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
     : []
 })
+const sourceTemplateSql = computed(() => {
+  const flow = record(props.snapshot.caseExpectedClassification.dataFlow)
+  const nodes = Array.isArray(flow.nodes)
+    ? flow.nodes.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : []
+  const source = nodes.find((node) => (
+    String(node.id || '') === 'source-extract-sql'
+    || String(node.nodeType || '') === 'SOURCE_EXTRACT_SQL'
+  ))
+  return String(source?.templateSql || source?.sql || '')
+})
+const automaticCapabilityExamples = computed<CapabilityExample[]>(() => {
+  const result: CapabilityExample[] = []
+  const usedKinds = new Set<string>()
+  for (const item of candidateRuleFields.value) {
+    const field = String(item.field || '').toUpperCase()
+    const qualified = String(item.value || '').trim()
+    if (!field || !qualified) continue
+    const example = exampleForField(field, qualified)
+    if (!example || usedKinds.has(example.id)) continue
+    usedKinds.add(example.id)
+    result.push(example)
+    if (result.length >= 4) break
+  }
+  return result
+})
+const unsupportedCapabilities = computed<UnsupportedCapability[]>(() => {
+  const sql = sourceTemplateSql.value.toUpperCase()
+  const result: UnsupportedCapability[] = []
+  const add = (id: string, title: string, reason: string) => {
+    if (!result.some((item) => item.id === id)) result.push({ id, title, reason })
+  }
+  if (/\bJOIN\b/.test(sql)) {
+    add('join', '新增数据表，或修改现有表的关联条件', '关联方式会决定一条业务记录被匹配成几条，改错后可能造成重复或漏数。')
+  }
+  if (/\(\s*SELECT\b/.test(sql)) {
+    add('subquery', '新增子查询，或改变子查询的取数范围', '子查询属于独立的查询层，条件放在内层或外层会得到不同记录。')
+  }
+  if (/\bROW_NUMBER\s*\(|\bRANK\s*\(|\bDENSE_RANK\s*\(/.test(sql)) {
+    add('window', '修改“第一条、最后一条”或排序取数规则', '窗口函数同时依赖分组字段和排序字段，局部追加条件不能证明仍选中了正确记录。')
+  }
+  if (/\bDISTINCT\b/.test(sql)) {
+    add('distinct', '修改去重字段或去重范围', '去重规则直接改变记录数量，必须重新证明分子、分母和业务唯一键都能对账。')
+  }
+  if (/\bGROUP\s+BY\b|\bHAVING\b|\bCOUNT\s*\(|\bSUM\s*\(|\bAVG\s*\(/.test(sql)) {
+    add('aggregate', '修改分组、汇总或分子分母计算', '聚合结构决定最终数字，简单增加过滤条件无法安全代替公式和分组改写。')
+  }
+  if (/\bUNION\b|\bEXCEPT\b|\bINTERSECT\b/.test(sql)) {
+    add('set', '修改多段查询的合并、排除或交集关系', '多段查询必须分别确定字段和去重规则，不能只修改其中一段后假定整体口径正确。')
+  }
+  if (/\bCASE\b/.test(sql)) {
+    add('formula', '修改计算字段、判定公式或输出字段', '这些字段通常会直接写入中间表，修改后还要校验字段类型、长度和后续统计兼容性。')
+  }
+  if (!result.length) {
+    add('structure', '新增表、子查询，或修改去重和计算结构', '这类修改会改变数据如何组合和计数，当前程序只能安全追加已有字段的筛选条件。')
+  }
+  return result.slice(0, 5)
+})
 const candidateFieldListId = computed(() => `diagnosis-candidate-fields-${props.snapshot.caseId}`)
 const operatorOptions: Array<{ value: PredicateOperator, label: string }> = [
   { value: 'EQ', label: '等于' },
@@ -249,6 +320,89 @@ function fillInvestigationTemplates() {
   investigationSql.value = ''
   investigationCandidateSql.value = ''
   investigationConditions.value = [emptyCondition()]
+}
+
+function exampleForField(field: string, qualified: string): CapabilityExample | null {
+  if (/(FULL_NAME|PERSON_NAME|PATIENT_NAME|PERSON_NM)$/.test(field)) {
+    return {
+      id: 'patient-name',
+      title: '排除测试患者',
+      explanation: `使用当前脚本已有字段 ${qualified}，排除姓名等于指定测试名称的记录。`,
+      requirement: '排除姓名为测试患者的记录',
+      treatment: 'EXCLUDE',
+      condition: { field: qualified, operator: 'EQ', value: '测试患者' },
+    }
+  }
+  if (/(IS_DEL|DELETE_FLAG|DELETED|DEL_FLAG)$/.test(field)) {
+    return {
+      id: 'deleted',
+      title: '只保留未删除的数据',
+      explanation: `使用当前脚本已有字段 ${qualified}，只纳入删除标志为0的记录。`,
+      requirement: '只保留未删除的数据',
+      treatment: 'INCLUDE',
+      condition: { field: qualified, operator: 'EQ', value: '0' },
+    }
+  }
+  if (/(STATUS|STATE|STATUS_CODE|STATE_CODE)$/.test(field)) {
+    return {
+      id: 'status',
+      title: '排除指定状态的数据',
+      explanation: `使用当前脚本已有字段 ${qualified}，例如排除已作废、已取消或无效状态。`,
+      requirement: '排除医院确认的无效状态记录',
+      treatment: 'EXCLUDE',
+      condition: { field: qualified, operator: 'EQ', value: '' },
+    }
+  }
+  if (/(_AT|_TIME|_DATE|DATETIME|TIMESTAMP)$/.test(field)) {
+    return {
+      id: 'time',
+      title: '只保留关键时间已经填写的数据',
+      explanation: `使用当前脚本已有字段 ${qualified}，只纳入该时间不为空的记录。`,
+      requirement: '只保留关键业务时间不为空的数据',
+      treatment: 'INCLUDE',
+      condition: { field: qualified, operator: 'IS_NOT_NULL', value: '' },
+    }
+  }
+  if (/(DEPT|WARD).*(_ID|_NO|_CODE)$/.test(field)) {
+    return {
+      id: 'organization',
+      title: '排除指定科室或病区',
+      explanation: `使用当前脚本已有字段 ${qualified}，排除医院确认不参与统计的科室或病区。`,
+      requirement: '排除医院确认不参与统计的科室或病区',
+      treatment: 'EXCLUDE',
+      condition: { field: qualified, operator: 'IN', value: '' },
+    }
+  }
+  if (/(EVENT_NO|EVENT_CODE)$/.test(field)) {
+    return {
+      id: 'event',
+      title: '只纳入指定事件编码',
+      explanation: `使用当前脚本已有字段 ${qualified}，只纳入医院确认启用的事件编码。`,
+      requirement: '只纳入医院确认启用的事件编码',
+      treatment: 'INCLUDE',
+      condition: { field: qualified, operator: 'IN', value: '' },
+    }
+  }
+  if (/(_ID|_NO|_CODE)$/.test(field)) {
+    return {
+      id: 'business-key',
+      title: '排除指定业务编号',
+      explanation: `使用当前脚本已有字段 ${qualified}，排除医院已确认不应参与统计的编号。`,
+      requirement: '排除医院确认不应参与统计的业务编号',
+      treatment: 'EXCLUDE',
+      condition: { field: qualified, operator: 'IN', value: '' },
+    }
+  }
+  return null
+}
+
+function applyCapabilityExample(example: CapabilityExample) {
+  investigationLayer.value = 'SOURCE_EXTRACT'
+  investigationTreatment.value = example.treatment
+  investigationRequirement.value = example.requirement
+  investigationSql.value = ''
+  investigationCandidateSql.value = ''
+  investigationConditions.value = [{ ...example.condition }]
 }
 
 function emptyCondition(): InvestigationCondition {
@@ -555,12 +709,37 @@ function pretty(value: unknown): string {
           <div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div>
           <p><strong>默认改抽取 SQL：</strong>多抽、少抽或重复数据通常发生在业务数据进入中间表之前。只有已经确认中间表数据正确，但分子分母判定错误时，才选择统计 SQL。</p>
           <details class="diagnosis-capability" open>
-            <summary>当前系统能自动修改哪些 SQL</summary>
+            <summary>当前指标能自动修改什么</summary>
             <div class="diagnosis-capability-grid">
-              <section><strong>可以自动处理（包括新增过滤条件）</strong><p>可以在原 SQL 已有字段上增加“等于、不等于、属于、不属于、为空、不为空、包含、不包含”等筛选条件。例如：排除测试患者、排除已作废记录、只保留完成时间不为空的数据。</p></section>
-              <section><strong>目前不能自动处理</strong><p>新增表或 JOIN、修改 JOIN 关系、增加子查询，或者修改去重、分组、窗口函数、UNION、计算公式和输出字段。遇到这些情况，系统会停止自动改写并提示实施人员提供一条完整的候选 SELECT。</p></section>
+              <section>
+                <strong>可以自动处理：当前抽取 SQL 的具体示例</strong>
+                <p>以下示例只使用当前脚本中已经存在、且程序能确定查询位置的字段。点击后会自动填入修改条件，你只需核对字段和值。</p>
+                <div v-if="automaticCapabilityExamples.length" class="diagnosis-capability-examples">
+                  <button
+                    v-for="example in automaticCapabilityExamples"
+                    :key="example.id"
+                    type="button"
+                    @click="applyCapabilityExample(example)"
+                  >
+                    <strong>{{ example.title }}</strong>
+                    <span>{{ example.explanation }}</span>
+                    <em>填入这个示例</em>
+                  </button>
+                </div>
+                <p v-else>当前抽取 SQL没有识别出能安全自动填写的字段。程序不会猜字段，应由实施人员核对脚本后填写完整候选 SELECT。</p>
+              </section>
+              <section>
+                <strong>当前抽取 SQL 暂时不能自动处理</strong>
+                <p>下面这些修改会改变记录怎样关联、去重或计算，放错查询层就可能多算或少算，因此当前程序会停止自动改写。</p>
+                <ul class="diagnosis-unsupported-list">
+                  <li v-for="item in unsupportedCapabilities" :key="item.id">
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.reason }}</span>
+                  </li>
+                </ul>
+              </section>
             </div>
-            <p>字段必须已经存在于原 SQL 中，而且程序能确定筛选条件应该加在哪一层。小模型只帮助理解和解释，不负责重写整段复杂 SQL，也不能绕过程序校验。</p>
+            <p><strong>以后怎么解决：</strong>需要增加能识别 JOIN、子查询、去重、窗口函数和聚合层级的 T-SQL 结构解析，再为每类修改建立确定性改写规则，并继续通过影子试跑验证记录数、分子、分母和输出结构。小模型只负责解释需求，不能绕过这些校验。</p>
           </details>
           <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
             <div class="diagnosis-change-grid">
