@@ -19,9 +19,19 @@ const emit = defineEmits<{
   action: [action: string, payload: Record<string, unknown>]
 }>()
 
+type PredicateOperator = 'EQ' | 'NE' | 'IN' | 'NOT_IN' | 'IS_NULL' | 'IS_NOT_NULL' | 'CONTAINS' | 'NOT_CONTAINS'
+type InvestigationCondition = {
+  field: string
+  operator: PredicateOperator
+  value: string
+}
+
 const investigationLayer = ref('SOURCE_EXTRACT')
+const investigationTreatment = ref<'EXCLUDE' | 'INCLUDE'>('EXCLUDE')
 const investigationRequirement = ref('')
 const investigationSql = ref('')
+const investigationCandidateSql = ref('')
+const investigationConditions = ref<InvestigationCondition[]>([emptyCondition()])
 const changeType = ref('SQL_CHANGE')
 const changeLayer = ref('SOURCE_EXTRACT')
 const requirements = ref('')
@@ -66,42 +76,28 @@ const submittedRecordIds = computed(() => {
   const value = String(props.snapshot.caseInput.recordId || '').trim()
   return value ? [value] : []
 })
-const requirementTemplate = computed(() => {
-  const ids = submittedRecordIds.value.join('、') || '请填写案例编号'
-  if (isConsultationWordExample.value) {
-    return `处理方式：排除
-业务规则：排除测试患者
-判断字段：t1.FULL_NAME
-判断条件：等于“请填写患者姓名”
-案例编号（只用于影子验收，不写入口径）：${ids}
-预期结果：候选抽取后不再包含上述案例编号`
-  }
-  return `处理方式：请填写“纳入”或“排除”
-业务规则：请填写医院确认的规则
-判断字段：请填写抽取 SQL 中实际存在的“表别名.字段名”
-判断条件：请填写操作符和值
-案例编号（只用于影子验收，不写入口径）：${ids}
-预期结果：请填写候选抽取后案例应该保留还是消失`
+const operatorOptions: Array<{ value: PredicateOperator, label: string }> = [
+  { value: 'EQ', label: '等于' },
+  { value: 'NE', label: '不等于' },
+  { value: 'IN', label: '属于这些值' },
+  { value: 'NOT_IN', label: '不属于这些值' },
+  { value: 'IS_NULL', label: '为空' },
+  { value: 'IS_NOT_NULL', label: '不为空' },
+  { value: 'CONTAINS', label: '包含' },
+  { value: 'NOT_CONTAINS', label: '不包含' },
+]
+const investigationExpectedEffect = computed(() => investigationTreatment.value === 'EXCLUDE'
+  ? '候选抽取后不再包含上述案例编号'
+  : '候选抽取后应包含上述案例编号')
+const investigationTemplateIncomplete = computed(() => {
+  if (!investigationRequirement.value.trim()) return true
+  if (investigationCandidateSql.value.trim()) return false
+  if (!investigationConditions.value.length) return true
+  return investigationConditions.value.some((item) => (
+    !item.field.trim()
+    || (!operatorHasNoValue(item.operator) && !item.value.trim())
+  ))
 })
-const validationSelectTemplate = computed(() => {
-  const ids = submittedRecordIds.value.map((value) => `'${value.replaceAll("'", "''")}'`).join(', ')
-    || "'请填写案例编号'"
-  if (isConsultationWordExample.value) {
-    return `SELECT t1.ENCOUNTER_ID, t1.FULL_NAME
-FROM [WINDBA_GN].[INPATIENT_ENCOUNTER] t1
-WHERE t1.ENCOUNTER_ID IN (${ids})
-  AND t1.FULL_NAME = N'请填写患者姓名';`
-  }
-  const field = String(props.snapshot.caseInput.recordField || 'ENCOUNTER_ID')
-  return `SELECT t.[${field}], t.[请填写判断字段]
-FROM [请填写schema].[请填写业务主表] t
-WHERE t.[${field}] IN (${ids})
-  AND t.[请填写判断字段] = N'请填写判断值';`
-})
-const investigationTemplateIncomplete = computed(() => (
-  investigationRequirement.value.includes('请填写')
-  || investigationSql.value.includes('请填写')
-))
 
 function gate(number: number): Record<string, unknown> | undefined {
   return props.snapshot.gateResults.find((item) => Number(item.gate) === number)
@@ -136,14 +132,48 @@ function fillWordExample() {
 
 function fillWordRequirement() {
   investigationLayer.value = 'SOURCE_EXTRACT'
+  investigationTreatment.value = 'EXCLUDE'
   investigationRequirement.value = wordRequirement
   investigationSql.value = ''
+  investigationCandidateSql.value = ''
+  investigationConditions.value = [
+    { field: 'A.CONSULT_STATUS_CODE', operator: 'EQ', value: '399329839' },
+    { field: 'D.CONSULT_COMPLETED_AT', operator: 'IS_NULL', value: '' },
+    { field: 't2.PRESCRIBED_AT', operator: 'IS_NULL', value: '' },
+  ]
 }
 
 function fillInvestigationTemplates() {
   investigationLayer.value = 'SOURCE_EXTRACT'
-  investigationRequirement.value = requirementTemplate.value
-  investigationSql.value = validationSelectTemplate.value
+  investigationTreatment.value = 'EXCLUDE'
+  investigationRequirement.value = ''
+  investigationSql.value = ''
+  investigationCandidateSql.value = ''
+  investigationConditions.value = [emptyCondition()]
+}
+
+function emptyCondition(): InvestigationCondition {
+  return { field: '', operator: 'EQ', value: '' }
+}
+
+function addInvestigationCondition() {
+  investigationConditions.value.push(emptyCondition())
+}
+
+function removeInvestigationCondition(index: number) {
+  if (investigationConditions.value.length === 1) {
+    investigationConditions.value = [emptyCondition()]
+    return
+  }
+  investigationConditions.value.splice(index, 1)
+}
+
+function operatorHasNoValue(operator: PredicateOperator): boolean {
+  return operator === 'IS_NULL' || operator === 'IS_NOT_NULL'
+}
+
+function operatorLabel(operator: PredicateOperator): string {
+  return operatorOptions.find((item) => item.value === operator)?.label || operator
 }
 
 watch(
@@ -201,9 +231,17 @@ function submitEvidence() {
     OVERVIEW: '目标表概览 SQL 脚本',
     UNKNOWN: '暂不确定',
   }[investigationLayer.value] || '暂不确定'
+  const conditionSummary = investigationConditions.value.map((item, index) => (
+    `${index + 1}. ${item.field.trim()} ${operatorLabel(item.operator)}`
+      + (operatorHasNoValue(item.operator) ? '' : ` “${item.value.trim()}”`)
+  )).join('\n')
   const summary = [
     `怀疑问题层级：${layerLabel}`,
+    `处理方式：${investigationTreatment.value === 'EXCLUDE' ? '排除' : '纳入'}`,
     `实施提供的业务要求：${investigationRequirement.value.trim()}`,
+    conditionSummary ? `结构化判断条件：\n${conditionSummary}` : '',
+    `案例编号（仅用于影子验收）：${submittedRecordIds.value.join('、')}`,
+    `预期结果：${investigationExpectedEffect.value}`,
     investigationSql.value.trim() ? `实施提供的验证 SQL：\n${investigationSql.value.trim()}` : '',
   ].filter(Boolean).join('\n\n')
   // Render this user turn immediately. The request can then complete without
@@ -219,11 +257,22 @@ function submitEvidence() {
     suspectedLayer: investigationLayer.value,
     summary,
     requirement: investigationRequirement.value.trim(),
+    treatment: investigationTreatment.value,
+    patchConditions: investigationConditions.value.map((item) => ({
+      treatment: investigationTreatment.value,
+      field: item.field.trim(),
+      operator: item.operator,
+      value: item.value.trim(),
+    })),
+    expectedCaseEffect: investigationExpectedEffect.value,
     validationSql: investigationSql.value.trim(),
-    requestAiAnalysis: true,
+    candidateSql: investigationCandidateSql.value.trim(),
+    requestAiAnalysis: false,
   })
   investigationRequirement.value = ''
   investigationSql.value = ''
+  investigationCandidateSql.value = ''
+  investigationConditions.value = [emptyCondition()]
 }
 
 function stepState(number: number): string {
@@ -359,7 +408,59 @@ function pretty(value: unknown): string {
     </template>
 
     <template v-if="investigationReached">
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div><p><strong>默认改抽取 SQL：</strong>大多数结果不对，原因是业务数据多抽、少抽或重复写入中间表。只有已确认中间表数据正确、但分子分母计算错误时，才选择统计 SQL。</p><template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'"><div class="diagnosis-change-grid"><label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本（默认）</option><option value="OVERVIEW">统计 SQL（仅中间表正确时）</option><option value="UNKNOWN">暂不确定</option></select></label></div><section class="diagnosis-input-template"><header><strong>1. 填写医院确认的业务规则</strong><button type="button" class="diagnosis-text-action" @click="fillInvestigationTemplates">重新套用模板</button></header><p>字段和值必须与下方验证 SELECT一致；案例编号只用于验收，不会写入口径。</p><textarea v-model="investigationRequirement" class="diagnosis-evidence-template-input" rows="7" aria-label="需要纳入或排除的数据规则"></textarea></section><section class="diagnosis-input-template"><header><strong>2. 提供证明这条规则的验证 SELECT</strong><span>推荐填写</span></header><p>查询必须使用抽取 SQL中真实存在的表别名、字段和值。不要粘贴更新或删除语句。</p><textarea v-model="investigationSql" class="diagnosis-sql-input" rows="9" aria-label="实施提供的验证 SELECT"></textarea></section><p v-if="investigationTemplateIncomplete" class="diagnosis-template-warning">请把模板中的“请填写”全部替换为现场实际内容，确保两部分使用同一个判断字段和判断值。</p><template v-if="isConsultationWordExample"><p class="diagnosis-help">会诊参考条件：作废状态 → A.CONSULT_STATUS_CODE；完成时间 → D.CONSULT_COMPLETED_AT；首条医嘱时间 → t2.PRESCRIBED_AT。</p><button type="button" class="diagnosis-text-action" @click="fillWordRequirement">改用 Word 会诊条件</button></template><p class="diagnosis-pass-rule"><strong>发送后：</strong>程序先机械改写并影子验收；程序无法处理或验收不通过时，才让当前7B模型尝试修正。正式口径和正式结果不会被修改。</p><button type="button" class="diagnosis-primary" :disabled="busy || !investigationRequirement.trim() || investigationTemplateIncomplete" @click="submitEvidence">生成候选 SQL并影子试跑</button></template></div></article>
+      <article class="message is-agent">
+        <div class="message-avatar">AI</div>
+        <div class="message-card diagnosis-turn-card">
+          <div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div>
+          <p><strong>默认改抽取 SQL：</strong>多抽、少抽或重复数据通常发生在业务数据进入中间表之前。只有已经确认中间表数据正确，但分子分母判定错误时，才选择统计 SQL。</p>
+          <details class="diagnosis-capability" open>
+            <summary>当前系统可以自动处理什么</summary>
+            <div class="diagnosis-capability-grid">
+              <section><strong>可以自动处理</strong><p>原 SQL 已有字段上的等于、不等于、属于、不属于、为空、不为空、包含条件；字段在子查询中时，必须能唯一确定所属查询层。</p></section>
+              <section><strong>需要完整候选 SQL</strong><p>新增表或 JOIN、修改 JOIN 类型、增加子查询、修改 DISTINCT、GROUP BY、窗口函数、UNION、聚合公式或输出字段。</p></section>
+            </div>
+            <p>小模型只帮助理解和解释，不负责重写整段复杂 SQL，也不能绕过程序校验。</p>
+          </details>
+          <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
+            <div class="diagnosis-change-grid">
+              <label>怀疑有问题的脚本<select v-model="investigationLayer"><option value="SOURCE_EXTRACT">抽取 SQL 脚本（默认）</option><option value="OVERVIEW">统计 SQL（仅中间表正确时）</option></select></label>
+              <label>处理方式<select v-model="investigationTreatment"><option value="EXCLUDE">排除符合条件的数据</option><option value="INCLUDE">只纳入符合条件的数据</option></select></label>
+            </div>
+            <section class="diagnosis-input-template">
+              <header><strong>1. 填写医院确认的业务规则</strong><button type="button" class="diagnosis-text-action" @click="fillInvestigationTemplates">清空重填</button></header>
+              <p>用业务语言说明为什么要纳入或排除，例如“排除姓名为测试患者的记录”。</p>
+              <textarea v-model="investigationRequirement" rows="3" aria-label="医院确认的业务规则" placeholder="例如：排除姓名为测试患者的记录"></textarea>
+            </section>
+            <section class="diagnosis-input-template">
+              <header><strong>2. 填写判断条件</strong><button type="button" class="diagnosis-text-action" @click="addInvestigationCondition">增加条件</button></header>
+              <p>判断字段必须来自当前脚本，并填写为“表别名.字段名”，例如 t1.FULL_NAME。系统会把条件加到该别名所属的查询层；别名重复或层级不明确时会停止，不会猜测。</p>
+              <div v-for="(condition, index) in investigationConditions" :key="index" class="diagnosis-condition-row">
+                <label>判断字段<input v-model="condition.field" :aria-label="`判断字段${index + 1}`" placeholder="表别名.字段名" /></label>
+                <label>判断条件<select v-model="condition.operator"><option v-for="option in operatorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+                <label v-if="!operatorHasNoValue(condition.operator)">判断值<input v-model="condition.value" :aria-label="`判断值${index + 1}`" placeholder="多个值用逗号分隔" /></label>
+                <div v-else class="diagnosis-condition-empty">该条件不需要填写值</div>
+                <button type="button" class="diagnosis-text-action" @click="removeInvestigationCondition(index)">删除</button>
+              </div>
+              <dl class="diagnosis-case-acceptance"><div><dt>案例编号</dt><dd>{{ submittedRecordIds.join('、') || '尚未填写' }}</dd></div><div><dt>预期效果</dt><dd>{{ investigationExpectedEffect }}</dd></div></dl>
+              <p class="diagnosis-help">案例编号只用于验证修改前后是否按预期变化，不会写入正式口径 SQL。</p>
+            </section>
+            <section class="diagnosis-input-template">
+              <header><strong>3. 现场核对 SQL（可选）</strong><span>不知道可以不填</span></header>
+              <p>如果已经在 Navicat 查到哪些记录应该被排除或纳入，请粘贴对应的只读 SELECT。系统只用它确认实际表、字段和值，不会把整段查询替换成正式抽取 SQL；不要粘贴更新、删除或清表语句。</p>
+              <textarea v-model="investigationSql" class="diagnosis-sql-input" rows="7" aria-label="现场核对 SQL" placeholder="SELECT 就诊号, 判断字段 FROM 业务表 WHERE 判断字段 = 实际值"></textarea>
+            </section>
+            <details class="diagnosis-input-template">
+              <summary><strong>复杂结构修改：提供完整候选 SQL</strong></summary>
+              <p>只有涉及新增 JOIN、子查询、聚合、去重等结构变化时才填写。必须是一条完整只读 SELECT；仍会经过结构检查和影子试跑。</p>
+              <textarea v-model="investigationCandidateSql" class="diagnosis-sql-input" rows="9" aria-label="完整候选 SQL" placeholder="可选：由实施人员提供完整候选 SELECT"></textarea>
+            </details>
+            <p v-if="investigationTemplateIncomplete" class="diagnosis-template-warning">请填写业务规则，并至少提供一组完整的判断字段、条件和值；如果属于复杂结构修改，可以改为提供完整候选 SQL。</p>
+            <template v-if="isConsultationWordExample"><p class="diagnosis-help">会诊参考条件可以自动填入：排除作废状态、完成时间为空和首条医嘱时间为空的数据。</p><button type="button" class="diagnosis-text-action" @click="fillWordRequirement">填入会诊参考条件</button></template>
+            <p class="diagnosis-pass-rule"><strong>发送后：</strong>简单字段条件由程序在正确查询层改写并影子验收；超出安全范围时明确停止并要求完整候选 SQL，不再让模型重写复杂脚本。正式口径和正式结果不会被修改。</p>
+            <button type="button" class="diagnosis-primary" :disabled="busy || investigationTemplateIncomplete" @click="submitEvidence">生成候选 SQL并影子试跑</button>
+          </template>
+        </div>
+      </article>
       <template v-if="pendingRequirementVisible() && pendingRequirement">
         <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 排查要求</strong><span>{{ pendingRequirement.layerLabel }}</span></div><p>{{ pendingRequirement.requirement }}</p><details v-if="pendingRequirement.validationSql" class="diagnosis-technical"><summary>查看实施验证 SQL</summary><pre>{{ pendingRequirement.validationSql }}</pre></details></div></article>
         <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 正在生成候选 SQL</strong></div><p>已收到。正在基于当前正式脚本生成候选语句，并在影子环境试跑；正式结果不会被修改。</p></div></article>
@@ -380,7 +481,7 @@ function pretty(value: unknown): string {
     <template v-if="snapshot.currentStep === 'CHANGE_PROPOSAL'">
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 已确认原因</strong></div><p>{{ snapshot.causeConclusion.conclusion }}</p></div></article>
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请提供修改要求</strong></div><p>说明要改抽取还是统计、增加或删除什么条件、使用什么字段和值，以及这条案例修改后应该怎样变化。最好附完整只读 SQL。</p></div></article>
-      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 修改要求</strong></div><div class="diagnosis-change-grid"><label>问题分支<select v-model="changeType"><option value="DATA_REPAIR">数据修复</option><option value="EVENT_CONFIG">事件配置</option><option value="SQL_CHANGE">SQL 修改</option><option value="CALIBER_CHANGE">医院口径变更</option></select></label><label v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'">只修改一层<select v-model="changeLayer"><option value="SOURCE_EXTRACT">抽取 SQL</option><option value="OVERVIEW">统计 SQL</option></select></label></div><textarea v-model="requirements" rows="3" placeholder="写清新增/删除条件、字段、操作符和值，以及对案例的预期影响"></textarea><textarea v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'" v-model="candidateSql" class="diagnosis-sql-input" rows="8" placeholder="可选：粘贴完整 SELECT；留空时由当前选择的模型根据要求生成"></textarea><p class="diagnosis-pass-rule"><strong>本轮产物：</strong>原 SQL、候选 SQL、差异说明和程序校验结果。校验不通过不能试跑。</p><button type="button" class="diagnosis-primary" :disabled="busy || !requirements.trim()" @click="buildCandidate">发送要求，由系统组装 SQL</button></div></article>
+      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 修改要求</strong></div><div class="diagnosis-change-grid"><label>问题分支<select v-model="changeType"><option value="DATA_REPAIR">数据修复</option><option value="EVENT_CONFIG">事件配置</option><option value="SQL_CHANGE">SQL 修改</option><option value="CALIBER_CHANGE">医院口径变更</option></select></label><label v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'">只修改一层<select v-model="changeLayer"><option value="SOURCE_EXTRACT">抽取 SQL</option><option value="OVERVIEW">统计 SQL</option></select></label></div><textarea v-model="requirements" rows="3" placeholder="写清新增/删除条件、字段、操作符和值，以及对案例的预期影响"></textarea><textarea v-if="changeType === 'SQL_CHANGE' || changeType === 'CALIBER_CHANGE'" v-model="candidateSql" class="diagnosis-sql-input" rows="8" placeholder="复杂结构修改必须由实施人员粘贴一条完整候选 SELECT；模型不会重写整段 SQL"></textarea><p class="diagnosis-pass-rule"><strong>本轮产物：</strong>原 SQL、候选 SQL、差异说明和程序校验结果。校验不通过不能试跑。</p><button type="button" class="diagnosis-primary" :disabled="busy || !requirements.trim()" @click="buildCandidate">发送要求，由系统组装 SQL</button></div></article>
     </template>
 
     <template v-if="snapshot.currentStep === 'SHADOW_TRIAL' || snapshot.currentStep === 'DRAFT_SAVE'">
