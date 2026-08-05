@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 
 import {
   fetchDiagnosisCaseDetails,
+  loadDiagnosisShadowDiffs,
+  type DiagnosisShadowDiffPage,
   type DiagnosisCaseSnapshot,
   type IndicatorDetailResult,
 } from '../api/agent'
@@ -60,6 +62,18 @@ const detailLoading = ref(false)
 const detailError = ref('')
 const pendingRequirement = ref<Record<string, string> | null>(null)
 const copiedSqlKey = ref('')
+const selectedMode = ref<'STANDARD' | 'AUTONOMOUS'>('STANDARD')
+const autonomousProblem = ref('')
+const autonomousAnswer = ref('')
+const diffType = ref<DiagnosisShadowDiffPage['type']>('REMOVED')
+const diffSearch = ref('')
+const diffPage = ref<DiagnosisShadowDiffPage | null>(null)
+const diffLoading = ref(false)
+const diffError = ref('')
+const draftIssueSummary = ref('')
+const draftChangeSummary = ref('')
+const draftExpectedImpact = ref('')
+const draftVerificationSummary = ref('')
 
 const baseSteps = [
   { gate: 1, key: 'GATE_1_SCHEMA', label: '数据结构校验' },
@@ -245,7 +259,6 @@ const unsupportedCapabilities = computed<UnsupportedCapability[]>(() => {
   }
   return result.slice(0, 5)
 })
-const candidateFieldListId = computed(() => `diagnosis-candidate-fields-${props.snapshot.caseId}`)
 const operatorOptions: Array<{ value: PredicateOperator, label: string }> = [
   { value: 'EQ', label: '等于' },
   { value: 'NE', label: '不等于' },
@@ -293,6 +306,53 @@ function submitCase() {
     expectedClassification: { status: 'WAITING_CONFIRMATION' },
   })
 }
+
+function startAutonomous() {
+  if (!autonomousProblem.value.trim()) return
+  emit('action', 'START_AUTONOMOUS_INVESTIGATION', { problem: autonomousProblem.value.trim() })
+}
+
+function respondAutonomous() {
+  if (!autonomousAnswer.value.trim()) return
+  emit('action', 'RESPOND_AUTONOMOUS_QUESTION', { answer: autonomousAnswer.value.trim() })
+  autonomousAnswer.value = ''
+}
+
+async function loadShadowDiffs(page = 1) {
+  const trialId = String(props.snapshot.shadowTrial.trialId || '')
+  if (!trialId) return
+  diffLoading.value = true
+  diffError.value = ''
+  try {
+    diffPage.value = await loadDiagnosisShadowDiffs(
+      props.token, props.snapshot.caseId, trialId, diffType.value, page, 50, diffSearch.value,
+    )
+  } catch (cause) {
+    diffError.value = cause instanceof Error ? cause.message : '差异明细加载失败。'
+  } finally {
+    diffLoading.value = false
+  }
+}
+
+function saveHospitalDraft() {
+  emit('action', 'SAVE_HOSPITAL_DRAFT', {
+    confirmed: true,
+    issueSummary: draftIssueSummary.value.trim(),
+    changeSummary: draftChangeSummary.value.trim(),
+    expectedImpact: draftExpectedImpact.value.trim(),
+    verificationSummary: draftVerificationSummary.value.trim(),
+  })
+}
+
+const draftDescriptionIncomplete = computed(() => !draftIssueSummary.value.trim()
+  || !draftChangeSummary.value.trim()
+  || !draftExpectedImpact.value.trim()
+  || !draftVerificationSummary.value.trim())
+
+const autonomousEvents = computed(() => {
+  const values = props.snapshot.autonomousRun?.toolEvents
+  return Array.isArray(values) ? values.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : []
+})
 
 function fillWordExample() {
   recordField.value = 'ENCOUNTER_ID'
@@ -692,9 +752,34 @@ function pretty(value: unknown): string {
       <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 基础校验回复</strong><span>{{ blockedGateCount ? '需要处理' : allBaseChecksPassed ? '可以继续' : '检查中' }}</span></div><section class="diagnosis-caliber-section"><h4>当前排查指标：{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h4><dl class="caliber-facts"><div><dt>指标编码</dt><dd>{{ snapshot.ruleId }}</dd></div><div><dt>当前口径</dt><dd>{{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}（{{ snapshot.profileId }}）</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl></section><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary"><header><strong>{{ item.label }}</strong><em :data-state="stepState(item.gate)">{{ stepStateText(item.gate) }}</em></header><div class="diagnosis-result" :data-state="stepState(item.gate)"><strong>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</strong><code v-if="gate(item.gate)?.errorCode">{{ gate(item.gate)?.errorCode }}</code></div><div v-if="gate(item.gate)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(item.gate)?.repairSuggestion }}</p></div></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ baseConclusion }}</p><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验当前步骤</button><button v-else-if="snapshot.currentStep.startsWith('GATE_') && !currentGateHasResult && !busy" type="button" class="diagnosis-primary" @click="retryCurrentGate">继续基础校验</button></div>
     </article>
 
-    <template v-if="caseInputReached">
+    <article v-if="snapshot.currentStep === 'CASE_INPUT' && snapshot.investigationMode !== 'AUTONOMOUS'" class="message is-agent">
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 选择排查方式</strong></div>
+        <div class="diagnosis-mode-grid">
+          <button type="button" :class="{ active: selectedMode === 'STANDARD' }" @click="selectedMode = 'STANDARD'"><strong>标准模式</strong><span>按字段和条件由程序安全改写</span></button>
+          <button type="button" :class="{ active: selectedMode === 'AUTONOMOUS' }" @click="selectedMode = 'AUTONOMOUS'"><strong>DeepSeek 自主排查</strong><span>自主阅读 Wiki、查询双库并组织证据</span></button>
+        </div>
+        <template v-if="selectedMode === 'AUTONOMOUS'">
+          <p>请直接描述异常现象。DeepSeek V4 Pro 会自主选择 Wiki 页面和只读查询；程序仍负责 SQL 安全、表范围、影子试跑和对账。</p>
+          <textarea v-model="autonomousProblem" rows="5" maxlength="3000" placeholder="例如：骨伤一科在科室明细中没有手术患者，请定位数据在哪一步消失。"></textarea>
+          <button type="button" class="diagnosis-primary" :disabled="busy || !autonomousProblem.trim()" @click="startAutonomous">开始 DeepSeek 自主排查</button>
+        </template>
+      </div>
+    </article>
+
+    <template v-if="caseInputReached && snapshot.investigationMode !== 'AUTONOMOUS' && selectedMode === 'STANDARD'">
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 请提供具体案例</strong></div><p>记录编号是候选脚本的验收样本：系统会核对它在当前正式中间表中是否存在，以及候选抽取后是否按要求被纳入或排除。编号不会写进正式口径 SQL。</p><p>同一种问题可一次填最多20个编号；大量记录应写成下一步的业务筛选条件，不要逐个粘贴。</p><pre class="diagnosis-template">{{ caseTemplate }}</pre><button type="button" class="diagnosis-text-action" @click="copyCaseTemplate">{{ templateCopied ? '已复制' : '复制填写模板' }}</button><template v-if="isConsultationWordExample"><p class="diagnosis-help">Word 参考案例来自中江县人民医院；如果当前库没有这条就诊号，系统会提示无记录，不应据此判断本院抽取有问题。</p><button type="button" class="diagnosis-text-action" @click="fillWordExample">填入 Word 参考案例</button></template></div></article>
       <article v-if="snapshot.currentStep === 'CASE_INPUT'" class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 提供具体案例</strong></div><div class="diagnosis-case-grid"><label>记录类型<select v-model="recordField"><option value="ENCOUNTER_ID">就诊号</option><option value="EVENT_ID">事件号</option><option value="ORDER_ID">医嘱号</option><option value="SURGERY_ID">手术号</option></select></label><label>记录编号（最多20个）<textarea v-model="recordId" rows="3" maxlength="2100" placeholder="多个编号用逗号或换行分隔" /></label><label class="wide">补充说明（可选）<textarea v-model="caseDescription" rows="3" maxlength="1200" placeholder="用于审计和理解背景，不参与生成 SQL；不知道可不填。"></textarea></label></div><p class="diagnosis-pass-rule"><strong>进入下一步：</strong>填写至少一个记录编号后发送，系统会单独回复当前口径澄清。</p><button type="button" class="diagnosis-primary" :disabled="busy || !recordId.trim()" @click="submitCase">发送案例</button></div></article>
+    </template>
+
+    <template v-if="snapshot.investigationMode === 'AUTONOMOUS'">
+      <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 自主排查问题</strong></div><p>{{ snapshot.autonomousRun.problem }}</p></div></article>
+      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>DeepSeek · 自主排查</strong><span>{{ snapshot.autonomousRun.status }}</span></div>
+        <p v-if="snapshot.autonomousRun.publicPlan"><strong>当前要验证：</strong>{{ snapshot.autonomousRun.publicPlan }}</p>
+        <ol class="diagnosis-agent-timeline"><li v-for="event in autonomousEvents" :key="String(event.seq)"><div><strong>{{ event.publicPlan || event.tool }}</strong><span :data-state="String(event.status).toLowerCase()">{{ event.status }}</span></div><p>调用工具：{{ event.tool }}</p><small>{{ event.summary }}</small></li></ol>
+        <template v-if="snapshot.autonomousRun.status === 'WAITING_USER'"><p class="diagnosis-template-warning"><strong>需要现场确认：</strong>{{ snapshot.autonomousRun.pendingQuestion }}</p><textarea v-model="autonomousAnswer" rows="3" placeholder="填写医院现场确认结果"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !autonomousAnswer.trim()" @click="respondAutonomous">发送给 DeepSeek 继续排查</button></template>
+        <section v-if="snapshot.autonomousRun.finalConclusion" class="diagnosis-base-conclusion"><strong>排查结论：</strong><p>{{ record(snapshot.autonomousRun.finalConclusion).conclusion }}</p><small>结论等级：{{ record(snapshot.autonomousRun.finalConclusion).conclusionLevel }}</small></section>
+        <button v-if="snapshot.autonomousRun.status === 'RUNNING'" type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})">停止自主排查</button>
+      </div></article>
     </template>
 
     <template v-if="caseSubmitted">
@@ -739,7 +824,7 @@ function pretty(value: unknown): string {
                 </ul>
               </section>
             </div>
-            <p><strong>以后怎么解决：</strong>需要增加能识别 JOIN、子查询、去重、窗口函数和聚合层级的 T-SQL 结构解析，再为每类修改建立确定性改写规则，并继续通过影子试跑验证记录数、分子、分母和输出结构。小模型只负责解释需求，不能绕过这些校验。</p>
+            <p><strong>以后怎么解决：</strong>需要增加能识别 JOIN、子查询、去重、窗口函数和聚合层级的 T-SQL 结构解析，再为每类修改建立确定性改写规则，并继续通过影子试跑验证记录数、分子、分母和输出结构。自主模式中的 DeepSeek 可以提出完整候选 SQL，但仍不能绕过程序校验。</p>
           </details>
           <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
             <div class="diagnosis-change-grid">
@@ -753,15 +838,14 @@ function pretty(value: unknown): string {
             </section>
             <section class="diagnosis-input-template">
               <header><strong>2. 填写判断条件</strong><button type="button" class="diagnosis-text-action" @click="addInvestigationCondition">增加条件</button></header>
-              <p>判断字段必须来自当前脚本，并填写为“表别名.字段名”。下拉建议只列出程序能唯一定位查询层的字段；也可以手工填写，提交时仍会重新校验。</p>
+              <p>优先显示中文业务名称，第二行保留程序实际使用的表和技术字段。提交时仍会重新校验字段所属查询层。</p>
               <div v-for="(condition, index) in investigationConditions" :key="index" class="diagnosis-condition-row">
-                <label>判断字段<input v-model="condition.field" :list="candidateFieldListId" :aria-label="`判断字段${index + 1}`" placeholder="输入或选择表别名.字段名" /></label>
+                <label>判断字段<select v-model="condition.field" :aria-label="`判断字段${index + 1}`"><option value="">请选择字段</option><option v-for="field in candidateRuleFields" :key="String(field.value)" :value="String(field.value)">{{ field.displayName || field.field }}｜{{ field.tableName }} · {{ field.technicalName || field.value }}</option></select></label>
                 <label>判断条件<select v-model="condition.operator"><option v-for="option in operatorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
                 <label v-if="!operatorHasNoValue(condition.operator)">判断值<input v-model="condition.value" :aria-label="`判断值${index + 1}`" placeholder="多个值用逗号分隔" /></label>
                 <div v-else class="diagnosis-condition-empty">该条件不需要填写值</div>
                 <button type="button" class="diagnosis-text-action" @click="removeInvestigationCondition(index)">删除</button>
               </div>
-              <datalist :id="candidateFieldListId"><option v-for="field in candidateRuleFields" :key="String(field.value)" :value="String(field.value)">{{ field.label }}</option></datalist>
               <p v-if="!candidateRuleFields.length" class="diagnosis-help">当前抽取 SQL没有识别出可安全推荐的字段。请展开数据链路核对实际别名，或提供完整候选 SQL。</p>
               <dl class="diagnosis-case-acceptance"><div><dt>案例编号</dt><dd>{{ submittedRecordIds.join('、') || '尚未填写' }}</dd></div><div><dt>预期效果</dt><dd>{{ investigationExpectedEffect }}</dd></div></dl>
               <p class="diagnosis-help">案例编号只用于验证修改前后是否按预期变化，不会写入正式口径 SQL。</p>
@@ -810,6 +894,7 @@ function pretty(value: unknown): string {
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 候选语句已生成</strong></div><p>候选语句已通过安全校验，系统随后会自动执行影子试跑，无需再点击单独的“试跑”按钮。正式中间表和当前卡片不会被覆盖。</p><p v-if="snapshot.candidateSql.generationMethod" class="diagnosis-help">生成方式：{{ snapshot.candidateSql.generationMethod }}</p>
         <section v-if="shadowTrialExecutionFailed" class="diagnosis-result-compare"><header><div><h4>影子试跑执行失败</h4><p>系统已经尝试执行候选语句，但在生成影子结果前失败，因此本轮没有可比较的记录数、分子、分母或结果值。</p></div><span data-state="failed">试跑执行失败</span></header><p class="diagnosis-template-warning"><strong>失败原因：</strong>{{ shadowTrialFailureMessage }}</p></section>
         <section v-if="!shadowTrialExecutionFailed && extractionComparisonRows.length" class="diagnosis-result-compare"><header><div><h4>第一层：抽取数据变化</h4><p>对比当前正式中间表和候选抽取 SQL 写入的影子中间表。这里直接说明候选抽取到底多了或少了哪些记录。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式中间表</span><span>候选影子中间表</span><span>变化</span></div><div v-for="row in extractionComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
+        <section v-if="!shadowTrialExecutionFailed && extractionComparisonRows.length" class="diagnosis-diff-browser"><header><div><h4>抽取前后差异明细</h4><p>可查看新增、减少、字段变化和新增重复记录；按业务编号搜索。</p></div></header><div class="diagnosis-diff-toolbar"><select v-model="diffType"><option value="ADDED">新增记录</option><option value="REMOVED">减少记录</option><option value="CHANGED">字段变化</option><option value="DUPLICATE">新增重复</option></select><input v-model="diffSearch" placeholder="搜索业务编号" /><button type="button" class="diagnosis-secondary" :disabled="diffLoading" @click="loadShadowDiffs(1)">查看差异</button></div><p v-if="diffError" class="diagnosis-template-warning">{{ diffError }}</p><template v-if="diffPage"><p>共 {{ diffPage.total }} 个业务编号</p><details v-for="item in diffPage.items" :key="item.businessKey" class="diagnosis-technical"><summary>{{ item.businessKey }}<span v-if="item.changedFields.length"> · {{ item.changedFields.join('、') }}</span></summary><div class="diagnosis-before-after"><section><strong>修改前</strong><pre>{{ pretty(item.beforeRows) }}</pre></section><section><strong>修改后</strong><pre>{{ pretty(item.afterRows) }}</pre></section></div></details><div class="diagnosis-pagination"><button type="button" :disabled="diffPage.page <= 1 || diffLoading" @click="loadShadowDiffs(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total || diffLoading" @click="loadShadowDiffs(diffPage.page + 1)">下一页</button></div></template></section>
         <section v-if="!shadowTrialExecutionFailed" class="diagnosis-result-compare"><header><div><h4>{{ extractionComparisonRows.length ? '第二层：最终指标结果变化' : '正式结果与候选试跑对比' }}</h4><p v-if="extractionComparisonRows.length">抽取 SQL 修改前后都使用同一份正式概览 SQL 计算。概览 SQL 在这里只负责测量抽取数据变化后的分子、分母和结果，本身没有被修改。</p><p v-else>左侧是当前公版正式结果，右侧是候选 {{ sqlLayerTitle }} 在影子环境的结果。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式结果</span><span>候选试跑结果</span><span>变化</span></div><div v-for="row in resultComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
         <section v-if="!shadowTrialExecutionFailed && caseValidationRows.length" class="diagnosis-case-reconcile"><header><div><h4>案例编号验收</h4><p>“正式记录数”表示该编号在当前正式中间表中查到几条；不代表这些记录业务上一定正确。</p></div></header><div class="diagnosis-case-table"><div class="is-head"><span>案例编号</span><span>正式记录数</span><span>候选记录数</span><span>变化</span><span>预期</span><span>验收</span></div><div v-for="row in caseValidationRows" :key="row.id"><code>{{ row.id }}</code><span>{{ row.before }}</span><span>{{ row.after }}</span><em>{{ row.change > 0 ? `+${row.change}` : row.change }}</em><span>{{ row.expected }}</span><strong :data-pass="row.passed">{{ row.result }}</strong></div></div><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ caseValidationMessage }}</p></section>
         <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>当前正式{{ sqlLayerTitle }}（可复制到 Navicat）</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('original', snapshot.candidateSql.originalSqlExecutable)">{{ copiedSqlKey === 'original' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.originalSqlExecutable || '')) }}</pre></details>
@@ -818,7 +903,7 @@ function pretty(value: unknown): string {
       <article v-if="snapshot.currentStep === 'SHADOW_TRIAL' && Object.keys(snapshot.shadowTrial).length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ shadowTrialExecutionFailed ? '系统 · 影子试跑执行失败' : '系统 · 本轮候选未通过验收' }}</strong></div><p v-if="shadowTrialExecutionFailed">候选 SQL 已通过静态安全校验，但实际影子执行没有完成。请根据上方失败原因修正数据源、SQL 或目标结构后重新生成；本轮没有产生对比结果。</p><p v-else>候选 SQL 已完成影子执行，但记录变化或案例验收没有满足实施要求。请根据上方“抽取数据变化”和“案例编号验收”修正字段、条件或判断值。</p><button type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'REVISE_CANDIDATE', {})">返回修改排查条件</button></div></article>
     </template>
 
-    <article v-if="snapshot.currentStep === 'DRAFT_SAVE'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>将当前候选 SQL、修改要求和影子试跑结果提交为待审批医院草稿。草稿不会影响正式指标计算，也不会替换公司公版口径。</p><ul class="diagnosis-trial-checks"><li>候选 SQL 安全和输出结构校验通过</li><li>案例编号前后变化符合预期</li><li>未发现新增的无法解释重复记录</li><li>分子、分母与影子结果可对账</li></ul><p class="diagnosis-help">完整技术数据已在上一条消息的“技术对账明细”中保留，不再重复展示一份报告。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'SAVE_HOSPITAL_DRAFT', { confirmed: true })">提交为待审批医院草稿</button></div></article>
+    <article v-if="snapshot.currentStep === 'DRAFT_SAVE'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>保存前请把本次修改说明写清楚，审批人员会在“知识库回收与审批”中直接看到这些内容。</p><div class="diagnosis-draft-description"><label>问题说明<textarea v-model="draftIssueSummary" rows="2" placeholder="现场发现了什么问题"></textarea></label><label>本次修改<textarea v-model="draftChangeSummary" rows="2" placeholder="候选 SQL 具体修改了什么"></textarea></label><label>预期影响<textarea v-model="draftExpectedImpact" rows="2" placeholder="哪些记录、科室或结果应该变化"></textarea></label><label>影子验证结论<textarea v-model="draftVerificationSummary" rows="2" placeholder="本次试跑和对账证明了什么"></textarea></label></div><p>草稿不会影响正式指标计算，也不会替换公司公版口径。</p><button type="button" class="diagnosis-primary" :disabled="busy || draftDescriptionIncomplete" @click="saveHospitalDraft">提交为待审批医院草稿</button></div></article>
     <article v-if="snapshot.currentStep === 'COMPLETED' && Object.keys(snapshot.draftResult || {}).length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 医院草稿已保存</strong><span>未发布</span></div><dl class="caliber-facts"><div><dt>草稿编号</dt><dd>{{ snapshot.draftResult.draftId }}</dd></div><div><dt>医院</dt><dd>{{ snapshot.draftResult.hospitalId }}</dd></div><div><dt>指标</dt><dd>{{ snapshot.draftResult.profileId }}</dd></div><div><dt>修改层级</dt><dd>{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '抽取 SQL' : '统计 SQL' }}</dd></div><div><dt>影子验证</dt><dd>{{ snapshot.draftResult.revalidationPassed === false ? '重新验证失败' : '通过' }}</dd></div><div><dt>正式状态</dt><dd>未发布，不影响当前计算</dd></div></dl><details class="diagnosis-technical"><summary>查看草稿实体</summary><pre>{{ snapshot.draftResult.entityMarkdown }}</pre></details><details class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>草稿保存的当前正式{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '源表抽取 SQL' : '目标表概览 SQL' }}</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('saved-original', snapshot.draftResult.originalSql)">{{ copiedSqlKey === 'saved-original' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ snapshot.draftResult.originalSql }}</pre></details><details class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>草稿保存的候选{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '源表抽取 SQL' : '目标表概览 SQL' }}</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('saved-candidate', snapshot.draftResult.candidateSql)">{{ copiedSqlKey === 'saved-candidate' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ snapshot.draftResult.candidateSql }}</pre></details><details class="diagnosis-technical"><summary>查看影子对账</summary><pre>{{ pretty(snapshot.draftResult.shadowTrial) }}</pre></details><details class="diagnosis-technical"><summary>查看草稿磁盘校验</summary><pre>{{ pretty(snapshot.draftResult.verification) }}</pre></details><p v-if="snapshot.draftResult.baselineExpired" class="diagnosis-template-warning">公司公版已经变化，草稿基线已过期，需要重新开始排查。</p><button type="button" class="diagnosis-primary" :disabled="busy || Boolean(snapshot.draftResult.baselineExpired)" @click="emit('action', 'REVALIDATE_HOSPITAL_DRAFT', {})">重新验证草稿</button></div></article>
     <article v-else-if="snapshot.currentStep === 'COMPLETED'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 当前计算已确认正确</strong></div><pre>{{ pretty(snapshot.releaseResult) }}</pre></div></article>
   </div>

@@ -214,10 +214,43 @@ export interface DiagnosisCaseSnapshot {
   changeProposal: Record<string, unknown>
   candidateSql: Record<string, unknown>
   shadowTrial: Record<string, unknown>
+  investigationMode: 'STANDARD' | 'AUTONOMOUS'
+  autonomousRun: Record<string, unknown>
   draftResult: Record<string, unknown>
   releaseResult: Record<string, unknown>
   createdAt: string
   updatedAt: string
+}
+
+export interface DiagnosisShadowDiffPage {
+  trialId: string
+  type: 'ADDED' | 'REMOVED' | 'CHANGED' | 'DUPLICATE'
+  page: number
+  pageSize: number
+  total: number
+  items: Array<{
+    businessKey: string
+    beforeRows: Array<Record<string, unknown>>
+    afterRows: Array<Record<string, unknown>>
+    changedFields: string[]
+  }>
+}
+
+export async function loadDiagnosisShadowDiffs(
+  token: string,
+  caseId: string,
+  trialId: string,
+  type: DiagnosisShadowDiffPage['type'],
+  page = 1,
+  pageSize = 50,
+  search = '',
+): Promise<DiagnosisShadowDiffPage> {
+  const query = new URLSearchParams({ trialId, type, page: String(page), pageSize: String(pageSize) })
+  if (search.trim()) query.set('search', search.trim())
+  const response = await fetch(`/api/diagnosis/cases/${encodeURIComponent(caseId)}/shadow-diffs?${query}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<DiagnosisShadowDiffPage>(response)
 }
 
 export interface CreateDiagnosisCaseInput {
@@ -280,6 +313,10 @@ export interface HospitalKnowledgeDraft {
   candidateSql: string
   trialPassed: boolean
   formalEffect: boolean
+  issueSummary?: string
+  changeSummary?: string
+  expectedImpact?: string
+  verificationSummary?: string
   changeRequest: Record<string, unknown>
   shadowTrial: Record<string, unknown>
 }

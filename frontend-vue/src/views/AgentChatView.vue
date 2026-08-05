@@ -194,10 +194,29 @@ async function diagnosisAction(
     if (action === 'CONFIRM_CALIBER' || action === 'RECHECK_GATE' || action === 'RUN_BASE_CHECKS') {
       updated = await advanceDiagnosisGates(updated)
     }
+    if (action === 'START_AUTONOMOUS_INVESTIGATION' || action === 'RESPOND_AUTONOMOUS_QUESTION') {
+      void pollAutonomousDiagnosis(updated.caseId)
+    }
   } catch (error) {
     store.error = error instanceof Error ? error.message : '异常排查步骤执行失败。'
   } finally {
     diagnosisBusy.value = ''
+  }
+}
+
+async function pollAutonomousDiagnosis(caseId: string) {
+  const deadline = Date.now() + 5 * 60 * 1000 + 15_000
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1500))
+    try {
+      const snapshot = await loadDiagnosisCase(store.token, caseId)
+      replaceDiagnosisSnapshot(snapshot)
+      const status = String(snapshot.autonomousRun?.status || '')
+      if (status && status !== 'RUNNING') return
+    } catch (error) {
+      store.error = error instanceof Error ? error.message : '自主排查进度读取失败。'
+      return
+    }
   }
 }
 
