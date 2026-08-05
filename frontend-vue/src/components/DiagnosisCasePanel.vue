@@ -76,6 +76,13 @@ const submittedRecordIds = computed(() => {
   const value = String(props.snapshot.caseInput.recordId || '').trim()
   return value ? [value] : []
 })
+const candidateRuleFields = computed(() => {
+  const values = props.snapshot.caseExpectedClassification.candidateRuleFields
+  return Array.isArray(values)
+    ? values.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    : []
+})
+const candidateFieldListId = computed(() => `diagnosis-candidate-fields-${props.snapshot.caseId}`)
 const operatorOptions: Array<{ value: PredicateOperator, label: string }> = [
   { value: 'EQ', label: '等于' },
   { value: 'NE', label: '不等于' },
@@ -433,14 +440,16 @@ function pretty(value: unknown): string {
             </section>
             <section class="diagnosis-input-template">
               <header><strong>2. 填写判断条件</strong><button type="button" class="diagnosis-text-action" @click="addInvestigationCondition">增加条件</button></header>
-              <p>判断字段必须来自当前脚本，并填写为“表别名.字段名”，例如 t1.FULL_NAME。系统会把条件加到该别名所属的查询层；别名重复或层级不明确时会停止，不会猜测。</p>
+              <p>判断字段必须来自当前脚本，并填写为“表别名.字段名”。下拉建议只列出程序能唯一定位查询层的字段；也可以手工填写，提交时仍会重新校验。</p>
               <div v-for="(condition, index) in investigationConditions" :key="index" class="diagnosis-condition-row">
-                <label>判断字段<input v-model="condition.field" :aria-label="`判断字段${index + 1}`" placeholder="表别名.字段名" /></label>
+                <label>判断字段<input v-model="condition.field" :list="candidateFieldListId" :aria-label="`判断字段${index + 1}`" placeholder="输入或选择表别名.字段名" /></label>
                 <label>判断条件<select v-model="condition.operator"><option v-for="option in operatorOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
                 <label v-if="!operatorHasNoValue(condition.operator)">判断值<input v-model="condition.value" :aria-label="`判断值${index + 1}`" placeholder="多个值用逗号分隔" /></label>
                 <div v-else class="diagnosis-condition-empty">该条件不需要填写值</div>
                 <button type="button" class="diagnosis-text-action" @click="removeInvestigationCondition(index)">删除</button>
               </div>
+              <datalist :id="candidateFieldListId"><option v-for="field in candidateRuleFields" :key="String(field.value)" :value="String(field.value)">{{ field.label }}</option></datalist>
+              <p v-if="!candidateRuleFields.length" class="diagnosis-help">当前抽取 SQL没有识别出可安全推荐的字段。请展开数据链路核对实际别名，或提供完整候选 SQL。</p>
               <dl class="diagnosis-case-acceptance"><div><dt>案例编号</dt><dd>{{ submittedRecordIds.join('、') || '尚未填写' }}</dd></div><div><dt>预期效果</dt><dd>{{ investigationExpectedEffect }}</dd></div></dl>
               <p class="diagnosis-help">案例编号只用于验证修改前后是否按预期变化，不会写入正式口径 SQL。</p>
             </section>
