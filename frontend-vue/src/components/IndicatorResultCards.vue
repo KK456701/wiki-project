@@ -60,9 +60,11 @@ const groups = computed<CardGroup[]>(() => {
 
 /** 卡片头部状态：任一口径成功即成功，全部无样本才显示无样本 */
 function groupStatus(group: CardGroup): string {
-  if (group.items.some((item) => item.status === 'SUCCESS')) return 'SUCCESS'
-  if (group.items.every((item) => item.status === 'NO_SAMPLE')) return 'NO_SAMPLE'
-  return group.items[0]?.status ?? 'FAILED'
+  const implemented = group.items.filter((item) => item.errorCode !== 'PROFILE_NOT_IMPLEMENTED')
+  if (!implemented.length) return 'NOT_IMPLEMENTED'
+  if (implemented.some((item) => item.status === 'SUCCESS')) return 'SUCCESS'
+  if (implemented.every((item) => item.status === 'NO_SAMPLE')) return 'NO_SAMPLE'
+  return implemented[0]?.status ?? 'FAILED'
 }
 
 /** 口径 / 数据链路 / 明细面板下沉到每个口径，状态按 ruleId + profileId 缓存 */
@@ -85,6 +87,7 @@ function stateOf(item: BatchIndicatorResult): CardState {
 function statusLabel(status: string): string {
   if (status === 'SUCCESS') return '计算成功'
   if (status === 'NO_SAMPLE') return '无样本'
+  if (status === 'NOT_IMPLEMENTED') return '未实现'
   return '计算失败'
 }
 
@@ -188,6 +191,7 @@ function itemOutcome(item: BatchIndicatorResult): ResultOutcome {
 }
 
 function outcomeLabel(item: BatchIndicatorResult): string {
+  if (item.errorCode === 'PROFILE_NOT_IMPLEMENTED') return '未实现'
   const value = itemOutcome(item)
   if (value === 'reached') return '达标'
   if (value === 'not_reached') return '未达标'
@@ -197,6 +201,7 @@ function outcomeLabel(item: BatchIndicatorResult): string {
 }
 
 function qualityLabel(item: BatchIndicatorResult): string {
+  if (item.errorCode === 'PROFILE_NOT_IMPLEMENTED') return '未实现'
   if (item.status === 'FAILED') return '异常'
   if (item.status === 'NO_SAMPLE') return '无可用样本'
   if (item.dataFreshness === 'extraction_failed_stale') return '旧快照'
