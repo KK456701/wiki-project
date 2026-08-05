@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 type FlowNode = Record<string, unknown>
 type FlowEdge = Record<string, unknown>
@@ -16,6 +16,7 @@ const edges = computed<FlowEdge[]>(() => Array.isArray(value.value.edges)
   ? value.value.edges as FlowEdge[] : [])
 const warnings = computed<string[]>(() => Array.isArray(value.value.warnings)
   ? value.value.warnings.map(String) : [])
+const copiedNodeId = ref('')
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : []
@@ -62,6 +63,40 @@ function sqlSummary(node: FlowNode): string {
   }
   const title = String(node.title || '节点').replace(/\s*SQL$/i, '')
   return executable ? `查看可直接执行的${title} SQL` : `查看${title} SQL 模板`
+}
+
+function fallbackCopy(text: string): boolean {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  return copied
+}
+
+async function copySql(node: FlowNode): Promise<void> {
+  const sql = String(node.sql || '').trim()
+  if (!sql) return
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(sql)
+    } else if (!fallbackCopy(sql)) {
+      throw new Error('copy failed')
+    }
+    const nodeId = String(node.id || '')
+    copiedNodeId.value = nodeId
+    window.setTimeout(() => {
+      if (copiedNodeId.value === nodeId) copiedNodeId.value = ''
+    }, 1800)
+  } catch {
+    if (fallbackCopy(sql)) {
+      copiedNodeId.value = String(node.id || '')
+    }
+  }
 }
 </script>
 
@@ -129,6 +164,11 @@ function sqlSummary(node: FlowNode): string {
             </div>
             <div v-if="strings(node.parameters).length" class="indicator-flow-params">
               脚本变量：<code v-for="parameter in strings(node.parameters)" :key="parameter">@{{ parameter }}</code>
+            </div>
+            <div v-if="node.sqlExecutable" class="indicator-flow-sql-actions">
+              <button type="button" @click="copySql(node)">
+                {{ copiedNodeId === String(node.id || '') ? '已复制' : '复制 SQL' }}
+              </button>
             </div>
             <pre>{{ String(node.sql) }}</pre>
           </details>
