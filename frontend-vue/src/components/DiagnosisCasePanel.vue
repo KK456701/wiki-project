@@ -66,8 +66,7 @@ const caseValidationIds = computed(() => {
 })
 const caseTemplate = `记录类型：就诊号 / 事件号 / 医嘱号 / 手术号
 记录编号（可填多个，用逗号或换行分隔，最多20个）：
-补充说明（可选）：
-已有查询、SQL或截图（可选）：`
+补充说明（可选）：`
 const isConsultationWordExample = computed(() => props.snapshot.ruleId === 'HXZD-003-004')
 const wordRequirement = '排除会诊状态为399329839的已作废会诊；只抽取会诊完成时间不为空的数据；只抽取会诊后首条医嘱时间不为空的数据。'
 const submittedRecordIds = computed(() => {
@@ -401,7 +400,7 @@ function pretty(value: unknown): string {
       <div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>异常排查基础校验</strong></div>
     </article>
     <article v-if="baseChecksStarted" class="message is-agent">
-      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 基础校验回复</strong><span>{{ blockedGateCount ? '需要处理' : allBaseChecksPassed ? '可以继续' : '检查中' }}</span></div><section class="diagnosis-caliber-section"><h4>当前排查指标：{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h4><dl class="caliber-facts"><div><dt>指标编码</dt><dd>{{ snapshot.ruleId }}</dd></div><div><dt>当前口径</dt><dd>{{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}（{{ snapshot.profileId }}）</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl></section><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary"><header><strong>{{ item.label }}</strong><em :data-state="stepState(item.gate)">{{ stepStateText(item.gate) }}</em></header><div class="diagnosis-result" :data-state="stepState(item.gate)"><strong>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</strong><code v-if="gate(item.gate)?.errorCode">{{ gate(item.gate)?.errorCode }}</code></div><div v-if="gate(item.gate)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(item.gate)?.repairSuggestion }}</p></div><details v-if="gate(item.gate)" class="diagnosis-technical"><summary>查看检查详情（实施排查用）</summary><pre>{{ pretty(gate(item.gate)?.facts) }}</pre></details></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ baseConclusion }}</p><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验当前步骤</button><button v-else-if="snapshot.currentStep.startsWith('GATE_') && !currentGateHasResult && !busy" type="button" class="diagnosis-primary" @click="retryCurrentGate">继续基础校验</button></div>
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 基础校验回复</strong><span>{{ blockedGateCount ? '需要处理' : allBaseChecksPassed ? '可以继续' : '检查中' }}</span></div><section class="diagnosis-caliber-section"><h4>当前排查指标：{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h4><dl class="caliber-facts"><div><dt>指标编码</dt><dd>{{ snapshot.ruleId }}</dd></div><div><dt>当前口径</dt><dd>{{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}（{{ snapshot.profileId }}）</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl></section><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary"><header><strong>{{ item.label }}</strong><em :data-state="stepState(item.gate)">{{ stepStateText(item.gate) }}</em></header><div class="diagnosis-result" :data-state="stepState(item.gate)"><strong>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</strong><code v-if="gate(item.gate)?.errorCode">{{ gate(item.gate)?.errorCode }}</code></div><div v-if="gate(item.gate)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(item.gate)?.repairSuggestion }}</p></div></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ baseConclusion }}</p><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验当前步骤</button><button v-else-if="snapshot.currentStep.startsWith('GATE_') && !currentGateHasResult && !busy" type="button" class="diagnosis-primary" @click="retryCurrentGate">继续基础校验</button></div>
     </article>
 
     <template v-if="caseInputReached">
@@ -421,12 +420,12 @@ function pretty(value: unknown): string {
           <div class="message-head"><strong>系统 · 请实施人员提供排查要求</strong><span>等待现场信息</span></div>
           <p><strong>默认改抽取 SQL：</strong>多抽、少抽或重复数据通常发生在业务数据进入中间表之前。只有已经确认中间表数据正确，但分子分母判定错误时，才选择统计 SQL。</p>
           <details class="diagnosis-capability" open>
-            <summary>当前系统可以自动处理什么</summary>
+            <summary>当前系统能自动修改哪些 SQL</summary>
             <div class="diagnosis-capability-grid">
-              <section><strong>可以自动处理</strong><p>原 SQL 已有字段上的等于、不等于、属于、不属于、为空、不为空、包含条件；字段在子查询中时，必须能唯一确定所属查询层。</p></section>
-              <section><strong>需要完整候选 SQL</strong><p>新增表或 JOIN、修改 JOIN 类型、增加子查询、修改 DISTINCT、GROUP BY、窗口函数、UNION、聚合公式或输出字段。</p></section>
+              <section><strong>可以自动处理（包括新增过滤条件）</strong><p>可以在原 SQL 已有字段上增加“等于、不等于、属于、不属于、为空、不为空、包含、不包含”等筛选条件。例如：排除测试患者、排除已作废记录、只保留完成时间不为空的数据。</p></section>
+              <section><strong>目前不能自动处理</strong><p>新增表或 JOIN、修改 JOIN 关系、增加子查询，或者修改去重、分组、窗口函数、UNION、计算公式和输出字段。遇到这些情况，系统会停止自动改写并提示实施人员提供一条完整的候选 SELECT。</p></section>
             </div>
-            <p>小模型只帮助理解和解释，不负责重写整段复杂 SQL，也不能绕过程序校验。</p>
+            <p>字段必须已经存在于原 SQL 中，而且程序能确定筛选条件应该加在哪一层。小模型只帮助理解和解释，不负责重写整段复杂 SQL，也不能绕过程序校验。</p>
           </details>
           <template v-if="snapshot.currentStep === 'CASE_INVESTIGATION'">
             <div class="diagnosis-change-grid">
@@ -434,8 +433,8 @@ function pretty(value: unknown): string {
               <label>处理方式<select v-model="investigationTreatment"><option value="EXCLUDE">排除符合条件的数据</option><option value="INCLUDE">只纳入符合条件的数据</option></select></label>
             </div>
             <section class="diagnosis-input-template">
-              <header><strong>1. 填写医院确认的业务规则</strong><button type="button" class="diagnosis-text-action" @click="fillInvestigationTemplates">清空重填</button></header>
-              <p>用业务语言说明为什么要纳入或排除，例如“排除姓名为测试患者的记录”。</p>
+              <header><strong>1. 填写医院确认的业务规则（必填）</strong><button type="button" class="diagnosis-text-action" @click="fillInvestigationTemplates">清空重填</button></header>
+              <p>用大白话说明医院要改什么，例如“排除姓名为测试患者的记录”。这句话用于记录医院的修改依据和生成草稿说明；真正改写 SQL 时，系统以下面的字段、条件和值为准。</p>
               <textarea v-model="investigationRequirement" rows="3" aria-label="医院确认的业务规则" placeholder="例如：排除姓名为测试患者的记录"></textarea>
             </section>
             <section class="diagnosis-input-template">
@@ -459,11 +458,11 @@ function pretty(value: unknown): string {
               <textarea v-model="investigationSql" class="diagnosis-sql-input" rows="7" aria-label="现场核对 SQL" placeholder="SELECT 就诊号, 判断字段 FROM 业务表 WHERE 判断字段 = 实际值"></textarea>
             </section>
             <details class="diagnosis-input-template">
-              <summary><strong>复杂结构修改：提供完整候选 SQL</strong></summary>
-              <p>只有涉及新增 JOIN、子查询、聚合、去重等结构变化时才填写。必须是一条完整只读 SELECT；仍会经过结构检查和影子试跑。</p>
+              <summary><strong>目前不能自动处理时：提供完整候选 SQL</strong></summary>
+              <p>仅当需求涉及新增 JOIN、子查询、聚合、去重等结构变化，程序不能安全自动修改时才填写。必须是一条完整只读 SELECT；系统仍会检查结构并进行影子试跑。</p>
               <textarea v-model="investigationCandidateSql" class="diagnosis-sql-input" rows="9" aria-label="完整候选 SQL" placeholder="可选：由实施人员提供完整候选 SELECT"></textarea>
             </details>
-            <p v-if="investigationTemplateIncomplete" class="diagnosis-template-warning">请填写业务规则，并至少提供一组完整的判断字段、条件和值；如果属于复杂结构修改，可以改为提供完整候选 SQL。</p>
+            <p v-if="investigationTemplateIncomplete" class="diagnosis-template-warning">请填写业务规则，并至少提供一组完整的判断字段、条件和值；如果属于上面列出的“目前不能自动处理”情况，需要由实施人员提供完整候选 SELECT。</p>
             <template v-if="isConsultationWordExample"><p class="diagnosis-help">会诊参考条件可以自动填入：排除作废状态、完成时间为空和首条医嘱时间为空的数据。</p><button type="button" class="diagnosis-text-action" @click="fillWordRequirement">填入会诊参考条件</button></template>
             <p class="diagnosis-pass-rule"><strong>发送后：</strong>简单字段条件由程序在正确查询层改写并影子验收；超出安全范围时明确停止并要求完整候选 SQL，不再让模型重写复杂脚本。正式口径和正式结果不会被修改。</p>
             <button type="button" class="diagnosis-primary" :disabled="busy || investigationTemplateIncomplete" @click="submitEvidence">生成候选 SQL并影子试跑</button>
