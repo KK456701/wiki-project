@@ -49,6 +49,10 @@ function resultCounts(results: BatchIndicatorResult[] = []) {
   }
 }
 
+function stageNode(name: string): ExecutionNode | undefined {
+  return props.message.executionNodes?.find((item) => item.nodeName === name)
+}
+
 function nodeLabel(node: ExecutionNode): string {
   const results = props.message.batchResults || []
   const profileTotal = node.profileCount || results.length || 0
@@ -65,13 +69,30 @@ function nodeLabel(node: ExecutionNode): string {
     return `数据初始化校验：${profileTotal || node.profileCount || 0} 个口径已检查`
   }
   if (node.nodeName === 'source_data_extraction') {
-    const count = node.repeatCount || 1
-    return `抽取数据到真实库：${count}/${count} 个需抽取口径`
+    const attempted = node.repeatCount || 1
+    const completed = attempted - (node.failedCount || 0)
+    const snapshotTotal = stageNode('real_snapshot_data_validation')?.repeatCount || completed
+    const directReal = Math.max(0, snapshotTotal - completed)
+    const skipped = Math.max(0, profileTotal - attempted - directReal)
+    const supplements = [
+      directReal ? `${directReal} 个真实库直查无需抽取` : '',
+      skipped ? `${skipped} 个初始化阶段已跳过` : '',
+    ].filter(Boolean).join('，')
+    return `抽取数据到真实库：${completed}/${attempted} 个抽取任务完成${supplements ? `（${supplements}）` : ''}`
   }
   if (node.nodeName === 'real_snapshot_data_validation') {
     const total = node.repeatCount || 1
     const failed = node.failedCount || 0
-    return `真实库快照校验：${total - failed}/${total} 个口径一致${failed ? `，${failed} 个失败` : ''}`
+    const extraction = stageNode('source_data_extraction')
+    const extracted = Math.max(0, (extraction?.repeatCount || 0) - (extraction?.failedCount || 0))
+    const directReal = Math.max(0, total - extracted)
+    const skipped = Math.max(0, profileTotal - total)
+    const composition = [
+      extracted ? `${extracted} 个抽取结果` : '',
+      directReal ? `${directReal} 个真实库直查` : '',
+      skipped ? `${skipped} 个初始化阶段已跳过` : '',
+    ].filter(Boolean).join('，')
+    return `真实库计算前校验：${total - failed}/${total} 个可执行口径通过${composition ? `（${composition}）` : ''}`
   }
   if (node.nodeName === 'batch_indicator' && profileTotal) {
     const counts = resultCounts(results)
