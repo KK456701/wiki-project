@@ -63,8 +63,15 @@ const sqlLayerTitle = computed(() => String(props.snapshot.candidateSql.layer ||
   ? '目标表概览 SQL'
   : '源表抽取 SQL')
 const resultComparisonRows = computed(() => {
-  const baseline = normalizedResult(props.snapshot.candidateSql.baselineResult)
-  const candidate = normalizedResult(props.snapshot.shadowTrial.candidateResult)
+  const originalTrialResult = props.snapshot.shadowTrial.originalResult
+  const baseline = normalizedMetricResult(
+    Array.isArray(originalTrialResult) && originalTrialResult.length
+      ? originalTrialResult : props.snapshot.candidateSql.baselineResult,
+    'SUCCESS',
+  )
+  const candidateRows = props.snapshot.shadowTrial.candidateResult
+  const candidate = normalizedMetricResult(candidateRows,
+    Array.isArray(candidateRows) && candidateRows.length ? 'SUCCESS' : '')
   return [
     { key: 'numeratorCount', label: '分子' },
     { key: 'denominatorCount', label: '分母' },
@@ -76,6 +83,45 @@ const resultComparisonRows = computed(() => {
     candidate: displayResult(candidate[item.key]),
     change: resultChange(baseline[item.key], candidate[item.key]),
   }))
+})
+const shadowTrialState = computed(() => {
+  if (!Object.keys(props.snapshot.shadowTrial).length) {
+    return { text: '等待试跑', state: 'waiting' }
+  }
+  return Boolean(props.snapshot.shadowTrial.passed)
+    ? { text: '试跑验收通过', state: 'passed' }
+    : { text: '试跑验未通过', state: 'failed' }
+})
+const extractionComparisonRows = computed(() => {
+  if (String(props.snapshot.candidateSql.layer || '') !== 'SOURCE_EXTRACT') return []
+  const trial = props.snapshot.shadowTrial
+  const diff = record(trial.recordSetDiff)
+  return [
+    {
+      key: 'rows', label: '中间表总记录数',
+      baseline: displayResult(trial.formalRows),
+      candidate: displayResult(trial.shadowRows),
+      change: resultChange(trial.formalRows, trial.shadowRows),
+    },
+    {
+      key: 'keys', label: '去重业务编号数',
+      baseline: displayResult(diff.originalCount),
+      candidate: displayResult(diff.candidateCount),
+      change: resultChange(diff.originalCount, diff.candidateCount),
+    },
+    {
+      key: 'removed', label: '候选抽取减少的业务编号',
+      baseline: '—',
+      candidate: displayResult(diff.removedCount),
+      change: diff.removedCount === undefined ? '待试跑' : `-${diff.removedCount}`,
+    },
+    {
+      key: 'added', label: '候选抽取新增的业务编号',
+      baseline: '—',
+      candidate: displayResult(diff.addedCount),
+      change: diff.addedCount === undefined ? '待试跑' : `+${diff.addedCount}`,
+    },
+  ]
 })
 const caseValidationRows = computed(() => {
   const validation = record(props.snapshot.shadowTrial.caseValidation)
@@ -400,6 +446,18 @@ function normalizedResult(value: unknown): Record<string, unknown> {
   return Array.isArray(value) ? record(value[0]) : record(value)
 }
 
+function normalizedMetricResult(value: unknown, fallbackStatus = ''): Record<string, unknown> {
+  const source = normalizedResult(value)
+  const entries = Object.entries(source)
+  const find = (predicate: (key: string) => boolean) => entries.find(([key]) => predicate(key))?.[1]
+  return {
+    numeratorCount: source.numeratorCount ?? find((key) => key.startsWith('分子')),
+    denominatorCount: source.denominatorCount ?? find((key) => key.startsWith('分母')),
+    resultValue: source.resultValue ?? find((key) => key === '监测情况' || key.includes('结果值')),
+    status: source.status ?? fallbackStatus,
+  }
+}
+
 function displayResult(value: unknown): string {
   return value === null || value === undefined || value === '' ? '—' : String(value)
 }
@@ -557,15 +615,16 @@ function pretty(value: unknown): string {
 
     <template v-if="snapshot.currentStep === 'SHADOW_TRIAL' || snapshot.currentStep === 'DRAFT_SAVE'">
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 候选语句已生成</strong></div><p>候选语句已通过安全校验。正式中间表和当前卡片不会被覆盖。</p><p v-if="snapshot.candidateSql.generationMethod" class="diagnosis-help">生成方式：{{ snapshot.candidateSql.generationMethod }}</p>
-        <section class="diagnosis-result-compare"><header><div><h4>正式结果与候选试跑对比</h4><p>左侧是当前公版正式结果，右侧是候选 {{ sqlLayerTitle }} 在影子环境的结果。</p></div><span :data-ready="Object.keys(snapshot.shadowTrial).length ? 'true' : 'false'">{{ Object.keys(snapshot.shadowTrial).length ? '已完成试跑' : '等待试跑' }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式结果</span><span>候选试跑结果</span><span>变化</span></div><div v-for="row in resultComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
+        <section v-if="extractionComparisonRows.length" class="diagnosis-result-compare"><header><div><h4>第一层：抽取数据变化</h4><p>对比当前正式中间表和候选抽取 SQL 写入的影子中间表。这里直接说明候选抽取到底多了或少了哪些记录。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式中间表</span><span>候选影子中间表</span><span>变化</span></div><div v-for="row in extractionComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
+        <section class="diagnosis-result-compare"><header><div><h4>{{ extractionComparisonRows.length ? '第二层：最终指标结果变化' : '正式结果与候选试跑对比' }}</h4><p v-if="extractionComparisonRows.length">抽取 SQL 修改前后都使用同一份正式概览 SQL 计算。概览 SQL 在这里只负责测量抽取数据变化后的分子、分母和结果，本身没有被修改。</p><p v-else>左侧是当前公版正式结果，右侧是候选 {{ sqlLayerTitle }} 在影子环境的结果。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式结果</span><span>候选试跑结果</span><span>变化</span></div><div v-for="row in resultComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
         <section v-if="caseValidationRows.length" class="diagnosis-case-reconcile"><header><div><h4>案例编号验收</h4><p>“正式记录数”表示该编号在当前正式中间表中查到几条；不代表这些记录业务上一定正确。</p></div></header><div class="diagnosis-case-table"><div class="is-head"><span>案例编号</span><span>正式记录数</span><span>候选记录数</span><span>变化</span><span>预期</span><span>验收</span></div><div v-for="row in caseValidationRows" :key="row.id"><code>{{ row.id }}</code><span>{{ row.before }}</span><span>{{ row.after }}</span><em>{{ row.change > 0 ? `+${row.change}` : row.change }}</em><span>{{ row.expected }}</span><strong :data-pass="row.passed">{{ row.result }}</strong></div></div><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ caseValidationMessage }}</p></section>
         <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>当前正式{{ sqlLayerTitle }}（可复制到 Navicat）</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('original', snapshot.candidateSql.originalSqlExecutable)">{{ copiedSqlKey === 'original' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.originalSqlExecutable || '')) }}</pre></details>
-        <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>候选{{ sqlLayerTitle }}（影子试跑版）</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('candidate', snapshot.candidateSql.candidateSqlExecutable)">{{ copiedSqlKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.candidateSqlExecutable || '')) }}</pre></details><p class="diagnosis-help">{{ snapshot.candidateSql.rawSqlNotice }}</p>
+        <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>候选{{ sqlLayerTitle }}（影子试跑版）</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('candidate', snapshot.candidateSql.candidateSqlExecutable)">{{ copiedSqlKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.candidateSqlExecutable || '')) }}</pre></details><p class="diagnosis-help"><strong>可执行版说明：</strong><code>[WINDBA_GN]</code> 是当前业务库的 Schema（类似表所在文件夹），不是数据库名。这里为方便直接粘贴到 Navicat 执行而补齐；保存医院草稿时仍写入不绑定现场数据库和 Schema 的知识库模板 SQL。</p><p class="diagnosis-help">{{ snapshot.candidateSql.rawSqlNotice }}</p>
         <details v-if="Object.keys(snapshot.shadowTrial).length" class="diagnosis-technical"><summary>技术对账明细（实施排查用）</summary><p class="diagnosis-technical-purpose">用于追溯影子表写入行数、输出结构、重复记录、记录集差异和 SQL 哈希。一般验收只需看上方两张对比表。</p><pre>{{ pretty(snapshot.shadowTrial) }}</pre></details></div></article>
-      <article v-if="snapshot.currentStep === 'SHADOW_TRIAL'" class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 确认影子重跑</strong></div><p class="diagnosis-pass-rule"><strong>允许保存草稿的条件：</strong>案例变化符合预期、没有无法解释的重复、输出结构兼容、分子分母可对账。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'RUN_SHADOW_TRIAL', {})">使用候选语句影子重跑</button></div></article>
+      <article v-if="snapshot.currentStep === 'SHADOW_TRIAL' && Object.keys(snapshot.shadowTrial).length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 本轮候选未通过验收</strong></div><p>候选 SQL 已经执行，重复执行同一条语句不会改变结果。请根据上方“抽取数据变化”和“案例编号验收”修正字段、条件或判断值。</p><button type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'REVISE_CANDIDATE', {})">返回修改排查条件</button></div></article>
     </template>
 
-    <article v-if="snapshot.currentStep === 'DRAFT_SAVE'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>将当前候选 SQL、修改要求和影子试跑结果保存为医院草稿。草稿不会影响正式指标计算，也不会替换公司公版口径。</p><ul class="diagnosis-trial-checks"><li>候选 SQL 安全和输出结构校验通过</li><li>案例编号前后变化符合预期</li><li>未发现新增的无法解释重复记录</li><li>分子、分母与影子结果可对账</li></ul><p class="diagnosis-help">完整技术数据已在上一条消息的“技术对账明细”中保留，不再重复展示一份报告。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'SAVE_HOSPITAL_DRAFT', { confirmed: true })">保存为医院草稿版本</button></div></article>
+    <article v-if="snapshot.currentStep === 'DRAFT_SAVE'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 影子对账通过</strong></div><p>将当前候选 SQL、修改要求和影子试跑结果提交为待审批医院草稿。草稿不会影响正式指标计算，也不会替换公司公版口径。</p><ul class="diagnosis-trial-checks"><li>候选 SQL 安全和输出结构校验通过</li><li>案例编号前后变化符合预期</li><li>未发现新增的无法解释重复记录</li><li>分子、分母与影子结果可对账</li></ul><p class="diagnosis-help">完整技术数据已在上一条消息的“技术对账明细”中保留，不再重复展示一份报告。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'SAVE_HOSPITAL_DRAFT', { confirmed: true })">提交为待审批医院草稿</button></div></article>
     <article v-if="snapshot.currentStep === 'COMPLETED' && Object.keys(snapshot.draftResult || {}).length" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 医院草稿已保存</strong><span>未发布</span></div><dl class="caliber-facts"><div><dt>草稿编号</dt><dd>{{ snapshot.draftResult.draftId }}</dd></div><div><dt>医院</dt><dd>{{ snapshot.draftResult.hospitalId }}</dd></div><div><dt>指标</dt><dd>{{ snapshot.draftResult.profileId }}</dd></div><div><dt>修改层级</dt><dd>{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '抽取 SQL' : '统计 SQL' }}</dd></div><div><dt>影子验证</dt><dd>{{ snapshot.draftResult.revalidationPassed === false ? '重新验证失败' : '通过' }}</dd></div><div><dt>正式状态</dt><dd>未发布，不影响当前计算</dd></div></dl><details class="diagnosis-technical"><summary>查看草稿实体</summary><pre>{{ snapshot.draftResult.entityMarkdown }}</pre></details><details class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>草稿保存的当前正式{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '源表抽取 SQL' : '目标表概览 SQL' }}</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('saved-original', snapshot.draftResult.originalSql)">{{ copiedSqlKey === 'saved-original' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ snapshot.draftResult.originalSql }}</pre></details><details class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>草稿保存的候选{{ snapshot.draftResult.changeLayer === 'SOURCE_EXTRACT' ? '源表抽取 SQL' : '目标表概览 SQL' }}</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('saved-candidate', snapshot.draftResult.candidateSql)">{{ copiedSqlKey === 'saved-candidate' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ snapshot.draftResult.candidateSql }}</pre></details><details class="diagnosis-technical"><summary>查看影子对账</summary><pre>{{ pretty(snapshot.draftResult.shadowTrial) }}</pre></details><details class="diagnosis-technical"><summary>查看草稿磁盘校验</summary><pre>{{ pretty(snapshot.draftResult.verification) }}</pre></details><p v-if="snapshot.draftResult.baselineExpired" class="diagnosis-template-warning">公司公版已经变化，草稿基线已过期，需要重新开始排查。</p><button type="button" class="diagnosis-primary" :disabled="busy || Boolean(snapshot.draftResult.baselineExpired)" @click="emit('action', 'REVALIDATE_HOSPITAL_DRAFT', {})">重新验证草稿</button></div></article>
     <article v-else-if="snapshot.currentStep === 'COMPLETED'" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 当前计算已确认正确</strong></div><pre>{{ pretty(snapshot.releaseResult) }}</pre></div></article>
   </div>

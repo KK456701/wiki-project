@@ -355,6 +355,60 @@ export async function actOnDiagnosisCase(
   return readJson<DiagnosisCaseSnapshot>(response)
 }
 
+export interface HospitalKnowledgeDraft {
+  draftId: string
+  hospitalId: string
+  ruleId: string
+  profileId: string
+  changeLayer: 'SOURCE_EXTRACT' | 'OVERVIEW'
+  reviewStatus: 'PENDING_REVIEW'
+  createdAt: string
+  createdBy?: string
+  originalSql: string
+  candidateSql: string
+  trialPassed: boolean
+  formalEffect: boolean
+  changeRequest: Record<string, unknown>
+  shadowTrial: Record<string, unknown>
+}
+
+export async function listHospitalKnowledgeDrafts(
+  token: string,
+): Promise<{ hospitalId: string, count: number, packageAvailable: boolean, items: HospitalKnowledgeDraft[] }> {
+  const response = await fetch('/api/diagnosis/hospital-drafts', { headers: authHeaders(token) })
+  return readJson(response)
+}
+
+export async function loadHospitalKnowledgeDraft(
+  token: string,
+  draftId: string,
+): Promise<HospitalKnowledgeDraft> {
+  const response = await fetch(`/api/diagnosis/hospital-drafts/${encodeURIComponent(draftId)}`, {
+    headers: authHeaders(token),
+  })
+  return readJson(response)
+}
+
+export async function exportHospitalKnowledgePackage(token: string): Promise<void> {
+  const response = await fetch('/api/diagnosis/hospital-drafts/export/package', {
+    headers: authHeaders(token),
+  })
+  if (!response.ok) {
+    await readJson(response)
+    return
+  }
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1]
+  const simple = /filename="?([^";]+)"?/i.exec(disposition)?.[1]
+  const fileName = encoded ? decodeURIComponent(encoded) : simple || 'hospital-knowledge.zip'
+  const url = URL.createObjectURL(await response.blob())
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 /** 查询异常排查基础校验所冻结的分子或分母明细。 */
 export async function fetchDiagnosisCaseDetails(
   token: string,

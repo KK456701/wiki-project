@@ -307,6 +307,7 @@ async function exportDiagnosis(reportId?: string) {
         <RouterLink class="quiet-button" to="/metadata">数据库元数据</RouterLink>
         <RouterLink class="quiet-button" to="/terminology">医学术语</RouterLink>
         <RouterLink class="quiet-button" to="/runs">运行观察</RouterLink>
+        <RouterLink class="quiet-button" to="/knowledge-review">知识库回收与审批</RouterLink>
       </div>
     </header>
 
