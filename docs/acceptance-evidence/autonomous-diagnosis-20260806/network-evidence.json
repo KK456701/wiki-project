@@ -1,0 +1,30 @@
+{
+  "capturedAt": "2026-08-06T11:35:00+08:00",
+  "browserEntry": "http://127.0.0.1:8765/",
+  "caseId": "DCASE_ac3d0e2ca85f470b90ad",
+  "messageSubmission": {
+    "method": "POST",
+    "path": "/api/diagnosis/cases/DCASE_ac3d0e2ca85f470b90ad/actions",
+    "action": "SEND_AUTONOMOUS_MESSAGE",
+    "message": "你是谁？只回答身份，不要查询数据库。",
+    "optimisticDisplayMs": 86,
+    "finalStatus": "READY"
+  },
+  "incrementalEvents": {
+    "method": "GET",
+    "path": "/api/diagnosis/cases/DCASE_ac3d0e2ca85f470b90ad/agent-events?afterSeq=46",
+    "returnedSeq": [47, 48, 49, 50],
+    "lastTurnId": "TURN_4430af24f6bd404791f4",
+    "lastTurnEvents": ["MODEL_STARTED", "ANALYSIS", "RESPONSE"],
+    "toolCalls": 0
+  },
+  "restoredSnapshot": {
+    "status": "GATES_PASSED",
+    "currentStep": "CASE_INPUT",
+    "investigationMode": "AUTONOMOUS",
+    "autonomousStatus": "READY",
+    "turnCount": 9,
+    "eventCount": 50,
+    "lastSeq": 50
+  }
+}

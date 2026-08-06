@@ -236,6 +236,26 @@ export interface DiagnosisShadowDiffPage {
   }>
 }
 
+export interface DiagnosisAgentEventsResponse {
+  caseId: string
+  events: Array<Record<string, unknown>>
+  status: string
+  autonomousRun: Record<string, unknown>
+  updatedAt: string
+}
+
+export async function loadDiagnosisAgentEvents(
+  token: string,
+  caseId: string,
+  afterSeq = 0,
+): Promise<DiagnosisAgentEventsResponse> {
+  const query = new URLSearchParams({ afterSeq: String(Math.max(0, afterSeq)) })
+  const response = await fetch(`/api/diagnosis/cases/${encodeURIComponent(caseId)}/agent-events?${query}`, {
+    headers: authHeaders(token),
+  })
+  return readJson<DiagnosisAgentEventsResponse>(response)
+}
+
 export async function loadDiagnosisShadowDiffs(
   token: string,
   caseId: string,

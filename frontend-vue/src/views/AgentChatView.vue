@@ -18,6 +18,7 @@ import {
   prepareIndicatorInspection,
   actOnDiagnosisCase,
   createDiagnosisCase,
+  loadDiagnosisAgentEvents,
   loadDiagnosisCase,
   type BatchAnalysisAction,
   type CreateDiagnosisCaseInput,
@@ -39,6 +40,7 @@ const sidebarOpen = ref(true)
 const guidedOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
 const diagnosisBusy = ref('')
+const autonomousPollCases = new Set<string>()
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
 // 侧边栏实际渲染的列表：后端会话列表 + 正在处理但还未写入列表的会话。
@@ -162,6 +164,11 @@ async function restoreDiagnosisCases(sessionId: string) {
   if (ids.length) localStorage.setItem(diagnosisStorageKey(sessionId), JSON.stringify(ids))
   const loaded = await Promise.all(ids.map((caseId) => loadDiagnosisCase(store.token, caseId).catch(() => null)))
   diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
+  for (const snapshot of diagnosisCases.value) {
+    if (String(snapshot.autonomousRun?.status || '') === 'RUNNING') {
+      void pollAutonomousDiagnosis(snapshot.caseId)
+    }
+  }
 }
 
 async function startDiagnosis(input: CreateDiagnosisCaseInput) {
@@ -194,29 +201,86 @@ async function diagnosisAction(
     if (action === 'CONFIRM_CALIBER' || action === 'RECHECK_GATE' || action === 'RUN_BASE_CHECKS') {
       updated = await advanceDiagnosisGates(updated)
     }
-    if (action === 'START_AUTONOMOUS_INVESTIGATION' || action === 'RESPOND_AUTONOMOUS_QUESTION') {
+    if (action === 'START_AUTONOMOUS_INVESTIGATION'
+      || action === 'RESPOND_AUTONOMOUS_QUESTION'
+      || action === 'SEND_AUTONOMOUS_MESSAGE') {
       void pollAutonomousDiagnosis(updated.caseId)
     }
   } catch (error) {
-    store.error = error instanceof Error ? error.message : '异常排查步骤执行失败。'
+    const message = error instanceof Error ? error.message : '异常排查步骤执行失败。'
+    store.error = message
+    if (['START_AUTONOMOUS_INVESTIGATION', 'SEND_AUTONOMOUS_MESSAGE', 'RESPOND_AUTONOMOUS_QUESTION']
+      .includes(action)) {
+      markAutonomousMessageFailed(snapshot, payload, message)
+    }
   } finally {
     diagnosisBusy.value = ''
   }
 }
 
+function markAutonomousMessageFailed(
+  snapshot: DiagnosisCaseSnapshot,
+  payload: Record<string, unknown>,
+  message: string,
+) {
+  const clientMessageId = String(payload.clientMessageId || '')
+  if (!clientMessageId) return
+  const turns = Array.isArray(snapshot.autonomousRun.turns)
+    ? [...snapshot.autonomousRun.turns] as Array<Record<string, unknown>> : []
+  const existing = turns.findIndex((turn) => String(turn.clientMessageId || '') === clientMessageId)
+  const failed = {
+    clientMessageId,
+    turnId: `FAILED_${clientMessageId}`,
+    userMessage: String(payload.message || payload.problem || payload.answer || ''),
+    submittedAt: new Date().toISOString(),
+    status: 'FAILED',
+    errorMessage: message,
+    processEvents: [],
+  }
+  if (existing >= 0) turns[existing] = { ...turns[existing], ...failed }
+  else turns.push(failed)
+  replaceDiagnosisSnapshot({
+    ...snapshot,
+    autonomousRun: { ...snapshot.autonomousRun, turns },
+  })
+}
+
 async function pollAutonomousDiagnosis(caseId: string) {
+  if (autonomousPollCases.has(caseId)) return
+  autonomousPollCases.add(caseId)
   const deadline = Date.now() + 5 * 60 * 1000 + 15_000
-  while (Date.now() < deadline) {
-    await new Promise((resolve) => window.setTimeout(resolve, 1500))
-    try {
-      const snapshot = await loadDiagnosisCase(store.token, caseId)
-      replaceDiagnosisSnapshot(snapshot)
-      const status = String(snapshot.autonomousRun?.status || '')
-      if (status && status !== 'RUNNING') return
-    } catch (error) {
-      store.error = error instanceof Error ? error.message : '自主排查进度读取失败。'
-      return
+  let afterSeq = 0
+  let cycles = 0
+  try {
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => window.setTimeout(resolve, 650))
+      const update = await loadDiagnosisAgentEvents(store.token, caseId, afterSeq)
+      for (const event of update.events) {
+        const seq = Number(event.seq || 0)
+        if (Number.isFinite(seq)) afterSeq = Math.max(afterSeq, seq)
+      }
+      const current = diagnosisCases.value.find((item) => item.caseId === caseId)
+      if (current) {
+        replaceDiagnosisSnapshot({
+          ...current,
+          autonomousRun: update.autonomousRun,
+          updatedAt: update.updatedAt,
+        })
+      }
+      cycles += 1
+      const status = String(update.status || '')
+      if (status && !['RUNNING', 'QUEUED'].includes(status)) {
+        replaceDiagnosisSnapshot(await loadDiagnosisCase(store.token, caseId))
+        return
+      }
+      // The event endpoint carries the complete autonomous run. Refresh the
+      // whole case less frequently to pick up candidate/shadow state changes.
+      if (cycles % 8 === 0) replaceDiagnosisSnapshot(await loadDiagnosisCase(store.token, caseId))
     }
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '自主排查进度读取失败。'
+  } finally {
+    autonomousPollCases.delete(caseId)
   }
 }
 
