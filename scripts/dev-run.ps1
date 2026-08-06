@@ -30,5 +30,15 @@ if ($Recompile) {
 # 首次启动：spring-boot:run 只编译不打包，跳过测试。
 # 带 dev profile：知识库指向用户实际维护的 knowledge-index_backup 备份目录
 # （application-dev.yml），DB 连接凭据仍优先读 WIKI_BIZDB_*/WIKI_SQLSERVER_* 环境变量。
+# application-dev.yml 默认值是 classpath: 前缀（只读），保存医院草稿必须落在磁盘目录，
+# 因此未显式配置 WIKI_KNOWLEDGE_INDEX_ROOT 时，默认指向本机的备份目录绝对路径。
+if (-not $env:WIKI_KNOWLEDGE_INDEX_ROOT) {
+    $knowledgeBackup = [IO.Path]::GetFullPath("$PSScriptRoot\..\backend-java\src\main\resources\knowledge-index_backup_20260801_150233")
+    if (Test-Path -LiteralPath $knowledgeBackup) {
+        $env:WIKI_KNOWLEDGE_INDEX_ROOT = $knowledgeBackup
+    } else {
+        "警告：知识库备份目录不存在（$knowledgeBackup），将以 classpath 只读模式运行，无法保存医院草稿。"
+    }
+}
 $profiles = if ($env:SPRING_PROFILES_ACTIVE) { $env:SPRING_PROFILES_ACTIVE } else { 'dev' }
 mvn spring-boot:run -DskipTests "-Dspring-boot.run.jvmArguments=-Dspring.profiles.active=$profiles" "-Dspring-boot.run.arguments=--server.port=$Port"
