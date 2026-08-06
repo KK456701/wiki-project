@@ -354,6 +354,30 @@ const autonomousEvents = computed(() => {
   return Array.isArray(values) ? values.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : []
 })
 
+function autonomousEventType(event: Record<string, unknown>): string {
+  return String(event.eventType || (event.tool ? 'OBSERVATION' : 'ANALYSIS')).toUpperCase()
+}
+
+function autonomousEventTitle(event: Record<string, unknown>): string {
+  const title = String(event.title || '').trim()
+  if (title) return title
+  return ({
+    ANALYSIS: '公开分析', TOOL_CALL: '执行工具', OBSERVATION: '工具观察',
+    RESPONSE: '直接回答', QUESTION: '需要现场补充', CONCLUSION: '排查结论', STOP: '循环已停止',
+  } as Record<string, string>)[autonomousEventType(event)] || '执行记录'
+}
+
+function autonomousStatusText(status: unknown): string {
+  return ({
+    RUNNING: '执行中', SUCCEEDED: '已完成', FAILED: '失败',
+    WAITING_USER: '等待回复', STOPPED: '已停止',
+  } as Record<string, string>)[String(status || '').toUpperCase()] || String(status || '')
+}
+
+function hasAutonomousDetails(event: Record<string, unknown>): boolean {
+  return Boolean(event.arguments || event.resultPreview || event.error)
+}
+
 function fillWordExample() {
   recordField.value = 'ENCOUNTER_ID'
   recordId.value = '484625508177383425'
@@ -774,10 +798,32 @@ function pretty(value: unknown): string {
     <template v-if="snapshot.investigationMode === 'AUTONOMOUS'">
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 自主排查问题</strong></div><p>{{ snapshot.autonomousRun.problem }}</p></div></article>
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>DeepSeek · 自主排查</strong><span>{{ snapshot.autonomousRun.status }}</span></div>
+        <p class="diagnosis-agent-model"><strong>实际调用模型：</strong>{{ snapshot.autonomousRun.modelName || snapshot.autonomousRun.modelId || '等待首次调用' }}<span v-if="snapshot.autonomousRun.thinkingConfigured"> · 配置标记为思考型</span></p>
         <p v-if="snapshot.autonomousRun.publicPlan"><strong>当前要验证：</strong>{{ snapshot.autonomousRun.publicPlan }}</p>
-        <ol class="diagnosis-agent-timeline"><li v-for="event in autonomousEvents" :key="String(event.seq)"><div><strong>{{ event.publicPlan || event.tool }}</strong><span :data-state="String(event.status).toLowerCase()">{{ event.status }}</span></div><p>调用工具：{{ event.tool }}</p><small>{{ event.summary }}</small></li></ol>
+        <p class="diagnosis-agent-disclosure">这里展示可审计的公开分析摘要、工具输入和观察结果，不展示模型不可验证的私有思维链。</p>
+        <ol class="diagnosis-agent-timeline">
+          <li v-for="event in autonomousEvents" :key="String(event.seq)" :data-kind="autonomousEventType(event).toLowerCase()">
+            <div class="diagnosis-agent-event-head">
+              <span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span>
+              <strong>{{ autonomousEventTitle(event) }}</strong>
+              <span :data-state="String(event.status).toLowerCase()">{{ autonomousStatusText(event.status) }}</span>
+            </div>
+            <p v-if="event.analysisSummary" class="diagnosis-agent-analysis">{{ event.analysisSummary }}</p>
+            <p v-if="event.tool" class="diagnosis-agent-tool"><strong>工具：</strong>{{ event.toolDisplayName || event.tool }} <code>{{ event.tool }}</code></p>
+            <p v-if="event.summary && !event.analysisSummary" class="diagnosis-agent-observation"><strong v-if="autonomousEventType(event) === 'OBSERVATION'">观察：</strong>{{ event.summary }}</p>
+            <p v-if="event.answer" class="diagnosis-agent-answer">{{ event.answer }}</p>
+            <p v-if="event.question" class="diagnosis-agent-question">{{ event.question }}</p>
+            <details v-if="hasAutonomousDetails(event)" class="diagnosis-technical diagnosis-agent-details">
+              <summary>查看执行工具的具体信息</summary>
+              <section v-if="event.arguments"><strong>输入参数</strong><pre>{{ pretty(event.arguments) }}</pre></section>
+              <section v-if="event.resultPreview"><strong>返回结果（已限制展示大小）</strong><pre>{{ pretty(event.resultPreview) }}</pre></section>
+              <section v-if="event.error"><strong>错误</strong><pre>{{ event.error }}</pre></section>
+              <small v-if="event.durationMs !== undefined">执行耗时：{{ event.durationMs }} ms<span v-if="event.evidenceId"> · 证据编号：{{ event.evidenceId }}</span></small>
+            </details>
+          </li>
+        </ol>
         <template v-if="snapshot.autonomousRun.status === 'WAITING_USER'"><p class="diagnosis-template-warning"><strong>需要现场确认：</strong>{{ snapshot.autonomousRun.pendingQuestion }}</p><textarea v-model="autonomousAnswer" rows="3" placeholder="填写医院现场确认结果"></textarea><button type="button" class="diagnosis-primary" :disabled="busy || !autonomousAnswer.trim()" @click="respondAutonomous">发送给 DeepSeek 继续排查</button></template>
-        <section v-if="snapshot.autonomousRun.finalConclusion" class="diagnosis-base-conclusion"><strong>排查结论：</strong><p>{{ record(snapshot.autonomousRun.finalConclusion).conclusion }}</p><small>结论等级：{{ record(snapshot.autonomousRun.finalConclusion).conclusionLevel }}</small></section>
+        <section v-if="snapshot.autonomousRun.finalConclusion && record(snapshot.autonomousRun.finalConclusion).conclusionLevel !== 'DIRECT_RESPONSE'" class="diagnosis-base-conclusion"><strong>排查结论：</strong><p>{{ record(snapshot.autonomousRun.finalConclusion).conclusion }}</p><small>结论等级：{{ record(snapshot.autonomousRun.finalConclusion).conclusionLevel }}</small></section>
         <button v-if="snapshot.autonomousRun.status === 'RUNNING'" type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})">停止自主排查</button>
       </div></article>
     </template>
