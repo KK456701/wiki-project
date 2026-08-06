@@ -27,5 +27,8 @@ if ($Recompile) {
     exit 0
 }
 
-# 首次启动：spring-boot:run 只编译不打包，跳过测试
-mvn spring-boot:run -DskipTests "-Dspring-boot.run.arguments=--server.port=$Port"
+# 首次启动：spring-boot:run 只编译不打包，跳过测试。
+# 带 dev profile：知识库指向用户实际维护的 knowledge-index_backup 备份目录
+# （application-dev.yml），DB 连接凭据仍优先读 WIKI_BIZDB_*/WIKI_SQLSERVER_* 环境变量。
+$profiles = if ($env:SPRING_PROFILES_ACTIVE) { $env:SPRING_PROFILES_ACTIVE } else { 'dev' }
+mvn spring-boot:run -DskipTests "-Dspring-boot.run.jvmArguments=-Dspring.profiles.active=$profiles" "-Dspring-boot.run.arguments=--server.port=$Port"
