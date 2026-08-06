@@ -1565,6 +1565,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-diff-toolbar select, .diagnosis-diff-toolbar input { border: 1px solid #bfd1cc; border-radius: 9px; padding: 9px 11px; }
 .diagnosis-before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .diagnosis-before-after pre { max-height: 320px; }
+.diagnosis-diff-preview { max-height: 420px; overflow: auto; border: 1px solid #d5e5e1; border-radius: 10px; background: #fff; }
+.diagnosis-diff-preview table { border-collapse: separate; border-spacing: 0; white-space: nowrap; font-size: 12px; }
+.diagnosis-diff-preview th, .diagnosis-diff-preview td { padding: 7px 11px; border-right: 1px solid #eef4f3; border-bottom: 1px solid #eef4f3; text-align: left; color: #33514c; }
+.diagnosis-diff-preview thead th { position: sticky; top: 0; z-index: 2; color: #26514a; background: #f2f8f7; font-weight: 700; }
+.diagnosis-diff-preview thead th[data-changed="true"] { color: #8a5a12; background: #fdf1de; }
+.diagnosis-diff-preview tbody th { position: sticky; left: 0; z-index: 1; min-width: 168px; background: #fbfdfd; font-weight: 400; }
+.diagnosis-diff-preview tbody th code { color: #1d4f46; font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.diagnosis-diff-preview thead th:first-child { z-index: 3; }
+.diagnosis-diff-preview tbody tr[data-side="AFTER"] td, .diagnosis-diff-preview tbody tr[data-side="AFTER"] th { background: #f6fbf8; }
+.diagnosis-diff-preview td[data-changed="true"] { color: #8a5a12; background: #fdf1de; font-weight: 700; }
 .diagnosis-pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 10px; }
 .diagnosis-draft-description { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .diagnosis-draft-description label { display: grid; gap: 5px; color: #31534d; font-weight: 700; }

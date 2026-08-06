@@ -142,6 +142,77 @@ const shadowTrialExecutionFailed = computed(() => {
     && !Array.isArray(trial.candidateResult)
 })
 const shadowTrialFailureMessage = computed(() => String(props.snapshot.shadowTrial.message || '影子试跑执行失败，未生成可供比较的结果。'))
+// 差异明细按记录逐行预览：一个业务编号可能对应多条记录，
+// 因此每条记录单独占一行，并标出这一行来自正式中间表还是候选影子表。
+const diffRowLabels: Record<string, { before: string; after: string }> = {
+  ADDED: { before: '', after: '候选新增记录' },
+  REMOVED: { before: '正式已有、候选缺失', after: '' },
+  CHANGED: { before: '修改前', after: '修改后' },
+  DUPLICATE: { before: '正式记录', after: '候选重复记录' },
+}
+const diffMinorField = /^(EXTRACT_AT|CREATED_AT|MODIFIED_AT|UPDATED_AT|VERSION|MRAS_TARGET_DEFINITION_ID)$/
+const diffChangedColumns = computed(() => {
+  const fields = new Set<string>()
+  const items = diffPage.value?.items || []
+  items.forEach((item) => (item.changedFields || []).forEach((field) => fields.add(field)))
+  return fields
+})
+const diffTableRows = computed(() => {
+  const page = diffPage.value
+  if (!page) return []
+  const labels = diffRowLabels[page.type] || diffRowLabels.CHANGED
+  const rows: Array<{
+    id: string
+    businessKey: string
+    side: string
+    sideKind: 'BEFORE' | 'AFTER'
+    changedFields: string[]
+    row: Record<string, unknown>
+    first: boolean
+  }> = []
+  page.items.forEach((item) => {
+    const changedFields = item.changedFields || []
+    const sides: Array<['BEFORE' | 'AFTER', string, Array<Record<string, unknown>>]> = [
+      ['BEFORE', labels.before, item.beforeRows || []],
+      ['AFTER', labels.after, item.afterRows || []],
+    ]
+    let index = 0
+    sides.forEach(([sideKind, label, source]) => {
+      if (!label) return
+      source.forEach((row) => {
+        rows.push({
+          id: `${item.businessKey}-${sideKind}-${index}`,
+          businessKey: item.businessKey,
+          side: label,
+          sideKind,
+          changedFields,
+          row,
+          first: index === 0,
+        })
+        index += 1
+      })
+    })
+    if (!index) {
+      rows.push({
+        id: `${item.businessKey}-empty`,
+        businessKey: item.businessKey,
+        side: '没有保存字段快照',
+        sideKind: 'BEFORE',
+        changedFields,
+        row: {},
+        first: true,
+      })
+    }
+  })
+  return rows
+})
+const diffTableColumns = computed(() => {
+  const fields = new Set<string>()
+  diffTableRows.value.forEach((item) => Object.keys(item.row).forEach((field) => fields.add(field)))
+  const changed = diffChangedColumns.value
+  return [...fields].sort((left, right) => diffColumnRank(left, changed) - diffColumnRank(right, changed)
+    || left.localeCompare(right))
+})
 const extractionComparisonRows = computed(() => {
   if (String(props.snapshot.candidateSql.layer || '') !== 'SOURCE_EXTRACT') return []
   const trial = props.snapshot.shadowTrial
@@ -381,6 +452,20 @@ function sendAutonomousText(text: string) {
 }
 
 defineExpose({ sendAutonomousText })
+
+// 变化字段排在最前，业务编号类字段紧随其后，雪花主键和审计时间列排到最后。
+function diffColumnRank(field: string, changed: Set<string>): number {
+  if (changed.has(field)) return 0
+  if (/^MRAS_BUSINESS_.*_ID$/.test(field) || diffMinorField.test(field)) return 3
+  if (/(_ID|_NO|_CODE)$/.test(field)) return 1
+  return 2
+}
+
+function diffCellText(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
 
 async function loadShadowDiffs(page = 1) {
   const trialId = String(props.snapshot.shadowTrial.trialId || '')
@@ -1263,7 +1348,7 @@ function pretty(value: unknown): string {
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 候选语句已生成</strong></div><p>候选语句已通过安全校验，系统随后会自动执行影子试跑，无需再点击单独的“试跑”按钮。正式中间表和当前卡片不会被覆盖。</p><p v-if="snapshot.candidateSql.generationMethod" class="diagnosis-help">生成方式：{{ snapshot.candidateSql.generationMethod }}</p>
         <section v-if="shadowTrialExecutionFailed" class="diagnosis-result-compare"><header><div><h4>影子试跑执行失败</h4><p>系统已经尝试执行候选语句，但在生成影子结果前失败，因此本轮没有可比较的记录数、分子、分母或结果值。</p></div><span data-state="failed">试跑执行失败</span></header><p class="diagnosis-template-warning"><strong>失败原因：</strong>{{ shadowTrialFailureMessage }}</p></section>
         <section v-if="!shadowTrialExecutionFailed && extractionComparisonRows.length" class="diagnosis-result-compare"><header><div><h4>第一层：抽取数据变化</h4><p>对比当前正式中间表和候选抽取 SQL 写入的影子中间表。这里直接说明候选抽取到底多了或少了哪些记录。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式中间表</span><span>候选影子中间表</span><span>变化</span></div><div v-for="row in extractionComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
-        <section v-if="!shadowTrialExecutionFailed && extractionComparisonRows.length" class="diagnosis-diff-browser"><header><div><h4>抽取前后差异明细</h4><p>可查看新增、减少、字段变化和新增重复记录；按业务编号搜索。</p></div></header><div class="diagnosis-diff-toolbar"><select v-model="diffType"><option value="ADDED">新增记录</option><option value="REMOVED">减少记录</option><option value="CHANGED">字段变化</option><option value="DUPLICATE">新增重复</option></select><input v-model="diffSearch" placeholder="搜索业务编号" /><button type="button" class="diagnosis-secondary" :disabled="diffLoading" @click="loadShadowDiffs(1)">查看差异</button></div><p v-if="diffError" class="diagnosis-template-warning">{{ diffError }}</p><template v-if="diffPage"><p>共 {{ diffPage.total }} 个业务编号</p><details v-for="item in diffPage.items" :key="item.businessKey" class="diagnosis-technical"><summary>{{ item.businessKey }}<span v-if="item.changedFields.length"> · {{ item.changedFields.join('、') }}</span></summary><div class="diagnosis-before-after"><section><strong>修改前</strong><pre>{{ pretty(item.beforeRows) }}</pre></section><section><strong>修改后</strong><pre>{{ pretty(item.afterRows) }}</pre></section></div></details><div class="diagnosis-pagination"><button type="button" :disabled="diffPage.page <= 1 || diffLoading" @click="loadShadowDiffs(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total || diffLoading" @click="loadShadowDiffs(diffPage.page + 1)">下一页</button></div></template></section>
+        <section v-if="!shadowTrialExecutionFailed && extractionComparisonRows.length" class="diagnosis-diff-browser"><header><div><h4>抽取前后差异明细</h4><p>逐行预览新增、减少、字段变化和新增重复的记录，直接看到每条记录的字段值；可按业务编号搜索。</p></div></header><div class="diagnosis-diff-toolbar"><select v-model="diffType"><option value="ADDED">新增记录</option><option value="REMOVED">减少记录</option><option value="CHANGED">字段变化</option><option value="DUPLICATE">新增重复</option></select><input v-model="diffSearch" placeholder="搜索业务编号" /><button type="button" class="diagnosis-secondary" :disabled="diffLoading" @click="loadShadowDiffs(1)">查看差异</button></div><p v-if="diffError" class="diagnosis-template-warning">{{ diffError }}</p><template v-if="diffPage"><p class="diagnosis-help">共 {{ diffPage.total }} 个业务编号；本页逐条记录展开为 {{ diffTableRows.length }} 行。变化字段列排在最前并高亮，表格可左右滚动查看全部字段。</p><div v-if="diffTableRows.length" class="diagnosis-diff-preview"><table><thead><tr><th>业务编号</th><th>记录来源</th><th v-for="field in diffTableColumns" :key="field" :data-changed="diffChangedColumns.has(field)">{{ field }}</th></tr></thead><tbody><tr v-for="item in diffTableRows" :key="item.id" :data-side="item.sideKind"><th scope="row"><code v-if="item.first">{{ item.businessKey }}</code></th><td>{{ item.side }}</td><td v-for="field in diffTableColumns" :key="field" :data-changed="item.changedFields.includes(field)">{{ diffCellText(item.row[field]) }}</td></tr></tbody></table></div><p v-else class="diagnosis-help">本页没有可展开的记录字段快照。</p><details class="diagnosis-technical"><summary>按业务编号查看原始 JSON 证据</summary><details v-for="item in diffPage.items" :key="item.businessKey" class="diagnosis-technical"><summary>{{ item.businessKey }}<span v-if="item.changedFields.length"> · {{ item.changedFields.join('、') }}</span></summary><div class="diagnosis-before-after"><section><strong>修改前</strong><pre>{{ pretty(item.beforeRows) }}</pre></section><section><strong>修改后</strong><pre>{{ pretty(item.afterRows) }}</pre></section></div></details></details><div class="diagnosis-pagination"><button type="button" :disabled="diffPage.page <= 1 || diffLoading" @click="loadShadowDiffs(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total || diffLoading" @click="loadShadowDiffs(diffPage.page + 1)">下一页</button></div></template></section>
         <section v-if="!shadowTrialExecutionFailed" class="diagnosis-result-compare"><header><div><h4>{{ extractionComparisonRows.length ? '第二层：最终指标结果变化' : '正式结果与候选试跑对比' }}</h4><p v-if="extractionComparisonRows.length">抽取 SQL 修改前后都使用同一份正式概览 SQL 计算。概览 SQL 在这里只负责测量抽取数据变化后的分子、分母和结果，本身没有被修改。</p><p v-else>左侧是当前公版正式结果，右侧是候选 {{ sqlLayerTitle }} 在影子环境的结果。</p></div><span :data-state="shadowTrialState.state">{{ shadowTrialState.text }}</span></header><div class="diagnosis-compare-table"><div class="is-head"><span>对比项</span><span>当前正式结果</span><span>候选试跑结果</span><span>变化</span></div><div v-for="row in resultComparisonRows" :key="row.key"><strong>{{ row.label }}</strong><span>{{ row.baseline }}</span><span>{{ row.candidate }}</span><em>{{ row.change }}</em></div></div></section>
         <section v-if="!shadowTrialExecutionFailed && caseValidationRows.length" class="diagnosis-case-reconcile"><header><div><h4>案例编号验收</h4><p>“正式记录数”表示该编号在当前正式中间表中查到几条；不代表这些记录业务上一定正确。</p></div></header><div class="diagnosis-case-table"><div class="is-head"><span>案例编号</span><span>正式记录数</span><span>候选记录数</span><span>变化</span><span>预期</span><span>验收</span></div><div v-for="row in caseValidationRows" :key="row.id"><code>{{ row.id }}</code><span>{{ row.before }}</span><span>{{ row.after }}</span><em>{{ row.change > 0 ? `+${row.change}` : row.change }}</em><span>{{ row.expected }}</span><strong :data-pass="row.passed">{{ row.result }}</strong></div></div><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ caseValidationMessage }}</p></section>
         <details v-if="Object.keys(snapshot.candidateSql).length" class="diagnosis-technical diagnosis-sql-disclosure"><summary><span>当前正式{{ sqlLayerTitle }}（可复制到 Navicat）</span><button type="button" class="diagnosis-copy-button" @click.prevent.stop="copySql('original', snapshot.candidateSql.originalSqlExecutable)">{{ copiedSqlKey === 'original' ? '已复制' : '复制 SQL' }}</button></summary><pre>{{ executableSqlDisplay(String(snapshot.candidateSql.originalSqlExecutable || '')) }}</pre></details>
