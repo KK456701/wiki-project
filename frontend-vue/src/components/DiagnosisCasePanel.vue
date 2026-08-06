@@ -368,12 +368,19 @@ function startAutonomous() {
 }
 
 function respondAutonomous() {
-  if (!autonomousAnswer.value.trim()) return
-  const clientMessageId = `CLIENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  optimisticAutonomousTurns.value.push({ clientMessageId, userMessage: autonomousAnswer.value.trim(), status: 'SENDING' })
-  emit('action', 'SEND_AUTONOMOUS_MESSAGE', { message: autonomousAnswer.value.trim(), clientMessageId })
+  sendAutonomousText(autonomousAnswer.value)
   autonomousAnswer.value = ''
 }
+
+function sendAutonomousText(text: string) {
+  const normalized = text.trim()
+  if (!normalized) return
+  const clientMessageId = `CLIENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  optimisticAutonomousTurns.value.push({ clientMessageId, userMessage: normalized, status: 'SENDING' })
+  emit('action', 'SEND_AUTONOMOUS_MESSAGE', { message: normalized, clientMessageId })
+}
+
+defineExpose({ sendAutonomousText })
 
 async function loadShadowDiffs(page = 1) {
   const trialId = String(props.snapshot.shadowTrial.trialId || '')
@@ -442,11 +449,47 @@ function mergedTurnProcessEvents(turn: Record<string, unknown>): Array<Record<st
     } else if (type === 'OBSERVATION' && callId && tools.has(callId)) {
       const index = tools.get(callId) as number
       rows[index] = { ...rows[index], ...event, eventType: 'TOOL', startedStatus: rows[index].status }
-    } else if (type !== 'MODEL_STARTED' || rows.length === 0) {
+    } else {
       rows.push(event)
     }
   }
   return rows
+}
+
+function mergedTurnEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
+  return [...mergedTurnProcessEvents(turn), ...turnReplyEvents(turn)]
+    .sort((left, right) => Number(left.seq || 0) - Number(right.seq || 0))
+}
+
+function autonomousEventKind(event: Record<string, unknown>): string {
+  const type = autonomousEventType(event)
+  if (type === 'ANALYSIS') return 'analysis'
+  if (type === 'MODEL_STARTED') return 'model'
+  if (['RESPONSE', 'STAGE_REPLY', 'QUESTION', 'CONCLUSION'].includes(type)) return 'reply'
+  if (type === 'STOP') return 'stop'
+  if (event.tool || type === 'TOOL_CALL' || type === 'OBSERVATION') return 'tool'
+  return 'process'
+}
+
+function replyDataKind(event: Record<string, unknown>): string {
+  const type = autonomousEventType(event)
+  if (type === 'CONCLUSION') return 'conclusion'
+  if (type === 'QUESTION') return 'question'
+  return 'response'
+}
+
+const hasPendingAutonomousQuestion = computed(() => (
+  String(props.snapshot.autonomousRun?.status || '') === 'WAITING_USER'
+))
+
+function isPendingQuestion(turn: Record<string, unknown>, event: Record<string, unknown>): boolean {
+  if (!hasPendingAutonomousQuestion.value) return false
+  const savedTurns = objectList(props.snapshot.autonomousRun?.turns)
+  const lastSaved = savedTurns[savedTurns.length - 1]
+  if (!lastSaved || String(lastSaved.turnId || '') !== String(turn.turnId || '')) return false
+  const questions = turnReplyEvents(turn).filter((item) => autonomousEventType(item) === 'QUESTION')
+  const last = questions[questions.length - 1]
+  return Boolean(last) && Number(last.seq || -1) === Number(event.seq || -2)
 }
 
 function turnReplyEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -1044,24 +1087,47 @@ function pretty(value: unknown): string {
     <template v-if="snapshot.investigationMode === 'AUTONOMOUS'">
       <template v-for="(turn, turnIndex) in autonomousTurns" :key="String(turn.turnId || turn.clientMessageId || turnIndex)">
         <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员</strong><span v-if="turn.status === 'SENDING'">发送中</span><span v-else-if="turn.status === 'QUEUED'">已排队</span><span v-else-if="turn.status === 'FAILED'">发送失败</span></div><p>{{ turn.userMessage }}</p><p v-if="turn.errorMessage" class="diagnosis-template-warning">{{ turn.errorMessage }}</p></div></article>
-        <article v-if="turnProcessEvents(turn).length" class="message is-agent diagnosis-process-message"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card diagnosis-process-card">
-          <details class="diagnosis-thinking" :open="turnIsExpanded(turn, turnIndex)" @toggle="toggleTurnEvent(turn, turnIndex, $event)">
-            <summary><span><strong>{{ autonomousTurnTitle(turn) }}</strong><small>公开、可审计</small></span><em>{{ turnIsExpanded(turn, turnIndex) ? '收起' : '展开' }}</em></summary>
-            <p class="diagnosis-agent-disclosure">展示模型主动输出的问题理解、验证依据、工具选择和判断变化；不把不可验证的内部 token 当作事实。</p>
-            <ol class="diagnosis-agent-timeline diagnosis-evidence-track">
-              <li v-for="event in mergedTurnProcessEvents(turn)" :key="String(event.seq || event.toolCallId)" :data-kind="autonomousEventType(event).toLowerCase()">
+        <article v-if="mergedTurnEvents(turn).length" class="message is-agent diagnosis-process-message"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card diagnosis-process-card diagnosis-connected-reply">
+          <div class="message-head"><strong>DeepSeek · 排查回复</strong><span>{{ autonomousTurnTitle(turn) }} · {{ autonomousStatusText(turn.status) }}</span></div>
+          <p class="diagnosis-agent-disclosure">本条回复按顺序连接模型的分析、工具证据、阶段性结论和总结果；不把不可验证的内部 token 当作事实。</p>
+          <ol class="diagnosis-agent-timeline diagnosis-evidence-track">
+            <li v-for="event in mergedTurnEvents(turn)" :key="String(event.seq || event.toolCallId)" :data-kind="autonomousEventKind(event) === 'reply' ? replyDataKind(event) : autonomousEventKind(event)">
+              <details v-if="autonomousEventKind(event) === 'analysis'" class="diagnosis-thinking" :open="turnIsExpanded(turn, turnIndex)" @toggle="toggleTurnEvent(turn, turnIndex, $event)">
+                <summary><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><span><strong>{{ autonomousEventTitle(event) }}</strong><small>公开、可审计</small></span><em>{{ turnIsExpanded(turn, turnIndex) ? '收起' : '展开' }} · {{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</em></summary>
+                <dl class="diagnosis-public-analysis"><div v-for="item in analysisItems(event)" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ displayAnalysisValue(item.value) }}</dd></div></dl>
+              </details>
+              <template v-else-if="autonomousEventKind(event) === 'model'">
                 <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>{{ autonomousEventDisplayTitle(event, turn) }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
-                <dl v-if="autonomousEventType(event) === 'ANALYSIS'" class="diagnosis-public-analysis"><div v-for="item in analysisItems(event)" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ displayAnalysisValue(item.value) }}</dd></div></dl>
-                <template v-else-if="event.tool"><p class="diagnosis-agent-tool"><strong>下一步调用：</strong>{{ event.toolDisplayName || event.tool }} <code>{{ event.tool }}</code></p><p v-if="event.summary" class="diagnosis-agent-observation"><strong>工具结果：</strong>{{ event.summary }}</p></template>
-                <p v-else-if="event.summary" class="diagnosis-agent-observation">{{ event.summary }}</p>
-                <details v-if="hasAutonomousDetails(event)" class="diagnosis-technical diagnosis-agent-details"><summary>查看工具输入、结果和证据</summary><section v-if="event.arguments"><strong>输入参数</strong><pre>{{ pretty(event.arguments) }}</pre></section><section v-if="event.resultPreview"><strong>返回结果（最多预览10行）</strong><pre>{{ pretty(event.resultPreview) }}</pre></section><section v-if="event.error"><strong>错误</strong><pre>{{ event.error }}</pre></section><small v-if="event.durationMs !== undefined">执行耗时：{{ event.durationMs }} ms<span v-if="event.evidenceId"> · 证据编号：{{ event.evidenceId }}</span></small></details>
-              </li>
-            </ol>
-          </details>
+                <p v-if="event.summary">{{ event.summary }}</p>
+              </template>
+              <template v-else-if="autonomousEventKind(event) === 'tool'">
+                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>调用工具：{{ event.toolDisplayName || event.tool }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}<template v-if="event.durationMs !== undefined"> · {{ event.durationMs }}ms</template></span></div>
+                <p v-if="event.summary" class="diagnosis-agent-observation"><strong>观察：</strong>{{ event.summary }}</p>
+                <details v-if="hasAutonomousDetails(event)" class="diagnosis-technical diagnosis-agent-details"><summary>查看工具输入、结果和证据</summary><section v-if="event.arguments"><strong>输入参数</strong><pre>{{ pretty(event.arguments) }}</pre></section><section v-if="event.resultPreview"><strong>返回结果（最多预览10行）</strong><pre>{{ pretty(event.resultPreview) }}</pre></section><section v-if="event.error"><strong>错误</strong><pre>{{ event.error }}</pre></section><small v-if="event.evidenceId">证据编号：{{ event.evidenceId }}</small></details>
+              </template>
+              <template v-else-if="autonomousEventKind(event) === 'reply'">
+                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>{{ autonomousEventType(event) === 'CONCLUSION' ? '排查总结果' : autonomousEventType(event) === 'QUESTION' ? '需要现场补充' : '阶段性回复' }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
+                <p v-if="event.answer || event.conclusion" class="diagnosis-agent-answer">{{ event.answer || event.conclusion }}</p>
+                <small v-if="event.conclusionLevel">结论等级：{{ event.conclusionLevel }}</small>
+                <template v-if="autonomousEventType(event) === 'QUESTION'">
+                  <p class="diagnosis-agent-question">{{ event.question }}</p>
+                  <div v-if="isPendingQuestion(turn, event)" class="diagnosis-inline-answer">
+                    <label for="autonomous-inline-answer"><strong>在这里填写或补充现场确认结果，本条回复会继续排查：</strong></label>
+                    <textarea id="autonomous-inline-answer" v-model="autonomousAnswer" rows="3" maxlength="3000" placeholder="填写医院现场确认结果"></textarea>
+                    <div class="diagnosis-composer-actions"><button type="button" class="diagnosis-primary" :disabled="busy || !autonomousAnswer.trim()" @click="respondAutonomous">发送回答并继续本轮排查</button></div>
+                  </div>
+                </template>
+              </template>
+              <template v-else-if="autonomousEventKind(event) === 'stop'">
+                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>循环已停止</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
+                <p v-if="event.summary">{{ event.summary }}</p>
+              </template>
+              <p v-else-if="event.summary" class="diagnosis-agent-observation">{{ event.summary }}</p>
+            </li>
+          </ol>
+          <button v-if="snapshot.autonomousRun.status === 'RUNNING' && turnIndex === autonomousTurns.length - 1" type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})">停止本轮</button>
         </div></article>
-        <article v-for="event in turnReplyEvents(turn)" :key="`reply-${String(event.seq)}`" class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card" :class="{ 'diagnosis-final-card': autonomousEventType(event) === 'CONCLUSION' }"><div class="message-head"><strong>{{ autonomousEventType(event) === 'CONCLUSION' ? 'DeepSeek · 排查总结果' : autonomousEventType(event) === 'QUESTION' ? 'DeepSeek · 需要现场补充' : 'DeepSeek · 阶段性回复' }}</strong><span>{{ autonomousStatusText(event.status) }}</span></div><p>{{ event.answer || event.question || event.conclusion || event.summary }}</p><small v-if="event.conclusionLevel">结论等级：{{ event.conclusionLevel }}</small></div></article>
       </template>
-      <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card diagnosis-autonomous-composer"><div class="message-head"><strong>{{ snapshot.autonomousRun.status === 'WAITING_USER' ? '回复 DeepSeek 的现场问题' : '继续自主排查' }}</strong><span>{{ snapshot.autonomousRun.modelName || snapshot.autonomousRun.modelId || 'DeepSeek' }}</span></div><p v-if="snapshot.autonomousRun.status === 'WAITING_USER'" class="diagnosis-template-warning"><strong>需要现场确认：</strong>{{ snapshot.autonomousRun.pendingQuestion }}</p><textarea v-model="autonomousAnswer" rows="3" :placeholder="snapshot.autonomousRun.status === 'WAITING_USER' ? '填写医院现场确认结果' : '继续提问、补充现场信息或要求核对新的证据'"></textarea><div class="diagnosis-composer-actions"><button type="button" class="diagnosis-primary" :disabled="busy || !autonomousAnswer.trim()" @click="respondAutonomous">发送给 DeepSeek</button><button v-if="snapshot.autonomousRun.status === 'RUNNING'" type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})">停止本轮</button></div></div></article>
     </template>
 
     <template v-if="caseSubmitted">

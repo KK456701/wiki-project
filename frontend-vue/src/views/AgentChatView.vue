@@ -41,6 +41,22 @@ const guidedOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
 const diagnosisBusy = ref('')
 const autonomousPollCases = new Set<string>()
+const diagnosisPanelRefs = new Map<string, InstanceType<typeof DiagnosisCasePanel>>()
+
+function setDiagnosisPanelRef(caseId: string, el: unknown) {
+  if (el) diagnosisPanelRefs.set(caseId, el as InstanceType<typeof DiagnosisCasePanel>)
+  else diagnosisPanelRefs.delete(caseId)
+}
+
+// 最近的自主排查会话存在时，页面底部主输入框直接接续该排查对话，
+// 不再在排查面板内另外常驻一个输入条。
+const activeAutonomousCase = computed(() => {
+  const last = diagnosisCases.value[diagnosisCases.value.length - 1]
+  return last && String(last.investigationMode || '') === 'AUTONOMOUS' ? last : null
+})
+const composerPlaceholder = computed(() => (activeAutonomousCase.value
+  ? '输入消息继续当前异常排查对话…'
+  : '输入指标、统计时间或对比要求…'))
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
 // 侧边栏实际渲染的列表：后端会话列表 + 正在处理但还未写入列表的会话。
@@ -101,6 +117,14 @@ async function send(text = query.value) {
   const normalized = text.trim()
   if (!normalized) return
   query.value = ''
+  const autonomous = activeAutonomousCase.value
+  const panel = autonomous ? diagnosisPanelRefs.get(autonomous.caseId) : undefined
+  if (panel?.sendAutonomousText) {
+    panel.sendAutonomousText(normalized)
+    await nextTick()
+    conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
+    return
+  }
   await store.send(normalized)
   await nextTick()
   conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
@@ -532,6 +556,7 @@ async function exportDiagnosis(reportId?: string) {
           <DiagnosisCasePanel
             v-for="item in diagnosisCases"
             :key="item.caseId"
+            :ref="(el) => setDiagnosisPanelRef(item.caseId, el)"
             :snapshot="item"
             :token="store.token"
             :busy="diagnosisBusy === item.caseId"
@@ -554,7 +579,7 @@ async function exportDiagnosis(reportId?: string) {
           <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
           <button type="button" class="diagnosis-launch-button" @click="guidedOpen = !guidedOpen">异常排查</button>
           <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
-          <textarea v-model="query" rows="1" maxlength="5000" placeholder="输入指标、统计时间或对比要求…" @keydown.ctrl.enter.prevent="send()"></textarea>
+          <textarea v-model="query" rows="1" maxlength="5000" :placeholder="composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
           <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
         </form>
       </div>

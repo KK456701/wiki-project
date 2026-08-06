@@ -1532,6 +1532,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-agent-timeline li[data-kind="tool_call"], .diagnosis-agent-timeline li[data-kind="tool"] { border-left-color: #be7922; background: #fff9f1; }
 .diagnosis-agent-timeline li[data-kind="observation"] { border-left-color: #1a9b84; }
 .diagnosis-agent-timeline li[data-kind="response"], .diagnosis-agent-timeline li[data-kind="conclusion"] { border-left-color: #296ee8; background: #f3f7ff; }
+.diagnosis-agent-timeline li[data-kind="question"] { border-left-color: #b3701d; background: #fff8ec; }
+.diagnosis-agent-timeline li[data-kind="model"] { border-left-color: #94a3b8; background: #f8fafc; }
+.diagnosis-agent-timeline li[data-kind="stop"] { border-left-color: #b42318; background: #fff5f4; }
+.diagnosis-agent-timeline li[data-kind="conclusion"] p { color: #20345e !important; font-weight: 700; }
+.diagnosis-agent-timeline details.diagnosis-thinking > summary { gap: 8px; }
+.diagnosis-inline-answer { display: grid; gap: 8px; margin-top: 10px; padding: 12px 13px; border: 1px dashed #d9a95f; border-radius: 10px; background: #fffdf6; }
+.diagnosis-inline-answer label strong { color: #7a4e12; font-size: 12px; line-height: 1.6; }
+.diagnosis-inline-answer textarea { width: 100%; border: 1px solid #d9c3a0; border-radius: 9px; padding: 10px 12px; color: var(--ink); font: inherit; background: #fff; }
 .diagnosis-agent-event-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
 .diagnosis-agent-event-head > span:last-child { border-radius: 999px; padding: 2px 8px; background: #edf2f1; color: #54706a; font-size: 12px; }
 .diagnosis-agent-event-head > span[data-state="failed"] { background: #ffeded; color: #bb3434; }
@@ -1551,7 +1559,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-final-card { color: #f4f7ff; border-color: #21365d; background: linear-gradient(145deg, #172842, #233d68); box-shadow: 0 12px 28px rgb(24 42 72 / 18%); }
 .diagnosis-final-card .message-head strong, .diagnosis-final-card p { color: inherit; }
 .diagnosis-final-card .message-head span, .diagnosis-final-card small { color: #bdcbe3; }
-.diagnosis-autonomous-composer { border-color: #9dcfc3; background: #fbfffe; }
 .diagnosis-composer-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .diagnosis-diff-browser { margin-top: 12px; padding: 14px; border: 1px solid #d5e5e1; border-radius: 12px; background: #fbfdfd; }
 .diagnosis-diff-toolbar { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; margin: 10px 0; }
