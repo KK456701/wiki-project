@@ -1,6 +1,13 @@
-# DBHub MCP 本地数据库工具
+# DBHub MCP 本地数据库工具（已由内嵌 Java MCP 替代）
 
-DBHub 在本项目中作为医院本地部署的数据库 MCP sidecar 使用。它的作用是让 Agent 通过受控工具查看业务库有哪些表、字段、字段类型和注释，并在只读权限下执行必要的元数据查询。
+> **2026-08-06 起：数据库 MCP 已内嵌进后端 jar。** 后端通过 Spring AI MCP Server
+> （`spring-ai-starter-mcp-server-webmvc`，STATELESS 协议）在自身 `/mcp` 端点上
+> 暴露 `execute_sql_winex_all_dev`、`execute_sql_winex_aima`、`search_objects`
+> 三个工具，内部直接走 `wiki.bizdb` / `wiki.sqlserver` JDBC 直连（语句级只读
+> 校验 + 行数/超时限制）。部署时不再需要启动本目录的 DBHub sidecar，
+> 一个 jar 一键启动即可。本目录内容仅作为历史方案保留。
+
+DBHub 在本项目中曾作为医院本地部署的数据库 MCP sidecar 使用。它的作用是让 Agent 通过受控工具查看业务库有哪些表、字段、字段类型和注释，并在只读权限下执行必要的元数据查询。
 
 DBHub 不是本项目的 Java 模块，也不建议把 DBHub 源码或 `node_modules` 直接提交到仓库。医院部署时应把它作为独立本地服务启动，Spring Boot 通过 `config.yaml` 中的 `dbhub_mcp_url` 调用它。
 
