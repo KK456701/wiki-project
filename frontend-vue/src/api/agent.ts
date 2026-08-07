@@ -469,6 +469,9 @@ export interface DiagnosisScopeClarification {
   statEnd: string
   summary: string
   reasons: string[]
+  naturalLanguageExplanation: string
+  explanationSource: 'MODEL' | 'PROGRAM_FALLBACK'
+  explanationModel: string
   sampleRows: Array<Record<string, unknown>>
   sampleTruncated: boolean
   detailCountsReconciled: boolean

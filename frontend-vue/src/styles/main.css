@@ -1543,7 +1543,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-scope-verdict dd { margin: 4px 0 0; color: #173f38; font-weight: 750; }
 .diagnosis-scope-reasons { margin: 14px 0; }
 .diagnosis-scope-reasons h4 { margin-bottom: 8px; }
+.diagnosis-scope-reasons h4 small { margin-left: 8px; padding: 3px 7px; border-radius: 999px; color: #42746b; background: #e8f4f1; font-size: 11px; font-weight: 650; }
 .diagnosis-scope-reasons ol { display: grid; gap: 7px; margin: 0; padding-left: 22px; color: #385851; line-height: 1.65; }
+.diagnosis-plain-explanation { padding: 15px 16px; border-radius: 10px; background: #f7fbfa; }
+.diagnosis-plain-explanation > p { margin: 0; color: #294f47; line-height: 1.8; white-space: pre-line; }
+.diagnosis-scope-evidence { margin: 10px 0; }
+.diagnosis-scope-evidence ol { display: grid; gap: 6px; padding-left: 22px; line-height: 1.6; }
 .diagnosis-scope-samples { margin: 12px 0; }
 .diagnosis-scope-proof { padding: 10px 12px; border-radius: 8px; color: #45645d; background: #f3f7f6; font-size: 13px; }
 @media (max-width: 760px) { .diagnosis-scope-verdict dl { grid-template-columns: 1fr 1fr; } .diagnosis-scope-verdict dl div:last-child { grid-column: 1 / -1; } }

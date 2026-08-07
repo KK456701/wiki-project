@@ -1295,13 +1295,21 @@ function pretty(value: unknown): string {
               <div><dt>统计时间</dt><dd>{{ scopeClarification.statStart }} 至 {{ scopeClarification.statEnd }}</dd></div>
             </dl>
           </section>
-          <section class="diagnosis-scope-reasons">
-            <h4>{{ submittedScopeType === 'RECORD' ? '为什么会在明细里' : '这个科室如何计数' }}</h4>
+          <section class="diagnosis-scope-reasons diagnosis-plain-explanation">
+            <h4>
+              面向实施人员的口径说明
+              <small>{{ scopeClarification.explanationSource === 'MODEL' ? '云端7B整理' : '程序说明' }}</small>
+            </h4>
+            <p>{{ scopeClarification.naturalLanguageExplanation }}</p>
+          </section>
+          <details class="diagnosis-technical diagnosis-scope-evidence">
+            <summary>查看程序核验依据</summary>
             <ol><li v-for="reason in scopeClarification.reasons" :key="reason">{{ reason }}</li></ol>
             <p v-if="scopeClarification.matchedFields.length" class="diagnosis-help">
               实际匹配字段：{{ scopeClarification.matchedFields.join('、') }}
             </p>
-          </section>
+            <small v-if="scopeClarification.explanationModel">说明整理模型：{{ scopeClarification.explanationModel }}</small>
+          </details>
           <details v-if="scopeClarification.sampleRows.length" class="diagnosis-technical diagnosis-scope-samples">
             <summary>查看命中的明细样例（{{ scopeClarification.sampleRows.length }}条）</summary>
             <DetailRowsTable :rows="scopeClarification.sampleRows" empty-text="没有命中的明细。" />
