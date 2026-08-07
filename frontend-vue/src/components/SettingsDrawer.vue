@@ -5,7 +5,6 @@ import {
   loadRuntimeSettings,
   setRuntimeDefaultModel,
   testRuntimeConnection,
-  testRuntimeMcp,
   type AgentModel,
   type ConnectionTestResult,
   type RuntimeConnectionTestInput,
@@ -24,7 +23,7 @@ const emit = defineEmits<{
   selectModel: [modelId: string]
 }>()
 
-const activeTab = ref<'models' | 'databases' | 'mcp'>('models')
+const activeTab = ref<'models' | 'databases'>('models')
 const settings = ref<RuntimeSettings | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -33,7 +32,6 @@ const connectionResults = ref<Record<string, ConnectionTestResult>>({})
 const connectionDrafts = ref<Record<string, RuntimeConnectionTestInput>>({})
 const savingDefault = ref('')
 const modelMessage = ref('')
-const mcpResult = ref<ConnectionTestResult | null>(null)
 
 const modelItems = computed(() => settings.value?.models?.length ? settings.value.models : props.models)
 
@@ -93,17 +91,6 @@ async function setDefaultModel(modelId: string) {
   }
 }
 
-async function testMcp() {
-  testing.value = 'mcp'
-  try {
-    mcpResult.value = await testRuntimeMcp(props.token)
-  } catch (reason) {
-    mcpResult.value = { connectionId: 'mcp', status: 'FAILED', message: reason instanceof Error ? reason.message : 'MCP 测试失败。', durationMs: 0 }
-  } finally {
-    testing.value = ''
-  }
-}
-
 function defaultDriver(item: RuntimeDatabaseSetting) {
   return item.engine === 'Oracle' ? 'oracle.jdbc.OracleDriver' : 'com.microsoft.sqlserver.jdbc.SQLServerDriver'
 }
@@ -120,7 +107,7 @@ function providerLabel(provider: string) {
         <div>
           <span class="settings-kicker">运行控制台</span>
           <h2 id="settings-title">系统设置</h2>
-          <p>切换模型，核对数据库与内嵌 MCP 的当前状态。</p>
+          <p>切换模型，并核对或测试数据库连接。</p>
         </div>
         <button type="button" class="drawer-close" aria-label="关闭设置" @click="emit('close')">×</button>
       </header>
@@ -128,7 +115,6 @@ function providerLabel(provider: string) {
       <nav class="settings-tabs" aria-label="设置分类">
         <button type="button" :class="{ active: activeTab === 'models' }" @click="activeTab = 'models'">模型</button>
         <button type="button" :class="{ active: activeTab === 'databases' }" @click="activeTab = 'databases'">数据库</button>
-        <button type="button" :class="{ active: activeTab === 'mcp' }" @click="activeTab = 'mcp'">MCP</button>
       </nav>
 
       <main class="settings-body">
@@ -198,18 +184,6 @@ function providerLabel(provider: string) {
           </article>
         </section>
 
-        <section v-else class="settings-section">
-          <header><div><span>同进程工具服务</span><h3>{{ settings?.mcp.label }}</h3></div><small>无需 8080 sidecar</small></header>
-          <div class="settings-mcp-rail">
-            <div><span>应用</span><strong>Spring Boot :8765</strong></div><i aria-hidden="true"></i><div><span>MCP端点</span><strong>{{ settings?.mcp.endpoint }}</strong></div><i aria-hidden="true"></i><div><span>数据库工具</span><strong>{{ settings?.mcp.tools.length }} 个已注册</strong></div>
-          </div>
-          <ul class="settings-tool-list"><li v-for="tool in settings?.mcp.tools || []" :key="tool"><code>{{ tool }}</code></li></ul>
-          <div class="settings-mcp-actions">
-            <button type="button" :disabled="testing === 'mcp'" @click="testMcp">{{ testing === 'mcp' ? '正在测试…' : '测试内嵌 MCP' }}</button>
-            <span v-if="mcpResult" :data-state="mcpResult.status.toLowerCase()">{{ mcpResult.message }} · {{ mcpResult.durationMs }} ms</span>
-          </div>
-          <div class="settings-config-note"><strong>运行参数</strong><span>超时 {{ settings?.mcp.timeoutSeconds }} 秒</span><code v-for="name in settings?.mcp.environmentVariables || []" :key="name">{{ name }}</code><p>默认使用应用自身的 <code>/mcp</code>；只有显式设置外部地址时才会覆盖。</p></div>
-        </section>
       </main>
     </aside>
   </div>

@@ -407,11 +407,6 @@ async function exportDiagnosis(reportId?: string) {
         <div><strong>核心制度指标 Agent</strong><small>迁移验证版 · 当前会话</small></div>
       </div>
       <div class="topbar-controls">
-        <label class="model-field">模型
-          <select :value="store.selectedModel" @change="store.selectModel(($event.target as HTMLSelectElement).value)">
-            <option v-for="model in store.capabilities?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option>
-          </select>
-        </label>
         <code>{{ store.sessionId?.slice(-12) ?? '…' }}</code>
         <RouterLink class="quiet-button" to="/knowledge-review">知识库回收与审批</RouterLink>
         <button type="button" class="settings-button" aria-label="打开系统设置" title="系统设置" @click="settingsOpen = true">
