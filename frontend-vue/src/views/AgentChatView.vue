@@ -9,6 +9,7 @@ import ClarificationChoices from '../components/ClarificationChoices.vue'
 import BatchExecutiveSummary from '../components/BatchExecutiveSummary.vue'
 import GuidedTaskPanel from '../components/GuidedTaskPanel.vue'
 import DiagnosisCasePanel from '../components/DiagnosisCasePanel.vue'
+import SettingsDrawer from '../components/SettingsDrawer.vue'
 import { useAgentStore, type ExecutionNode } from '../stores/agent'
 import {
   createDiagnosisReportExport,
@@ -38,6 +39,7 @@ const exportingDiagnosis = ref('')
 const sessionList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(true)
 const guidedOpen = ref(false)
+const settingsOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
 const diagnosisBusy = ref('')
 const autonomousPollCases = new Set<string>()
@@ -406,12 +408,15 @@ async function exportDiagnosis(reportId?: string) {
       </div>
       <div class="topbar-controls">
         <label class="model-field">模型
-          <select v-model="store.selectedModel">
+          <select :value="store.selectedModel" @change="store.selectModel(($event.target as HTMLSelectElement).value)">
             <option v-for="model in store.capabilities?.models || []" :key="model.id" :value="model.id">{{ model.name }}</option>
           </select>
         </label>
         <code>{{ store.sessionId?.slice(-12) ?? '…' }}</code>
         <RouterLink class="quiet-button" to="/knowledge-review">知识库回收与审批</RouterLink>
+        <button type="button" class="settings-button" aria-label="打开系统设置" title="系统设置" @click="settingsOpen = true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.7 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.7a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.38.37.72.66 1 .3.27.68.4 1.08.4H21v4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
+        </button>
       </div>
     </header>
 
@@ -601,6 +606,14 @@ async function exportDiagnosis(reportId?: string) {
       :run-id="selectedDetailRunId"
       :can-export="canExportDetails"
       @close="selectedDetailRunId = ''"
+    />
+    <SettingsDrawer
+      v-if="settingsOpen"
+      :token="store.token"
+      :selected-model="store.selectedModel"
+      :models="store.capabilities?.models || []"
+      @select-model="store.selectModel"
+      @close="settingsOpen = false"
     />
   </main>
 </template>

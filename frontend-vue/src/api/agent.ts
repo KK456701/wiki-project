@@ -9,6 +9,9 @@ export interface AgentModel {
   id: string
   name: string
   provider: string
+  model?: string
+  thinking?: boolean
+  available?: boolean
 }
 
 export interface AgentCapabilities {
@@ -187,6 +190,60 @@ async function readJson<T>(response: Response): Promise<T> {
 export async function loadCapabilities(token: string): Promise<AgentCapabilities> {
   const response = await fetch('/api/agent/capabilities', { headers: authHeaders(token) })
   return readJson<AgentCapabilities>(response)
+}
+
+export interface RuntimeDatabaseSetting {
+  id: 'business' | 'real' | 'oracle'
+  name: string
+  purpose: string
+  enabled: boolean
+  configured: boolean
+  engine: string
+  endpoint: string
+  username: string
+  schema: string
+  credentialConfigured: boolean
+  pool: Record<string, number>
+  environmentVariables: string[]
+  formalChain: boolean
+}
+
+export interface RuntimeSettings {
+  securityNotice: string
+  defaultModel: string
+  models: AgentModel[]
+  databases: RuntimeDatabaseSetting[]
+  mcp: {
+    mode: 'EMBEDDED_JAVA'
+    label: string
+    endpoint: string
+    timeoutSeconds: number
+    tools: string[]
+    environmentVariables: string[]
+  }
+}
+
+export interface ConnectionTestResult {
+  connectionId: string
+  status: 'CONNECTED' | 'FAILED' | 'DISABLED'
+  message: string
+  durationMs: number
+}
+
+export async function loadRuntimeSettings(token: string): Promise<RuntimeSettings> {
+  const response = await fetch('/api/settings/runtime', { headers: authHeaders(token) })
+  return readJson<RuntimeSettings>(response)
+}
+
+export async function testRuntimeConnection(
+  token: string,
+  connectionId: RuntimeDatabaseSetting['id'],
+): Promise<ConnectionTestResult> {
+  const response = await fetch(`/api/settings/connections/${encodeURIComponent(connectionId)}/test`, {
+    method: 'POST',
+    headers: authHeaders(token),
+  })
+  return readJson<ConnectionTestResult>(response)
 }
 
 export interface IndicatorItem {

@@ -606,7 +606,7 @@ export const useAgentStore = defineStore('agent', {
     token: 'guest',
     user: { userId: 'guest_user', accountId: 'guest', hospitalId: 'hospital_001', permissions: ['indicator_detail_view', 'indicator_detail_export'] } as HospitalUser,
     capabilities: null as AgentCapabilities | null,
-    selectedModel: '',
+    selectedModel: localStorage.getItem('wikiAgentSelectedModel') || '',
     sessionId: localStorage.getItem('vueAgentSessionId') || makeId('session').slice(0, 48),
     latestFileKey: '',
     latestFileName: '',
@@ -635,6 +635,13 @@ export const useAgentStore = defineStore('agent', {
           ? this.capabilities.model
           : ids[0] || ''
       }
+      if (this.selectedModel) localStorage.setItem('wikiAgentSelectedModel', this.selectedModel)
+    },
+    selectModel(modelId: string) {
+      const ids = this.capabilities?.models.map((model) => model.id) || []
+      if (!ids.includes(modelId)) return
+      this.selectedModel = modelId
+      localStorage.setItem('wikiAgentSelectedModel', modelId)
     },
     async newSession() {
       try {
