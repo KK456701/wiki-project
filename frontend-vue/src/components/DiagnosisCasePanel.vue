@@ -3,9 +3,11 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import {
   fetchDiagnosisCaseDetails,
+  fetchDiagnosisScopeClarification,
   loadDiagnosisShadowDiffs,
   type DiagnosisShadowDiffPage,
   type DiagnosisCaseSnapshot,
+  type DiagnosisScopeClarification,
   type IndicatorDetailResult,
 } from '../api/agent'
 import DetailRowsTable from './DetailRowsTable.vue'
@@ -65,6 +67,10 @@ const detailPages = ref<Partial<Record<'numerator' | 'denominator', IndicatorDet
 const detailOpen = ref(false)
 const detailLoading = ref(false)
 const detailError = ref('')
+const scopeClarification = ref<DiagnosisScopeClarification | null>(null)
+const scopeClarificationLoading = ref(false)
+const scopeClarificationError = ref('')
+const scopeClarificationKey = ref('')
 const pendingRequirement = ref<Record<string, string> | null>(null)
 const copiedSqlKey = ref('')
 const selectedMode = ref<'' | 'STANDARD' | 'AUTONOMOUS'>('')
@@ -278,6 +284,14 @@ const submittedScopeType = computed(() => String(props.snapshot.caseInput.scopeT
 const caliberClarificationTitle = computed(() => (
   submittedScopeType.value === 'RECORD' ? '系统 · 案例口径澄清' : '系统 · 排查范围口径澄清'
 ))
+const scopeClarificationTitle = computed(() => submittedScopeType.value === 'RECORD'
+  ? '系统 · 这个患者为什么在明细里'
+  : '系统 · 这个科室是怎么算的')
+const scopeClarificationStatus = computed(() => ({
+  IN_NUMERATOR_AND_DENOMINATOR: '进入分子和分母',
+  IN_DENOMINATOR_ONLY: '只进入分母',
+  NOT_IN_DETAIL: '当前明细未找到',
+} as Record<string, string>)[scopeClarification.value?.status || ''] || '正在核对')
 const caliberJudgementOrder = computed(() => {
   if (submittedScopeType.value === 'DEPARTMENT') return '先确认科室或病区编码及统计窗口，再核对哪些业务记录进入中间表，最后对照科室汇总与总指标结果。'
   if (submittedScopeType.value === 'TIME_RANGE') return '先确认时间字段和起止边界，再核对该时间范围内的分母母集，最后检查分子命中与最终汇总。'
@@ -910,6 +924,35 @@ async function loadAggregateDetail(
   }
 }
 
+async function loadScopeClarification(force = false) {
+  const type = String(props.snapshot.caseInput.scopeType || '')
+  if (!['RECORD', 'DEPARTMENT'].includes(type)) return
+  const key = [
+    props.snapshot.caseId,
+    type,
+    props.snapshot.caseInput.recordField,
+    props.snapshot.caseInput.recordId,
+    JSON.stringify(props.snapshot.caseInput.recordIds || []),
+    props.snapshot.caseInput.scopeField,
+    props.snapshot.caseInput.scopeValue,
+  ].join(':')
+  if (!force && scopeClarificationKey.value === key && scopeClarification.value) return
+  scopeClarificationLoading.value = true
+  scopeClarificationError.value = ''
+  try {
+    scopeClarification.value = await fetchDiagnosisScopeClarification(
+      props.token, props.snapshot.caseId,
+    )
+    scopeClarificationKey.value = key
+  } catch (cause) {
+    scopeClarification.value = null
+    scopeClarificationError.value = cause instanceof Error
+      ? cause.message : '患者或科室明细澄清失败。'
+  } finally {
+    scopeClarificationLoading.value = false
+  }
+}
+
 function detailPageCount(detail?: IndicatorDetailResult): number {
   return Math.max(1, Math.ceil((detail?.rowCount || 0) / (detail?.pageSize || 50)))
 }
@@ -998,6 +1041,16 @@ const caseInputReached = computed(() => stageRank.value >= stageOrder.indexOf('C
 const caseSubmitted = computed(() => props.snapshot.investigationMode !== 'AUTONOMOUS'
   && (Boolean(String(props.snapshot.caseInput.scopeType || '').trim())
     || Boolean(String(props.snapshot.caseInput.recordId || '').trim())))
+watch(
+  () => `${caseSubmitted.value}:${props.snapshot.caseId}:${String(props.snapshot.caseInput.scopeType || '')}:${String(props.snapshot.caseInput.recordId || '')}:${String(props.snapshot.caseInput.scopeValue || '')}`,
+  () => {
+    if (caseSubmitted.value
+      && ['RECORD', 'DEPARTMENT'].includes(String(props.snapshot.caseInput.scopeType || ''))) {
+      void loadScopeClarification()
+    }
+  },
+  { immediate: true },
+)
 const investigationReached = computed(() => (
   props.snapshot.investigationMode !== 'AUTONOMOUS'
   && selectedMode.value === 'STANDARD'
@@ -1219,6 +1272,57 @@ function pretty(value: unknown): string {
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 排查范围</strong></div><p>{{ submittedScopeSummary }}</p><p v-if="snapshot.caseInput.caseDescription && String(snapshot.caseInput.scopeType || '') !== 'OVERALL'">{{ snapshot.caseInput.caseDescription }}</p></div></article>
       <article class="message is-agent"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>{{ caliberClarificationTitle }}</strong><span>{{ snapshot.currentStep === 'CASE_CALIBER_CLARIFICATION' ? '等待确认' : '已确认' }}</span></div><section class="diagnosis-caliber-section"><h4>当前生效口径：{{ snapshot.caseExpectedClassification.profileName || snapshot.profileId }}</h4><p>{{ snapshot.caseExpectedClassification.definition || '知识库未单独描述指标定义' }}</p><dl class="caliber-facts"><div><dt>计算公式</dt><dd>{{ snapshot.caseExpectedClassification.formula || '知识库未单独描述' }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl></section><section class="diagnosis-caliber-section"><h4>本次分子和分母</h4><dl class="caliber-facts"><div><dt>分子 {{ snapshot.caseExpectedClassification.numeratorCount ?? '—' }}</dt><dd>{{ snapshot.caseExpectedClassification.numeratorRule || '知识库未单独描述' }}</dd></div><div><dt>分母 {{ snapshot.caseExpectedClassification.denominatorCount ?? '—' }}</dt><dd>{{ snapshot.caseExpectedClassification.denominatorRule || '知识库未单独描述' }}</dd></div></dl><div class="indicator-detail-groups diagnosis-detail-actions"><button type="button" :class="{ active: detailOpen && detailGroup === 'numerator' }" :disabled="detailLoading" @click="loadAggregateDetail('numerator')">查看分子明细（{{ snapshot.caseExpectedClassification.numeratorCount ?? '—' }}条）</button><button type="button" :class="{ active: detailOpen && detailGroup === 'denominator' }" :disabled="detailLoading" @click="loadAggregateDetail('denominator')">查看分母明细（{{ snapshot.caseExpectedClassification.denominatorCount ?? '—' }}条）</button></div><div v-if="detailOpen" class="diagnosis-detail-panel"><p v-if="detailLoading" class="indicator-loading">正在按本次口径重新对账并加载明细…</p><p v-else-if="detailError" class="indicator-error">{{ detailError }}</p><template v-else-if="detailPages[detailGroup]"><div class="detail-contract-summary"><span>汇总 {{ detailPages[detailGroup]?.cardNumerator ?? 0 }}/{{ detailPages[detailGroup]?.cardDenominator ?? 0 }}</span><span>明细 {{ detailPages[detailGroup]?.detailNumerator ?? 0 }}/{{ detailPages[detailGroup]?.detailDenominator ?? 0 }}</span><strong>对账通过</strong><small v-if="detailPages[detailGroup]?.snapshotReused">已复用本次排查明细</small></div><p class="indicator-detail-summary">{{ detailGroup === 'numerator' ? '分子' : '分母' }}共 {{ detailPages[detailGroup]?.rowCount || 0 }} 条 · 第 {{ detailPages[detailGroup]?.page || 1 }}/{{ detailPageCount(detailPages[detailGroup]) }} 页</p><DetailRowsTable :rows="detailPages[detailGroup]?.rows || []" empty-text="本次统计窗口没有对应明细。" /><nav v-if="detailPageCount(detailPages[detailGroup]) > 1" class="detail-pagination" aria-label="排查明细分页"><button type="button" :disabled="(detailPages[detailGroup]?.page || 1) <= 1" @click="loadAggregateDetail(detailGroup, (detailPages[detailGroup]?.page || 1) - 1)">上一页</button><span>{{ detailPages[detailGroup]?.page || 1 }} / {{ detailPageCount(detailPages[detailGroup]) }}</span><button type="button" :disabled="(detailPages[detailGroup]?.page || 1) >= detailPageCount(detailPages[detailGroup])" @click="loadAggregateDetail(detailGroup, (detailPages[detailGroup]?.page || 1) + 1)">下一页</button></nav></template></div><p class="diagnosis-help">明细必须重新聚合为上面的分子和分母才会展示；数量对不上时系统会拒绝返回。</p></section><section class="diagnosis-caliber-section"><h4>当前口径数据链路</h4><p class="diagnosis-flow-path">{{ flowPath(snapshot.caseExpectedClassification.dataFlow) }}</p><details class="diagnosis-technical"><summary>展开数据链路、涉及表和 SQL</summary><IndicatorDataFlowPanel :flow="snapshot.caseExpectedClassification.dataFlow" /></details></section><p><strong>判断顺序：</strong>{{ caliberJudgementOrder }}</p><template v-if="snapshot.currentStep === 'CASE_CALIBER_CLARIFICATION'"><p class="diagnosis-pass-rule"><strong>下一步：</strong>确认当前口径后，实施人员提交要纳入或排除的数据条件；系统将自动生成候选 SQL并进行影子试跑。</p><button type="button" class="diagnosis-primary" :disabled="busy" @click="confirmCaseCaliber">确认澄清，进入抽取数据核对</button></template></div></article>
     </template>
+
+    <article
+      v-if="caseSubmitted && ['RECORD', 'DEPARTMENT'].includes(String(snapshot.caseInput.scopeType || ''))"
+      class="message is-agent"
+    >
+      <div class="message-avatar">AI</div>
+      <div class="message-card diagnosis-turn-card diagnosis-scope-clarification">
+        <div class="message-head">
+          <strong>{{ scopeClarificationTitle }}</strong>
+          <span>{{ scopeClarificationStatus }}</span>
+        </div>
+        <p v-if="scopeClarificationLoading" class="indicator-loading">
+          正在用本次已对账的分子、分母明细核对这个对象…
+        </p>
+        <template v-else-if="scopeClarification">
+          <section class="diagnosis-scope-verdict" :data-status="scopeClarification.status">
+            <h4>{{ scopeClarification.summary }}</h4>
+            <dl>
+              <div><dt>分母明细</dt><dd>{{ scopeClarification.denominatorCount }} 条</dd></div>
+              <div><dt>分子明细</dt><dd>{{ scopeClarification.numeratorCount }} 条</dd></div>
+              <div><dt>统计时间</dt><dd>{{ scopeClarification.statStart }} 至 {{ scopeClarification.statEnd }}</dd></div>
+            </dl>
+          </section>
+          <section class="diagnosis-scope-reasons">
+            <h4>{{ submittedScopeType === 'RECORD' ? '为什么会在明细里' : '这个科室如何计数' }}</h4>
+            <ol><li v-for="reason in scopeClarification.reasons" :key="reason">{{ reason }}</li></ol>
+            <p v-if="scopeClarification.matchedFields.length" class="diagnosis-help">
+              实际匹配字段：{{ scopeClarification.matchedFields.join('、') }}
+            </p>
+          </section>
+          <details v-if="scopeClarification.sampleRows.length" class="diagnosis-technical diagnosis-scope-samples">
+            <summary>查看命中的明细样例（{{ scopeClarification.sampleRows.length }}条）</summary>
+            <DetailRowsTable :rows="scopeClarification.sampleRows" empty-text="没有命中的明细。" />
+            <p v-if="scopeClarification.sampleTruncated" class="diagnosis-help">这里只展示前10条，完整记录仍在分子、分母明细中查看。</p>
+          </details>
+          <p class="diagnosis-scope-proof">
+            <strong>说明依据：</strong>同一统计 SQL版本、同一统计窗口，并且明细重新聚合后与卡片分子分母一致。
+          </p>
+        </template>
+        <template v-else>
+          <p class="indicator-error">{{ scopeClarificationError || '目前无法生成该对象的明细说明。' }}</p>
+          <p class="diagnosis-help">这不代表对象一定不应纳入，只表示当前口径暂不能安全生成可对账明细。</p>
+        </template>
+        <button
+          type="button"
+          class="diagnosis-secondary"
+          :disabled="busy || scopeClarificationLoading"
+          @click="loadScopeClarification(true)"
+        >重新核对</button>
+      </div>
+    </article>
 
     <template v-if="investigationReached">
       <article class="message is-agent">

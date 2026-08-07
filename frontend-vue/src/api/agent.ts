@@ -455,6 +455,39 @@ export async function fetchDiagnosisCaseDetails(
   return readJson<IndicatorDetailResult>(response)
 }
 
+export interface DiagnosisScopeClarification {
+  scopeType: 'RECORD' | 'DEPARTMENT'
+  object: string
+  requestedField: string
+  matchedFields: string[]
+  status: 'IN_NUMERATOR_AND_DENOMINATOR' | 'IN_DENOMINATOR_ONLY' | 'NOT_IN_DETAIL'
+  denominatorCount: number
+  numeratorCount: number
+  denominatorRule: string
+  numeratorRule: string
+  statStart: string
+  statEnd: string
+  summary: string
+  reasons: string[]
+  sampleRows: Array<Record<string, unknown>>
+  sampleTruncated: boolean
+  detailCountsReconciled: boolean
+  overviewSqlHash: string
+  snapshotReused: boolean
+}
+
+/** 解释所选患者或科室为何出现在本次分子、分母明细中。 */
+export async function fetchDiagnosisScopeClarification(
+  token: string,
+  caseId: string,
+): Promise<DiagnosisScopeClarification> {
+  const response = await fetch(
+    `/api/diagnosis/cases/${encodeURIComponent(caseId)}/scope-clarification`,
+    { headers: authHeaders(token) },
+  )
+  return readJson<DiagnosisScopeClarification>(response)
+}
+
 /** 获取全部活跃指标（供引导面板渲染指标多选列表） */
 export async function listIndicators(token: string): Promise<IndicatorItem[]> {
   const response = await fetch('/api/kb/rules/list', { headers: authHeaders(token) })
