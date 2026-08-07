@@ -230,6 +230,14 @@ export interface ConnectionTestResult {
   durationMs: number
 }
 
+export interface RuntimeConnectionTestInput {
+  driverClassName: string
+  url: string
+  username: string
+  password: string
+  schema: string
+}
+
 export async function loadRuntimeSettings(token: string): Promise<RuntimeSettings> {
   const response = await fetch('/api/settings/runtime', { headers: authHeaders(token) })
   return readJson<RuntimeSettings>(response)
@@ -238,11 +246,27 @@ export async function loadRuntimeSettings(token: string): Promise<RuntimeSetting
 export async function testRuntimeConnection(
   token: string,
   connectionId: RuntimeDatabaseSetting['id'],
+  input?: RuntimeConnectionTestInput,
 ): Promise<ConnectionTestResult> {
   const response = await fetch(`/api/settings/connections/${encodeURIComponent(connectionId)}/test`, {
     method: 'POST',
-    headers: authHeaders(token),
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input || {}),
   })
+  return readJson<ConnectionTestResult>(response)
+}
+
+export async function setRuntimeDefaultModel(token: string, modelId: string): Promise<{ defaultModel: string; message: string }> {
+  const response = await fetch('/api/settings/models/default', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modelId }),
+  })
+  return readJson(response)
+}
+
+export async function testRuntimeMcp(token: string): Promise<ConnectionTestResult> {
+  const response = await fetch('/api/settings/mcp/test', { method: 'POST', headers: authHeaders(token) })
   return readJson<ConnectionTestResult>(response)
 }
 

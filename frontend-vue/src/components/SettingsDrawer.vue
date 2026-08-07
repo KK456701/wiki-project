@@ -3,9 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 
 import {
   loadRuntimeSettings,
+  setRuntimeDefaultModel,
   testRuntimeConnection,
+  testRuntimeMcp,
   type AgentModel,
   type ConnectionTestResult,
+  type RuntimeConnectionTestInput,
   type RuntimeDatabaseSetting,
   type RuntimeSettings,
 } from '../api/agent'
@@ -27,6 +30,10 @@ const loading = ref(true)
 const error = ref('')
 const testing = ref('')
 const connectionResults = ref<Record<string, ConnectionTestResult>>({})
+const connectionDrafts = ref<Record<string, RuntimeConnectionTestInput>>({})
+const savingDefault = ref('')
+const modelMessage = ref('')
+const mcpResult = ref<ConnectionTestResult | null>(null)
 
 const modelItems = computed(() => settings.value?.models?.length ? settings.value.models : props.models)
 
@@ -37,6 +44,13 @@ async function load() {
   error.value = ''
   try {
     settings.value = await loadRuntimeSettings(props.token)
+    connectionDrafts.value = Object.fromEntries(settings.value.databases.map((item) => [item.id, {
+      driverClassName: item.engine === 'Oracle' ? 'oracle.jdbc.OracleDriver' : 'com.microsoft.sqlserver.jdbc.SQLServerDriver',
+      url: item.endpoint === '未配置' ? '' : item.endpoint,
+      username: item.username,
+      password: '',
+      schema: item.schema,
+    }]))
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '运行配置读取失败。'
   } finally {
@@ -47,7 +61,11 @@ async function load() {
 async function testConnection(item: RuntimeDatabaseSetting) {
   testing.value = item.id
   try {
-    connectionResults.value[item.id] = await testRuntimeConnection(props.token, item.id)
+    const draft = connectionDrafts.value[item.id]
+    const changed = draft && (draft.driverClassName !== defaultDriver(item)
+      || draft.url !== (item.endpoint === '未配置' ? '' : item.endpoint)
+      || draft.username !== item.username || draft.schema !== item.schema || Boolean(draft.password))
+    connectionResults.value[item.id] = await testRuntimeConnection(props.token, item.id, changed ? draft : undefined)
   } catch (reason) {
     connectionResults.value[item.id] = {
       connectionId: item.id,
@@ -58,6 +76,36 @@ async function testConnection(item: RuntimeDatabaseSetting) {
   } finally {
     testing.value = ''
   }
+}
+
+async function setDefaultModel(modelId: string) {
+  savingDefault.value = modelId
+  modelMessage.value = ''
+  try {
+    const result = await setRuntimeDefaultModel(props.token, modelId)
+    if (settings.value) settings.value.defaultModel = result.defaultModel
+    emit('selectModel', modelId)
+    modelMessage.value = result.message
+  } catch (reason) {
+    modelMessage.value = reason instanceof Error ? reason.message : '默认模型切换失败。'
+  } finally {
+    savingDefault.value = ''
+  }
+}
+
+async function testMcp() {
+  testing.value = 'mcp'
+  try {
+    mcpResult.value = await testRuntimeMcp(props.token)
+  } catch (reason) {
+    mcpResult.value = { connectionId: 'mcp', status: 'FAILED', message: reason instanceof Error ? reason.message : 'MCP 测试失败。', durationMs: 0 }
+  } finally {
+    testing.value = ''
+  }
+}
+
+function defaultDriver(item: RuntimeDatabaseSetting) {
+  return item.engine === 'Oracle' ? 'oracle.jdbc.OracleDriver' : 'com.microsoft.sqlserver.jdbc.SQLServerDriver'
 }
 
 function providerLabel(provider: string) {
@@ -110,12 +158,18 @@ function providerLabel(provider: string) {
               <em v-else-if="model.available === false" class="is-off">缺少密钥</em>
             </button>
           </div>
+          <div class="settings-model-actions">
+            <button type="button" :disabled="savingDefault === selectedModel" @click="setDefaultModel(selectedModel)">
+              {{ savingDefault === selectedModel ? '正在切换…' : '设为服务默认模型' }}
+            </button>
+            <span v-if="modelMessage">{{ modelMessage }}</span>
+          </div>
           <div class="settings-config-note"><strong>API Key 配置</strong><code>DEEPSEEK_API_KEY</code><code>DASHSCOPE_API_KEY</code><p>修改服务器环境变量后重启 Java 服务生效，页面不会接收或保存 Key。</p></div>
         </section>
 
         <section v-else-if="activeTab === 'databases'" class="settings-section">
           <header><div><span>服务器运行时</span><h3>数据库连接</h3></div><small>密码不回显</small></header>
-          <p class="settings-explain">业务库和真实库属于正式计算链路；Oracle 是新增加的独立扩展连接，目前不会自动替换正式链路。</p>
+          <p class="settings-explain">可编辑连接参数后立即测试。密码只用于本次测试，不保存或回显；正式计算的业务库/真实库仍由服务器环境变量和重启后的连接池控制。</p>
           <article v-for="item in settings?.databases || []" :key="item.id" class="settings-db-card">
             <header>
               <div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div>
@@ -131,6 +185,15 @@ function providerLabel(provider: string) {
               <button type="button" :disabled="testing === item.id || !item.enabled" @click="testConnection(item)">{{ testing === item.id ? '正在测试…' : '测试连接' }}</button>
               <span v-if="connectionResults[item.id]" :data-state="connectionResults[item.id].status.toLowerCase()">{{ connectionResults[item.id].message }} · {{ connectionResults[item.id].durationMs }} ms</span>
             </div>
+            <details class="settings-db-editor">
+              <summary>修改本次测试连接</summary>
+              <p>如修改地址、账号、驱动或 Schema，请重新填写密码后测试。该填写内容不会写入知识库或显示在页面。</p>
+              <label>驱动<input v-model="connectionDrafts[item.id].driverClassName" autocomplete="off"></label>
+              <label>连接地址<input v-model="connectionDrafts[item.id].url" autocomplete="off"></label>
+              <label>账号<input v-model="connectionDrafts[item.id].username" autocomplete="username"></label>
+              <label>密码<input v-model="connectionDrafts[item.id].password" type="password" autocomplete="new-password" placeholder="修改连接后请重新填写"></label>
+              <label>Schema<input v-model="connectionDrafts[item.id].schema" autocomplete="off"></label>
+            </details>
             <details><summary>环境变量</summary><code v-for="name in item.environmentVariables" :key="name">{{ name }}</code></details>
           </article>
         </section>
@@ -141,6 +204,10 @@ function providerLabel(provider: string) {
             <div><span>应用</span><strong>Spring Boot :8765</strong></div><i aria-hidden="true"></i><div><span>MCP端点</span><strong>{{ settings?.mcp.endpoint }}</strong></div><i aria-hidden="true"></i><div><span>数据库工具</span><strong>{{ settings?.mcp.tools.length }} 个已注册</strong></div>
           </div>
           <ul class="settings-tool-list"><li v-for="tool in settings?.mcp.tools || []" :key="tool"><code>{{ tool }}</code></li></ul>
+          <div class="settings-mcp-actions">
+            <button type="button" :disabled="testing === 'mcp'" @click="testMcp">{{ testing === 'mcp' ? '正在测试…' : '测试内嵌 MCP' }}</button>
+            <span v-if="mcpResult" :data-state="mcpResult.status.toLowerCase()">{{ mcpResult.message }} · {{ mcpResult.durationMs }} ms</span>
+          </div>
           <div class="settings-config-note"><strong>运行参数</strong><span>超时 {{ settings?.mcp.timeoutSeconds }} 秒</span><code v-for="name in settings?.mcp.environmentVariables || []" :key="name">{{ name }}</code><p>默认使用应用自身的 <code>/mcp</code>；只有显式设置外部地址时才会覆盖。</p></div>
         </section>
       </main>
