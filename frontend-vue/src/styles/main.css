@@ -1559,6 +1559,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-thinking[open] > summary strong:first-child::before { animation: diagnosis-spin 1.2s linear infinite; }
 @keyframes diagnosis-spin { to { transform: rotate(360deg); } }
 .diagnosis-agent-disclosure { margin: 8px 0 12px; padding: 8px 10px; border-radius: 8px; background: #f4f7fa; color: #65757f; font-size: 13px; }
+.composer-context-ring { position: relative; flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; cursor: help; box-shadow: inset 0 0 0 1px rgba(22, 131, 111, .08); }
+.composer-context-ring::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: #fbfdfc; }
 .diagnosis-agent-model { color: #485f68; font-size: 13px; }
 .diagnosis-agent-timeline { display: grid; gap: 10px; padding-left: 0; list-style: none; }
 .diagnosis-agent-timeline li { border-left: 3px solid #1a9b84; padding: 11px 13px; background: #f5faf9; border-radius: 0 10px 10px 0; }

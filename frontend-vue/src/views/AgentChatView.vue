@@ -59,6 +59,19 @@ const activeAutonomousCase = computed(() => {
 const composerPlaceholder = computed(() => (activeAutonomousCase.value
   ? '输入消息继续当前异常排查对话…'
   : '输入指标、统计时间或对比要求…'))
+const activeAutonomousContextStats = computed<Record<string, unknown>>(() => {
+  const value = activeAutonomousCase.value?.autonomousRun?.contextStats
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+})
+const autonomousContextIsActual = computed(() => activeAutonomousContextStats.value.usageEstimated === false)
+const autonomousContextPercent = computed(() => Math.min(100, Math.round(contextStatNumber('usagePercent'))))
+
+function contextStatNumber(key: string): number {
+  const value = Number(activeAutonomousContextStats.value[key] || 0)
+  return Number.isFinite(value) ? Math.max(0, value) : 0
+}
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
 // 侧边栏实际渲染的列表：后端会话列表 + 正在处理但还未写入列表的会话。
@@ -580,6 +593,7 @@ async function exportDiagnosis(reportId?: string) {
           <button type="button" class="diagnosis-launch-button" @click="guidedOpen = !guidedOpen">异常排查</button>
           <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
           <textarea v-model="query" rows="1" maxlength="5000" :placeholder="composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
+          <span v-if="activeAutonomousCase && contextStatNumber('contextWindowTokens')" class="composer-context-ring" role="progressbar" aria-label="当前对话容量使用进度" :aria-valuenow="autonomousContextPercent" aria-valuemin="0" aria-valuemax="100" :title="`对话容量约 ${autonomousContextPercent}%（${autonomousContextIsActual ? '按本轮实际用量计算' : '当前为估算'}）`" :style="{ background: `conic-gradient(#16836f ${autonomousContextPercent}%, #dfeae7 0)` }"></span>
           <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
         </form>
       </div>
