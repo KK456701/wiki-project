@@ -111,6 +111,32 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   return list
 })
 
+const sessionGroups = computed(() => {
+  const groups = [
+    { key: 'today', label: '今天', sessions: [] as SessionSummary[] },
+    { key: 'week', label: '7天内', sessions: [] as SessionSummary[] },
+    { key: 'month', label: '30天内', sessions: [] as SessionSummary[] },
+    { key: 'earlier', label: '更早', sessions: [] as SessionSummary[] },
+  ]
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  for (const session of displaySessionList.value) {
+    const lastMessageAt = new Date(session.lastMessageAt)
+    lastMessageAt.setHours(0, 0, 0, 0)
+    const daysAgo = Number.isNaN(lastMessageAt.getTime())
+      ? Number.POSITIVE_INFINITY
+      : Math.floor((today.getTime() - lastMessageAt.getTime()) / 86_400_000)
+
+    if (daysAgo <= 0) groups[0].sessions.push(session)
+    else if (daysAgo <= 7) groups[1].sessions.push(session)
+    else if (daysAgo <= 30) groups[2].sessions.push(session)
+    else groups[3].sessions.push(session)
+  }
+
+  return groups.filter((group) => group.sessions.length > 0)
+})
+
 onMounted(async () => {
   try {
     await store.refreshCapabilities()
@@ -447,17 +473,20 @@ async function exportDiagnosis(reportId?: string) {
           <button type="button" class="sidebar-new" @click="startNewSession()">＋ 新对话</button>
         </header>
         <ul class="session-list">
-          <li
-            v-for="session in displaySessionList"
-            :key="session.sessionId"
-            class="session-item"
-            :class="{ active: session.sessionId === store.sessionId }"
-            @click="switchSession(session.sessionId)"
-          >
-            <span v-if="store.runningSessions[session.sessionId]" class="session-spinner" title="处理中"></span>
-            <span class="session-title">{{ session.title }}</span>
-            <button type="button" class="session-delete" title="删除" @click="removeSession(session.sessionId, $event)">×</button>
-          </li>
+          <template v-for="group in sessionGroups" :key="group.key">
+            <li class="session-group-label">{{ group.label }}</li>
+            <li
+              v-for="session in group.sessions"
+              :key="session.sessionId"
+              class="session-item"
+              :class="{ active: session.sessionId === store.sessionId }"
+              @click="switchSession(session.sessionId)"
+            >
+              <span v-if="store.runningSessions[session.sessionId]" class="session-spinner" title="处理中"></span>
+              <span class="session-title">{{ session.title }}</span>
+              <button type="button" class="session-delete" title="删除" @click="removeSession(session.sessionId, $event)">×</button>
+            </li>
+          </template>
         </ul>
         <p v-if="!displaySessionList.length" class="sidebar-empty">暂无历史对话</p>
       </aside>
