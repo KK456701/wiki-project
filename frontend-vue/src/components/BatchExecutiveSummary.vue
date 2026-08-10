@@ -90,6 +90,8 @@ function numeric(value: unknown): number | null {
 }
 
 function outcome(item: BatchIndicatorResult): ProfileOutcome {
+  // 未实现是知识库配置状态，不是一次已经执行但失败的技术异常。
+  if (item.errorCode === 'PROFILE_NOT_IMPLEMENTED') return 'pending'
   if (item.status === 'FAILED') return 'failed'
   if (item.status === 'NO_SAMPLE') return 'no_sample'
   const value = numeric(item.resultValue)
@@ -136,7 +138,16 @@ const attentionItems = computed<AttentionItem[]>(() => {
   const items: AttentionItem[] = []
   for (const result of props.results) {
     const current = outcome(result)
-    if (result.status === 'FAILED') {
+    if (result.errorCode === 'PROFILE_NOT_IMPLEMENTED') {
+      items.push({
+        result,
+        level: 'pending',
+        category: 'pending',
+        label: '未实现',
+        reason: '该变体口径尚未配置可执行 SQL，本次按预期跳过',
+        priority: 2,
+      })
+    } else if (result.status === 'FAILED') {
       items.push({
         result,
         level: 'error',
