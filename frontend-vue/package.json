@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "type-check": "vue-tsc -b"
+    "type-check": "vue-tsc -b",
+    "test:autonomous": "node --experimental-strip-types --test tests/autonomousActivity.test.mjs"
   },
   "dependencies": {
     "pinia": "^3.0.3",

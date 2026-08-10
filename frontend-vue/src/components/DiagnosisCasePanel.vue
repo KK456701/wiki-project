@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import {
   fetchDiagnosisCaseDetails,
   fetchDiagnosisScopeClarification,
   loadDiagnosisShadowDiffs,
+  type AgentModel,
   type DiagnosisShadowDiffPage,
   type DiagnosisCaseSnapshot,
   type DiagnosisScopeClarification,
@@ -12,11 +13,13 @@ import {
 } from '../api/agent'
 import DetailRowsTable from './DetailRowsTable.vue'
 import IndicatorDataFlowPanel from './IndicatorDataFlowPanel.vue'
+import AutonomousActivityStream from './AutonomousActivityStream.vue'
 
 const props = defineProps<{
   snapshot: DiagnosisCaseSnapshot
   token: string
   busy?: boolean
+  models?: AgentModel[]
 }>()
 
 const emit = defineEmits<{
@@ -75,7 +78,6 @@ const pendingRequirement = ref<Record<string, string> | null>(null)
 const copiedSqlKey = ref('')
 const selectedMode = ref<'' | 'STANDARD' | 'AUTONOMOUS'>('')
 const autonomousProblem = ref('')
-const autonomousAnswer = ref('')
 const diffType = ref<DiagnosisShadowDiffPage['type']>('REMOVED')
 const diffSearch = ref('')
 const diffPage = ref<DiagnosisShadowDiffPage | null>(null)
@@ -86,9 +88,6 @@ const draftChangeSummary = ref('')
 const draftExpectedImpact = ref('')
 const draftVerificationSummary = ref('')
 const optimisticAutonomousTurns = ref<Array<Record<string, unknown>>>([])
-const expandedAutonomousTurns = ref<Set<string>>(new Set())
-const autonomousClock = ref(Date.now())
-let autonomousClockTimer = 0
 
 const baseSteps = [
   { gate: 1, key: 'GATE_1_SCHEMA', label: '数据结构校验' },
@@ -452,17 +451,21 @@ function startAutonomous() {
   autonomousProblem.value = ''
 }
 
-function respondAutonomous() {
-  sendAutonomousText(autonomousAnswer.value)
-  autonomousAnswer.value = ''
+function respondAutonomous(answer: string) {
+  sendAutonomousText(answer, true)
 }
 
-function sendAutonomousText(text: string) {
+function sendAutonomousText(text: string, answeringQuestion = false) {
   const normalized = text.trim()
   if (!normalized) return
   const clientMessageId = `CLIENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   optimisticAutonomousTurns.value.push({ clientMessageId, userMessage: normalized, status: 'SENDING' })
-  emit('action', 'SEND_AUTONOMOUS_MESSAGE', { message: normalized, clientMessageId })
+  const pendingQuestion = answeringQuestion || String(props.snapshot.autonomousRun?.status || '') === 'WAITING_USER'
+  emit('action', pendingQuestion ? 'RESPOND_AUTONOMOUS_QUESTION' : 'SEND_AUTONOMOUS_MESSAGE', {
+    message: normalized,
+    answer: normalized,
+    clientMessageId,
+  })
 }
 
 defineExpose({ sendAutonomousText })
@@ -524,93 +527,12 @@ const autonomousTurns = computed(() => {
   return [...saved, ...optimistic]
 })
 
-function turnEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
-  const values = objectList(turn.processEvents)
-  if (values.length) return values
-  const turnId = String(turn.turnId || '')
-  return autonomousEvents.value.filter((event) => String(event.turnId || '') === turnId)
-}
-
-function turnProcessEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
-  return turnEvents(turn).filter((event) => !['RESPONSE', 'STAGE_REPLY', 'QUESTION', 'CONCLUSION']
-    .includes(autonomousEventType(event)))
-}
-
-function mergedTurnProcessEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
-  const rows: Array<Record<string, unknown>> = []
-  const tools = new Map<string, number>()
-  for (const event of turnProcessEvents(turn)) {
-    const type = autonomousEventType(event)
-    const callId = String(event.toolCallId || '')
-    if (type === 'TOOL_CALL' && callId) {
-      tools.set(callId, rows.length)
-      rows.push({ ...event })
-    } else if (type === 'OBSERVATION' && callId && tools.has(callId)) {
-      const index = tools.get(callId) as number
-      rows[index] = { ...rows[index], ...event, eventType: 'TOOL', startedStatus: rows[index].status }
-    } else {
-      rows.push(event)
-    }
-  }
-  return rows
-}
-
-function mergedTurnEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
-  return [...mergedTurnProcessEvents(turn), ...turnReplyEvents(turn)]
-    .sort((left, right) => Number(left.seq || 0) - Number(right.seq || 0))
-}
-
-function autonomousEventKind(event: Record<string, unknown>): string {
-  const type = autonomousEventType(event)
-  if (type === 'ANALYSIS') return 'analysis'
-  if (type === 'MODEL_STARTED') return 'model'
-  if (['RESPONSE', 'STAGE_REPLY', 'QUESTION', 'CONCLUSION'].includes(type)) return 'reply'
-  if (type === 'STOP') return 'stop'
-  if (event.tool || type === 'TOOL_CALL' || type === 'OBSERVATION') return 'tool'
-  return 'process'
-}
-
-function replyDataKind(event: Record<string, unknown>): string {
-  const type = autonomousEventType(event)
-  if (type === 'CONCLUSION') return 'conclusion'
-  if (type === 'QUESTION') return 'question'
-  return 'response'
-}
-
-const hasPendingAutonomousQuestion = computed(() => (
-  String(props.snapshot.autonomousRun?.status || '') === 'WAITING_USER'
-))
-
-function isPendingQuestion(turn: Record<string, unknown>, event: Record<string, unknown>): boolean {
-  if (!hasPendingAutonomousQuestion.value) return false
-  const savedTurns = objectList(props.snapshot.autonomousRun?.turns)
-  const lastSaved = savedTurns[savedTurns.length - 1]
-  if (!lastSaved || String(lastSaved.turnId || '') !== String(turn.turnId || '')) return false
-  const questions = turnReplyEvents(turn).filter((item) => autonomousEventType(item) === 'QUESTION')
-  const last = questions[questions.length - 1]
-  return Boolean(last) && Number(last.seq || -1) === Number(event.seq || -2)
-}
-
-function turnReplyEvents(turn: Record<string, unknown>): Array<Record<string, unknown>> {
-  return turnEvents(turn).filter((event) => ['RESPONSE', 'STAGE_REPLY', 'QUESTION', 'CONCLUSION', 'STOP']
-    .includes(autonomousEventType(event)))
-}
-
-function turnIsExpanded(turn: Record<string, unknown>, index: number): boolean {
-  const id = String(turn.turnId || turn.clientMessageId || index)
-  return expandedAutonomousTurns.value.has(id)
-}
-
-function toggleTurn(turn: Record<string, unknown>, index: number, open: boolean) {
-  const id = String(turn.turnId || turn.clientMessageId || index)
-  const copy = new Set(expandedAutonomousTurns.value)
-  if (open) copy.add(id); else copy.delete(id)
-  expandedAutonomousTurns.value = copy
-}
-
-function toggleTurnEvent(turn: Record<string, unknown>, index: number, event: Event) {
-  toggleTurn(turn, index, Boolean((event.currentTarget as HTMLDetailsElement).open))
-}
+const autonomousModelName = computed(() => {
+  const runName = String(props.snapshot.autonomousRun?.modelName || '').trim()
+  if (runName) return runName
+  const model = props.models?.find((item) => item.id === props.snapshot.modelId)
+  return model?.name || props.snapshot.modelId || '自主排查模型'
+})
 
 function objectList(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value)
@@ -618,84 +540,6 @@ function objectList(value: unknown): Array<Record<string, unknown>> {
     : []
 }
 
-function autonomousTurnSeconds(turn: Record<string, unknown>): string {
-  const started = Date.parse(String(turn.submittedAt || ''))
-  const events = turnEvents(turn)
-  const ended = events.length && String(turn.status || '') !== 'RUNNING'
-    ? Date.parse(String(events[events.length - 1].createdAt || '')) : autonomousClock.value
-  if (!Number.isFinite(started) || !Number.isFinite(ended)) return '0s'
-  return `${Math.max(0, (ended - started) / 1000).toFixed(1)}s`
-}
-
-function autonomousTurnTitle(turn: Record<string, unknown>): string {
-  return String(turn.status || '') === 'RUNNING'
-    ? `思考中 · ${autonomousTurnSeconds(turn)}`
-    : `详细分析过程 · ${autonomousTurnSeconds(turn)}`
-}
-
-function analysisItems(event: Record<string, unknown>): Array<{ label: string, value: unknown }> {
-  return [
-    { label: '当前问题理解', value: event.problemUnderstanding || event.analysisSummary },
-    { label: '当前判断与候选原因', value: event.hypotheses },
-    { label: '已有依据', value: event.evidenceRefs },
-    { label: '本轮验证目标', value: event.verificationGoal },
-    { label: '工具选择理由', value: event.toolChoiceReason },
-    { label: '判断更新', value: event.judgementUpdate },
-    { label: '下一步动作', value: event.nextStep || event.publicPlan },
-  ].filter((item) => Array.isArray(item.value) ? item.value.length : String(item.value || '').trim())
-}
-
-function displayAnalysisValue(value: unknown): string {
-  return Array.isArray(value) ? value.map(String).join('；') : String(value || '')
-}
-
-onMounted(() => {
-  autonomousClockTimer = window.setInterval(() => { autonomousClock.value = Date.now() }, 500)
-})
-
-onUnmounted(() => window.clearInterval(autonomousClockTimer))
-
-function autonomousEventType(event: Record<string, unknown>): string {
-  return String(event.eventType || (event.tool ? 'OBSERVATION' : 'ANALYSIS')).toUpperCase()
-}
-
-function autonomousEventTitle(event: Record<string, unknown>): string {
-  const title = String(event.title || '').trim()
-  if (title) return title
-  return ({
-    ANALYSIS: '公开分析', TOOL_CALL: '执行工具', OBSERVATION: '工具观察',
-    RESPONSE: '直接回答', QUESTION: '需要现场补充', CONCLUSION: '排查结论', STOP: '循环已停止',
-  } as Record<string, string>)[autonomousEventType(event)] || '执行记录'
-}
-
-function autonomousEventDisplayTitle(
-  event: Record<string, unknown>,
-  turn: Record<string, unknown>,
-): string {
-  if (autonomousEventType(event) !== 'MODEL_STARTED') return autonomousEventTitle(event)
-  const status = autonomousEventStatus(event, turn)
-  if (status === 'FAILED') return '分析失败'
-  if (status === 'SUCCEEDED') return '已分析'
-  return '思考中'
-}
-
-function autonomousStatusText(status: unknown): string {
-  return ({
-    RUNNING: '执行中', SUCCEEDED: '已完成', FAILED: '失败',
-    WAITING_USER: '等待回复', STOPPED: '已停止', CANCELLED: '已停止',
-  } as Record<string, string>)[String(status || '').toUpperCase()] || String(status || '')
-}
-
-function autonomousEventStatus(event: Record<string, unknown>, turn: Record<string, unknown>): string {
-  if (autonomousEventType(event) === 'MODEL_STARTED' && String(turn.status || '') !== 'RUNNING') {
-    return String(turn.status || '') === 'FAILED' ? 'FAILED' : 'SUCCEEDED'
-  }
-  return String(event.status || '')
-}
-
-function hasAutonomousDetails(event: Record<string, unknown>): boolean {
-  return Boolean(event.arguments || event.resultPreview || event.error)
-}
 
 function fillWordRequirement() {
   investigationLayer.value = 'SOURCE_EXTRACT'
@@ -847,19 +691,6 @@ watch(
       .filter((turn) => !saved.has(String(turn.clientMessageId || '')))
   },
   { deep: true },
-)
-
-watch(
-  () => autonomousTurns.value.map((turn, index) => String(turn.turnId || turn.clientMessageId || index)).join('|'),
-  () => {
-    const last = autonomousTurns.value[autonomousTurns.value.length - 1]
-    if (!last) return
-    const id = String(last.turnId || last.clientMessageId || autonomousTurns.value.length - 1)
-    const copy = new Set(expandedAutonomousTurns.value)
-    copy.add(id)
-    expandedAutonomousTurns.value = copy
-  },
-  { immediate: true },
 )
 
 watch(
@@ -1062,7 +893,7 @@ const currentGateHasResult = computed(() => currentBaseGate.value > 0 && Boolean
 const allBaseChecksPassed = computed(() => baseSteps.every((item) => stepState(item.gate) === 'PASSED'))
 const baseConclusion = computed(() => {
   if (blockedGateCount.value) return '基础校验发现需要处理的问题，修复当前步骤后才能继续。'
-  if (allBaseChecksPassed.value) return '三项基础校验均已通过，可以选择标准排查或 DeepSeek 自主排查。'
+  if (allBaseChecksPassed.value) return '三项基础校验均已通过，可以选择标准排查或自主排查。'
   return props.busy ? '基础校验正在执行，请等待本轮结果。' : '基础校验尚未完成。'
 })
 
@@ -1191,12 +1022,12 @@ function pretty(value: unknown): string {
       <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 选择排查方式</strong></div>
         <div class="diagnosis-mode-grid">
           <button type="button" :class="{ active: selectedMode === 'STANDARD' }" @click="selectedMode = 'STANDARD'"><strong>标准模式</strong><span>按字段和条件由程序安全改写</span></button>
-          <button type="button" :class="{ active: selectedMode === 'AUTONOMOUS' }" @click="selectedMode = 'AUTONOMOUS'"><strong>DeepSeek 自主排查</strong><span>自主阅读 Wiki、查询双库并组织证据</span></button>
+          <button type="button" :class="{ active: selectedMode === 'AUTONOMOUS' }" @click="selectedMode = 'AUTONOMOUS'"><strong>自主排查</strong><span>{{ autonomousModelName }} 自主阅读 Wiki、查询双库并组织证据</span></button>
         </div>
         <template v-if="selectedMode === 'AUTONOMOUS'">
-          <p>请直接描述异常现象。DeepSeek V4 Pro 会自主选择 Wiki 页面和只读查询；程序仍负责 SQL 安全、表范围、影子试跑和对账。</p>
+          <p>请直接描述异常现象。{{ autonomousModelName }} 会自主选择 Wiki 页面和只读查询；程序仍负责 SQL 安全、表范围、影子试跑和对账。</p>
           <textarea v-model="autonomousProblem" rows="5" maxlength="3000" placeholder="例如：骨伤一科在科室明细中没有手术患者，请定位数据在哪一步消失。"></textarea>
-          <button type="button" class="diagnosis-primary" :disabled="busy || !autonomousProblem.trim()" @click="startAutonomous">开始 DeepSeek 自主排查</button>
+          <button type="button" class="diagnosis-primary" :disabled="busy || !autonomousProblem.trim()" @click="startAutonomous">开始自主排查</button>
         </template>
       </div>
     </article>
@@ -1222,51 +1053,16 @@ function pretty(value: unknown): string {
       </div></article>
     </template>
 
-    <template v-if="snapshot.investigationMode === 'AUTONOMOUS'">
-      <template v-for="(turn, turnIndex) in autonomousTurns" :key="String(turn.turnId || turn.clientMessageId || turnIndex)">
-        <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员</strong><span v-if="turn.status === 'SENDING'">发送中</span><span v-else-if="turn.status === 'QUEUED'">已排队</span><span v-else-if="turn.status === 'FAILED'">发送失败</span></div><p>{{ turn.userMessage }}</p><p v-if="turn.errorMessage" class="diagnosis-template-warning">{{ turn.errorMessage }}</p></div></article>
-        <article v-if="mergedTurnEvents(turn).length" class="message is-agent diagnosis-process-message"><div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card diagnosis-process-card diagnosis-connected-reply">
-          <div class="message-head"><strong>DeepSeek · 排查回复</strong><span>{{ autonomousTurnTitle(turn) }} · {{ autonomousStatusText(turn.status) }}</span></div>
-          <p class="diagnosis-agent-disclosure">本条回复按顺序连接模型的分析、工具证据、阶段性结论和总结果；不把不可验证的内部 token 当作事实。</p>
-          <ol class="diagnosis-agent-timeline diagnosis-evidence-track">
-            <li v-for="event in mergedTurnEvents(turn)" :key="String(event.seq || event.toolCallId)" :data-kind="autonomousEventKind(event) === 'reply' ? replyDataKind(event) : autonomousEventKind(event)">
-              <details v-if="autonomousEventKind(event) === 'analysis'" class="diagnosis-thinking" :open="turnIsExpanded(turn, turnIndex)" @toggle="toggleTurnEvent(turn, turnIndex, $event)">
-                <summary><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><span><strong>{{ autonomousEventTitle(event) }}</strong><small>公开、可审计</small></span><em>{{ turnIsExpanded(turn, turnIndex) ? '收起' : '展开' }} · {{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</em></summary>
-                <dl class="diagnosis-public-analysis"><div v-for="item in analysisItems(event)" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ displayAnalysisValue(item.value) }}</dd></div></dl>
-              </details>
-              <template v-else-if="autonomousEventKind(event) === 'model'">
-                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>{{ autonomousEventDisplayTitle(event, turn) }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
-                <p v-if="event.summary">{{ event.summary }}</p>
-              </template>
-              <template v-else-if="autonomousEventKind(event) === 'tool'">
-                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>调用工具：{{ event.toolDisplayName || event.tool }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}<template v-if="event.durationMs !== undefined"> · {{ event.durationMs }}ms</template></span></div>
-                <p v-if="event.summary" class="diagnosis-agent-observation"><strong>观察：</strong>{{ event.summary }}</p>
-                <details v-if="hasAutonomousDetails(event)" class="diagnosis-technical diagnosis-agent-details"><summary>查看工具输入、结果和证据</summary><section v-if="event.arguments"><strong>输入参数</strong><pre>{{ pretty(event.arguments) }}</pre></section><section v-if="event.resultPreview"><strong>返回结果（最多预览10行）</strong><pre>{{ pretty(event.resultPreview) }}</pre></section><section v-if="event.error"><strong>错误</strong><pre>{{ event.error }}</pre></section><small v-if="event.evidenceId">证据编号：{{ event.evidenceId }}</small></details>
-              </template>
-              <template v-else-if="autonomousEventKind(event) === 'reply'">
-                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>{{ autonomousEventType(event) === 'CONCLUSION' ? '排查总结果' : autonomousEventType(event) === 'QUESTION' ? '需要现场补充' : '阶段性回复' }}</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
-                <p v-if="event.answer || event.conclusion" class="diagnosis-agent-answer">{{ event.answer || event.conclusion }}</p>
-                <small v-if="event.conclusionLevel">结论等级：{{ event.conclusionLevel }}</small>
-                <template v-if="autonomousEventType(event) === 'QUESTION'">
-                  <p class="diagnosis-agent-question">{{ event.question }}</p>
-                  <div v-if="isPendingQuestion(turn, event)" class="diagnosis-inline-answer">
-                    <label for="autonomous-inline-answer"><strong>在这里填写或补充现场确认结果，本条回复会继续排查：</strong></label>
-                    <textarea id="autonomous-inline-answer" v-model="autonomousAnswer" rows="3" maxlength="3000" placeholder="填写医院现场确认结果"></textarea>
-                    <div class="diagnosis-composer-actions"><button type="button" class="diagnosis-primary" :disabled="busy || !autonomousAnswer.trim()" @click="respondAutonomous">发送回答并继续本轮排查</button></div>
-                  </div>
-                </template>
-              </template>
-              <template v-else-if="autonomousEventKind(event) === 'stop'">
-                <div class="diagnosis-agent-event-head"><span class="diagnosis-agent-step">{{ event.iteration || '—' }}.{{ event.seq }}</span><strong>循环已停止</strong><span :data-state="autonomousEventStatus(event, turn).toLowerCase()">{{ autonomousStatusText(autonomousEventStatus(event, turn)) }}</span></div>
-                <p v-if="event.summary">{{ event.summary }}</p>
-              </template>
-              <p v-else-if="event.summary" class="diagnosis-agent-observation">{{ event.summary }}</p>
-            </li>
-          </ol>
-          <button v-if="snapshot.autonomousRun.status === 'RUNNING' && turnIndex === autonomousTurns.length - 1" type="button" class="diagnosis-secondary" :disabled="busy" @click="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})">停止本轮</button>
-        </div></article>
-      </template>
-    </template>
+    <AutonomousActivityStream
+      v-if="snapshot.investigationMode === 'AUTONOMOUS'"
+      :turns="autonomousTurns"
+      :events="autonomousEvents"
+      :run-status="String(snapshot.autonomousRun.status || '')"
+      :model-name="autonomousModelName"
+      :busy="busy"
+      @respond="respondAutonomous"
+      @cancel="emit('action', 'CANCEL_AUTONOMOUS_INVESTIGATION', {})"
+    />
 
     <template v-if="caseSubmitted">
       <article class="message is-user"><div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>实施人员 · 排查范围</strong></div><p>{{ submittedScopeSummary }}</p><p v-if="snapshot.caseInput.caseDescription && String(snapshot.caseInput.scopeType || '') !== 'OVERALL'">{{ snapshot.caseInput.caseDescription }}</p></div></article>

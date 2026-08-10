@@ -303,7 +303,8 @@ async function pollAutonomousDiagnosis(caseId: string) {
   let cycles = 0
   try {
     while (Date.now() < deadline) {
-      await new Promise((resolve) => window.setTimeout(resolve, 650))
+      // The first read happens immediately after the user submits a message or
+      // answers a question. Later reads keep the existing 650 ms cadence.
       const update = await loadDiagnosisAgentEvents(store.token, caseId, afterSeq)
       for (const event of update.events) {
         const seq = Number(event.seq || 0)
@@ -326,6 +327,7 @@ async function pollAutonomousDiagnosis(caseId: string) {
       // The event endpoint carries the complete autonomous run. Refresh the
       // whole case less frequently to pick up candidate/shadow state changes.
       if (cycles % 8 === 0) replaceDiagnosisSnapshot(await loadDiagnosisCase(store.token, caseId))
+      await new Promise((resolve) => window.setTimeout(resolve, 650))
     }
   } catch (error) {
     store.error = error instanceof Error ? error.message : '自主排查进度读取失败。'
@@ -571,6 +573,7 @@ async function exportDiagnosis(reportId?: string) {
             :snapshot="item"
             :token="store.token"
             :busy="diagnosisBusy === item.caseId"
+            :models="composerModels"
             @action="(action, payload) => diagnosisAction(item, action, payload)"
           />
         </div>
