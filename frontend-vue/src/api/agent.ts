@@ -519,7 +519,9 @@ export async function fetchDiagnosisCaseDetails(
 }
 
 export interface DiagnosisScopeClarification {
-  scopeType: 'RECORD' | 'DEPARTMENT'
+  scopeType: 'RECORD' | 'DEPARTMENT' | 'TIME_RANGE' | 'DATA_CATEGORY' | 'OVERALL'
+  issueDirection: 'OVER_INCLUDED' | 'UNDER_INCLUDED' | 'WRONG_CLASSIFICATION' | 'SUSPECT_SYNC' | 'UNKNOWN'
+  traceMode: 'REVERSE_INCLUSION' | 'FORWARD_MISSING' | 'CLASSIFICATION_CHECK' | 'SYNC_CHECK'
   object: string
   requestedField: string
   matchedFields: string[]
@@ -532,6 +534,22 @@ export interface DiagnosisScopeClarification {
   statEnd: string
   summary: string
   reasons: string[]
+  stageEvidence: Array<{
+    stageKey: 'BUSINESS_SOURCE' | 'REAL_TARGET' | 'DENOMINATOR' | 'NUMERATOR'
+    label: string
+    status: 'FOUND' | 'NOT_FOUND' | 'UNAVAILABLE' | 'NOT_APPLICABLE'
+    count?: number
+    meaning: string
+    databaseRole?: 'BUSINESS' | 'REAL' | 'RECONCILED_DETAIL'
+    sql?: string
+    error?: string
+    sampleRows: Array<Record<string, unknown>>
+  }>
+  firstDifferenceStage: string
+  conclusion: string
+  nextAction: string
+  ruleEvidence: string[]
+  knowledgeEvidence: Record<string, unknown>
   naturalLanguageExplanation: string
   explanationSource: 'MODEL' | 'PROGRAM_FALLBACK'
   explanationModel: string
