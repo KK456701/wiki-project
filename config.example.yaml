@@ -4,13 +4,11 @@
 # 运行库：保存 Agent 会话、审批记录、诊断报告、Trace 链路等。
 runtime_db_url: "jdbc:sqlite:runtime/wiki_agent_runtime.db"
 
-# 医院业务库统一经 DBHub MCP 访问；连接串和密码只保存在 DBHub。
-dbhub_api_url: "http://127.0.0.1:8080"
-dbhub_mcp_url: "http://127.0.0.1:8080/mcp"
-# 业务事件抽取 MCP，必须与只读 DBHub MCP 分开配置。
+# 双库只读 MCP 已内嵌在 Java 服务中，跟随 server.port 自动启动，无需 sidecar 配置。
+# 业务事件抽取 MCP 是独立远端业务接口，与内嵌数据库 MCP 分开配置。
 dbhub_biz_mcp_url: "http://127.0.0.1:5420/http/mcp"
 
-# 真实库指标计算；业务库 DBHub 配置暂供既有诊断能力使用，普通计算不查询业务库。
+# 内嵌 MCP 对外暴露的双库逻辑编号、工具名和数据库范围。
 dbhub_business_source_id: "winex_all_dev"
 dbhub_business_execute_tool: "execute_sql_winex_all_dev"
 dbhub_business_database: "WiNEX_All_DEV"

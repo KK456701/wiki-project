@@ -100,8 +100,6 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'WIKI_ADMIN_PASSWORD' (Get-YamlScalar $config 'admin_password')
     Set-EnvironmentDefault 'JAVA_HOME' (Get-YamlScalar $config 'java_home')
     Set-EnvironmentDefault 'WIKI_KNOWLEDGE_INDEX_ROOT' (Get-YamlScalar $config 'knowledge_index_root')
-    Set-EnvironmentDefault 'DBHUB_API_URL' (Get-YamlScalar $config 'dbhub_api_url')
-    Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
     Set-EnvironmentDefault 'DBHUB_BIZ_MCP_URL' (Get-YamlScalar $config 'dbhub_biz_mcp_url')
     # biz-mcp-url 必须始终用 config.yaml 的值（防止旧用户级环境变量干扰）
     $bizMcpUrl = Get-YamlScalar $config 'dbhub_biz_mcp_url'

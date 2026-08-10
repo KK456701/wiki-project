@@ -11,7 +11,7 @@ flowchart LR
     AGENT --> WIKI["HXZD Wiki<br/>规则、Profile、SQL 与字段契约"]
     AGENT --> SQLITE["SQLite<br/>会话、Trace、Evidence、临时对象"]
     AGENT --> EXTRACT["源数据抽取网关<br/>接口预留，负责真实库写入"]
-    AGENT --> DBHUB["DBHub sidecar<br/>仅只读"]
+    AGENT --> DBHUB["Java 内嵌数据库 MCP<br/>仅只读"]
     DBHUB --> BUSINESS["业务库 winex_all_dev"]
     DBHUB --> REAL["真实库 winex_aima"]
     AGENT --> OLLAMA["本地 Ollama"]
@@ -42,7 +42,7 @@ flowchart TD
     V --> S["State Controller<br/>寻找下一个缺失事实"]
     S --> D["Deterministic Dispatch<br/>Capability → 唯一工具和参数编译器"]
     D --> G["ToolGateway<br/>权限、校验、超时、缓存、并发与重复调用控制"]
-    G --> T["Wiki / SQL / DBHub / 上传 / 诊断工具"]
+    G --> T["Wiki / SQL / 内嵌数据库 MCP / 上传 / 诊断工具"]
     T --> DBTASK{"是否访问指标数据库"}
     DBTASK -->|"否"| E
     DBTASK -->|"是"| PERIOD{"统计区间 ≤ 1个自然月"}

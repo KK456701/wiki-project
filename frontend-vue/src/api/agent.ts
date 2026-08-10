@@ -309,11 +309,6 @@ export async function saveRuntimeConnection(
   return readJson(response)
 }
 
-export async function testRuntimeMcp(token: string): Promise<ConnectionTestResult> {
-  const response = await fetch('/api/settings/mcp/test', { method: 'POST', headers: authHeaders(token) })
-  return readJson<ConnectionTestResult>(response)
-}
-
 export interface IndicatorItem {
   ruleId: string
   ruleName: string

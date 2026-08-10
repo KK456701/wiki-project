@@ -2,7 +2,7 @@ param(
     [string]$KnowledgeRoot = 'backend-java/src/main/resources/knowledge-index',
     [string]$OutputPath = 'docs/去年全部指标上游数据就绪度检查报告_2026-07-31.md',
     [string]$JsonOutputPath = 'runtime/acceptance/knowledge-readiness-2025.json',
-    [string]$McpUrl = 'http://127.0.0.1:8080/mcp',
+    [string]$McpUrl = 'http://127.0.0.1:8765/mcp',
     [string]$ExecuteTool = 'execute_sql_winex_all_dev',
     [string]$PreferredSchema = 'WINDBA_GN',
     [string]$StatStart = '2025-01-01',

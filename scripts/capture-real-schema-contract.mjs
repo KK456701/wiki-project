@@ -91,7 +91,7 @@ WHERE s.name='dbo' AND t.name IN (${quoted})
 ORDER BY t.name,c.column_id`.trim();
 
 const response = await fetch(
-  process.env.DBHUB_MCP_URL || 'http://127.0.0.1:8080/mcp',
+  process.env.WIKI_MCP_URL || 'http://127.0.0.1:8765/mcp',
   {
     method: 'POST',
     headers: {
