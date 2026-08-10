@@ -140,6 +140,7 @@ onMounted(async () => {
   } catch {
     // 访客模式，忽略刷新失败
   }
+  await store.newSession()
   await refreshSessionList()
   await restoreDiagnosisCases(store.sessionId)
 })
@@ -247,6 +248,7 @@ async function restoreDiagnosisCases(sessionId: string) {
     diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
     for (const snapshot of diagnosisCases.value) {
       if (String(snapshot.autonomousRun?.status || '') === 'RUNNING') {
+        store.runningSessions[snapshot.sessionId] = true
         void pollAutonomousDiagnosis(snapshot.caseId)
       }
     }
@@ -262,6 +264,7 @@ async function startDiagnosis(input: CreateDiagnosisCaseInput) {
     const created = await createDiagnosisCase(store.token, input)
     diagnosisCases.value.push(created)
     rememberDiagnosisCase(store.sessionId, created.caseId)
+    await refreshSessionList()
     await nextTick()
     conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
   } catch (error) {
@@ -276,6 +279,9 @@ async function diagnosisAction(
   action: string,
   payload: Record<string, unknown>,
 ) {
+  const autonomousAction = ['START_AUTONOMOUS_INVESTIGATION', 'SEND_AUTONOMOUS_MESSAGE',
+    'RESPOND_AUTONOMOUS_QUESTION'].includes(action)
+  if (autonomousAction) store.runningSessions[snapshot.sessionId] = true
   diagnosisBusy.value = snapshot.caseId
   store.error = ''
   try {
@@ -295,6 +301,8 @@ async function diagnosisAction(
     if (['START_AUTONOMOUS_INVESTIGATION', 'SEND_AUTONOMOUS_MESSAGE', 'RESPOND_AUTONOMOUS_QUESTION']
       .includes(action)) {
       markAutonomousMessageFailed(snapshot, payload, message)
+      store.runningSessions[snapshot.sessionId] = false
+      await refreshSessionList()
     }
   } finally {
     diagnosisBusy.value = ''
@@ -365,6 +373,9 @@ async function pollAutonomousDiagnosis(caseId: string) {
   } catch (error) {
     store.error = error instanceof Error ? error.message : '自主排查进度读取失败。'
   } finally {
+    const current = diagnosisCases.value.find((item) => item.caseId === caseId)
+    if (current) store.runningSessions[current.sessionId] = false
+    await refreshSessionList()
     autonomousPollCases.delete(caseId)
   }
 }
