@@ -1107,8 +1107,8 @@ function pretty(value: unknown): string {
           <section class="diagnosis-scope-verdict" :data-status="scopeClarification.status">
             <h4>{{ scopeClarification.summary }}</h4>
             <dl>
-              <div><dt>分母明细</dt><dd>{{ scopeClarification.denominatorCount }} 条</dd></div>
-              <div><dt>分子明细</dt><dd>{{ scopeClarification.numeratorCount }} 条</dd></div>
+              <div><dt>统计 SQL 分母结果</dt><dd>{{ scopeClarification.denominatorCount }} 条</dd></div>
+              <div><dt>统计 SQL 分子结果</dt><dd>{{ scopeClarification.numeratorCount }} 条</dd></div>
               <div><dt>统计时间</dt><dd>{{ scopeClarification.statStart }} 至 {{ scopeClarification.statEnd }}</dd></div>
             </dl>
           </section>
@@ -1117,34 +1117,20 @@ function pretty(value: unknown): string {
             <div class="diagnosis-evidence-stages">
               <article v-for="stage in scopeClarification.stageEvidence" :key="stage.stageKey" :data-state="stage.status">
                 <div class="diagnosis-stage-marker"><span></span></div>
-                <div><strong>{{ stage.label }}</strong><em>{{ ({ FOUND: '已找到', NOT_FOUND: '未找到', UNAVAILABLE: '未能自动核对', NOT_APPLICABLE: '不适用' } as Record<string, string>)[stage.status] }}</em><p>{{ stage.meaning }}</p><small v-if="stage.count !== undefined">记录数：{{ stage.count }}</small><details v-if="stage.sampleRows?.length || stage.sql || stage.error" class="diagnosis-technical"><summary>查看这一层的证据</summary><DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="没有样例记录。" /><pre v-if="stage.sql">{{ stage.sql }}</pre><p v-if="stage.error" class="indicator-error">{{ stage.error }}</p></details></div>
+                <div><strong>{{ stage.label }}</strong><em>{{ ({ FOUND: '已找到', NOT_FOUND: '未找到', UNAVAILABLE: '未能自动核对', NOT_APPLICABLE: '不适用' } as Record<string, string>)[stage.status] }}</em><p>{{ stage.meaning }}</p><small v-if="stage.count !== undefined">记录数：{{ stage.count }}</small><details v-if="stage.sampleRows?.length || stage.sql || stage.error" class="diagnosis-technical"><summary>查看这一环节的查询与部分记录</summary><DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="这一环节没有找到记录。" /><pre v-if="stage.sql">{{ stage.sql }}</pre><p v-if="stage.error" class="indicator-error">{{ stage.error }}</p></details></div>
               </article>
             </div>
             <p class="diagnosis-next-action"><strong>下一步：</strong>{{ scopeClarification.nextAction }}</p>
           </section>
           <section class="diagnosis-scope-reasons diagnosis-plain-explanation">
             <h4>
-              用当前生效口径解释
-              <small>{{ scopeClarification.explanationSource === 'MODEL' ? '当前模型整理' : '程序事实' }}</small>
+              为什么会这样统计
+              <small>{{ scopeClarification.explanationSource === 'MODEL' ? '当前模型根据已核验事实整理' : '模型暂不可用，显示系统说明' }}</small>
             </h4>
             <p>{{ scopeClarification.naturalLanguageExplanation }}</p>
           </section>
-          <details v-if="scopeClarification.ruleEvidence.length" class="diagnosis-technical"><summary>查看本指标用到的业务规则</summary><ul><li v-for="rule in scopeClarification.ruleEvidence" :key="rule">{{ rule }}</li></ul></details>
-          <details class="diagnosis-technical diagnosis-scope-evidence">
-            <summary>查看程序核验依据</summary>
-            <ol><li v-for="reason in scopeClarification.reasons" :key="reason">{{ reason }}</li></ol>
-            <p v-if="scopeClarification.matchedFields.length" class="diagnosis-help">
-              实际匹配字段：{{ scopeClarification.matchedFields.join('、') }}
-            </p>
-            <small v-if="scopeClarification.explanationModel">说明整理模型：{{ scopeClarification.explanationModel }}</small>
-          </details>
-          <details v-if="scopeClarification.sampleRows.length" class="diagnosis-technical diagnosis-scope-samples">
-            <summary>查看命中的明细样例（{{ scopeClarification.sampleRows.length }}条）</summary>
-            <DetailRowsTable :rows="scopeClarification.sampleRows" empty-text="没有命中的明细。" />
-            <p v-if="scopeClarification.sampleTruncated" class="diagnosis-help">这里只展示前10条，完整记录仍在分子、分母明细中查看。</p>
-          </details>
           <p class="diagnosis-scope-proof">
-            <strong>说明依据：</strong>同一统计 SQL版本、同一统计窗口，并且明细重新聚合后与卡片分子分母一致。
+            以上数量使用同一统计 SQL 和同一统计窗口，并已与指标卡片结果对账。
           </p>
         </template>
         <template v-else>

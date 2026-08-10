@@ -533,7 +533,6 @@ export interface DiagnosisScopeClarification {
   statStart: string
   statEnd: string
   summary: string
-  reasons: string[]
   stageEvidence: Array<{
     stageKey: 'BUSINESS_SOURCE' | 'REAL_TARGET' | 'DENOMINATOR' | 'NUMERATOR'
     label: string
@@ -548,13 +547,9 @@ export interface DiagnosisScopeClarification {
   firstDifferenceStage: string
   conclusion: string
   nextAction: string
-  ruleEvidence: string[]
-  knowledgeEvidence: Record<string, unknown>
   naturalLanguageExplanation: string
   explanationSource: 'MODEL' | 'PROGRAM_FALLBACK'
   explanationModel: string
-  sampleRows: Array<Record<string, unknown>>
-  sampleTruncated: boolean
   detailCountsReconciled: boolean
   overviewSqlHash: string
   snapshotReused: boolean
