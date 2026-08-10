@@ -100,9 +100,6 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'WIKI_ADMIN_PASSWORD' (Get-YamlScalar $config 'admin_password')
     Set-EnvironmentDefault 'JAVA_HOME' (Get-YamlScalar $config 'java_home')
     Set-EnvironmentDefault 'WIKI_KNOWLEDGE_INDEX_ROOT' (Get-YamlScalar $config 'knowledge_index_root')
-    Set-EnvironmentDefault 'AGENT_DEFAULT_MODEL' (Get-YamlScalar $config 'default_model')
-    Set-EnvironmentDefault 'OLLAMA_MODEL' (Get-YamlScalar $config 'ollama_model')
-    Set-EnvironmentDefault 'OLLAMA_BASE_URL' (Get-YamlScalar $config 'ollama_base_url')
     Set-EnvironmentDefault 'DBHUB_API_URL' (Get-YamlScalar $config 'dbhub_api_url')
     Set-EnvironmentDefault 'DBHUB_MCP_URL' (Get-YamlScalar $config 'dbhub_mcp_url')
     Set-EnvironmentDefault 'DBHUB_BIZ_MCP_URL' (Get-YamlScalar $config 'dbhub_biz_mcp_url')
@@ -120,10 +117,6 @@ if (Test-Path -LiteralPath $ConfigPath) {
     Set-EnvironmentDefault 'AGENT_EXTRACTION_MODE' (Get-YamlScalar $config 'agent_extraction_mode')
     Set-EnvironmentDefault 'WIKI_EXTRACTION_HOSPITAL_SOID' (
         Get-YamlScalar $config 'extraction_hospital_soid')
-    Set-EnvironmentDefault 'WIKI_SQLSERVER_ENABLED' (Get-YamlScalar $config 'sqlserver_enabled')
-    Set-EnvironmentDefault 'WIKI_SQLSERVER_URL' (Get-YamlScalar $config 'sqlserver_url')
-    Set-EnvironmentDefault 'WIKI_SQLSERVER_USERNAME' (Get-YamlScalar $config 'sqlserver_username')
-    Set-EnvironmentDefault 'WIKI_SQLSERVER_PASSWORD' (Get-YamlScalar $config 'sqlserver_password')
     $proxy = Get-YamlScalar $config 'java_http_proxy_url'
     if ($proxy) {
         $uri = New-Object System.Uri($proxy)

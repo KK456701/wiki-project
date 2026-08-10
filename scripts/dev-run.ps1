@@ -29,7 +29,7 @@ if ($Recompile) {
 
 # 首次启动：spring-boot:run 只编译不打包，跳过测试。
 # 带 dev profile：知识库指向用户实际维护的 knowledge-index_backup 备份目录
-# （application-dev.yml），DB 连接凭据仍优先读 WIKI_BIZDB_*/WIKI_SQLSERVER_* 环境变量。
+# （application-dev.yml）。模型和数据库连接由运行控制台持久化管理，不从环境变量读取。
 # application-dev.yml 默认值是 classpath: 前缀（只读），保存医院草稿必须落在磁盘目录，
 # 因此未显式配置 WIKI_KNOWLEDGE_INDEX_ROOT 时，默认指向本机的备份目录绝对路径。
 if (-not $env:WIKI_KNOWLEDGE_INDEX_ROOT) {

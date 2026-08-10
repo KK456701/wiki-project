@@ -204,23 +204,21 @@ export interface RuntimeDatabaseSetting {
   schema: string
   credentialConfigured: boolean
   pool: Record<string, number>
-  environmentVariables: string[]
   formalChain: boolean
+}
+
+export interface RuntimeModelSetting extends AgentModel {
+  baseUrl: string
+  completionsPath: string
+  enableThinking: boolean | null
+  apiKeyConfigured: boolean
 }
 
 export interface RuntimeSettings {
   securityNotice: string
   defaultModel: string
-  models: AgentModel[]
+  models: RuntimeModelSetting[]
   databases: RuntimeDatabaseSetting[]
-  mcp: {
-    mode: 'EMBEDDED_JAVA'
-    label: string
-    endpoint: string
-    timeoutSeconds: number
-    tools: string[]
-    environmentVariables: string[]
-  }
 }
 
 export interface ConnectionTestResult {
@@ -236,6 +234,27 @@ export interface RuntimeConnectionTestInput {
   username: string
   password: string
   schema: string
+}
+
+export interface RuntimeConnectionSaveInput extends RuntimeConnectionTestInput {
+  enabled: boolean
+  maximumPoolSize?: number
+  minimumIdle?: number
+  connectionTimeoutMs?: number
+  validationQuery?: string
+}
+
+export interface RuntimeModelConfigInput {
+  id: string
+  name: string
+  provider: 'ollama' | 'openai-compatible'
+  model: string
+  baseUrl: string
+  completionsPath: string
+  /** 只写字段：空值表示保留已保存的 Key，响应永不返回 Key。 */
+  apiKey: string
+  thinking: boolean
+  enableThinking: boolean | null
 }
 
 export async function loadRuntimeSettings(token: string): Promise<RuntimeSettings> {
@@ -261,6 +280,31 @@ export async function setRuntimeDefaultModel(token: string, modelId: string): Pr
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ modelId }),
+  })
+  return readJson(response)
+}
+
+export async function saveRuntimeModelConfiguration(
+  token: string,
+  input: { defaultModel: string; models: RuntimeModelConfigInput[] },
+): Promise<{ defaultModel: string; models: RuntimeModelSetting[]; message: string }> {
+  const response = await fetch('/api/settings/models/configuration', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return readJson(response)
+}
+
+export async function saveRuntimeConnection(
+  token: string,
+  connectionId: RuntimeDatabaseSetting['id'],
+  input: RuntimeConnectionSaveInput,
+): Promise<{ connectionId: string; configured: boolean; restartRequired: boolean; message: string }> {
+  const response = await fetch(`/api/settings/connections/${encodeURIComponent(connectionId)}/save`, {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   })
   return readJson(response)
 }

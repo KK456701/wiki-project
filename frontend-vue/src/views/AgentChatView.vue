@@ -67,10 +67,24 @@ const activeAutonomousContextStats = computed<Record<string, unknown>>(() => {
 })
 const autonomousContextIsActual = computed(() => activeAutonomousContextStats.value.usageEstimated === false)
 const autonomousContextPercent = computed(() => Math.min(100, Math.round(contextStatNumber('usagePercent'))))
+const composerModels = computed(() => store.capabilities?.models || [])
 
 function contextStatNumber(key: string): number {
   const value = Number(activeAutonomousContextStats.value[key] || 0)
   return Number.isFinite(value) ? Math.max(0, value) : 0
+}
+
+function selectComposerModel(event: Event) {
+  const modelId = (event.target as HTMLSelectElement).value
+  store.selectModel(modelId)
+}
+
+async function refreshRuntimeModelSettings() {
+  try {
+    await store.refreshCapabilities()
+  } catch (reason) {
+    store.error = reason instanceof Error ? reason.message : '模型配置已保存，但模型列表刷新失败。'
+  }
 }
 
 const canExportDetails = computed(() => store.user?.permissions.includes('indicator_detail_export') || false)
@@ -591,9 +605,15 @@ async function exportDiagnosis(reportId?: string) {
           <input ref="uploadInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="uploadFile" />
           <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
           <button type="button" class="diagnosis-launch-button" @click="guidedOpen = !guidedOpen">异常排查</button>
-          <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
-          <textarea v-model="query" rows="1" maxlength="5000" :placeholder="composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
-          <span v-if="activeAutonomousCase && contextStatNumber('contextWindowTokens')" class="composer-context-ring" role="progressbar" aria-label="当前对话容量使用进度" :aria-valuenow="autonomousContextPercent" aria-valuemin="0" aria-valuemax="100" :title="`对话容量约 ${autonomousContextPercent}%（${autonomousContextIsActual ? '按本轮实际用量计算' : '当前为估算'}）`" :style="{ background: `conic-gradient(#16836f ${autonomousContextPercent}%, #dfeae7 0)` }"></span>
+           <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
+           <textarea v-model="query" rows="1" maxlength="5000" :placeholder="composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
+           <label v-if="composerModels.length" class="composer-model-select" title="选择本次对话和新建异常排查任务使用的模型">
+             <span class="visually-hidden">选择模型</span>
+             <select :value="store.selectedModel" aria-label="选择对话模型" @change="selectComposerModel">
+               <option v-for="model in composerModels" :key="model.id" :value="model.id" :disabled="model.available === false">{{ model.name }}{{ model.available === false ? '（未配置）' : '' }}</option>
+             </select>
+           </label>
+           <span v-if="activeAutonomousCase && contextStatNumber('contextWindowTokens')" class="composer-context-ring" role="progressbar" aria-label="当前对话容量使用进度" :aria-valuenow="autonomousContextPercent" aria-valuemin="0" aria-valuemax="100" :title="`对话容量约 ${autonomousContextPercent}%（${autonomousContextIsActual ? '按本轮实际用量计算' : '当前为估算'}）`" :style="{ background: `conic-gradient(#16836f ${autonomousContextPercent}%, #dfeae7 0)` }"></span>
           <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
         </form>
       </div>
@@ -622,6 +642,7 @@ async function exportDiagnosis(reportId?: string) {
       :selected-model="store.selectedModel"
       :models="store.capabilities?.models || []"
       @select-model="store.selectModel"
+      @settings-updated="refreshRuntimeModelSettings"
       @close="settingsOpen = false"
     />
   </main>
