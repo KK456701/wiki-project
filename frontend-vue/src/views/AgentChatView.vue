@@ -36,11 +36,14 @@ const conversation = ref<HTMLElement | null>(null)
 const exportingComparison = ref('')
 const exportingDiagnosis = ref('')
 const sessionList = ref<SessionSummary[]>([])
-const sidebarOpen = ref(true)
 const settingsOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
 const diagnosisCasesLoading = ref(true)
 const diagnosisBusy = ref('')
+const sidebarCollapsed = ref(false)
+const historySearchOpen = ref(false)
+const historySearch = ref('')
+const historySearchInput = ref<HTMLInputElement | null>(null)
 const autonomousPollCases = new Set<string>()
 const diagnosisPanelRefs = new Map<string, InstanceType<typeof DiagnosisCasePanel>>()
 
@@ -108,6 +111,12 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   return list
 })
 
+const filteredSessionList = computed(() => {
+  const keyword = historySearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return displaySessionList.value
+  return displaySessionList.value.filter((session) => session.title.toLocaleLowerCase().includes(keyword))
+})
+
 const sessionGroups = computed(() => {
   const groups = [
     { key: 'today', label: '今天', sessions: [] as SessionSummary[] },
@@ -118,7 +127,7 @@ const sessionGroups = computed(() => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  for (const session of displaySessionList.value) {
+  for (const session of filteredSessionList.value) {
     const lastMessageAt = new Date(session.lastMessageAt)
     lastMessageAt.setHours(0, 0, 0, 0)
     const daysAgo = Number.isNaN(lastMessageAt.getTime())
@@ -147,6 +156,20 @@ onMounted(async () => {
 
 async function refreshSessionList() {
   sessionList.value = await store.loadSessionList()
+}
+
+async function toggleHistorySearch() {
+  if (sidebarCollapsed.value) sidebarCollapsed.value = false
+  historySearchOpen.value = !historySearchOpen.value
+  if (historySearchOpen.value) {
+    await nextTick()
+    historySearchInput.value?.focus()
+  }
+}
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  if (sidebarCollapsed.value) historySearchOpen.value = false
 }
 
 async function switchSession(sessionId: string) {
@@ -464,22 +487,65 @@ async function exportDiagnosis(reportId?: string) {
         <div><strong>核心制度指标智能体</strong><small>指标核算与异常排查</small></div>
       </div>
       <div class="topbar-controls">
-        <RouterLink class="quiet-button" to="/knowledge-review">知识库回收与审批</RouterLink>
+        <RouterLink class="quiet-button knowledge-review-button" to="/knowledge-review">
+          <span class="knowledge-review-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3.5-8-3.5Z"/><path d="m4 11 8 3.5 8-3.5M4 15.5 12 19l8-3.5"/></svg>
+          </span>
+          <span>知识库回收与审批</span>
+          <svg class="knowledge-review-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </RouterLink>
         <button type="button" class="settings-button" aria-label="打开系统设置" title="系统设置" @click="settingsOpen = true">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.7 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.7a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.38.37.72.66 1 .3.27.68.4 1.08.4H21v4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
         </button>
       </div>
     </header>
 
-    <section class="workspace">
-      <aside v-if="sidebarOpen" class="session-sidebar">
+    <section class="workspace" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <aside class="session-sidebar" :class="{ collapsed: sidebarCollapsed }" aria-label="历史对话">
         <header class="sidebar-head">
-          <div>
-            <h3>对话</h3>
-            <span>历史记录 {{ displaySessionList.length }}</span>
+          <div class="sidebar-heading">
+            <h3>历史对话</h3>
+            <span>{{ displaySessionList.length }} 条记录</span>
           </div>
-          <button type="button" class="sidebar-new" @click="startNewSession()">＋ 新对话</button>
+          <div class="sidebar-toolbar">
+            <button
+              type="button"
+              class="sidebar-icon-button"
+              :class="{ active: historySearchOpen }"
+              aria-label="搜索历史对话"
+              title="搜索历史对话"
+              :aria-expanded="historySearchOpen"
+              @click="toggleHistorySearch"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+            </button>
+            <button
+              type="button"
+              class="sidebar-icon-button"
+              :aria-label="sidebarCollapsed ? '展开历史对话' : '收起历史对话'"
+              :title="sidebarCollapsed ? '展开历史对话' : '收起历史对话'"
+              @click="toggleSidebar"
+            >
+              <svg v-if="!sidebarCollapsed" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M9 4v16"/><path d="m15 9-3 3 3 3"/></svg>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M9 4v16"/><path d="m13 9 3 3-3 3"/></svg>
+            </button>
+          </div>
         </header>
+        <button type="button" class="sidebar-new" title="开启新对话" @click="startNewSession()">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/></svg>
+          <span>开启新对话</span>
+        </button>
+        <div v-if="historySearchOpen && !sidebarCollapsed" class="sidebar-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+          <input
+            ref="historySearchInput"
+            v-model="historySearch"
+            type="search"
+            placeholder="搜索历史对话"
+            aria-label="搜索历史对话"
+            @keydown.esc="historySearchOpen = false"
+          />
+        </div>
         <ul class="session-list">
           <template v-for="group in sessionGroups" :key="group.key">
             <li class="session-group-label">{{ group.label }}</li>
@@ -496,7 +562,7 @@ async function exportDiagnosis(reportId?: string) {
             </li>
           </template>
         </ul>
-        <p v-if="!displaySessionList.length" class="sidebar-empty">暂无历史对话</p>
+        <p v-if="!filteredSessionList.length" class="sidebar-empty">{{ historySearch.trim() ? '没有找到相关对话' : '暂无历史对话' }}</p>
       </aside>
 
       <div class="conversation-column">

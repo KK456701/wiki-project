@@ -2520,6 +2520,192 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .settings-log-empty { padding: 48px 22px; border: 1px dashed #cad9d5; border-radius: 10px; color: #536d67; background: #f9fbfa; text-align: center; }
 .settings-log-empty p { margin: 7px 0 0; color: #7b8d89; font-size: 10px; }
 
+/* 历史对话控制台：新对话是主操作，搜索与收起保持为安静的工具按钮。 */
+.app-shell .workspace.sidebar-collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.app-shell .session-sidebar {
+  transition: width .18s ease, background-color .18s ease;
+}
+.app-shell .sidebar-head {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 8px;
+}
+.app-shell .sidebar-heading {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.app-shell .sidebar-heading h3 {
+  margin: 0;
+  color: #183f38;
+  font-size: 14px;
+  font-weight: 760;
+}
+.app-shell .sidebar-heading span {
+  color: #8a9692;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.app-shell .sidebar-toolbar {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+}
+.app-shell .sidebar-icon-button {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  flex: 0 0 31px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #61746f;
+  background: transparent;
+  transition: color .14s ease, background-color .14s ease, transform .14s ease;
+}
+.app-shell .sidebar-icon-button:hover,
+.app-shell .sidebar-icon-button.active {
+  color: #0d7b6b;
+  background: #e8f2ef;
+}
+.app-shell .sidebar-icon-button:active { transform: scale(.95); }
+.app-shell .sidebar-icon-button svg,
+.app-shell .sidebar-search svg,
+.app-shell .sidebar-new svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.app-shell .sidebar-new {
+  width: calc(100% - 24px);
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin: 5px 12px 8px;
+  padding: 0 15px;
+  border: 1px solid #e1e8e6;
+  border-radius: 15px;
+  color: #153f37;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(20, 70, 61, .08), 0 1px 2px rgba(20, 70, 61, .04);
+  font-size: 13px;
+  font-weight: 720;
+  transition: border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.app-shell .sidebar-new:hover {
+  border-color: #9bc7bd;
+  color: #087564;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(20, 112, 94, .13), 0 1px 2px rgba(20, 70, 61, .05);
+  transform: translateY(-1px);
+}
+.app-shell .sidebar-search {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 12px 5px;
+  padding: 0 10px;
+  border: 1px solid #cfdcd8;
+  border-radius: 11px;
+  color: #78908a;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(22, 131, 111, .04);
+}
+.app-shell .sidebar-search svg { width: 15px; height: 15px; flex: 0 0 auto; }
+.app-shell .sidebar-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: #203f39;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+.app-shell .sidebar-search input::placeholder { color: #98a5a2; }
+.app-shell .knowledge-review-button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 9px 4px 5px;
+  border-color: #d8e5e1;
+  border-radius: 12px;
+  color: #214a42;
+  background: linear-gradient(180deg, #fff, #f7faf9);
+  box-shadow: 0 4px 14px rgba(25, 77, 67, .06);
+  font-size: 12px;
+  font-weight: 680;
+  transition: border-color .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+.app-shell .knowledge-review-button:hover {
+  border-color: #9fc8bf;
+  color: #087564;
+  background: #fff;
+  box-shadow: 0 7px 19px rgba(21, 111, 93, .11);
+  transform: translateY(-1px);
+}
+.app-shell .knowledge-review-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #0d7b6b;
+  background: #e5f3ef;
+}
+.app-shell .knowledge-review-icon svg,
+.app-shell .knowledge-review-arrow {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.app-shell .knowledge-review-arrow { width: 14px; height: 14px; color: #86a39d; }
+.app-shell .session-sidebar.collapsed .sidebar-head {
+  justify-content: center;
+  padding: 11px 0 6px;
+}
+.app-shell .session-sidebar.collapsed .sidebar-heading,
+.app-shell .session-sidebar.collapsed .sidebar-toolbar .sidebar-icon-button:first-child,
+.app-shell .session-sidebar.collapsed .session-list,
+.app-shell .session-sidebar.collapsed .sidebar-empty {
+  display: none;
+}
+.app-shell .session-sidebar.collapsed .sidebar-toolbar {
+  margin: 0;
+}
+.app-shell .session-sidebar.collapsed .sidebar-new {
+  width: 42px;
+  min-height: 42px;
+  margin: 6px auto;
+  padding: 0;
+  border-radius: 13px;
+}
+.app-shell .session-sidebar.collapsed .sidebar-new span { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell .session-sidebar,
+  .app-shell .sidebar-icon-button,
+  .app-shell .sidebar-new { transition: none; }
+}
+
 @media (max-width: 720px) {
   .settings-log-toolbar { grid-template-columns: 1fr 1fr; }
   .settings-log-toolbar > div,
