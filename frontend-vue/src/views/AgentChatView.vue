@@ -210,6 +210,12 @@ async function send(text = query.value) {
   await refreshSessionList()
 }
 
+function handleComposerKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  if (!store.running && query.value.trim()) void send()
+}
+
 async function sendSummaryAction(
   payload: InspectIndicatorAction | BatchAnalysisAction,
   requiresCloud = false,
@@ -570,7 +576,7 @@ async function exportDiagnosis(reportId?: string) {
           <section v-if="showWelcome" class="welcome-panel">
             <span class="welcome-orbit" aria-hidden="true">AI</span>
             <h1>有什么我能帮你的吗？</h1>
-            <p>计算核心制度指标，或从一条异常线索开始排查。</p>
+            <p>我可以帮你计算核心制度指标，或从一条异常线索开始排查。</p>
             <p class="welcome-guidance">选择下面的任务，我会一步一步引导你完成。</p>
             <GuidedTaskPanel
               :token="store.token"
@@ -692,7 +698,7 @@ async function exportDiagnosis(reportId?: string) {
         </div>
 
         <form class="composer" @submit.prevent="send()">
-            <textarea v-model="query" rows="1" maxlength="5000" :placeholder="showWelcome ? '输入问题，或从上方选择一个任务…' : composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
+            <textarea v-model="query" rows="1" maxlength="5000" :placeholder="showWelcome ? '输入问题，或从上方选择一个任务…' : composerPlaceholder" @keydown="handleComposerKeydown"></textarea>
            <label v-if="composerModels.length" class="composer-model-select" title="选择本次对话和新建异常排查任务使用的模型">
              <span class="visually-hidden">选择模型</span>
              <select :value="store.selectedModel" aria-label="选择对话模型" @change="selectComposerModel">

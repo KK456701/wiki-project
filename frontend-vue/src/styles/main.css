@@ -2520,6 +2520,86 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .settings-log-empty { padding: 48px 22px; border: 1px dashed #cad9d5; border-radius: 10px; color: #536d67; background: #f9fbfa; text-align: center; }
 .settings-log-empty p { margin: 7px 0 0; color: #7b8d89; font-size: 10px; }
 
+/* 运行配置先按来源分组，展开后才呈现具体模型或连接。 */
+.settings-config-groups { display: grid; gap: 10px; }
+.settings-config-group {
+  overflow: hidden;
+  border: 1px solid #dce5e2;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(28, 72, 63, .035);
+}
+.settings-config-group > summary {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 14px;
+  color: #254a42;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-config-group > summary::-webkit-details-marker { display: none; }
+.settings-config-group > summary::after {
+  content: '›';
+  grid-column: 4;
+  color: #8da09b;
+  font-size: 22px;
+  transform: rotate(90deg);
+  transition: transform .16s ease;
+}
+.settings-config-group[open] > summary::after { transform: rotate(-90deg); }
+.settings-config-group[open] > summary { border-bottom: 1px solid #e5ebe9; background: #f9fbfa; }
+.settings-config-group > summary > span:nth-child(2) { display: grid; gap: 3px; }
+.settings-config-group > summary strong { color: #183f37; font-size: 13px; }
+.settings-config-group > summary small { color: #7c8b87; font-size: 10px; line-height: 1.45; }
+.settings-config-group > summary em {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #547169;
+  background: #edf3f1;
+  white-space: nowrap;
+  font-size: 9px;
+  font-style: normal;
+}
+.settings-group-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: #0d7464;
+  background: #e5f3ef;
+  font-size: 11px;
+  font-weight: 800;
+}
+.settings-group-icon[data-kind='cloud'] { color: #4669a6; background: #edf2fb; }
+.settings-group-icon[data-kind='real'] { color: #8a6024; background: #fbf2df; }
+.settings-config-group > .settings-model-list { padding: 10px; }
+.settings-database-group > .settings-db-card { margin: 10px; }
+.settings-database-group > .settings-db-card + .settings-db-card { margin-top: 0; }
+.settings-db-card.active { border-color: #7db7ab; box-shadow: inset 3px 0 #16836f; }
+.settings-db-card > header em[data-state='ready'] { color: #315f91; background: #e8f1fb; }
+.settings-db-actions { flex-wrap: wrap; }
+.settings-db-actions button.is-primary,
+.settings-save-model {
+  color: #fff;
+  border-color: #147866;
+  background: #147866;
+}
+.settings-db-actions button.is-primary:hover,
+.settings-save-model:hover { background: #0f6758; }
+.settings-inline-result {
+  grid-column: 1 / -1;
+  display: block;
+  margin-top: 7px;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.settings-inline-result[data-state='connected'] { color: #087253; }
+.settings-inline-result[data-state='failed'] { color: #a23b2c; }
+
 /* 历史对话控制台：新对话是主操作，搜索与收起保持为安静的工具按钮。 */
 .app-shell .workspace.sidebar-collapsed {
   grid-template-columns: 64px minmax(0, 1fr);

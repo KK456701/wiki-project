@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  activateRuntimeBusinessConnection,
   loadApplicationLogs,
   loadRuntimeSettings,
   saveRuntimeConnection,
   saveRuntimeModelConfiguration,
   setRuntimeDefaultModel,
   testRuntimeConnection,
+  testRuntimeModel,
   type AgentModel,
   type ApplicationLogSnapshot,
   type ConnectionTestResult,
@@ -16,6 +18,7 @@ import {
   type RuntimeDatabaseSetting,
   type RuntimeModelConfigInput,
   type RuntimeModelSetting,
+  type ModelTestResult,
   type RuntimeSettings,
 } from '../api/agent'
 
@@ -46,6 +49,8 @@ const logLevel = ref<'ERROR' | 'ALL'>('ERROR')
 const logSearch = ref('')
 const logLoading = ref(false)
 const logMessage = ref('')
+const modelTesting = ref('')
+const modelResults = ref<Record<string, ModelTestResult>>({})
 
 const modelItems = computed<RuntimeModelSetting[]>(() => settings.value?.models || props.models.map((model) => ({
   ...model,
@@ -54,6 +59,39 @@ const modelItems = computed<RuntimeModelSetting[]>(() => settings.value?.models 
   enableThinking: null,
   apiKeyConfigured: false,
 })))
+
+const modelGroups = computed(() => [
+  {
+    key: 'local',
+    title: '本地 Ollama 模型',
+    description: '运行在本院或内网设备，不经过云端 API',
+    items: modelItems.value.filter((item) => item.provider === 'ollama'),
+  },
+  {
+    key: 'cloud',
+    title: '云端 API 模型',
+    description: '通过已配置的服务地址和 API Key 调用',
+    items: modelItems.value.filter((item) => item.provider !== 'ollama'),
+  },
+].filter((group) => group.items.length > 0))
+
+const databaseGroups = computed(() => {
+  const items = settings.value?.databases || []
+  return [
+    {
+      key: 'business',
+      title: '业务库',
+      description: '医院指标源数据；同一时间只启用一个连接',
+      items: items.filter((item) => item.role === 'BUSINESS'),
+    },
+    {
+      key: 'real',
+      title: '真实库',
+      description: '指标中间表、统计 SQL 和正式结果',
+      items: items.filter((item) => item.role === 'REAL'),
+    },
+  ].filter((group) => group.items.length > 0)
+})
 
 const visibleLogContent = computed(() => {
   const content = logSnapshot.value?.content || ''
@@ -111,7 +149,7 @@ function defaultDriver(item: RuntimeDatabaseSetting) {
   return item.engine === 'Oracle' ? 'oracle.jdbc.OracleDriver' : 'com.microsoft.sqlserver.jdbc.SQLServerDriver'
 }
 
-async function testConnection(item: RuntimeDatabaseSetting) {
+async function testConnection(item: RuntimeDatabaseSetting): Promise<boolean> {
   testing.value = item.id
   try {
     const draft = connectionDrafts.value[item.id]
@@ -120,6 +158,7 @@ async function testConnection(item: RuntimeDatabaseSetting) {
       || draft.username !== item.username || draft.schema !== item.schema || Boolean(draft.password))
     const testInput: RuntimeConnectionTestInput | undefined = changed ? draft : undefined
     connectionResults.value[item.id] = await testRuntimeConnection(props.token, item.id, testInput)
+    return connectionResults.value[item.id].status === 'CONNECTED'
   } catch (reason) {
     connectionResults.value[item.id] = {
       connectionId: item.id,
@@ -127,12 +166,13 @@ async function testConnection(item: RuntimeDatabaseSetting) {
       message: reason instanceof Error ? reason.message : '连接测试失败。',
       durationMs: 0,
     }
+    return false
   } finally {
     testing.value = ''
   }
 }
 
-async function saveDatabase(item: RuntimeDatabaseSetting) {
+async function saveDatabase(item: RuntimeDatabaseSetting): Promise<boolean> {
   saving.value = `database:${item.id}`
   message.value = ''
   try {
@@ -140,10 +180,32 @@ async function saveDatabase(item: RuntimeDatabaseSetting) {
     message.value = result.message
     await load()
     emit('settingsUpdated')
+    return true
   } catch (reason) {
     message.value = reason instanceof Error ? reason.message : '数据库配置保存失败。'
+    return false
   } finally {
     saving.value = ''
+  }
+}
+
+async function testAndApplyDatabase(item: RuntimeDatabaseSetting) {
+  message.value = ''
+  if (!await testConnection(item)) return
+  const wasActive = item.active
+  if (!await saveDatabase(item)) return
+  if (item.role === 'BUSINESS' && !wasActive) {
+    saving.value = `activate:${item.id}`
+    try {
+      const result = await activateRuntimeBusinessConnection(props.token, item.id as 'business' | 'oracle')
+      message.value = result.message
+      await load()
+      emit('settingsUpdated')
+    } catch (reason) {
+      message.value = reason instanceof Error ? reason.message : '业务库切换失败。'
+    } finally {
+      saving.value = ''
+    }
   }
 }
 
@@ -172,6 +234,30 @@ async function saveModels(preferredModelId = '') {
   } finally {
     saving.value = ''
   }
+}
+
+async function testAndUseModel(model: RuntimeModelSetting) {
+  modelTesting.value = model.id
+  message.value = ''
+  try {
+    const result = await testRuntimeModel(props.token, modelDrafts.value[model.id])
+    modelResults.value[model.id] = result
+    if (result.status !== 'CONNECTED') return
+    await saveModels(model.id)
+  } catch (reason) {
+    modelResults.value[model.id] = {
+      modelId: model.id,
+      status: 'FAILED',
+      message: reason instanceof Error ? reason.message : '模型测试失败。',
+      durationMs: 0,
+    }
+  } finally {
+    modelTesting.value = ''
+  }
+}
+
+function clearModelTest(modelId: string) {
+  delete modelResults.value[modelId]
 }
 
 async function setDefaultModel(modelId: string) {
@@ -249,50 +335,74 @@ async function copyLogs() {
         <p v-else-if="error" class="settings-state is-error">{{ error }}</p>
 
         <section v-else-if="activeTab === 'models'" class="settings-section">
-          <header><div><h3>对话模型</h3><p>选择默认模型，或展开修改连接信息。</p></div><small>新任务使用当前选择</small></header>
-          <div class="settings-model-list">
-            <article v-for="model in modelItems" :key="model.id" class="settings-model-card" :class="{ selected: selectedModel === model.id }">
-              <button type="button" :disabled="model.available === false" @click="emit('selectModel', model.id)">
-                <span class="settings-radio" aria-hidden="true"></span>
-                <span><strong>{{ model.name }}</strong><small>{{ providerLabel(model.provider) }} · {{ model.model || model.id }}</small></span>
-                <em v-if="model.thinking">思考型</em><em v-else-if="model.available === false" class="is-off">需配置密钥</em>
-              </button>
-              <details class="settings-model-editor">
-                <summary>编辑此模型</summary>
-                <label>显示名称<input v-model="modelDrafts[model.id].name" autocomplete="off"></label>
-                <label>提供方<select v-model="modelDrafts[model.id].provider"><option value="openai-compatible">OpenAI 兼容 API</option><option value="ollama">本地 Ollama</option></select></label>
-                <label>模型名称<input v-model="modelDrafts[model.id].model" autocomplete="off"></label>
-                <label>服务地址 URL<input v-model="modelDrafts[model.id].baseUrl" autocomplete="off"></label>
-                <label>聊天路径（可留空）<input v-model="modelDrafts[model.id].completionsPath" autocomplete="off" placeholder="/chat/completions"></label>
-                <label>API Key（只写；留空不改）<input v-model="modelDrafts[model.id].apiKey" type="password" autocomplete="new-password" :placeholder="model.apiKeyConfigured ? '已保存，留空不修改' : '请输入 API Key'"></label>
-                <label class="settings-check"><input v-model="modelDrafts[model.id].thinking" type="checkbox"> 思考型模型</label>
-                <label v-if="modelDrafts[model.id].provider === 'openai-compatible'" class="settings-check"><input v-model="modelDrafts[model.id].enableThinking" type="checkbox"> 请求时开启厂商思考参数</label>
-                <button type="button" class="settings-save-model" :disabled="saving === `model:${model.id}`" @click="saveModels(model.id)">{{ saving === `model:${model.id}` ? '正在保存…' : '保存并启用此模型' }}</button>
-              </details>
-              <button v-if="settings?.defaultModel !== model.id" type="button" class="settings-set-default" :disabled="saving === `default:${model.id}` || model.available === false" @click="setDefaultModel(model.id)">{{ saving === `default:${model.id}` ? '正在设置…' : '设为服务默认' }}</button>
-            </article>
+          <header><div><h3>对话模型</h3><p>先选择本地或云端类型，再查看和测试具体模型。</p></div><small>测试通过后立即可用</small></header>
+          <div class="settings-config-groups">
+            <details v-for="group in modelGroups" :key="group.key" class="settings-config-group">
+              <summary>
+                <span class="settings-group-icon" :data-kind="group.key">{{ group.key === 'local' ? '本' : '云' }}</span>
+                <span><strong>{{ group.title }}</strong><small>{{ group.description }}</small></span>
+                <em>{{ group.items.length }} 个</em>
+              </summary>
+              <div class="settings-model-list">
+                <article v-for="model in group.items" :key="model.id" class="settings-model-card" :class="{ selected: selectedModel === model.id }">
+                  <button type="button" :disabled="model.available === false" @click="emit('selectModel', model.id)">
+                    <span class="settings-radio" aria-hidden="true"></span>
+                    <span><strong>{{ model.name }}</strong><small>{{ providerLabel(model.provider) }} · {{ model.model || model.id }}</small></span>
+                    <em v-if="model.thinking">思考型</em><em v-else-if="model.available === false" class="is-off">待配置</em>
+                  </button>
+                  <details class="settings-model-editor" @input="clearModelTest(model.id)">
+                    <summary>查看和编辑配置</summary>
+                    <label>显示名称<input v-model="modelDrafts[model.id].name" autocomplete="off"></label>
+                    <label>提供方<select v-model="modelDrafts[model.id].provider"><option value="openai-compatible">OpenAI 兼容 API</option><option value="ollama">本地 Ollama</option></select></label>
+                    <label>模型名称<input v-model="modelDrafts[model.id].model" autocomplete="off"></label>
+                    <label>服务地址 URL<input v-model="modelDrafts[model.id].baseUrl" autocomplete="off"></label>
+                    <label>聊天路径（可留空）<input v-model="modelDrafts[model.id].completionsPath" autocomplete="off" placeholder="/chat/completions"></label>
+                    <label>API Key（只写；留空不改）<input v-model="modelDrafts[model.id].apiKey" type="password" autocomplete="new-password" :placeholder="model.apiKeyConfigured ? '已保存，留空不修改' : '请输入 API Key'"></label>
+                    <label class="settings-check"><input v-model="modelDrafts[model.id].thinking" type="checkbox"> 思考型模型</label>
+                    <label v-if="modelDrafts[model.id].provider === 'openai-compatible'" class="settings-check"><input v-model="modelDrafts[model.id].enableThinking" type="checkbox"> 请求时开启厂商思考参数</label>
+                    <button type="button" class="settings-save-model" :disabled="modelTesting === model.id || saving === `model:${model.id}`" @click="testAndUseModel(model)">{{ modelTesting === model.id ? '正在发送测试请求…' : saving === `model:${model.id}` ? '正在启用…' : '测试并启用此模型' }}</button>
+                    <span v-if="modelResults[model.id]" class="settings-inline-result" :data-state="modelResults[model.id].status.toLowerCase()">{{ modelResults[model.id].message }} · {{ modelResults[model.id].durationMs }} ms</span>
+                  </details>
+                  <button v-if="settings?.defaultModel !== model.id" type="button" class="settings-set-default" :disabled="saving === `default:${model.id}` || model.available === false" @click="setDefaultModel(model.id)">{{ saving === `default:${model.id}` ? '正在设置…' : '设为服务默认' }}</button>
+                </article>
+              </div>
+            </details>
           </div>
-          <div class="settings-model-actions"><button type="button" :disabled="saving === 'models'" @click="saveModels()">{{ saving === 'models' ? '正在保存…' : '保存全部模型配置' }}</button><span v-if="message">{{ message }}</span></div>
+          <p v-if="message" class="settings-message">{{ message }}</p>
         </section>
 
         <section v-else-if="activeTab === 'databases'" class="settings-section">
-          <header><div><h3>数据库连接</h3><p>测试通过后保存，重启服务后正式生效。</p></div><small>密码不回显</small></header>
-          <article v-for="item in settings?.databases || []" :key="item.id" class="settings-db-card">
-            <header><div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div><em :data-state="item.configured ? 'ok' : item.enabled ? 'warn' : 'off'">{{ item.configured ? '已配置' : item.enabled ? '配置不完整' : '未启用' }}</em></header>
-            <dl><div><dt>当前地址</dt><dd>{{ item.endpoint }}</dd></div><div><dt>账号 / Schema</dt><dd>{{ item.username || '—' }}<template v-if="item.schema"> / {{ item.schema }}</template></dd></div><div><dt>密码</dt><dd>{{ item.credentialConfigured ? '已保存（不回显）' : '未配置' }}</dd></div><div><dt>正式链路</dt><dd>{{ item.formalChain ? '是' : '否，仅扩展连接' }}</dd></div></dl>
-            <details class="settings-db-editor" open>
-              <summary>编辑连接配置</summary>
-              <label class="settings-check"><input v-model="connectionDrafts[item.id].enabled" type="checkbox"> 启用此连接</label>
-              <label>驱动<input v-model="connectionDrafts[item.id].driverClassName" autocomplete="off"></label>
-              <label>连接地址 URL<input v-model="connectionDrafts[item.id].url" autocomplete="off"></label>
-              <label>账号<input v-model="connectionDrafts[item.id].username" autocomplete="username"></label>
-              <label>密码（只写；留空不改）<input v-model="connectionDrafts[item.id].password" type="password" autocomplete="new-password" :placeholder="item.credentialConfigured ? '已保存，留空不修改' : '请输入密码'"></label>
-              <label>Schema<input v-model="connectionDrafts[item.id].schema" autocomplete="off"></label>
-              <label>最大连接数<input v-model.number="connectionDrafts[item.id].maximumPoolSize" type="number" min="1"></label>
-              <label>最小空闲连接<input v-model.number="connectionDrafts[item.id].minimumIdle" type="number" min="0"></label>
+          <header><div><h3>数据库连接</h3><p>业务库和真实库分开管理；测试通过后直接热更新。</p></div><small>密码不回显</small></header>
+          <div class="settings-config-groups">
+            <details v-for="group in databaseGroups" :key="group.key" class="settings-config-group settings-database-group">
+              <summary>
+                <span class="settings-group-icon" :data-kind="group.key">{{ group.key === 'business' ? '业' : '真' }}</span>
+                <span><strong>{{ group.title }}</strong><small>{{ group.description }}</small></span>
+                <em v-if="group.key === 'business'">当前：{{ group.items.find((item) => item.active)?.engine || '未选择' }}</em>
+                <em v-else>{{ group.items.length }} 个连接</em>
+              </summary>
+              <article v-for="item in group.items" :key="item.id" class="settings-db-card" :class="{ active: item.active }">
+                <header><div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div><em :data-state="item.active ? 'ok' : item.configured ? 'ready' : item.enabled ? 'warn' : 'off'">{{ item.active ? (item.role === 'BUSINESS' ? '当前业务库' : '正式真实库') : item.configured ? '可切换' : item.enabled ? '配置不完整' : '未启用' }}</em></header>
+                <dl><div><dt>当前地址</dt><dd>{{ item.endpoint }}</dd></div><div><dt>账号 / Schema</dt><dd>{{ item.username || '—' }}<template v-if="item.schema"> / {{ item.schema }}</template></dd></div><div><dt>密码</dt><dd>{{ item.credentialConfigured ? '已保存（不回显）' : '未配置' }}</dd></div><div><dt>运行角色</dt><dd>{{ item.role === 'BUSINESS' ? (item.active ? '正在提供业务源数据' : '候选业务库连接') : '正式中间表与统计结果' }}</dd></div></dl>
+                <details class="settings-db-editor">
+                  <summary>查看和编辑连接配置</summary>
+                  <label class="settings-check"><input v-model="connectionDrafts[item.id].enabled" type="checkbox"> 启用此连接</label>
+                  <label>驱动<input v-model="connectionDrafts[item.id].driverClassName" autocomplete="off"></label>
+                  <label>连接地址 URL<input v-model="connectionDrafts[item.id].url" autocomplete="off"></label>
+                  <label>账号<input v-model="connectionDrafts[item.id].username" autocomplete="username"></label>
+                  <label>密码（只写；留空不改）<input v-model="connectionDrafts[item.id].password" type="password" autocomplete="new-password" :placeholder="item.credentialConfigured ? '已保存，留空不修改' : '请输入密码'"></label>
+                  <label>Schema<input v-model="connectionDrafts[item.id].schema" autocomplete="off"></label>
+                  <label>最大连接数<input v-model.number="connectionDrafts[item.id].maximumPoolSize" type="number" min="1"></label>
+                  <label>最小空闲连接<input v-model.number="connectionDrafts[item.id].minimumIdle" type="number" min="0"></label>
+                </details>
+                <div class="settings-db-actions">
+                  <button type="button" :disabled="testing === item.id" @click="testConnection(item)">{{ testing === item.id ? '正在测试…' : '仅测试连接' }}</button>
+                  <button type="button" class="is-primary" :disabled="testing === item.id || saving === `database:${item.id}` || saving === `activate:${item.id}` || !connectionDrafts[item.id].enabled" @click="testAndApplyDatabase(item)">{{ testing === item.id ? '正在测试…' : saving === `database:${item.id}` || saving === `activate:${item.id}` ? '正在应用…' : item.role === 'BUSINESS' && !item.active ? '测试并启用为业务库' : '测试并立即应用' }}</button>
+                  <span v-if="connectionResults[item.id]" :data-state="connectionResults[item.id].status.toLowerCase()">{{ connectionResults[item.id].message }} · {{ connectionResults[item.id].durationMs }} ms</span>
+                </div>
+              </article>
             </details>
-            <div class="settings-db-actions"><button type="button" :disabled="testing === item.id" @click="testConnection(item)">{{ testing === item.id ? '正在测试…' : '测试连接' }}</button><button type="button" :disabled="saving === `database:${item.id}`" @click="saveDatabase(item)">{{ saving === `database:${item.id}` ? '正在保存…' : '保存配置' }}</button><span v-if="connectionResults[item.id]" :data-state="connectionResults[item.id].status.toLowerCase()">{{ connectionResults[item.id].message }} · {{ connectionResults[item.id].durationMs }} ms</span></div>
-          </article>
+          </div>
           <p v-if="message" class="settings-message">{{ message }}</p>
         </section>
 

@@ -209,6 +209,8 @@ export interface RuntimeDatabaseSetting {
   schema: string
   credentialConfigured: boolean
   pool: Record<string, number>
+  role: 'BUSINESS' | 'REAL'
+  active: boolean
   formalChain: boolean
 }
 
@@ -222,6 +224,7 @@ export interface RuntimeModelSetting extends AgentModel {
 export interface RuntimeSettings {
   securityNotice: string
   defaultModel: string
+  activeBusinessConnectionId: 'business' | 'oracle'
   models: RuntimeModelSetting[]
   databases: RuntimeDatabaseSetting[]
 }
@@ -229,6 +232,13 @@ export interface RuntimeSettings {
 export interface ConnectionTestResult {
   connectionId: string
   status: 'CONNECTED' | 'FAILED' | 'DISABLED'
+  message: string
+  durationMs: number
+}
+
+export interface ModelTestResult {
+  modelId: string
+  status: 'CONNECTED' | 'FAILED'
   message: string
   durationMs: number
 }
@@ -308,6 +318,18 @@ export async function setRuntimeDefaultModel(token: string, modelId: string): Pr
   return readJson(response)
 }
 
+export async function testRuntimeModel(
+  token: string,
+  input: RuntimeModelConfigInput,
+): Promise<ModelTestResult> {
+  const response = await fetch('/api/settings/models/test', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return readJson<ModelTestResult>(response)
+}
+
 export async function saveRuntimeModelConfiguration(
   token: string,
   input: { defaultModel: string; models: RuntimeModelConfigInput[] },
@@ -324,11 +346,23 @@ export async function saveRuntimeConnection(
   token: string,
   connectionId: RuntimeDatabaseSetting['id'],
   input: RuntimeConnectionSaveInput,
-): Promise<{ connectionId: string; configured: boolean; restartRequired: boolean; message: string }> {
+): Promise<{ connectionId: string; configured: boolean; restartRequired: boolean; hotApplied: boolean; message: string }> {
   const response = await fetch(`/api/settings/connections/${encodeURIComponent(connectionId)}/save`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  })
+  return readJson(response)
+}
+
+export async function activateRuntimeBusinessConnection(
+  token: string,
+  connectionId: 'business' | 'oracle',
+): Promise<{ activeBusinessConnectionId: 'business' | 'oracle'; message: string }> {
+  const response = await fetch('/api/settings/connections/business/active', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ connectionId }),
   })
   return readJson(response)
 }
