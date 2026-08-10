@@ -45,6 +45,7 @@ type UnsupportedCapability = {
   title: string
   reason: string
 }
+type ScopeEvidenceStage = DiagnosisScopeClarification['stageEvidence'][number]
 
 const investigationLayer = ref('SOURCE_EXTRACT')
 const investigationTreatment = ref<'EXCLUDE' | 'INCLUDE'>('EXCLUDE')
@@ -301,6 +302,34 @@ const scopeClarificationStatus = computed(() => ({
   IN_DENOMINATOR_ONLY: '只进入分母',
   NOT_IN_DETAIL: '当前明细未找到',
 } as Record<string, string>)[scopeClarification.value?.status || ''] || '正在核对')
+const extractionEvidenceStages = computed<ScopeEvidenceStage[]>(() => (
+  scopeClarification.value?.stageEvidence.filter((stage) => (
+    stage.stageKey === 'BUSINESS_SOURCE' || stage.stageKey === 'REAL_TARGET'
+  )) || []
+))
+const calculationEvidenceStages = computed<ScopeEvidenceStage[]>(() => (
+  scopeClarification.value?.stageEvidence.filter((stage) => (
+    stage.stageKey === 'DENOMINATOR' || stage.stageKey === 'NUMERATOR'
+  )) || []
+))
+const businessSourceEvidence = computed(() => (
+  extractionEvidenceStages.value.find((stage) => stage.stageKey === 'BUSINESS_SOURCE')
+))
+const realTargetEvidence = computed(() => (
+  extractionEvidenceStages.value.find((stage) => stage.stageKey === 'REAL_TARGET')
+))
+const extractionCountsMatch = computed(() => {
+  const source = businessSourceEvidence.value
+  const target = realTargetEvidence.value
+  return source?.status === 'FOUND'
+    && target?.status === 'FOUND'
+    && typeof source.count === 'number'
+    && typeof target.count === 'number'
+    && source.count === target.count
+})
+const extractionEvidenceHasDetails = computed(() => extractionEvidenceStages.value.some((stage) => (
+  Boolean(stage.sampleRows?.length) || Boolean(stage.sql) || Boolean(stage.error)
+)))
 const caliberJudgementOrder = computed(() => {
   if (submittedScopeType.value === 'DEPARTMENT') return '先确认科室或病区编码及统计窗口，再核对哪些业务记录进入中间表，最后对照科室汇总与总指标结果。'
   if (submittedScopeType.value === 'TIME_RANGE') return '先确认时间字段和起止边界，再核对该时间范围内的分母母集，最后检查分子命中与最终汇总。'
@@ -1017,6 +1046,15 @@ function buildCandidate() {
 function pretty(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
 }
+
+function evidenceStageStatusText(status: ScopeEvidenceStage['status']): string {
+  return ({
+    FOUND: '已找到',
+    NOT_FOUND: '未找到',
+    UNAVAILABLE: '未能自动核对',
+    NOT_APPLICABLE: '不适用',
+  } as const)[status]
+}
 </script>
 
 <template>
@@ -1112,22 +1150,49 @@ function pretty(value: unknown): string {
               <div><dt>统计时间</dt><dd>{{ scopeClarification.statStart }} 至 {{ scopeClarification.statEnd }}</dd></div>
             </dl>
           </section>
-          <section class="diagnosis-evidence-journey">
-            <header><div><small>{{ submittedIssueDirectionLabel }} · 逐层核对</small><h4>{{ scopeClarification.conclusion }}</h4></div><span v-if="scopeClarification.firstDifferenceStage">问题首先出现在：{{ scopeClarification.firstDifferenceStage }}</span></header>
-            <div class="diagnosis-evidence-stages">
-              <article v-for="stage in scopeClarification.stageEvidence" :key="stage.stageKey" :data-state="stage.status">
-                <div class="diagnosis-stage-marker"><span></span></div>
-                <div><strong>{{ stage.label }}</strong><em>{{ ({ FOUND: '已找到', NOT_FOUND: '未找到', UNAVAILABLE: '未能自动核对', NOT_APPLICABLE: '不适用' } as Record<string, string>)[stage.status] }}</em><p>{{ stage.meaning }}</p><small v-if="stage.count !== undefined">记录数：{{ stage.count }}</small><details v-if="stage.sampleRows?.length || stage.sql || stage.error" class="diagnosis-technical"><summary>查看这一环节的查询与部分记录</summary><DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="这一环节没有找到记录。" /><pre v-if="stage.sql">{{ stage.sql }}</pre><p v-if="stage.error" class="indicator-error">{{ stage.error }}</p></details></div>
-              </article>
-            </div>
-            <p class="diagnosis-next-action"><strong>下一步：</strong>{{ scopeClarification.nextAction }}</p>
-          </section>
           <section class="diagnosis-scope-reasons diagnosis-plain-explanation">
             <h4>
               为什么会这样统计
-              <small>{{ scopeClarification.explanationSource === 'MODEL' ? '当前模型根据已核验事实整理' : '模型暂不可用，显示系统说明' }}</small>
+              <small
+                v-if="scopeClarification.explanationSource === 'MODEL'"
+                :title="scopeClarification.explanationModel ? `实际模型：${scopeClarification.explanationModel}` : ''"
+              >由当前所选模型根据程序证据整理</small>
+              <small v-else>模型暂不可用，显示系统说明</small>
             </h4>
             <p>{{ scopeClarification.naturalLanguageExplanation }}</p>
+          </section>
+          <section class="diagnosis-evidence-journey">
+            <header><div><small>程序核验明细</small><h4>以下是业务数据、抽取结果和统计 SQL 的逐层证据，可按需展开查看。</h4></div><span v-if="scopeClarification.firstDifferenceStage">问题首先出现在：{{ scopeClarification.firstDifferenceStage }}</span></header>
+            <div class="diagnosis-evidence-stages">
+              <article v-if="extractionCountsMatch" class="diagnosis-extraction-comparison" data-state="FOUND">
+                <div class="diagnosis-stage-marker"><span></span></div>
+                <div>
+                  <strong>业务库 → 真实库抽取对照</strong>
+                  <em>数量一致</em>
+                  <p>业务库 {{ businessSourceEvidence?.count }} 条 → 真实库中间数据 {{ realTargetEvidence?.count }} 条，本轮没有发现数量增减。</p>
+                  <small>这里只确认数量一致，不代表两侧每条业务编号和字段值已经逐条一致。</small>
+                  <details v-if="extractionEvidenceHasDetails" class="diagnosis-technical">
+                    <summary>查看抽取前后查询与部分记录</summary>
+                    <section v-for="stage in extractionEvidenceStages" :key="stage.stageKey" class="diagnosis-extraction-side">
+                      <h5>{{ stage.label }} · {{ stage.databaseRole === 'BUSINESS' ? '业务库' : '真实库' }}</h5>
+                      <DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="这一侧没有找到记录。" />
+                      <pre v-if="stage.sql">{{ stage.sql }}</pre>
+                      <p v-if="stage.error" class="indicator-error">{{ stage.error }}</p>
+                    </section>
+                  </details>
+                </div>
+              </article>
+              <article v-for="stage in (extractionCountsMatch ? [] : extractionEvidenceStages)" :key="stage.stageKey" :data-state="stage.status">
+                <div class="diagnosis-stage-marker"><span></span></div>
+                <div><strong>{{ stage.label }}</strong><em>{{ evidenceStageStatusText(stage.status) }}</em><p>{{ stage.meaning }}</p><small v-if="stage.count !== undefined">记录数：{{ stage.count }}</small><details v-if="stage.sampleRows?.length || stage.sql || stage.error" class="diagnosis-technical"><summary>查看这一环节的查询与部分记录</summary><DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="这一环节没有找到记录。" /><pre v-if="stage.sql">{{ stage.sql }}</pre><p v-if="stage.error" class="indicator-error">{{ stage.error }}</p></details></div>
+              </article>
+              <article v-for="stage in calculationEvidenceStages" :key="stage.stageKey" :data-state="stage.status">
+                <div class="diagnosis-stage-marker"><span></span></div>
+                <div><strong>{{ stage.label }}</strong><em>{{ evidenceStageStatusText(stage.status) }}</em><p>{{ stage.meaning }}</p><small v-if="stage.count !== undefined">记录数：{{ stage.count }}</small><details v-if="stage.sampleRows?.length || stage.sql || stage.error" class="diagnosis-technical"><summary>查看这一环节的查询与部分记录</summary><DetailRowsTable v-if="stage.sampleRows?.length" :rows="stage.sampleRows" empty-text="这一环节没有找到记录。" /><pre v-if="stage.sql">{{ stage.sql }}</pre><p v-if="stage.error" class="indicator-error">{{ stage.error }}</p></details></div>
+              </article>
+            </div>
+            <p class="diagnosis-program-conclusion"><strong>程序结论：</strong>{{ scopeClarification.conclusion }}</p>
+            <p class="diagnosis-next-action"><strong>下一步：</strong>{{ scopeClarification.nextAction }}</p>
           </section>
           <p class="diagnosis-scope-proof">
             以上数量使用同一统计 SQL 和同一统计窗口，并已与指标卡片结果对账。

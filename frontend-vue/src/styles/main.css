@@ -1548,7 +1548,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-evidence-journey > header small { color: #148675; font-weight: 750; }
 .diagnosis-evidence-journey > header h4 { margin: 4px 0 0; color: #173f38; font-size: 15px; line-height: 1.55; }
 .diagnosis-evidence-journey > header > span { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: #fff0e8; color: #9b4d26; font-size: 11px; }
-.diagnosis-evidence-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.diagnosis-evidence-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 0; }
 .diagnosis-evidence-stages > article { position: relative; display: grid; grid-template-columns: 18px 1fr; gap: 7px; min-width: 0; padding-right: 12px; }
 .diagnosis-stage-marker { position: relative; min-height: 100%; }
 .diagnosis-stage-marker::after { content: ''; position: absolute; top: 8px; bottom: -16px; left: 5px; width: 1px; background: #c9d8d4; }
@@ -1562,6 +1562,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-evidence-stages article p { margin: 0 0 5px; color: #667a75; font-size: 12px; line-height: 1.5; }
 .diagnosis-evidence-stages article small { color: #284d46; font-weight: 700; }
 .diagnosis-evidence-stages details { margin-top: 7px; }
+.diagnosis-extraction-comparison small { display: block; color: #6e7f7a !important; font-weight: 500 !important; line-height: 1.5; }
+.diagnosis-extraction-side + .diagnosis-extraction-side { margin-top: 16px; padding-top: 14px; border-top: 1px solid #dce7e4; }
+.diagnosis-extraction-side h5 { margin: 0 0 8px; color: #31534d; font-size: 12px; }
+.diagnosis-extraction-side pre { max-height: 280px; overflow: auto; }
+.diagnosis-program-conclusion { margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid #73a99d; background: #f5f9f8; color: #385851; line-height: 1.6; }
 .diagnosis-next-action { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #eef6f4; color: #31534d; }
 .diagnosis-scope-reasons { margin: 14px 0; }
 .diagnosis-scope-reasons h4 { margin-bottom: 8px; }
