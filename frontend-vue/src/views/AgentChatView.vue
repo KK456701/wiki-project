@@ -32,13 +32,11 @@ const store = useAgentStore()
 const query = ref('')
 const selectedDetailRunId = ref('')
 const selectedNode = ref<{ traceId: string; node: ExecutionNode } | null>(null)
-const uploadInput = ref<HTMLInputElement | null>(null)
 const conversation = ref<HTMLElement | null>(null)
 const exportingComparison = ref('')
 const exportingDiagnosis = ref('')
 const sessionList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(true)
-const guidedOpen = ref(false)
 const settingsOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
 const diagnosisBusy = ref('')
@@ -229,7 +227,6 @@ async function startDiagnosis(input: CreateDiagnosisCaseInput) {
   store.error = ''
   try {
     const created = await createDiagnosisCase(store.token, input)
-    guidedOpen.value = false
     diagnosisCases.value.push(created)
     rememberDiagnosisCase(store.sessionId, created.caseId)
     await nextTick()
@@ -372,19 +369,6 @@ async function continueFromClarification(messageId: string, values: string[]) {
   await send(continuation)
 }
 
-async function uploadFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  try {
-    await store.upload(file)
-  } catch (error) {
-    store.error = error instanceof Error ? error.message : '文件上传失败。'
-  } finally {
-    input.value = ''
-  }
-}
-
 function openNode(traceId: string | undefined, node: ExecutionNode) {
   if (traceId) selectedNode.value = { traceId, node }
 }
@@ -431,10 +415,9 @@ async function exportDiagnosis(reportId?: string) {
     <header class="topbar">
       <div class="brand-block">
         <span class="brand-mark">AI</span>
-        <div><strong>核心制度指标 Agent</strong><small>迁移验证版 · 当前会话</small></div>
+        <div><strong>核心制度指标智能体</strong><small>指标核算与异常排查</small></div>
       </div>
       <div class="topbar-controls">
-        <code>{{ store.sessionId?.slice(-12) ?? '…' }}</code>
         <RouterLink class="quiet-button" to="/knowledge-review">知识库回收与审批</RouterLink>
         <button type="button" class="settings-button" aria-label="打开系统设置" title="系统设置" @click="settingsOpen = true">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21h-4v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3v-4h.1A1.7 1.7 0 0 0 4.7 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3h4v.1A1.7 1.7 0 0 0 15.5 4.7a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.15.38.37.72.66 1 .3.27.68.4 1.08.4H21v4h-.1a1.7 1.7 0 0 0-1.5.6Z"/></svg>
@@ -470,9 +453,10 @@ async function exportDiagnosis(reportId?: string) {
       <div class="conversation-column">
         <div ref="conversation" class="conversation-panel">
           <section v-if="!store.messages.length" class="welcome-panel">
-            <p class="eyebrow">临床指标核算 · 当前生效口径</p>
-            <h1>选好指标与时间，<br>核算过程<em>全程留痕</em>。</h1>
-            <p>按引导选择指标和时间范围即可开始。每一步口径、数据来源与核算结果都可追溯。</p>
+            <span class="welcome-orbit" aria-hidden="true">AI</span>
+            <h1>有什么我能帮你的吗？</h1>
+            <p>计算核心制度指标，或从一条异常线索开始排查。</p>
+            <p class="welcome-guidance">选择下面的任务，我会一步一步引导你完成。</p>
             <GuidedTaskPanel
               :token="store.token"
               :session-id="store.sessionId"
@@ -591,22 +575,8 @@ async function exportDiagnosis(reportId?: string) {
           />
         </div>
 
-        <div v-if="guidedOpen" class="composer-guided-popover">
-          <GuidedTaskPanel
-            :token="store.token"
-            :session-id="store.sessionId"
-            :model-id="store.selectedModel"
-            :disabled="store.running"
-            @send="send($event)"
-            @start-diagnosis="startDiagnosis"
-          />
-        </div>
         <form class="composer" @submit.prevent="send()">
-          <input ref="uploadInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="uploadFile" />
-          <button type="button" class="upload-button" @click="uploadInput?.click()">＋ Excel</button>
-          <button type="button" class="diagnosis-launch-button" @click="guidedOpen = !guidedOpen">异常排查</button>
-           <span v-if="store.latestFileName" class="file-chip">{{ store.latestFileName }}</span>
-           <textarea v-model="query" rows="1" maxlength="5000" :placeholder="composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
+            <textarea v-model="query" rows="1" maxlength="5000" :placeholder="store.messages.length ? composerPlaceholder : '输入问题，或从上方选择一个任务…'" @keydown.ctrl.enter.prevent="send()"></textarea>
            <label v-if="composerModels.length" class="composer-model-select" title="选择本次对话和新建异常排查任务使用的模型">
              <span class="visually-hidden">选择模型</span>
              <select :value="store.selectedModel" aria-label="选择对话模型" @change="selectComposerModel">

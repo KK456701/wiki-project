@@ -181,9 +181,8 @@ function providerLabel(provider: string) {
     <aside class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <header class="settings-head">
         <div>
-          <span class="settings-kicker">运行控制台</span>
           <h2 id="settings-title">系统设置</h2>
-          <p>模型配置立即生效；数据库保存后受控重启服务才切换正式连接。</p>
+          <p>管理对话模型和数据库连接</p>
         </div>
         <button type="button" class="drawer-close" aria-label="关闭设置" @click="emit('close')">×</button>
       </header>
@@ -203,8 +202,7 @@ function providerLabel(provider: string) {
         <p v-else-if="error" class="settings-state is-error">{{ error }}</p>
 
         <section v-else-if="activeTab === 'models'" class="settings-section">
-          <header><div><span>当前浏览器</span><h3>对话模型</h3></div><small>新消息、新排查任务使用当前选择</small></header>
-          <p class="settings-explain">在对话框选择的模型会写入新建排查任务；正在运行的自主排查不会中途换模型。</p>
+          <header><div><h3>对话模型</h3><p>选择默认模型，或展开修改连接信息。</p></div><small>新任务使用当前选择</small></header>
           <div class="settings-model-list">
             <article v-for="model in modelItems" :key="model.id" class="settings-model-card" :class="{ selected: selectedModel === model.id }">
               <button type="button" :disabled="model.available === false" @click="emit('selectModel', model.id)">
@@ -230,8 +228,7 @@ function providerLabel(provider: string) {
         </section>
 
         <section v-else-if="activeTab === 'databases'" class="settings-section">
-          <header><div><span>服务器运行时</span><h3>数据库连接</h3></div><small>密码不回显</small></header>
-          <p class="settings-explain">先填写并测试连接，再保存。保存不会打断当前抽取；重启服务后正式计算使用新连接。</p>
+          <header><div><h3>数据库连接</h3><p>测试通过后保存，重启服务后正式生效。</p></div><small>密码不回显</small></header>
           <article v-for="item in settings?.databases || []" :key="item.id" class="settings-db-card">
             <header><div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div><em :data-state="item.configured ? 'ok' : item.enabled ? 'warn' : 'off'">{{ item.configured ? '已配置' : item.enabled ? '配置不完整' : '未启用' }}</em></header>
             <dl><div><dt>当前地址</dt><dd>{{ item.endpoint }}</dd></div><div><dt>账号 / Schema</dt><dd>{{ item.username || '—' }}<template v-if="item.schema"> / {{ item.schema }}</template></dd></div><div><dt>密码</dt><dd>{{ item.credentialConfigured ? '已保存（不回显）' : '未配置' }}</dd></div><div><dt>正式链路</dt><dd>{{ item.formalChain ? '是' : '否，仅扩展连接' }}</dd></div></dl>

@@ -164,10 +164,18 @@ function localIso(value: Date): string {
   <section class="guided-panel" aria-label="快捷任务入口">
     <div class="guided-tasks">
       <button type="button" class="guided-task" :class="{ 'is-active': task === 'calc' }" :disabled="disabled" @click="pickTask('calc')">
-        <strong>算指标</strong><span>选择一个或多个指标，按时间范围计算结果</span>
+        <span class="guided-task-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 4.5h14v15H5z"/><path d="M8 8h8M8 12h3M8 16h3M14 12h2M14 16h2"/></svg>
+        </span>
+        <span class="guided-task-copy"><strong>计算指标</strong><span>选择一个或多个指标，按时间范围生成结果</span><small>选择指标 → 选择周期 → 查看结果</small></span>
+        <span class="guided-task-arrow" aria-hidden="true">→</span>
       </button>
       <button type="button" class="guided-task" :class="{ 'is-active': task === 'diagnose' }" :disabled="disabled" @click="pickTask('diagnose')">
-        <strong>开始异常排查</strong><span>先完成表字段、事件和数值检查，通过后再登记具体案例</span>
+        <span class="guided-task-icon is-diagnosis" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5M10.5 8v5M8 10.5h5"/></svg>
+        </span>
+        <span class="guided-task-copy"><strong>异常排查</strong><span>结果对不上、科室漏数或患者判定异常，从这里开始</span><small>选择指标 → 基础校验 → 对话排查</small></span>
+        <span class="guided-task-arrow" aria-hidden="true">→</span>
       </button>
     </div>
 

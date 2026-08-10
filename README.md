@@ -1,337 +1,262 @@
-# 医院核心制度指标 Agent
+# 医院核心制度指标智能体
 
-本项目当前采用单一生产技术栈：
+面向医院实施人员的核心制度指标核算与异常排查系统。系统以知识库中的指标口径和 SQL 为依据，从业务库抽取数据到真实库，在真实库完成正式计算，并保留初始化校验、数据链路、分子分母明细、异常排查和医院草稿的完整证据。
 
-```text
-Vue 3 + TypeScript
-        │ HTTP / SSE
-        ▼
-Java 17 + Spring Boot 3.5.16 + Spring AI 1.1.8
-        ├── core-rules-wiki：HXZD 规则、Profile、字段契约和 SQL 规格
-        ├── SQLite：账号、会话、Trace、Evidence 和短期运行对象
-        ├── DBHub sidecar：只读访问医院 SQL Server
-        └── Ollama / DeepSeek API：Planner、候选消歧和最终回答
-```
+## 现在能做什么
 
-Python FastAPI 运行时、Python 测试、旧原生前端和双栈切流脚本已经退役。旧实现可从 Git 历史恢复，但不在当前源码树中保留第二套可运行实现。部署机不需要 Python，也不需要 MySQL。
+- **指标核算**：选择一个或多个指标与统计周期，执行初始化校验、数据抽取、真实库快照校验、指标计算和结果汇总。
+- **初始化校验**：检查双库连接、缺表、缺字段、无数据、关键字段空值和可安全生成的关联覆盖率；问题只影响关联口径。
+- **数据链路**：展示业务表、事件、抽取 SQL、真实库中间表、统计参数表和概览/科室/明细 SQL 的实际流向。
+- **结果与明细**：按口径展示分子、分母、结果值、达标状态和数据质量；明细必须重新聚合后与卡片值一致才会返回。
+- **特殊指标明细**：支持计数比率、SUM 贡献值、中位数样本、双数据源和两个率比较等不同展示契约。
+- **异常排查**：先完成数据结构、事件与抽取、数据可用性三步基础校验，再进入标准模式或自主排查模式。
+- **自主排查**：模型按需读取结构化 Wiki、运行证据和受控只读查询；程序负责权限、安全校验、影子试跑和对账。
+- **医院草稿**：候选 SQL 通过影子试跑后可保存为医院草稿版本；草稿不参与正式计算，可在“知识库回收与审批”页面查看、重新验证和回收。
+- **运行设置**：在页面中维护模型和数据库连接。模型配置即时生效；数据库配置保存后重启服务生效。密钥和密码只保存在本机运行库，不回显、不提交 Git。
 
-## 当前能力
-
-- 指标识别：正式名称/审核同义词规则匹配、本地字符语义召回、候选范围内 LLM 消歧。
-- 对话式澄清：缺指标、指标歧义、缺时间、意图不清或候选口径不唯一时，不再直接显示运行失败；服务端返回结构化反问，前端提供可搜索的指标列表、常用时间范围和业务动作。用户选择后会携带原问题与结构化上下文重新进入完整 Agent 链路。
-- 多指标请求：服务端确定性拆分 2～3 个指标；API 模型最多并发 2，本地 Ollama 串行。
-- 指标解释：35 项 HXZD 指标均可查询 Wiki 中的定义、公式、分子、分母和 Profile 状态。
-- 分级执行：Profile 分为 `executable`、`documentation_only` 和 `draft`。已审批 Profile 的事件抽取契约、真实库概览 SQL 和确定性结果列共同构成普通计算门禁；该运行覆盖层不代表医院存在独立业务口径。
-- 指标计算：统计区间统一使用左闭右开且最多一个自然月；从同一 `release_id + rule_id + profile_id` 读取抽取和 SQL Bundle。每个 Profile 固定执行“从业务系统抽取 → 原子替换真实库快照 → 仅在真实库执行概览 SQL”。不查询业务库概览，不自动比较双库，也不自动进入诊断。
-- 诊断：既有双库与明细诊断分支暂时保留，但不属于本轮普通计算流程；后续再单独确定最终诊断协议。
-- SQL 展示：用户仅询问“SQL 怎么写”时使用 SQL 优先模板，只展示指标、Profile、知识库概览 SQL、统计参数及“未访问数据库”说明，不再重复整段定义与公式。用户明确计算且区间不超过一个月时，静态概览契约才生成受控 SQL 对象并进入抽取后真实库计算。
-- 口径分项解释：`RequestPlan v3` 在 `rule_explanation` 下区分完整口径、定义、公式、分子、分母、统计时间、去重、排除和版本范围。明确追问由 Java 复用当前指标并跳过 Planner，Final Answer 只加载对应分项模板，避免重复整份口径报告。
-- 口径列表：服务端把“根据什么口径”“还有哪些口径”和“按某个口径算”分别识别为当前口径解释、Profile 列表查询和候选口径模拟。Profile 列表按当前默认、可试算、仅可解释和草稿分级；查询列表不要求 `profile_id`，也不会误触发数据库。
-- 候选口径模拟：对“那根据入区怎么算”等追问，从 Wiki 的已审批候选 profile 中按规则、本地字符语义和候选内 LLM 消歧，复用上一轮指标与统计周期，生成受控 SQL 并只读试运行；未设置失效日期的 profile 按长期有效处理，回答明确标注为模拟口径。
-- 目标一致性校验：Planner 之后、IR 编译之前确定性核对原问题与计划；明确区分“根据什么口径算的”这类当前规则追问与“根据入区怎么算”这类候选模拟，复杂语义才调用审核模型，确认不一致时最多 Replan 一次，仍错误且存在唯一安全方向时由服务端生成受控修正计划。
-- 多轮上下文：按医院、用户和会话保存当前指标、候选 profile、已解析统计区间及 `RUN_*` 引用；Planner 只返回同名指标而漏掉 `rule_id` 时，会安全复用上一轮已确认身份，“这个口径的 SQL 怎么写”等追问自动沿用上一轮候选口径和结构化范围。
-- 小模型稳定性：明确的 SQL/脚本追问只要上一轮指标已确认，服务端就直接编译 `indicator_sql_prepare` 计划，不再让本地 8B 猜测任务类型；未指定周期时仅为展示 SQL 默认使用本月至今，并在回答中明确标注，绝不执行数据库。
-- 明细核对：为成功试运行生成短期分子/分母快照，分页查看并导出 Excel。
-- 批量数据初始化与数据链路：批量计算前按口径检查双库表、字段、空值和关联情况；无法安全判断的检查保留完整技术证据，并用实施人员能读懂的文字说明应先修系统识别还是补知识库。指标数据链路中的模板 SQL 会按当前统计时间转换成可直接复制到 Navicat SQL Server 执行的只读脚本，同时保留原模板用于审计。
-- 上传比较：分析 `.xlsx` 汇总或逐条明细，输出双方都有、仅系统有、仅文件有及字段差异。
-- 结果差异分层诊断：对“用户100、系统98”和上传文件核对自动进入固定 Workflow，依次执行范围预检、实时结构、候选口径、记录集合和数据质量检查；候选口径按分子、分母、指标率分级判断为“完全匹配、部分匹配、未匹配”，完整一致才确认原因，部分一致且有口径证据时标记高度相关并继续核对剩余差异，单个含义不明的数值命中只标记可能相关。
-- 通用异常诊断：只处理没有外部对比对象的指标异常、结果偏低或计算错误，不再与结果差异诊断混用。
-- 医学术语：标准概念、同义词、医院值映射、审批发布和确定性识别测试。
-- 可观测性：“查看链路”只使用原生 SVG 分层架构图，按“上下文与指标识别—规划与目标校验—IR编译与能力选择—工具与数据库执行—Evidence验证与安全检查—回答组织与会话保存”六个阶段横向展示；顺序、父子、Replan、失败和工具回环使用不同连接线，多指标按子任务分泳道。完整输入输出、Planner 原始/规范化计划及能力状态统一在右侧节点详情查看，不再提供节点列表模式。
-- 按需回答模板：Final Answer 根据已校验意图、输出目标和规则解释关注点每轮只加载一份独立 Markdown 模板；指标解释、计算结果、文件分析和各类报告使用统一且与问题粒度匹配的结构，模板编号、版本和契约校验结果写入 Trace。
-- 安全 Markdown 展示：Vue 使用不执行 HTML 的内置 Markdown 子集渲染标题、引用摘要、数据表、列表和代码块，不增加前端依赖，也不会执行模型返回的脚本。
-- 实时阶段：每条 Agent 回答在标题后保留一个当前状态槽，按 SSE 节点从 LLM、代码、工具和存储阶段排队逐项切换；毫秒级节点设置最短可见时间，避免被同一渲染帧覆盖。完整历史只在“查看链路”中展示，回答结束后显示本轮端到端耗时。
-- 完整调试参数：Planner Trace 同时输出模型原文和完整 `RequestPlan`；授权链路中的非敏感输入输出不再按字符数裁剪，凭证、受控 SQL 正文和患者原始行仍保持脱敏。
-
-## Agent 执行架构
+## 技术架构
 
 ```mermaid
-flowchart TD
-    U["用户问题与会话上下文"] --> R["指标识别：规则 + 语义 + 候选内 LLM"]
-    R --> S{"一个还是多个指标"}
-    S -->|多个| C["服务端拆分独立子任务"]
-    S -->|一个| P["Planner：生成 RequestPlan"]
-    C --> P
-    P --> A{"PlanGoalAlignmentValidator：目标—计划一致性"}
-    A -->|查询其他口径| CQ["口径目录：当前 / 可试算 / 仅解释 / 草稿"]
-    A -->|一致| IR["Compiler / Validator：生成并校验 CompiledPlan IR"]
-    A -->|高置信不一致| RP0["Replanner：最多一次"]
-    A -->|复杂语义| AR["候选内 LLM 审核"]
-    AR -->|需要修正| RP0
-    AR -->|一致| IR
-    RP0 --> A2{"二次一致性校验"}
-    A2 -->|一致| IR
-    A2 -->|仍错误且候选唯一| DF["服务端受控修正计划"]
-    DF --> IR
-    A2 -->|仍有歧义| CLARIFY
-    IR -->|计划有效| SC["State Controller：查找缺失事实"]
-    IR -->|计划校验失败| FR["Failure Router：统一失败分类"]
-    SC --> D["Deterministic Dispatch：唯一工具与参数"]
-    D --> G["ToolGateway：权限、校验、超时、缓存、并发"]
-    G --> T["Wiki / 当前口径 SQL / 候选口径 SQL / 上传 / 诊断工具"]
-    T --> X{"是否为普通指标计算"}
-    X -->|是且抽取未启用| FR
-    X -->|是| DX["按 Profile 抽取 → 原子替换真实库"]
-    DX --> DB1["真实库概览 SQL"]
-    DB1 --> E
-    X -->|否| W
-    T --> W{"是否为双方结果差异"}
-    W -->|是| DW["IndicatorDifferenceDiagnosisWorkflow：固定分层核验"]
-    W -->|否| E["Evidence Ledger + Verifier"]
-    DW --> E
-    E --> SC
-    D -->|参数编译失败| FR
-    T -->|工具执行失败| FR
-    FR -->|执行期发现方向性语义错误且未重规划| RP["Replanner：最多一次"]
-    RP --> IR
-    FR -->|缺指标、缺时间、意图或口径歧义| CLARIFY["结构化反问：选项 / 搜索 / 自由补充"]
-    FR -->|权限、数据库或普通工具错误| FB["安全拒绝 / 系统兜底"]
-    CLARIFY --> U
-    SC -->|事实完整| F["Final Answer：仅消费 VerifiedEvidence"]
-    F --> V["Vue 3 对话、导出入口和流程图链路"]
+flowchart LR
+    UI["Vue 3 + TypeScript"] -->|"HTTP / SSE"| API["Spring Boot 3.5 / Java 17"]
+    API --> KB["Markdown 指标知识库"]
+    API --> RUNTIME["SQLite 运行库"]
+    API --> MCP["内嵌数据库 MCP"]
+    MCP --> BIZ["业务库"]
+    MCP --> REAL["真实库"]
+    API --> LLM["已配置的 API 或本地模型"]
+    API --> DRAFT["医院草稿目录"]
 ```
 
-LLM 不直接决定工具名，不生成自由执行步骤，不负责 SQL 安全，也不能读取患者级明细。工具和前置依赖来自 Java `CapabilitySpecRegistry`，真正的调用由 `ToolGateway` 阻断或放行。
+职责边界：
 
-## 模型
+- 知识库保存指标定义、口径、事件、四类 SQL 和字段说明。
+- Java 程序负责口径选择、SQL 渲染、安全校验、数据库执行、对账、Trace 和状态机。
+- 模型负责语义理解、解释和自主排查中的下一步建议，不能绕过程序直接修改正式数据。
+- 正式指标结果只来自真实库；业务库用于源数据抽取和异常排查取证。
 
-| 模型 ID | 提供方 | 用途 |
-|---|---|---|
-| `ollama-qwen3` | 本地 Ollama | 4B 本地模型，适合资源受限环境 |
-| `ollama-qwen3-8b-thinking` | 本地 Ollama | 8B 思考模式，本地串行调用 |
-| `aliyun-qwen3-14b` | 阿里云百炼 OpenAI 兼容 API | Qwen3 14B；默认关闭思考以降低 Planner 延迟 |
-| `deepseek-v4-flash` | DeepSeek OpenAI 兼容 API | 较快的在线模型 |
-| `deepseek-v4-pro` | DeepSeek OpenAI 兼容 API | 复杂语义和回答组织 |
+## 主要流程
 
-模型配置集中在 [`application.yml`](backend-java/src/main/resources/application.yml)，提示词集中在 [`backend-java/src/main/resources/prompts`](backend-java/src/main/resources/prompts)。
-
-## 目录
+### 指标核算
 
 ```text
-backend-java/                 Java 17 + Spring Boot 3.5 单运行时及测试
-frontend-vue/                 Vue 3 + TypeScript 前端
-core-rules-wiki/              规则、医院覆盖、映射、SQL 规格和索引
-contracts/                    稳定接口与数据契约
-evaluations/                  不绑定运行语言的评测用例数据
-scripts/
-  build-java-vue.ps1          构建包含 Vue 的单 JAR
-  start-java-runtime.ps1      不依赖 Python 的启动器
-  build-wiki-from-markdown.mjs  从原始 Markdown 生成 HXZD 契约
-  validate-wiki-contract.mjs  只读校验 35/45/169 及执行门禁
-  knowledge-release.ps1       Excel/Markdown 准备、发布、回滚和真实医院差异知识回收
-  knowledge-release.mjs       不可变 release、原子指针和三方 Diff 实现
-  init_runtime_sqlite.sql     SQLite 运行库参考建表脚本
-tools/dbhub/                  DBHub sidecar 配置和启动脚本
-docs/                         当前架构、运维记录和历史设计资料
+确认本次指标清单
+→ 数据初始化校验
+→ 抽取数据到真实库
+→ 真实库本次数据校验
+→ 指标计算
+→ 汇总结果
 ```
 
-## HXZD Wiki 机器契约
+批量结果按唯一指标汇总覆盖指标、达标、未达标、待确认和数据质量。多口径指标不会重复计入覆盖指标。
 
-原始来源为 `core-rules-wiki/raw/company/35项核心制度指标完整提取.md`。生成器在临时目录完成解析与校验，全部门禁通过后才生成不可变 release，并通过 `core-rules-wiki/pointers/company-current.json` 原子切换当前版本：
+### 异常排查
 
 ```text
-35 项指标
-45 个独立 Profile
-169 个 SQL 块
+选择指标与统计周期
+→ 数据结构校验
+→ 事件与抽取校验
+→ 数据可用性校验
+→ 标准模式 / 自主排查模式
+→ 候选 SQL
+→ 影子试跑与差异对账
+→ 保存医院草稿（人工确认）
 ```
 
-每个 Profile 独立声明适用范围、状态、四类 SQL 引用、参数、字段契约、结果映射和阻断原因。缺少医院字段契约或统一结果列映射的方案不会被标为 `executable`；这类方案仍可解释，但试运行、明细与导出入口会被服务端拒绝。Java 会按指针热加载完整快照；新版本缺文件或哈希不一致时继续使用上一版。
+自主排查只开放五类受控能力：读取 Wiki、读取运行证据、执行指标范围内的只读查询、准备候选 SQL、运行影子试跑。模型不能执行 DML/DDL、访问无关表或保存正式版本。
 
-每个新生成 Profile 还包含运行契约。普通计算只要求事件抽取契约和真实库概览对象、
-结果列映射通过发布校验；业务库概览 SQL 不再是计算前提。既有诊断若继续使用双库与
-明细能力，仍要求完整的双库、科室键和患者业务主键契约。
+## 项目目录
 
-公司基础版本仍保留分级治理状态；`hospital_001` 的
-`KB-20260726-HOSPITAL001-DUALDB` 是**双库执行契约覆盖层**，不是医院独立口径
-知识库。它的原始资料和内容哈希与公司版本一致，`hospital_overrides` 为空，只为
-Profile 增加目标数据库、结果列和验证状态等运行契约。运行时会对 35 项概览 SQL 做
-确定性修复和只读复核，普通计算完成抽取后只访问真实库。执行失败不会提升发布状态，也不会
-生成虚假结果；完整明细能力继续取决于 Profile 的比较键和字段契约。
-
-为保持现有运行兼容，该执行契约快照仍沿用
-`releases/hospitals/{hospital_id}` 和
-`pointers/hospitals/{hospital_id}-current.json`。只有未来从医院原始差异资料或
-医院回收包生成、经过人工审核且 `hospital_overrides` 非空的发布，才能称为“医院
-差异知识”。执行契约覆盖层不得被当作本院口径来源。
-
-生成器不会改写表、字段、JOIN、业务条件、阈值、去重、分子分母或时间边界。它只会
-机械修复非法 `NOLOCK`、`WHERE + 注释 + AND` 和无业务意义控制字符，并把原始哈希、
-执行哈希、行号及前后差异写入 `sql-correction-manifest.json`。参数别名只写入机器
-契约，由 Java 在绑定阶段适配，不修改 SQL 原文。包含修复的候选仍必须人工查看差异并
-以 `Publish -Confirmed` 明确发布。
-
-```powershell
-node .\scripts\build-wiki-from-markdown.mjs --input ".\core-rules-wiki\raw\company\35项核心制度指标完整提取.md" --check
-node .\scripts\validate-wiki-contract.mjs --expected-indicators 35 --expected-profiles 45 --expected-sql 169
-node --test .\scripts\tests\knowledge-release.test.mjs
+```text
+frontend-vue/                 Vue 3 对话与实施工作台
+backend-java/                 Java 单运行时后端（独立公司仓库）
+  src/main/resources/
+    knowledge-index/          默认 classpath 知识库
+    knowledge-index_backup_20260801_150233/
+                              当前本机开发知识库与医院草稿根目录
+docs/                         实施计划、验收报告和接口文档
+scripts/                      构建、开发启动和验收脚本
+runtime/                      本机运行数据（禁止提交）
 ```
 
-新增资料使用离线发版入口。标准 Markdown 确定性解析；Excel 或非标准 Markdown 由
-配置中的大模型整理成 `KnowledgeDraftV2`，SQL 始终由程序提取，模型不得改写：
+当前开发启动脚本优先使用：
 
-```powershell
-.\scripts\knowledge-release.ps1 `
-  -Action Prepare `
-  -Input ".\新指标资料.xlsx" `
-  -Scope company `
-  -ModelId deepseek-v4-flash
-
-.\scripts\knowledge-release.ps1 -Action Validate -Candidate "<候选编号>"
-.\scripts\knowledge-release.ps1 -Action Publish -Candidate "<候选编号>" -Confirmed
-.\scripts\knowledge-release.ps1 -Action Rollback -Scope company -ReleaseId "<历史版本>"
+```text
+backend-java/src/main/resources/knowledge-index_backup_20260801_150233
 ```
 
-本地 Qwen 4B/8B 不允许用于知识发版。模型密钥只从 `DEEPSEEK_API_KEY` 或
-`DASHSCOPE_API_KEY` 环境变量读取，不写入 Wiki、日志或 Git。
+未显式配置外部知识库时，其他部署环境仍使用 `classpath:knowledge-index`。外部目录一旦配置但不存在，服务会启动失败，不会静默切回另一套知识库。
+
+医院内容位于：
+
+```text
+knowledge-index_backup_20260801_150233/
+  hospitals/{hospitalId}/
+    raw/                       医院原始资料归档
+    drafts/{draftId}/          不可变医院草稿
+      manifest.json
+      entities/
+      raw/sql/
+      evidence/
+```
+
+医院草稿不覆盖根目录公司公版实体，也不会被正式计算自动加载。
 
 ## 环境要求
 
-运行环境：
+- Windows + PowerShell
+- Java 17
+- Maven 3.9+
+- Node.js 20+ 与 npm
+- 可访问的 SQL Server / Oracle（按现场需要配置）
+- 可访问的模型 API 或本地 Ollama（按现场需要配置）
 
-- Java 17。
-- Spring Boot 固定为 `3.5.16`，Spring AI 固定为与之兼容的 `1.1.8`。
-- DBHub sidecar；只有需要访问医院业务数据时才必须启动。
-- Ollama、可访问的 DeepSeek API 或阿里云百炼 API。
-- 内嵌 SQLite 运行库，默认路径 `runtime/wiki_agent_runtime.db`。
+前端主要依赖 Vue 3、Pinia、Vue Router、TypeScript 和 Vite；后端使用 Spring Boot、Spring AI、SQLite JDBC、SQL Server JDBC、Oracle JDBC、Apache POI 和 PDFBox。
 
-构建环境另外需要 Node.js/npm 和 Maven。生产 JAR 已包含 Vue 静态资源，部署机不需要 Node.js。
+## 快速启动
 
-> Spring Boot 3.5.16 是 3.5.x 的最后一个 OSS 版本。当前选择它是为了兼容现有 Java 17
-> 部署基线；后续若需要持续社区安全更新，应单独规划 Boot 4 升级，不能只升级 Spring AI。
+### 开发模式
 
-## 配置
-
-复制示例文件：
+项目根目录执行：
 
 ```powershell
-Copy-Item .\config.example.yaml .\config.yaml
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-run.ps1 -Port 8765
 ```
 
-至少检查：
+修改 Java 后只增量编译并触发 DevTools 重启：
 
-- `runtime_db_url`：只支持 `jdbc:sqlite:` 或兼容旧值 `sqlite+pysqlite:///`。
-- `admin_password`：不得使用示例占位值。
-- DBHub 只允许两个角色化数据源：业务库 `winex_all_dev` 和真实库 `winex_aima`。
-  设置 `DBHUB_BUSINESS_SOURCE_ID=winex_all_dev`、
-  `DBHUB_BUSINESS_EXECUTE_TOOL=execute_sql_winex_all_dev`、
-  `DBHUB_BUSINESS_DATABASE=WiNEX_All_DEV`、
-  `DBHUB_REAL_SOURCE_ID=winex_aima` 和
-  `DBHUB_REAL_EXECUTE_TOOL=execute_sql_winex_aima`、
-  `DBHUB_REAL_DATABASE=winex_aima`。工具名称必须唯一。
-- 删除旧的 `DBHUB_SOURCE_ID`、`DBHUB_EXECUTE_TOOL`、`DBHUB_DATABASE` 和
-  `DBHUB_SCHEMA`；应用检测到旧单库配置时会拒绝启动并提示迁移。
-- `business_db_hospital_scope_value=991827` 是医院范围参数，不是数据库名称；
-  SQL 原文中的 `:hospital_soid` 由 Java 绑定到该受控范围值。
-- 业务事件 MCP 地址单独使用 `DBHUB_BIZ_MCP_URL`，不能复用数据库 DBHub 的
-  `DBHUB_MCP_URL`。启用前先配置 `WIKI_EXTRACTION_HOSPITAL_SOID`。
-- 默认保持 `AGENT_EXTRACTION_MODE=disabled` 和 `WIKI_SQLSERVER_ENABLED=false`；
-  此安全默认会拒绝普通指标计算，防止使用旧快照。启用计算时必须同时设置：
-  `AGENT_EXTRACTION_MODE=required`、`WIKI_SQLSERVER_ENABLED=true`、
-  `WIKI_SQLSERVER_URL`（必须显式包含 `databaseName=winex_aima`）、
-  `WIKI_SQLSERVER_USERNAME` 和 `WIKI_SQLSERVER_PASSWORD`。
-- 写入账号必须由 DBA 使用
-  `scripts/sqlserver/create-winex-aima-agent-writer.sql` 创建。应用拒绝 `sa`、
-  sysadmin、非 `winex_aima` 数据库和非 `dbo` Schema；账号只获得固定 28 张表的
-  `SELECT/INSERT/DELETE`，没有 `UPDATE/TRUNCATE/ALTER/DROP` 权限。
-- 计算和诊断单次统计区间最多一个月，不自动拆月；定义、口径及仅展示 SQL 不访问数据库，
-  不受该执行限制。计算默认执行所选指标全部已审批 Profile：当前 35 项指标对应
-  42 个 Profile，3 个草稿不执行；明确指定 Profile 时才缩小范围。
-- 更新真实库表结构后，先运行
-  `node .\scripts\capture-real-schema-contract.mjs` 通过 DBHub 只读固化 28 表字段与
-  SHA-256 指纹，再生成新的不可变知识发布包。结构或返回字段与发布契约不一致时，
-  抽取会在清库前停止。
-- 普通计算要求 Wiki Profile 的真实库概览 SQL 通过元数据/编译验证并声明结果列映射；
-  不要求业务库执行同一概览 SQL。既有诊断分支使用双库明细时仍要求科室键、患者键、
-  分子判定字段和允许比较字段。
-- `ollama_base_url`；使用 DeepSeek 时设置 `DEEPSEEK_API_KEY`，使用阿里云百炼时设置 `DASHSCOPE_API_KEY`。
-- 百炼默认使用北京公共端点和 `qwen3-14b`；专属 Workspace、其他地域或自定义部署时，分别覆盖 `DASHSCOPE_BASE_URL` 和 `DASHSCOPE_QWEN3_14B_MODEL`。
-- 百炼官方 Base URL 已包含 `/v1`，Java 模型注册项固定使用 `/chat/completions` 相对路径，避免 Spring AI 重复拼接 `/v1`。
-- 如外部 API 需要本机代理，设置 `java_http_proxy_url`。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-run.ps1 -Recompile
+```
 
-真实密码、令牌、医院连接串、运行数据库和日志不得提交到 Git。
+访问：
 
-## 构建
+- 页面：`http://127.0.0.1:8765/`
+- 健康检查：`GET http://127.0.0.1:8765/api/health`
 
-在项目根目录执行：
+### 构建单体 JAR
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-java-vue.ps1
 ```
 
-脚本先构建 Vue，再执行 Maven 测试和打包。输出：
+脚本先构建 Vue，再使用 `bundle-vue` Profile 打包 Java。输出位于：
 
 ```text
 backend-java/target/wiki-agent-java-0.1.0-SNAPSHOT.jar
 ```
 
-## 启动
+启动已打包版本：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-java-runtime.ps1 -Port 8765
 ```
 
-启动器会：
+## 运行设置
 
-1. 读取 `config.yaml` 的必要顶层标量并转换为 Java 环境变量。
-2. 定位 Java 17。
-3. 检查端口是否空闲。
-4. 检查 JAR 是否包含 Vue 首页，防止误启动后端-only JAR。
-5. 前台启动 Java，不自动结束任何现有进程。
+页面右上角齿轮进入“系统设置”。
 
-访问：
+### 模型
 
-- 页面：`http://127.0.0.1:8765/`
-- 健康：`GET http://127.0.0.1:8765/api/health`
-- 运行时：`GET http://127.0.0.1:8765/api/runtime/status`
+- 可配置显示名称、提供方、模型名称、服务地址、聊天路径、API Key 和思考参数。
+- 对话框中选择的模型用于新消息和新建自主排查任务。
+- 已经运行中的自主排查冻结创建时的模型，不会中途切换。
+- API Key 只写入本机 SQLite，接口不会回显明文。
 
-## 开发测试
+### 数据库
+
+- 可配置启用状态、驱动、JDBC URL、账号、密码、Schema 和连接池参数。
+- 支持保存前测试连接。
+- 数据库连接池在服务启动时创建，因此保存后需要重启服务才用于正式链路。
+- 密码只写入本机 SQLite，接口不会回显明文。
+
+运行设置数据库默认位于：
+
+```text
+backend-java/runtime/wiki_agent_runtime.db
+```
+
+该目录已被后端仓库忽略，严禁提交运行数据库、日志、患者导出、API Key、密码或医院连接串。
+
+## 开发验证
+
+前端：
 
 ```powershell
-cd .\backend-java
-mvn.cmd -s .\maven-settings.xml test
-
-cd ..\frontend-vue
+Set-Location .\frontend-vue
 npm.cmd run type-check
 npm.cmd run build
 ```
 
-`maven-settings.xml` 包含本机 Maven 代理示例，不包含业务凭据；其他环境可删除其中的代理段。
+后端：
 
-## 主要接口
+```powershell
+Set-Location .\backend-java
+mvn.cmd -s .\maven-settings.xml test
+```
 
-- `POST /api/auth/hospital/login`：医院人员登录。
-- `GET /api/agent/capabilities`：可用模型和 Agent 能力。
-- `POST /api/agent/chat`、`POST /api/agent/chat/stream`：同步和 SSE 对话。
-- `POST /api/agent/upload`：以 `multipart/form-data` 的 `file` 字段上传指标 Excel；文件名和大小由浏览器与服务端自动获得，不是额外业务入参。
-- `GET /api/agent/runs/{trace_id}`：查看单轮完整安全链路。
-- `GET /api/agent/runs`、`GET /api/agent/runs/metrics`：运行观察。
-- `POST /api/sql-runs/{run_id}/details`：生成或复用指标明细快照。
-- `GET /api/sql-runs/{run_id}/details/{denominator|numerator|unmatched}`：分页明细。
-- `POST /api/sql-runs/{run_id}/exports`：导出分子分母 Excel。
-- `POST /api/sql-runs/{run_id}/upload-comparison-exports`：导出逐条差异表。
-- `POST /api/diagnosis-reports/{report_id}/exports`：按诊断报告导出摘要、逐条集合差异和质量异常汇总。
-- `GET /api/metadata/overview`、`POST /api/metadata/sync`：元数据工作台。
-- `/api/terminology/**`：术语查询、映射和发布。
-`/api/monitoring/**`、`/api/indicator-drafts/**`、`/monitoring` 和 `/implementation` 已永久删除，返回 404。“全面实施验收”也已从 Agent 工具链移除，用户提出该请求时只返回确定性不支持说明。
+单体构建：
 
-## 安全边界
+```powershell
+Set-Location ..
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-java-vue.ps1
+```
 
-- 规则知识来自 Wiki；SQLite 只保存可变运行数据，不作为规则正文权威源。历史废弃表不会被破坏性删除，但新应用不再初始化或访问。
-- 医院 SQL Server 的计算查询只能经 DBHub 的固定真实库只读工具访问。
-- 真实库写入只允许 `SourceExtractionGateway` 的受控实现使用专用最小权限账号，对固定
-  `winex_aima.dbo` 白名单表执行事务性 `DELETE/INSERT`；模型、浏览器和通用 DBHub 均不能写入。
-- 指标计算、候选口径、差异诊断和明细范围最大为起点顺延一个自然月，超限不会自动截断或拆月。
-- SQL 由服务端模板生成并二次校验，浏览器和模型不能提交任意 SQL 执行。
-- Evidence 和 Trace 不保存密码、令牌、SQL 正文或患者原始行。
-- 患者级数据仅存在于短期明细快照和用户确认生成的导出文件中。
-- 所有运行数据查询按当前登录医院过滤。
+涉及页面交互、批量核算或异常排查的改动，除自动测试外还应在真实页面保存截图、Trace 和对应验收矩阵。
 
-## 文档
+## 主要页面与接口
 
-- 当前架构：[`docs/architecture/agent-runtime-current.md`](docs/architecture/agent-runtime-current.md)
-- 前后端接口对接：[`docs/wiki-project_后端接口对接文档_2026-07-26.md`](docs/wiki-project_后端接口对接文档_2026-07-26.md)
-- Java/Vue 迁移历史：[`docs/migration/java-vue-migration.md`](docs/migration/java-vue-migration.md)
-- MySQL 到 Wiki + SQLite 的迁移历史：[`docs/migration/mysql-to-wiki-sqlite.md`](docs/migration/mysql-to-wiki-sqlite.md)
-- 项目协作约束：[`agent.md`](agent.md)
+页面：
 
-`docs/superpowers/` 和旧交接文档用于保留历史决策，不代表当前启动方式；当前部署与开发命令以本 README 为准。
+- `/`：指标核算、明细、数据链路和异常排查主界面。
+- `/knowledge-review`：医院草稿查看、重新验证、回收与审批准备。
+
+代表性接口：
+
+- `GET /api/health`：服务健康状态。
+- `GET /api/agent/capabilities`：当前可用模型与能力。
+- `POST /api/agent/chat`、`POST /api/agent/chat/stream`：同步与 SSE 对话。
+- `GET /api/agent/sessions`：会话历史。
+- `GET /api/kb/rules/{ruleId}/effective`：当前生效口径与数据链路。
+- `POST /api/batch-runs`：批量指标核算。
+- `/api/sql-runs/**`：分子分母明细、分页和导出。
+- `/api/diagnosis/cases/**`：异常排查状态机、自主排查和影子试跑。
+- `/api/hospital-drafts/**`：医院草稿查看、校验和回收。
+- `/api/settings/runtime`：本机模型与数据库运行设置。
+- `/mcp`：后端内嵌数据库 MCP 服务。
+
+具体字段以代码和接口返回为准，不应依据 README 猜测业务参数。
+
+## 安全与正确性底线
+
+- 模型不决定确定性数据事实，不直接连接数据库，不写正式表。
+- 通用查询只允许当前指标数据链路中的单条只读 `SELECT` 或 `WITH...SELECT`。
+- 候选 SQL 必须通过模板、方言、表范围、输出结构和原 SQL 哈希校验。
+- 影子试跑使用隔离对象，不覆盖正式中间表。
+- 分子分母明细必须与卡片值重聚合对账；无法证明一致时拒绝返回。
+- 初始化校验无法安全生成某项检查时明确标记“无法判断”，不把它伪装成数据库异常。
+- 医院草稿必须人工确认；当前阶段不会自动激活为正式医院口径。
+
+## 双仓库协作
+
+本工作区包含两个独立 Git 仓库：
+
+| 目录 | 用途 | 日常目标分支 |
+|---|---|---|
+| `F:\A-wiki-project` | 个人主仓，包含前端、文档和项目脚本 | `origin/main` |
+| `F:\A-wiki-project\backend-java` | 公司后端独立仓 | `origin/test` |
+
+提交时必须分别检查、分别暂存和分别推送。个人主仓不能暂存 `backend-java` 的变化；两个仓库都不能提交运行数据库、构建产物、日志或凭据。
+
+## 相关文档
+
+- [批量结果页面渲染逻辑](docs/batchResults页面展示完整逻辑_2026-08-02.md)
+- [本次指标核算与抽屉接口说明](docs/本次指标核算渲染与接口对接说明_2026-08-04.md)
+- [异常排查前端交互流程](docs/异常排查-前端交互流程.md)
+- [异常排查后端接口契约](docs/异常排查-后端接口契约.md)
+- [异常排查状态流转](docs/异常排查-数据结构与状态流转.md)
+- [自主异常排查交互重构计划](docs/核心指标自主异常排查交互重构计划_2026-08-06.md)
+- [Oracle 知识库 SQL 兼容性实测报告](docs/Oracle知识库SQL兼容性实测报告_2026-08-07.md)
+- [项目协作约束](AGENTS.md)
+
+历史方案和验收资料保留在 `docs/` 中；当前启动方式、目录和安全边界以本 README 与实际代码为准。

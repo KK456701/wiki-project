@@ -2181,3 +2181,279 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .batch-report-toolbar { display: none; }
   .indicator-card { break-inside: avoid; }
 }
+
+/* 2026-08-10：面向实施人员的轻量对话首页与紧凑设置面板。 */
+.app-shell {
+  --surface-soft: #f6f8f8;
+  --surface-hover: #f0f5f3;
+  --hairline: #e2e8e6;
+  background: var(--surface-soft);
+}
+.app-shell .topbar {
+  height: 60px;
+  padding: 0 22px;
+  border-bottom-color: #e5e9e8;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: none;
+  backdrop-filter: blur(14px);
+}
+.app-shell .brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #0d7469, #149486);
+  box-shadow: 0 7px 18px rgba(15, 118, 110, .18);
+}
+.app-shell .brand-block strong { font-size: 15px; }
+.app-shell .brand-block small { color: #8a9692; font-size: 10px; }
+.app-shell .workspace {
+  height: calc(100vh - 60px);
+  grid-template-columns: 252px minmax(0, 1fr);
+  background: var(--surface-soft);
+}
+.app-shell .session-sidebar {
+  border-right-color: #e5e9e8;
+  background: #f7f8f8;
+}
+.app-shell .sidebar-head {
+  min-height: 62px;
+  border-bottom: 0;
+  background: transparent;
+}
+.app-shell .sidebar-new {
+  border-color: transparent;
+  border-radius: 9px;
+  color: #285d54;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(19, 67, 59, .05);
+}
+.app-shell .session-list { padding: 4px 10px 12px; }
+.app-shell .session-item {
+  min-height: 40px;
+  margin-bottom: 2px;
+  border: 0;
+  border-radius: 9px;
+}
+.app-shell .session-item:hover { border: 0; background: #ecefee; }
+.app-shell .session-item.active {
+  border: 0;
+  background: #e8eeec;
+}
+.conversation-column { background: #fff; }
+.app-shell .conversation-panel { padding: 22px clamp(18px, 3vw, 48px); }
+.app-shell .welcome-panel {
+  position: relative;
+  max-width: 960px;
+  min-height: min(610px, calc(100vh - 190px));
+  display: flex;
+  align-items: center;
+  align-content: center;
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 auto;
+  padding: 38px 24px 56px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+}
+.welcome-orbit {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 22px;
+  border: 1px solid #b9ddd5;
+  border-radius: 50%;
+  color: #0e7467;
+  background: #edf8f5;
+  box-shadow: 0 0 0 8px #f7fbfa;
+  font: 800 12px/1 Bahnschrift, "Microsoft YaHei UI", sans-serif;
+  letter-spacing: .04em;
+}
+.app-shell .welcome-panel h1 {
+  max-width: none;
+  margin: 0 0 12px;
+  color: #15201d;
+  font-size: clamp(30px, 3.1vw, 42px);
+  line-height: 1.2;
+  letter-spacing: -.035em;
+}
+.app-shell .welcome-panel > p:not(.eyebrow) {
+  max-width: 680px;
+  margin: 0;
+  color: #65716d;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.app-shell .welcome-panel > .welcome-guidance {
+  margin-top: 4px;
+  color: #929c98;
+  font-size: 12px;
+}
+.app-shell .guided-panel {
+  width: min(100%, 820px);
+  margin-top: 30px;
+  text-align: left;
+}
+.app-shell .guided-tasks { gap: 12px; }
+.app-shell .guided-task {
+  min-height: 112px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  padding: 17px 18px;
+  border: 1px solid #e2e7e5;
+  border-left-width: 1px;
+  border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(28, 55, 48, .055);
+}
+.app-shell .guided-task:hover {
+  border-color: #a9d1c8;
+  background: #fbfefd;
+  box-shadow: 0 11px 30px rgba(20, 102, 86, .09);
+  transform: translateY(-2px);
+}
+.app-shell .guided-task.is-active {
+  border-color: #56aa99;
+  border-left-width: 1px;
+  background: #f3fbf8;
+  box-shadow: 0 0 0 3px rgba(20, 132, 112, .08);
+}
+.guided-task-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: #0e7868 !important;
+  background: #eaf7f3;
+}
+.guided-task-icon.is-diagnosis { color: #9a5c18 !important; background: #fff5e7; }
+.guided-task-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.guided-task-copy { min-width: 0; display: grid; gap: 4px; }
+.app-shell .guided-task-copy strong { color: #1c312c; font-size: 16px; }
+.app-shell .guided-task-copy > span { color: #687570; font-size: 11px; line-height: 1.55; }
+.app-shell .guided-task-copy small { color: #0e7b69; font-size: 10px; font-weight: 700; }
+.guided-task-arrow { color: #9ca8a4 !important; font-size: 19px !important; }
+.app-shell .guided-steps {
+  padding: 18px;
+  border: 1px solid #dce7e3;
+  border-top-width: 1px;
+  border-radius: 14px;
+  background: #f8fbfa;
+  box-shadow: inset 0 1px 0 #fff;
+}
+.app-shell .guided-toolbar input,
+.app-shell .guided-time-row select,
+.app-shell .guided-time-row input,
+.app-shell .guided-select-all,
+.app-shell .guided-submit { border-radius: 9px; }
+.app-shell .guided-indicator { border-left-width: 1px; border-radius: 9px; }
+.app-shell .composer {
+  width: min(calc(100% - 28px), 920px);
+  min-height: 66px;
+  margin: 0 auto 16px;
+  padding: 9px 10px 9px 14px;
+  border-color: #dce3e1;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .97);
+  box-shadow: 0 12px 34px rgba(30, 55, 49, .12);
+}
+.app-shell .composer textarea { padding-inline: 2px 10px; color: #27332f; }
+.app-shell .send-button {
+  min-width: 72px;
+  height: 42px;
+  border-radius: 12px;
+  background: #13816f;
+}
+.composer-model-select { max-width: 180px; }
+.composer-model-select select { border-color: transparent; border-radius: 10px; background: #f2f6f5; }
+
+/* 系统设置：列表优先，编辑器按需展开。 */
+.settings-backdrop { background: rgba(17, 27, 24, .28); backdrop-filter: blur(3px); }
+.settings-drawer { width: min(660px, 96vw); color: #213d37; background: #f7f9f8; }
+.settings-head {
+  align-items: center;
+  padding: 20px 22px 16px;
+  border-bottom-color: #e1e7e5;
+  background: rgba(255,255,255,.98);
+}
+.settings-head h2 { margin: 0 0 4px; font-size: 22px; }
+.settings-head p { font-size: 11px; }
+.settings-tabs {
+  top: 76px;
+  gap: 6px;
+  padding: 8px 22px;
+  border-bottom: 0;
+  background: rgba(247,249,248,.97);
+}
+.settings-tabs button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  color: #6f7e79;
+  background: transparent;
+}
+.settings-tabs button.active { color: #126c5d; border: 0; background: #e7f3ef; }
+.settings-body { padding: 10px 22px 32px; }
+.settings-security {
+  margin-bottom: 12px;
+  padding: 9px 11px;
+  border-color: #d9e8e3;
+  border-radius: 9px;
+  color: #547068;
+  background: #f0f7f5;
+  font-size: 10px;
+}
+.settings-section { gap: 9px; }
+.settings-section > header { align-items: center; padding: 4px 2px; }
+.settings-section > header h3 { margin: 0 0 3px; font-size: 16px; }
+.settings-section > header p { margin: 0; color: #71807c; font-size: 10px; }
+.settings-model-list { gap: 6px; }
+.settings-model-card,
+.settings-db-card { border-color: #dfe6e4; border-radius: 12px; box-shadow: 0 2px 8px rgba(30, 55, 49, .025); }
+.settings-model-card.selected { border-color: #79b7aa; box-shadow: inset 3px 0 #16836f; background: #f4faf8; }
+.settings-model-card > button:first-child { padding: 11px 13px; }
+.settings-model-card > button:first-child strong { font-size: 12px; }
+.settings-model-card > button:first-child small { color: #86918e; font-size: 9px; }
+.settings-model-editor,
+.settings-db-editor {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 10px;
+  margin: 0 10px 10px;
+  padding: 10px !important;
+  border-style: solid;
+  border-color: #e0e8e5;
+  background: #fafcfb;
+}
+.settings-model-editor[open],
+.settings-db-editor[open] { display: grid; }
+.settings-model-editor summary,
+.settings-db-editor summary,
+.settings-db-editor > p { grid-column: 1 / -1; }
+.settings-set-default { margin: 0 10px 10px; }
+.settings-model-actions { padding: 9px 11px; border-radius: 10px; }
+.settings-db-card > header { padding: 11px 13px; border-bottom-color: #e7ecea; }
+.settings-db-card dl > div { padding: 8px 12px; }
+.settings-db-actions { padding: 9px 12px; }
+
+@media (max-width: 760px) {
+  .app-shell .workspace { grid-template-columns: 1fr; }
+  .app-shell .welcome-panel { min-height: auto; padding: 36px 4px; }
+  .app-shell .guided-tasks { grid-template-columns: 1fr; }
+  .app-shell .guided-task { min-height: 96px; }
+  .settings-model-editor,
+  .settings-db-editor { grid-template-columns: 1fr; }
+}
