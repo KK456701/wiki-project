@@ -39,6 +39,7 @@ const sessionList = ref<SessionSummary[]>([])
 const sidebarOpen = ref(true)
 const settingsOpen = ref(false)
 const diagnosisCases = ref<DiagnosisCaseSnapshot[]>([])
+const diagnosisCasesLoading = ref(true)
 const diagnosisBusy = ref('')
 const autonomousPollCases = new Set<string>()
 const diagnosisPanelRefs = new Map<string, InstanceType<typeof DiagnosisCasePanel>>()
@@ -54,6 +55,9 @@ const activeAutonomousCase = computed(() => {
   const last = diagnosisCases.value[diagnosisCases.value.length - 1]
   return last && String(last.investigationMode || '') === 'AUTONOMOUS' ? last : null
 })
+const showWelcome = computed(() => !diagnosisCasesLoading.value
+  && store.messages.length === 0
+  && diagnosisCases.value.length === 0)
 const composerPlaceholder = computed(() => (activeAutonomousCase.value
   ? '输入消息继续当前异常排查对话…'
   : '输入指标、统计时间或对比要求…'))
@@ -131,6 +135,7 @@ async function switchSession(sessionId: string) {
 async function startNewSession() {
   await store.newSession()
   diagnosisCases.value = []
+  diagnosisCasesLoading.value = false
   await refreshSessionList()
 }
 
@@ -209,16 +214,21 @@ function rememberDiagnosisCase(sessionId: string, caseId: string) {
 }
 
 async function restoreDiagnosisCases(sessionId: string) {
-  const localIds = JSON.parse(localStorage.getItem(diagnosisStorageKey(sessionId)) || '[]') as string[]
-  const messageIds = store.messages.map((message) => message.diagnosisCaseId).filter(Boolean) as string[]
-  const ids = [...new Set([...localIds, ...messageIds])]
-  if (ids.length) localStorage.setItem(diagnosisStorageKey(sessionId), JSON.stringify(ids))
-  const loaded = await Promise.all(ids.map((caseId) => loadDiagnosisCase(store.token, caseId).catch(() => null)))
-  diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
-  for (const snapshot of diagnosisCases.value) {
-    if (String(snapshot.autonomousRun?.status || '') === 'RUNNING') {
-      void pollAutonomousDiagnosis(snapshot.caseId)
+  diagnosisCasesLoading.value = true
+  try {
+    const localIds = JSON.parse(localStorage.getItem(diagnosisStorageKey(sessionId)) || '[]') as string[]
+    const messageIds = store.messages.map((message) => message.diagnosisCaseId).filter(Boolean) as string[]
+    const ids = [...new Set([...localIds, ...messageIds])]
+    if (ids.length) localStorage.setItem(diagnosisStorageKey(sessionId), JSON.stringify(ids))
+    const loaded = await Promise.all(ids.map((caseId) => loadDiagnosisCase(store.token, caseId).catch(() => null)))
+    diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
+    for (const snapshot of diagnosisCases.value) {
+      if (String(snapshot.autonomousRun?.status || '') === 'RUNNING') {
+        void pollAutonomousDiagnosis(snapshot.caseId)
+      }
     }
+  } finally {
+    diagnosisCasesLoading.value = false
   }
 }
 
@@ -454,7 +464,7 @@ async function exportDiagnosis(reportId?: string) {
 
       <div class="conversation-column">
         <div ref="conversation" class="conversation-panel">
-          <section v-if="!store.messages.length" class="welcome-panel">
+          <section v-if="showWelcome" class="welcome-panel">
             <span class="welcome-orbit" aria-hidden="true">AI</span>
             <h1>有什么我能帮你的吗？</h1>
             <p>计算核心制度指标，或从一条异常线索开始排查。</p>
@@ -579,7 +589,7 @@ async function exportDiagnosis(reportId?: string) {
         </div>
 
         <form class="composer" @submit.prevent="send()">
-            <textarea v-model="query" rows="1" maxlength="5000" :placeholder="store.messages.length ? composerPlaceholder : '输入问题，或从上方选择一个任务…'" @keydown.ctrl.enter.prevent="send()"></textarea>
+            <textarea v-model="query" rows="1" maxlength="5000" :placeholder="showWelcome ? '输入问题，或从上方选择一个任务…' : composerPlaceholder" @keydown.ctrl.enter.prevent="send()"></textarea>
            <label v-if="composerModels.length" class="composer-model-select" title="选择本次对话和新建异常排查任务使用的模型">
              <span class="visually-hidden">选择模型</span>
              <select :value="store.selectedModel" aria-label="选择对话模型" @change="selectComposerModel">

@@ -92,6 +92,11 @@ export function projectAutonomousActivities(
     }
 
     if (['RESPONSE', 'STAGE_REPLY', 'QUESTION', 'CONCLUSION'].includes(type)) {
+      for (const [activityId, activity] of activities) {
+        if (activity.status === 'RUNNING') {
+          activities.set(activityId, { ...activity, status: 'SUCCEEDED' })
+        }
+      }
       const kind: AutonomousActivityKind = type === 'QUESTION'
         ? 'QUESTION' : type === 'CONCLUSION' ? 'CONCLUSION' : 'REPLY'
       const id = `reply:${turnId}:${seq}`

@@ -85,3 +85,16 @@ test('marks unfinished model and tool items failed when a turn stops', () => {
 
   assert.deepEqual(activities.map((item) => item.status), ['FAILED', 'FAILED', 'FAILED'])
 })
+
+test('marks an earlier invalid model attempt completed when the turn returns a response', () => {
+  const activities = projectAutonomousActivities({
+    turnId: 'TURN_1',
+    processEvents: [
+      { ...base, seq: 1, eventType: 'MODEL_STARTED', status: 'RUNNING' },
+      { ...base, seq: 2, iteration: 2, eventType: 'ANALYSIS', status: 'SUCCEEDED' },
+      { ...base, seq: 3, iteration: 2, eventType: 'RESPONSE', status: 'SUCCEEDED', answer: '完整SQL原文' },
+    ],
+  })
+
+  assert.deepEqual(activities.map((item) => item.status), ['SUCCEEDED', 'SUCCEEDED', 'SUCCEEDED'])
+})

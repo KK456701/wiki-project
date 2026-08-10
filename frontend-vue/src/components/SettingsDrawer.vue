@@ -133,9 +133,9 @@ async function saveDatabase(item: RuntimeDatabaseSetting) {
   }
 }
 
-async function saveModels() {
+async function saveModels(preferredModelId = '') {
   if (!settings.value) return
-  saving.value = 'models'
+  saving.value = preferredModelId ? `model:${preferredModelId}` : 'models'
   message.value = ''
   try {
     const result = await saveRuntimeModelConfiguration(props.token, {
@@ -145,9 +145,14 @@ async function saveModels() {
     settings.value.defaultModel = result.defaultModel
     settings.value.models = result.models
     modelDrafts.value = Object.fromEntries(result.models.map((item) => [item.id, modelDraft(item)]))
-    emit('selectModel', result.defaultModel)
+    const preferred = result.models.find((item) => item.id === preferredModelId)
+    emit('selectModel', preferred?.available === false || !preferredModelId
+      ? result.defaultModel
+      : preferredModelId)
     emit('settingsUpdated')
-    message.value = result.message
+    message.value = preferredModelId && preferred?.available !== false
+      ? '模型配置已保存并启用，现在可以在对话框中选择使用。'
+      : result.message
   } catch (reason) {
     message.value = reason instanceof Error ? reason.message : '模型配置保存失败。'
   } finally {
@@ -220,11 +225,12 @@ function providerLabel(provider: string) {
                 <label>API Key（只写；留空不改）<input v-model="modelDrafts[model.id].apiKey" type="password" autocomplete="new-password" :placeholder="model.apiKeyConfigured ? '已保存，留空不修改' : '请输入 API Key'"></label>
                 <label class="settings-check"><input v-model="modelDrafts[model.id].thinking" type="checkbox"> 思考型模型</label>
                 <label v-if="modelDrafts[model.id].provider === 'openai-compatible'" class="settings-check"><input v-model="modelDrafts[model.id].enableThinking" type="checkbox"> 请求时开启厂商思考参数</label>
+                <button type="button" class="settings-save-model" :disabled="saving === `model:${model.id}`" @click="saveModels(model.id)">{{ saving === `model:${model.id}` ? '正在保存…' : '保存并启用此模型' }}</button>
               </details>
               <button v-if="settings?.defaultModel !== model.id" type="button" class="settings-set-default" :disabled="saving === `default:${model.id}` || model.available === false" @click="setDefaultModel(model.id)">{{ saving === `default:${model.id}` ? '正在设置…' : '设为服务默认' }}</button>
             </article>
           </div>
-          <div class="settings-model-actions"><button type="button" :disabled="saving === 'models'" @click="saveModels">{{ saving === 'models' ? '正在保存…' : '保存模型配置' }}</button><span v-if="message">{{ message }}</span></div>
+          <div class="settings-model-actions"><button type="button" :disabled="saving === 'models'" @click="saveModels()">{{ saving === 'models' ? '正在保存…' : '保存全部模型配置' }}</button><span v-if="message">{{ message }}</span></div>
         </section>
 
         <section v-else-if="activeTab === 'databases'" class="settings-section">
