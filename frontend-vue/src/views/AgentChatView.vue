@@ -98,12 +98,9 @@ const displaySessionList = computed<SessionSummary[]>(() => {
   for (const [sid, isRunning] of Object.entries(store.runningSessions)) {
     if (!isRunning) continue
     if (list.some((session) => session.sessionId === sid)) continue
-    const firstUser = sid === store.sessionId
-      ? store.messages.find((message) => message.role === 'user')
-      : undefined
     list.unshift({
       sessionId: sid,
-      title: firstUser?.content?.trim().slice(0, 24) || '新对话',
+      title: '新对话',
       lastMessageAt: new Date().toISOString(),
       messageCount: store.messages.length,
     })
