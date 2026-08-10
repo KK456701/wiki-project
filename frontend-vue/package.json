@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "type-check": "vue-tsc -b",
-    "test:autonomous": "node --experimental-strip-types --test tests/autonomousActivity.test.mjs"
+    "test:autonomous": "node --experimental-strip-types --test tests/autonomousActivity.test.mjs",
+    "test:standard": "vitest run tests/standardDiagnosisStepper.spec.ts tests/standardDataConfirmationEditor.spec.ts"
   },
   "dependencies": {
     "pinia": "^3.0.3",
@@ -17,8 +18,11 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.11",
+    "jsdom": "^29.1.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
+    "vitest": "^4.1.10",
     "vue-tsc": "^3.0.8"
   }
 }

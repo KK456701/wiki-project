@@ -13,9 +13,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   send: [query: string]
   startDiagnosis: [input: CreateDiagnosisCaseInput]
+  openStandardDiagnosis: []
 }>()
 
 const task = ref<'' | 'calc' | 'diagnose'>('')
+const diagnosisMode = ref<'' | 'autonomous'>('')
 const indicators = ref<IndicatorItem[]>([])
 const loading = ref(false)
 const loadError = ref('')
@@ -79,6 +81,7 @@ function pickTask(value: 'calc' | 'diagnose') {
   task.value = task.value === value ? '' : value
   selected.value = []
   search.value = ''
+  diagnosisMode.value = ''
 }
 
 function toggleIndicator(ruleId: string) {
@@ -110,7 +113,7 @@ function submit() {
       statStart: period.start,
       statEnd: period.end,
       modelId: props.modelId,
-      caseInput: {},
+      caseInput: { entryMode: 'AUTONOMOUS' },
       expectedClassification: {},
     })
   } else {
@@ -179,7 +182,20 @@ function localIso(value: Date): string {
       </button>
     </div>
 
-    <div v-if="task" class="guided-steps">
+    <div v-if="task === 'diagnose' && !diagnosisMode" class="guided-mode-grid">
+      <button type="button" @click="emit('openStandardDiagnosis')">
+        <strong>标准模式</strong>
+        <span>按原型进入独立四步工作区，确认真实明细并安全试跑候选 SQL</span>
+        <small>选择口径 → 基础检查 → 数据确认 → 链路核查</small>
+      </button>
+      <button type="button" @click="diagnosisMode = 'autonomous'">
+        <strong>自主排查</strong>
+        <span>先选择指标并通过基础检查，再与当前模型对话查因</span>
+        <small>选择指标 → 基础检查 → 模型自主取证</small>
+      </button>
+    </div>
+
+    <div v-if="task === 'calc' || diagnosisMode === 'autonomous'" class="guided-steps">
       <div class="guided-step">
         <h4>第一步：选择指标 <small v-if="task === 'calc'">可多选，已选 {{ selected.length }} 个</small><small v-else>一次只排查一个指标</small></h4>
         <p v-if="loading" class="guided-hint">正在加载指标列表…</p>

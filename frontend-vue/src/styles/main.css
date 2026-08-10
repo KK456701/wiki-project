@@ -1379,6 +1379,46 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .validation-item dl { grid-template-columns: 1fr; }
 }
 
+.guided-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+.guided-mode-grid > button {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 16px;
+  border: 1px solid #cadbd7;
+  border-radius: 13px;
+  color: #173f37;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.guided-mode-grid > button:hover { border-color: #7eb9ad; background: #f0f8f5; }
+.guided-mode-grid span { color: #647c76; font-size: 12px; line-height: 1.55; }
+.guided-mode-grid small { color: #16836f; font-weight: 700; }
+.standard-diagnosis-resume {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  margin: 12px 0;
+  padding: 16px 18px;
+  border: 1px solid #bfd5d0;
+  border-left: 4px solid #16836f;
+  border-radius: 13px;
+  color: #173f37;
+  background: #fff;
+  text-decoration: none;
+}
+.standard-diagnosis-resume > span { color: #16836f; font-size: 11px; font-weight: 800; }
+.standard-diagnosis-resume > strong { grid-column: 1; }
+.standard-diagnosis-resume > small { grid-column: 1; color: #71847f; }
+.standard-diagnosis-resume > em { grid-column: 2; grid-row: 1 / 4; align-self: center; color: #16836f; font-style: normal; font-weight: 750; }
+@media (max-width: 720px) { .guided-mode-grid { grid-template-columns: 1fr; } }
+
 @media (prefers-reduced-motion: reduce) {
   .initialization-pending > i { animation: none; }
 }

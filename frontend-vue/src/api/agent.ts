@@ -392,12 +392,67 @@ export interface DiagnosisCaseSnapshot {
   changeProposal: Record<string, unknown>
   candidateSql: Record<string, unknown>
   shadowTrial: Record<string, unknown>
+  dataConfirmation: Record<string, unknown>
   investigationMode: 'STANDARD' | 'AUTONOMOUS'
   autonomousRun: Record<string, unknown>
   draftResult: Record<string, unknown>
   releaseResult: Record<string, unknown>
   createdAt: string
   updatedAt: string
+}
+
+export interface IndicatorProfile {
+  profileId: string
+  profileName: string
+  label?: string
+  executionStatus: 'executable' | 'documentation_only' | string
+  overviewRuntimeEligible: boolean
+  numeratorRule?: string
+  denominatorRule?: string
+  timeDimension?: string
+}
+
+export async function listIndicatorProfiles(
+  token: string,
+  ruleId: string,
+): Promise<IndicatorProfile[]> {
+  const response = await fetch(`/api/kb/rules/${encodeURIComponent(ruleId)}/profiles`, {
+    headers: authHeaders(token),
+  })
+  return readJson<IndicatorProfile[]>(response)
+}
+
+export interface DiagnosisDataScreening {
+  caseId: string
+  ruleId: string
+  profileId: string
+  scannedRows: number
+  findingCount: number
+  truncated: boolean
+  rules: string[]
+  modelUsed: false
+  countsReconciled: boolean
+  overviewSqlHash: string
+  findings: Array<{
+    findingId: string
+    ruleCode: 'DETERMINISTIC_TEST_MARKER' | 'DETERMINISTIC_DUPLICATE_KEY'
+    reason: string
+    rowKey: string
+    field?: string
+    value?: string
+    count?: number
+    row: Record<string, unknown>
+  }>
+}
+
+export async function fetchDiagnosisDataScreening(
+  token: string,
+  caseId: string,
+): Promise<DiagnosisDataScreening> {
+  const response = await fetch(`/api/diagnosis/cases/${encodeURIComponent(caseId)}/data-screening`, {
+    headers: authHeaders(token),
+  })
+  return readJson<DiagnosisDataScreening>(response)
 }
 
 export interface DiagnosisShadowDiffPage {
@@ -563,12 +618,16 @@ export async function fetchDiagnosisCaseDetails(
   group: 'numerator' | 'denominator',
   page = 1,
   pageSize = 50,
+  search = '',
+  department = '',
 ): Promise<IndicatorDetailResult> {
   const query = new URLSearchParams({
     group,
     page: String(page),
     pageSize: String(pageSize),
   })
+  if (search.trim()) query.set('search', search.trim())
+  if (department.trim()) query.set('department', department.trim())
   const response = await fetch(
     `/api/diagnosis/cases/${encodeURIComponent(caseId)}/details?${query}`,
     { headers: authHeaders(token) },
@@ -665,6 +724,10 @@ export interface IndicatorDetailResult {
   pageSize?: number
   rowCount?: number
   rows?: Record<string, unknown>[]
+  search?: string
+  department?: string
+  departments?: string[]
+  unfilteredRowCount?: number
   truncated?: boolean
   snapshotId?: string
   snapshotReused?: boolean

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import DetailDrawer from '../components/DetailDrawer.vue'
 import ExecutionPanel from '../components/ExecutionPanel.vue'
@@ -29,6 +30,7 @@ import {
 } from '../api/agent'
 
 const store = useAgentStore()
+const router = useRouter()
 const query = ref('')
 const selectedDetailRunId = ref('')
 const selectedNode = ref<{ traceId: string; node: ExecutionNode } | null>(null)
@@ -301,6 +303,10 @@ async function startDiagnosis(input: CreateDiagnosisCaseInput) {
   } finally {
     diagnosisBusy.value = ''
   }
+}
+
+function openStandardDiagnosis() {
+  void router.push({ name: 'standard-diagnosis-new' })
 }
 
 async function diagnosisAction(
@@ -585,6 +591,7 @@ async function exportDiagnosis(reportId?: string) {
               :disabled="store.running"
               @send="send($event)"
               @start-diagnosis="startDiagnosis"
+              @open-standard-diagnosis="openStandardDiagnosis"
             />
           </section>
 
@@ -685,16 +692,27 @@ async function exportDiagnosis(reportId?: string) {
             </div>
           </article>
 
-          <DiagnosisCasePanel
-            v-for="item in diagnosisCases"
-            :key="item.caseId"
-            :ref="(el) => setDiagnosisPanelRef(item.caseId, el)"
-            :snapshot="item"
-            :token="store.token"
-            :busy="diagnosisBusy === item.caseId"
-            :models="composerModels"
-            @action="(action, payload) => diagnosisAction(item, action, payload)"
-          />
+          <template v-for="item in diagnosisCases" :key="item.caseId">
+            <RouterLink
+              v-if="String(item.caseInput.entryMode || '') === 'STANDARD_WORKSPACE'"
+              class="standard-diagnosis-resume"
+              :to="{ name: 'standard-diagnosis', params: { caseId: item.caseId }, query: { step: item.currentStep.startsWith('GATE_') ? 'checks' : item.currentStep === 'CASE_INPUT' ? 'data' : 'lineage' } }"
+            >
+              <span>标准排查工作区</span>
+              <strong>{{ String(item.caliberSnapshot.ruleName || item.ruleId) }}</strong>
+              <small>{{ item.profileId }} · {{ item.currentStep }}</small>
+              <em>继续排查 →</em>
+            </RouterLink>
+            <DiagnosisCasePanel
+              v-else
+              :ref="(el) => setDiagnosisPanelRef(item.caseId, el)"
+              :snapshot="item"
+              :token="store.token"
+              :busy="diagnosisBusy === item.caseId"
+              :models="composerModels"
+              @action="(action, payload) => diagnosisAction(item, action, payload)"
+            />
+          </template>
         </div>
 
         <form class="composer" @submit.prevent="send()">
