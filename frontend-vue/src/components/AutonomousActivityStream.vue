@@ -43,10 +43,29 @@ function visibleActivities(items: AutonomousActivityItem[]): AutonomousActivityI
   return items.filter((item) => !['MODEL', 'TOOL', 'PROCESS'].includes(item.kind))
 }
 
-function processStatus(items: AutonomousActivityItem[]): string {
-  if (items.some((item) => item.status === 'RUNNING')) return '进行中'
-  if (items.some((item) => item.status === 'FAILED')) return '有失败'
-  return '已完成'
+function turnProgress(
+  turn: Record<string, unknown>,
+  items: AutonomousActivityItem[],
+): { label: string, state: 'running' | 'waiting' | 'completed' | 'failed' | 'stopped' } {
+  const turnStatus = String(turn.status || '').toUpperCase()
+  const running = [...items].reverse().find((item) => item.status === 'RUNNING')
+  if (running?.kind === 'TOOL') {
+    return { label: `正在调用：${running.toolDisplayName || running.tool || '排查工具'}`, state: 'running' }
+  }
+  if (running?.kind === 'MODEL') return { label: '思考中', state: 'running' }
+  if (running) return { label: running.title || '正在处理', state: 'running' }
+
+  if (turnStatus === 'RUNNING' || turnStatus === 'SENDING' || turnStatus === 'QUEUED') {
+    const latest = items.at(-1)
+    if (latest?.kind === 'TOOL') return { label: '正在整理工具结果', state: 'running' }
+    if (latest?.kind === 'MODEL') return { label: '正在选择下一步', state: 'running' }
+    return { label: '正在开始排查', state: 'running' }
+  }
+  if (turnStatus === 'WAITING_USER') return { label: '等待现场补充', state: 'waiting' }
+  if (turnStatus === 'FAILED') return { label: '未完成', state: 'failed' }
+  if (turnStatus === 'STOPPED' || turnStatus === 'CANCELLED') return { label: '已停止', state: 'stopped' }
+  if (items.some((item) => item.status === 'FAILED')) return { label: '已完成，但有失败', state: 'failed' }
+  return { label: '已完成', state: 'completed' }
 }
 
 function submitAnswer() {
@@ -106,12 +125,17 @@ function pretty(value: unknown): string {
       <div class="message-card diagnosis-turn-card autonomous-stream-card">
         <div class="message-head">
           <strong>{{ modelName }} · 自主排查</strong>
-          <span>{{ String(entry.turn.status || '') === 'RUNNING' ? '进行中' : '本轮完成' }} · {{ turnDuration(entry.turn) }}</span>
         </div>
         <details v-if="processActivities(entry.activities).length" class="autonomous-process-details">
           <summary>
             <strong>思考过程</strong>
-            <span>{{ processStatus(processActivities(entry.activities)) }} · {{ processActivities(entry.activities).length }} 步</span>
+            <span
+              class="autonomous-progress-status"
+              :data-state="turnProgress(entry.turn, processActivities(entry.activities)).state"
+            >
+              <i aria-hidden="true"></i>
+              {{ turnProgress(entry.turn, processActivities(entry.activities)).label }} · {{ turnDuration(entry.turn) }}
+            </span>
           </summary>
           <ol class="autonomous-activity-list">
           <li v-for="item in processActivities(entry.activities)" :key="item.id" :data-kind="item.kind.toLowerCase()" :data-status="item.status.toLowerCase()">
@@ -187,6 +211,16 @@ function pretty(value: unknown): string {
 .autonomous-process-details { margin-bottom: 10px; border: 1px solid #e2e6eb; border-radius: 10px; background: #f7f8fa; }
 .autonomous-process-details > summary { display: flex; justify-content: space-between; gap: 16px; padding: 12px 14px; cursor: pointer; color: #4f5b66; }
 .autonomous-process-details > summary span { color: #7a8490; font-size: 12px; }
+.autonomous-progress-status { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; text-align: right; }
+.autonomous-progress-status i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #148675; }
+.autonomous-progress-status[data-state="running"] { color: #217d6e; }
+.autonomous-progress-status[data-state="running"] i { animation: autonomous-status-pulse 1.3s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(20, 134, 117, .3); }
+.autonomous-progress-status[data-state="waiting"] { color: #9b6a24; }
+.autonomous-progress-status[data-state="waiting"] i { background: #d59436; }
+.autonomous-progress-status[data-state="failed"] { color: #b44f47; }
+.autonomous-progress-status[data-state="failed"] i { background: #cf5f56; }
+.autonomous-progress-status[data-state="stopped"] i { background: #87938f; }
+@keyframes autonomous-status-pulse { 50% { box-shadow: 0 0 0 5px rgba(20, 134, 117, 0); transform: scale(.86); } }
 .autonomous-process-details > .autonomous-activity-list { padding: 0 12px 12px; }
 .autonomous-activity-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .autonomous-result-list { margin-top: 10px; }
@@ -217,4 +251,5 @@ function pretty(value: unknown): string {
 .autonomous-inline-answer { display: grid; gap: 8px; margin-top: 12px; }
 .autonomous-inline-answer textarea { width: 100%; box-sizing: border-box; }
 @media (max-width: 760px) { .autonomous-analysis-grid div { grid-template-columns: 1fr; gap: 2px; } }
+@media (prefers-reduced-motion: reduce) { .autonomous-progress-status[data-state="running"] i { animation: none; } }
 </style>
