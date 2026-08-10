@@ -176,13 +176,18 @@ function authHeaders(token: string): HeadersInit {
 async function readJson<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({})) as T & {
     code?: string
+    errorId?: string
     message?: string
     detail?: string | { message?: string }
   }
   if (!response.ok) {
     const detail = data.detail
     const message = data.message || (typeof detail === 'string' ? detail : detail?.message)
-    throw new Error(message || `请求失败（HTTP ${response.status}）`)
+    const fallback = `请求失败（HTTP ${response.status}）`
+    const withErrorId = data.errorId && !(message || '').includes(data.errorId)
+      ? `${message || fallback}（错误编号：${data.errorId}）`
+      : (message || fallback)
+    throw new Error(withErrorId)
   }
   return data
 }
@@ -226,6 +231,25 @@ export interface ConnectionTestResult {
   status: 'CONNECTED' | 'FAILED' | 'DISABLED'
   message: string
   durationMs: number
+}
+
+export interface ApplicationLogSnapshot {
+  path: string
+  updatedAt?: string
+  level: 'ERROR' | 'ALL'
+  lineCount: number
+  truncated: boolean
+  content: string
+}
+
+export async function loadApplicationLogs(
+  token: string,
+  level: 'ERROR' | 'ALL' = 'ERROR',
+  lines = 400,
+): Promise<ApplicationLogSnapshot> {
+  const query = new URLSearchParams({ level, lines: String(lines) })
+  const response = await fetch(`/api/settings/logs?${query}`, { headers: authHeaders(token) })
+  return readJson<ApplicationLogSnapshot>(response)
 }
 
 export interface RuntimeConnectionTestInput {

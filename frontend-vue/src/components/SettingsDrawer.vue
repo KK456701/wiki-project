@@ -2,12 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  loadApplicationLogs,
   loadRuntimeSettings,
   saveRuntimeConnection,
   saveRuntimeModelConfiguration,
   setRuntimeDefaultModel,
   testRuntimeConnection,
   type AgentModel,
+  type ApplicationLogSnapshot,
   type ConnectionTestResult,
   type RuntimeConnectionSaveInput,
   type RuntimeConnectionTestInput,
@@ -29,7 +31,7 @@ const emit = defineEmits<{
   settingsUpdated: []
 }>()
 
-const activeTab = ref<'models' | 'databases'>('models')
+const activeTab = ref<'models' | 'databases' | 'logs'>('models')
 const settings = ref<RuntimeSettings | null>(null)
 const loading = ref(true)
 const error = ref('')
@@ -39,6 +41,11 @@ const message = ref('')
 const connectionResults = ref<Record<string, ConnectionTestResult>>({})
 const connectionDrafts = ref<Record<string, RuntimeConnectionSaveInput>>({})
 const modelDrafts = ref<Record<string, RuntimeModelConfigInput>>({})
+const logSnapshot = ref<ApplicationLogSnapshot | null>(null)
+const logLevel = ref<'ERROR' | 'ALL'>('ERROR')
+const logSearch = ref('')
+const logLoading = ref(false)
+const logMessage = ref('')
 
 const modelItems = computed<RuntimeModelSetting[]>(() => settings.value?.models || props.models.map((model) => ({
   ...model,
@@ -47,6 +54,13 @@ const modelItems = computed<RuntimeModelSetting[]>(() => settings.value?.models 
   enableThinking: null,
   apiKeyConfigured: false,
 })))
+
+const visibleLogContent = computed(() => {
+  const content = logSnapshot.value?.content || ''
+  const keyword = logSearch.value.trim().toLowerCase()
+  if (!keyword) return content
+  return content.split(/\r?\n/).filter((line) => line.toLowerCase().includes(keyword)).join('\n')
+})
 
 onMounted(load)
 
@@ -179,6 +193,33 @@ async function setDefaultModel(modelId: string) {
 function providerLabel(provider: string) {
   return provider === 'ollama' ? '本地 Ollama' : 'API 模型'
 }
+
+async function loadLogs() {
+  logLoading.value = true
+  logMessage.value = ''
+  try {
+    logSnapshot.value = await loadApplicationLogs(props.token, logLevel.value, 600)
+  } catch (reason) {
+    logMessage.value = reason instanceof Error ? reason.message : '错误日志读取失败。'
+  } finally {
+    logLoading.value = false
+  }
+}
+
+async function selectLogs() {
+  activeTab.value = 'logs'
+  await loadLogs()
+}
+
+async function copyLogs() {
+  if (!visibleLogContent.value) return
+  try {
+    await navigator.clipboard.writeText(visibleLogContent.value)
+    logMessage.value = '当前日志已复制。'
+  } catch {
+    logMessage.value = '浏览器未允许复制，请选中文本后手动复制。'
+  }
+}
 </script>
 
 <template>
@@ -187,7 +228,7 @@ function providerLabel(provider: string) {
       <header class="settings-head">
         <div>
           <h2 id="settings-title">系统设置</h2>
-          <p>管理对话模型和数据库连接</p>
+          <p>管理运行配置并查看错误原因</p>
         </div>
         <button type="button" class="drawer-close" aria-label="关闭设置" @click="emit('close')">×</button>
       </header>
@@ -195,6 +236,7 @@ function providerLabel(provider: string) {
       <nav class="settings-tabs" aria-label="设置分类">
         <button type="button" :class="{ active: activeTab === 'models' }" @click="activeTab = 'models'">模型</button>
         <button type="button" :class="{ active: activeTab === 'databases' }" @click="activeTab = 'databases'">数据库</button>
+        <button type="button" :class="{ active: activeTab === 'logs' }" @click="selectLogs">错误日志</button>
       </nav>
 
       <main class="settings-body">
@@ -252,6 +294,33 @@ function providerLabel(provider: string) {
             <div class="settings-db-actions"><button type="button" :disabled="testing === item.id" @click="testConnection(item)">{{ testing === item.id ? '正在测试…' : '测试连接' }}</button><button type="button" :disabled="saving === `database:${item.id}`" @click="saveDatabase(item)">{{ saving === `database:${item.id}` ? '正在保存…' : '保存配置' }}</button><span v-if="connectionResults[item.id]" :data-state="connectionResults[item.id].status.toLowerCase()">{{ connectionResults[item.id].message }} · {{ connectionResults[item.id].durationMs }} ms</span></div>
           </article>
           <p v-if="message" class="settings-message">{{ message }}</p>
+        </section>
+
+        <section v-else-if="activeTab === 'logs'" class="settings-section settings-log-section">
+          <header>
+            <div><h3>错误日志</h3><p>接口出现错误时，可用页面提示的错误编号在这里定位完整原因。</p></div>
+            <small>{{ logSnapshot?.updatedAt ? `更新于 ${new Date(logSnapshot.updatedAt).toLocaleString()}` : '当前服务' }}</small>
+          </header>
+          <div class="settings-log-toolbar">
+            <div role="group" aria-label="日志范围">
+              <button type="button" :class="{ active: logLevel === 'ERROR' }" @click="logLevel = 'ERROR'; loadLogs()">错误</button>
+              <button type="button" :class="{ active: logLevel === 'ALL' }" @click="logLevel = 'ALL'; loadLogs()">全部日志</button>
+            </div>
+            <input v-model="logSearch" aria-label="搜索错误日志" placeholder="搜索错误编号、指标编码或异常内容">
+            <button type="button" :disabled="logLoading" @click="loadLogs">{{ logLoading ? '读取中…' : '刷新' }}</button>
+            <button type="button" :disabled="!visibleLogContent" @click="copyLogs">复制</button>
+          </div>
+          <dl v-if="logSnapshot" class="settings-log-meta">
+            <div><dt>日志文件</dt><dd>{{ logSnapshot.path }}</dd></div>
+            <div><dt>当前显示</dt><dd>{{ logSnapshot.lineCount }} 行<template v-if="logSnapshot.truncated"> · 仅显示末尾内容</template></dd></div>
+          </dl>
+          <p v-if="logMessage" class="settings-message">{{ logMessage }}</p>
+          <p v-if="logLoading && !logSnapshot" class="settings-state">正在读取服务日志…</p>
+          <pre v-else-if="visibleLogContent" class="settings-log-content">{{ visibleLogContent }}</pre>
+          <div v-else class="settings-log-empty">
+            <strong>暂时没有可显示的错误</strong>
+            <p>出现错误后刷新这里；页面若给出 ERR_ 开头的编号，可直接粘贴到搜索框。</p>
+          </div>
         </section>
       </main>
     </aside>
