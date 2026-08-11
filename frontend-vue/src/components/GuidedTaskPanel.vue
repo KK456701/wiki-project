@@ -84,6 +84,13 @@ function pickTask(value: 'calc' | 'diagnose') {
   diagnosisMode.value = ''
 }
 
+function resetTask() {
+  task.value = ''
+  selected.value = []
+  search.value = ''
+  diagnosisMode.value = ''
+}
+
 function toggleIndicator(ruleId: string) {
   if (task.value === 'diagnose') {
     selected.value = selected.value.includes(ruleId) ? [] : [ruleId]
@@ -165,28 +172,30 @@ function localIso(value: Date): string {
 
 <template>
   <section class="guided-panel" aria-label="快捷任务入口">
-    <div class="guided-tasks">
-      <button type="button" class="guided-task" :class="{ 'is-active': task === 'calc' }" :disabled="disabled" @click="pickTask('calc')">
+    <div v-if="!task" class="guided-tasks">
+      <button type="button" class="guided-task" :disabled="disabled" @click="pickTask('calc')">
         <span class="guided-task-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M5 4.5h14v15H5z"/><path d="M8 8h8M8 12h3M8 16h3M14 12h2M14 16h2"/></svg>
         </span>
         <span class="guided-task-copy"><strong>计算指标</strong><span>选择一个或多个指标，按时间范围生成结果</span><small>选择指标 → 选择周期 → 查看结果</small></span>
         <span class="guided-task-arrow" aria-hidden="true">→</span>
       </button>
-      <button type="button" class="guided-task" :class="{ 'is-active': task === 'diagnose' }" :disabled="disabled" @click="pickTask('diagnose')">
+      <button type="button" class="guided-task" :disabled="disabled" @click="pickTask('diagnose')">
         <span class="guided-task-icon is-diagnosis" aria-hidden="true">
           <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5M10.5 8v5M8 10.5h5"/></svg>
         </span>
-        <span class="guided-task-copy"><strong>异常排查</strong><span>结果对不上、科室漏数或患者判定异常，从这里开始</span><small>选择指标 → 基础校验 → 对话排查</small></span>
+        <span class="guided-task-copy"><strong>异常排查</strong><span>结果对不上、科室漏数或患者判定异常，从这里开始</span><small>选择指标 → 数据确认 → 链路核查</small></span>
         <span class="guided-task-arrow" aria-hidden="true">→</span>
       </button>
     </div>
 
+    <button v-else type="button" class="guided-task-back" @click="resetTask">← 返回任务选择</button>
+
     <div v-if="task === 'diagnose' && !diagnosisMode" class="guided-mode-grid">
       <button type="button" @click="emit('openStandardDiagnosis')">
         <strong>标准模式</strong>
-        <span>按原型进入独立四步工作区，确认真实明细并安全试跑候选 SQL</span>
-        <small>选择口径 → 基础检查 → 数据确认 → 链路核查</small>
+        <span>进入三步排查工作区，确认真实明细并安全试跑候选 SQL</span>
+        <small>选择指标与口径 → 数据确认 → 数据链路核查</small>
       </button>
       <button type="button" @click="diagnosisMode = 'autonomous'">
         <strong>自主排查</strong>

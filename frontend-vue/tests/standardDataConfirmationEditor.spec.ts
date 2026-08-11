@@ -5,35 +5,86 @@ import { describe, expect, it } from 'vitest'
 
 import StandardDataConfirmationEditor from '../src/components/standard-diagnosis/StandardDataConfirmationEditor.vue'
 
+const baseProps = {
+  selectedRows: [] as Array<{ rowKey: string; label: string; recordId: string; sourceGroup: string }>,
+  departmentOptions: [
+    { field: 'CURRENT_DEPT_ID', value: 'D1', label: '骨伤一科（D1）', denominatorCount: 8, numeratorCount: 2 },
+    { field: 'CURRENT_DEPT_ID', value: 'D2', label: '康复科（D2）', denominatorCount: 3, numeratorCount: 0 },
+  ],
+  selectedDepartments: [] as string[],
+  underTargetType: 'RECORD' as const,
+  underRecordIds: '',
+  underDepartments: [] as string[],
+  underDepartmentManual: '',
+  overNote: '',
+  underNote: '',
+}
+
 describe('StandardDataConfirmationEditor', () => {
-  it('restores saved clarification notes and keeps both issue directions', () => {
+  it('shows concrete cross-page selections and preserves both issue directions', () => {
     const wrapper = mount(StandardDataConfirmationEditor, {
-      props: { selectedCount: 2, overNote: '排除测试患者', underNote: '补回骨伤一科' },
+      props: {
+        ...baseProps,
+        selectedRows: [
+          { rowKey: 'ENCOUNTER_ID:E1', label: '张三 · 骨伤一科', recordId: 'E1', sourceGroup: 'denominator' },
+          { rowKey: 'ENCOUNTER_ID:E2', label: '李四 · 骨伤一科', recordId: 'E2', sourceGroup: 'numerator' },
+        ],
+        overNote: '排除测试患者',
+        underNote: '补回骨伤一科',
+      },
     })
-    expect(wrapper.findAll('textarea').map(item => item.element.value)).toEqual(['排除测试患者', '补回骨伤一科'])
-    expect(wrapper.text()).toContain('已选 2 条')
+    expect(wrapper.text()).toContain('张三 · 骨伤一科')
+    expect(wrapper.text()).toContain('来自分子明细')
     expect(wrapper.get('button.workspace-primary').attributes('disabled')).toBeUndefined()
   })
 
-  it('emits over-only, under-only and no-issue actions', async () => {
+  it('clarifies both directions independently and can proceed', async () => {
     const wrapper = mount(StandardDataConfirmationEditor, {
-      props: { selectedCount: 1, overNote: '', underNote: '' },
+      props: {
+        ...baseProps,
+        selectedRows: [{ rowKey: 'ENCOUNTER_ID:E1', label: '患者E1', recordId: 'E1', sourceGroup: 'denominator' }],
+      },
     })
+    await wrapper.findAll('button.clarify-button')[0].trigger('click')
+    expect(wrapper.emitted('clarify')?.[0]).toEqual(['OVER_INCLUDED'])
+    await wrapper.setProps({ selectedRows: [], underNote: '就诊号 E9 应该出现，但当前明细没有。' })
+    await wrapper.findAll('button.clarify-button')[1].trigger('click')
+    expect(wrapper.emitted('clarify')?.[1]).toEqual(['UNDER_INCLUDED'])
     await wrapper.get('button.workspace-primary').trigger('click')
-    expect(wrapper.emitted('submit')?.[0]).toEqual([{ noIssue: false, openLineage: false }])
-    await wrapper.setProps({ selectedCount: 0, underNote: '缺少骨伤一科' })
-    await wrapper.findAll('button')[1].trigger('click')
-    expect(wrapper.emitted('submit')?.[1]).toEqual([{ noIssue: false, openLineage: true }])
-    await wrapper.findAll('button').at(-1)!.trigger('click')
-    expect(wrapper.emitted('submit')?.[2]).toEqual([{ noIssue: true, openLineage: false }])
+    expect(wrapper.emitted('proceed')).toHaveLength(1)
   })
 
-  it('clears cross-page selections without changing the clarification text', async () => {
+  it('数据少了只提供一个填写框', () => {
+    const wrapper = mount(StandardDataConfirmationEditor, { props: baseProps })
+    expect(wrapper.find('.clarification-kind.is-under textarea').exists()).toBe(true)
+    expect(wrapper.findAll('.clarification-kind.is-under textarea')).toHaveLength(1)
+    expect(wrapper.find('.clarification-kind.is-under .under-target-tabs').exists()).toBe(false)
+  })
+
+  it('supports selecting multiple departments without using the detail filter', async () => {
+    const wrapper = mount(StandardDataConfirmationEditor, { props: baseProps })
+    const departmentChecks = wrapper.findAll('.clarification-kind.is-over .department-option-list input')
+    await departmentChecks[0].setValue(true)
+    expect(wrapper.emitted('update:selectedDepartments')?.[0]).toEqual([['D1']])
+    await wrapper.setProps({ selectedDepartments: ['D1'] })
+    await departmentChecks[1].setValue(true)
+    expect(wrapper.emitted('update:selectedDepartments')?.[1]).toEqual([['D1', 'D2']])
+  })
+
+  it('removes one selected patient and can clear all patients', async () => {
     const wrapper = mount(StandardDataConfirmationEditor, {
-      props: { selectedCount: 3, overNote: '排除测试患者', underNote: '' },
+      props: {
+        ...baseProps,
+        selectedRows: [
+          { rowKey: 'ENCOUNTER_ID:E1', label: '患者E1', recordId: 'E1', sourceGroup: 'denominator' },
+          { rowKey: 'ENCOUNTER_ID:E2', label: '患者E2', recordId: 'E2', sourceGroup: 'denominator' },
+        ],
+        overNote: '排除测试患者',
+      },
     })
-    await wrapper.get('button.clear-selection').trigger('click')
+    await wrapper.get('button[aria-label="删除患者"]').trigger('click')
+    expect(wrapper.emitted('removeSelection')?.[0]).toEqual(['ENCOUNTER_ID:E1'])
+    await wrapper.findAll('.selected-scope-panel > header button').at(-1)?.trigger('click')
     expect(wrapper.emitted('clearSelection')).toHaveLength(1)
-    expect(wrapper.get('textarea').element.value).toBe('排除测试患者')
   })
 })

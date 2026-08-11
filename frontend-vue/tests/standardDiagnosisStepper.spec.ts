@@ -12,22 +12,22 @@ describe('StandardDiagnosisStepper', () => {
     })
 
     const buttons = wrapper.get('nav').findAll('button')
-    expect(buttons).toHaveLength(4)
+    expect(buttons).toHaveLength(3)
     expect(buttons[0].attributes('disabled')).toBeUndefined()
     expect(buttons.slice(1).every((button) => button.attributes('disabled') !== undefined)).toBe(true)
     expect(buttons[0].classes()).toContain('active')
   })
 
-  it('任务创建后允许直接查看四页并发出确定性步骤事件', async () => {
+  it('任务创建后允许直接查看三页并发出确定性步骤事件', async () => {
     const wrapper = mount(StandardDiagnosisStepper, {
-      props: { currentStep: 'checks', hasCase: true },
+      props: { currentStep: 'data', hasCase: true },
     })
 
     const buttons = wrapper.get('nav').findAll('button')
     expect(buttons.every((button) => button.attributes('disabled') === undefined)).toBe(true)
     expect(buttons[1].classes()).toContain('active')
 
-    await buttons[3].trigger('click')
+    await buttons[2].trigger('click')
     expect(wrapper.emitted('navigate')).toEqual([['lineage']])
   })
 })
