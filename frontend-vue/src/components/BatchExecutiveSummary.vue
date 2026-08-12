@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
   createBatchReportSnapshot,
   downloadBatchReport,
-  fetchIndicatorDetails,
   type BatchAnalysisAction,
   type BatchReportSnapshot,
   type InspectIndicatorAction,
 } from '../api/agent'
 import type { BatchIndicatorResult } from '../stores/agent'
+import { toBatchResult } from '../stores/agent'
 import IndicatorResultCards from './IndicatorResultCards.vue'
 
 const props = defineProps<{
@@ -28,10 +28,6 @@ const reportLoading = ref(false)
 const reportError = ref('')
 const reportDownload = ref<'docx' | 'pdf' | 'xlsx' | ''>('')
 const selectedAttention = ref<BatchIndicatorResult | null>(null)
-const prewarmState = ref<'idle' | 'running' | 'ready' | 'partial'>('idle')
-const prewarmed = ref(0)
-const prewarmTotal = ref(0)
-let prewarmGeneration = 0
 
 type ProfileOutcome = 'reached' | 'not_reached' | 'pending' | 'no_sample' | 'failed'
 type IndicatorOutcome = 'reached' | 'not_reached' | 'pending'
@@ -59,9 +55,9 @@ function isOfficial(item: BatchIndicatorResult): boolean {
   return !item.profileId || /公版|推荐方案|默认/.test(profileName(item))
 }
 
-const indicatorGroups = computed<IndicatorGroup[]>(() => {
+function groupIndicatorResults(results: BatchIndicatorResult[]): IndicatorGroup[] {
   const grouped = new Map<string, BatchIndicatorResult[]>()
-  for (const item of props.results) {
+  for (const item of results) {
     const values = grouped.get(item.ruleId) || []
     values.push(item)
     grouped.set(item.ruleId, values)
@@ -71,15 +67,28 @@ const indicatorGroups = computed<IndicatorGroup[]>(() => {
     items,
     formal: items.find(isOfficial) || items[0],
   }))
-})
+}
+
+const indicatorGroups = computed<IndicatorGroup[]>(() => groupIndicatorResults(props.results))
 
 const total = computed(() => indicatorGroups.value.length)
 const profileTotal = computed(() => props.results.length)
 const batchRunId = computed(() => props.results.find((item) => item.batchRunId)?.batchRunId || '')
+const reportResults = computed<BatchIndicatorResult[]>(() =>
+  (reportSnapshot.value?.tasks || [])
+    .map(toBatchResult)
+    .filter((item) => item.ruleId),
+)
+const reportGroups = computed<IndicatorGroup[]>(() => groupIndicatorResults(reportResults.value))
+const reportIndicatorTotal = computed(() => reportGroups.value.length)
 const statPeriod = computed(() => {
   const result = props.results.find((item) => item.statStart && item.statEnd)
   if (!result?.statStart || !result.statEnd) return '本次统计周期'
   return `${result.statStart.slice(0, 10)} 至 ${result.statEnd.slice(0, 10)}`
+})
+const reportStatPeriod = computed(() => {
+  if (!reportSnapshot.value?.statStart || !reportSnapshot.value.statEnd) return '本次统计周期'
+  return `${reportSnapshot.value.statStart.slice(0, 10)} 至 ${reportSnapshot.value.statEnd.slice(0, 10)}`
 })
 
 function numeric(value: unknown): number | null {
@@ -122,6 +131,15 @@ const counts = computed(() => {
   for (const group of indicatorGroups.value) values[indicatorOutcome(group)]++
   return values
 })
+const reportCounts = computed(() => {
+  const values: Record<IndicatorOutcome, number> = {
+    reached: 0,
+    not_reached: 0,
+    pending: 0,
+  }
+  for (const group of reportGroups.value) values[indicatorOutcome(group)]++
+  return values
+})
 
 function qualityAbnormal(item: BatchIndicatorResult): boolean {
   // 已证实的数据问题会使口径进入无样本或失败；成功口径上的旧版
@@ -133,6 +151,10 @@ function qualityAbnormal(item: BatchIndicatorResult): boolean {
 const qualityAbnormalCount = computed(() => indicatorGroups.value
   .filter((group) => qualityAbnormal(group.formal)).length)
 const qualityNormalCount = computed(() => total.value - qualityAbnormalCount.value)
+const reportQualityAbnormalCount = computed(() => reportGroups.value
+  .filter((group) => qualityAbnormal(group.formal)).length)
+const reportQualityNormalCount = computed(() =>
+  reportIndicatorTotal.value - reportQualityAbnormalCount.value)
 
 const attentionItems = computed<AttentionItem[]>(() => {
   const items: AttentionItem[] = []
@@ -238,9 +260,6 @@ function formatTarget(item: BatchIndicatorResult): string {
 }
 
 function openAttentionAndInspect(item: AttentionItem) {
-  // 用户主动操作优先：取消尚未开始的低优先级预热项；当前已进入医院锁的单项
-  // 会自然完成，后续队列不再继续占用全局可变中间表。
-  prewarmGeneration++
   selectedAttention.value = item.result
   inspectWithAi(item.result)
 }
@@ -317,48 +336,6 @@ async function downloadReport(format: 'docx' | 'pdf' | 'xlsx') {
   }
 }
 
-async function prewarm(items: AttentionItem[]) {
-  const generation = ++prewarmGeneration
-  const candidates = items.slice(0, 5)
-    .map((item) => item.result)
-    .filter((item) => item.batchRunId
-      && (item.status === 'SUCCESS' || item.status === 'NO_SAMPLE'))
-  prewarmTotal.value = candidates.length
-  if (!candidates.length) {
-    prewarmState.value = 'ready'
-    return
-  }
-  prewarmState.value = 'running'
-  prewarmed.value = 0
-  for (const item of candidates) {
-    if (generation !== prewarmGeneration) {
-      prewarmState.value = prewarmed.value ? 'partial' : 'idle'
-      return
-    }
-    try {
-      await fetchIndicatorDetails(
-        props.token,
-        item.ruleId,
-        'denominator',
-        item.batchRunId!,
-        item.statStart || '',
-        item.statEnd || '',
-        item.profileId,
-        1,
-        50,
-      )
-      prewarmed.value++
-    } catch {
-      // 预热失败不得遮蔽摘要；用户点击时仍会获得原始、可解释的错误信息。
-    }
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-  }
-  prewarmState.value = prewarmed.value === candidates.length ? 'ready' : 'partial'
-}
-
-watch(visibleAttentionItems, (items) => {
-  void prewarm(items)
-}, { immediate: true })
 </script>
 
 <template>
@@ -367,11 +344,7 @@ watch(visibleAttentionItems, (items) => {
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
       <span>已解析参数 / 完成 {{ total }} 个指标（{{ profileTotal }} 个口径）/ 结果已按批次固化</span>
       <code v-if="batchRunId">{{ batchRunId }}</code>
-      <small class="prewarm-status" :data-state="prewarmState">
-        {{ prewarmState === 'running' ? `后台预热 ${prewarmed}/${prewarmTotal}`
-          : prewarmState === 'ready' ? `重点明细已预热 ${prewarmed}`
-            : prewarmState === 'partial' ? `已预热 ${prewarmed}，其余按需查询` : '明细按需查询' }}
-      </small>
+      <small class="prewarm-status">明细按需查询</small>
     </div>
 
     <article class="executive-card">
@@ -478,8 +451,8 @@ watch(visibleAttentionItems, (items) => {
               批次报告 · {{ reportSnapshot?.reportStatus === 'FORMAL' ? '正式' : '草稿' }}
               <template v-if="reportSnapshot"> · V{{ reportSnapshot.version }}</template>
             </span>
-            <h2>完整调研报告（{{ total }} 个指标）</h2>
-            <p>{{ statPeriod }} · {{ batchRunId }}</p>
+            <h2>完整调研报告（{{ reportSnapshot ? reportIndicatorTotal : total }} 个指标）</h2>
+            <p>{{ reportSnapshot ? reportStatPeriod : statPeriod }} · {{ reportSnapshot?.batchRunId || batchRunId }}</p>
           </div>
           <button type="button" aria-label="关闭完整报告" @click="reportOpen = false">×</button>
         </header>
@@ -509,17 +482,21 @@ watch(visibleAttentionItems, (items) => {
           <section class="report-overview">
             <h3>一、总体情况</h3>
             <div class="executive-metrics compact">
-              <div><strong>{{ total }}</strong><span>覆盖指标</span></div>
-              <div data-tone="success"><strong>{{ counts.reached }}</strong><span>达标</span></div>
-              <div data-tone="danger"><strong>{{ counts.not_reached }}</strong><span>未达标</span></div>
-              <div data-tone="warning"><strong>{{ counts.pending }}</strong><span>待确认</span></div>
-              <div data-tone="quality"><strong>{{ qualityNormalCount }}<small>/{{ qualityAbnormalCount }}</small></strong><span>数据质量（正/异）</span></div>
+              <div><strong>{{ reportIndicatorTotal }}</strong><span>覆盖指标</span></div>
+              <div data-tone="success"><strong>{{ reportCounts.reached }}</strong><span>达标</span></div>
+              <div data-tone="danger"><strong>{{ reportCounts.not_reached }}</strong><span>未达标</span></div>
+              <div data-tone="warning"><strong>{{ reportCounts.pending }}</strong><span>待确认</span></div>
+              <div data-tone="quality"><strong>{{ reportQualityNormalCount }}<small>/{{ reportQualityAbnormalCount }}</small></strong><span>数据质量（正/异）</span></div>
             </div>
           </section>
           <section>
             <h3>二、各指标明细</h3>
+            <p v-if="reportSnapshot && !reportResults.length" class="indicator-error">
+              报告快照中没有指标任务，请确认批次任务已完成持久化。
+            </p>
             <IndicatorResultCards
-              :results="results"
+              v-else-if="reportSnapshot"
+              :results="reportResults"
               :token="token"
               :model-id="modelId"
             />

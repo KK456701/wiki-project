@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { loadAgentRun } from '../api/agent'
 import type { ExecutionNode } from '../stores/agent'
+import SqlExecuteButton from './SqlExecuteButton.vue'
 
 type TraceNode = Record<string, unknown>
 
@@ -575,6 +576,16 @@ function statusText(value?: unknown): string {
                   <span>{{ formatDuration(item.durationMs) }}</span>
                   <span>返回 {{ Number(item.returnedRows || 0) }} 行</span>
                 </div>
+                <SqlExecuteButton
+                  :token="token"
+                  :sql="String(item.sql)"
+                  :database-role="String(item.databaseRole || '')"
+                  :rule-id="String(item.ruleId || '')"
+                  :profile-id="String(item.profileId || '')"
+                  :stat-start="String(item.statStart || asRecord(item.parameters).startTime || '')"
+                  :stat-end="String(item.statEnd || asRecord(item.parameters).endTime || '')"
+                  compact
+                />
                 <pre>{{ String(item.sql) }}</pre>
                 <pre v-if="Object.keys(asRecord(item.parameters)).length">参数：{{ pretty(item.parameters) }}</pre>
                 <p v-if="item.databaseError" class="node-detail-warning">{{ String(item.databaseError) }}</p>
@@ -619,6 +630,16 @@ function statusText(value?: unknown): string {
               </dl>
               <details v-if="asRecord(snapshot.outputData).sql" class="validation-sql">
                 <summary>查看校验 SQL</summary>
+                <SqlExecuteButton
+                  :token="token"
+                  :sql="String(asRecord(snapshot.outputData).sql)"
+                  :database-role="String(asRecord(snapshot.outputData).databaseRole || 'BUSINESS')"
+                  :rule-id="String(asRecord(snapshot.outputData).ruleId || '')"
+                  :profile-id="String(asRecord(snapshot.outputData).profileId || '')"
+                  :stat-start="String(asRecord(snapshot.outputData).statStart || '')"
+                  :stat-end="String(asRecord(snapshot.outputData).statEnd || '')"
+                  compact
+                />
                 <pre>{{ String(asRecord(snapshot.outputData).sql) }}</pre>
               </details>
             </article>

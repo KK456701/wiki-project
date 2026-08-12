@@ -442,7 +442,15 @@ async function changeDetailPage(item: BatchIndicatorResult, state: CardState, pa
             <div v-if="stateOf(item).activeTab === 'flow'" class="indicator-panel">
               <p v-if="stateOf(item).ruleLoading" class="indicator-loading">正在生成数据链路…</p>
               <p v-else-if="stateOf(item).ruleError" class="indicator-error">{{ stateOf(item).ruleError }}</p>
-              <IndicatorDataFlowPanel v-else :flow="stateOf(item).rule?.dataFlow" />
+              <IndicatorDataFlowPanel
+                v-else
+                :flow="stateOf(item).rule?.dataFlow"
+                :token="token"
+                :rule-id="item.ruleId"
+                :profile-id="item.profileId"
+                :stat-start="item.statStart"
+                :stat-end="item.statEnd"
+              />
             </div>
 
             <!-- 明细 -->

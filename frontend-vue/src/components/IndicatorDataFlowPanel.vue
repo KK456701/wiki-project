@@ -1,10 +1,25 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, inject, ref } from 'vue'
+import SqlExecuteButton from './SqlExecuteButton.vue'
+import { sqlPreviewContextKey } from './sqlPreviewContext'
 
 type FlowNode = Record<string, unknown>
 type FlowEdge = Record<string, unknown>
 
-const props = defineProps<{ flow?: unknown }>()
+const props = withDefaults(defineProps<{
+  flow?: unknown
+  token?: string
+  ruleId?: string
+  profileId?: string
+  statStart?: string
+  statEnd?: string
+}>(), { token: '', ruleId: '', profileId: '', statStart: '', statEnd: '' })
+const injected = inject(sqlPreviewContextKey, null)
+const previewToken = computed(() => props.token || injected?.token.value || '')
+const previewRuleId = computed(() => props.ruleId || injected?.ruleId.value || '')
+const previewProfileId = computed(() => props.profileId || injected?.profileId.value || '')
+const previewStatStart = computed(() => props.statStart || injected?.statStart.value || '')
+const previewStatEnd = computed(() => props.statEnd || injected?.statEnd.value || '')
 
 const value = computed<Record<string, unknown>>(() =>
   props.flow && typeof props.flow === 'object' && !Array.isArray(props.flow)
@@ -29,6 +44,11 @@ function databaseLabel(value: unknown): string {
   if (role === 'SYNC') return '同步任务'
   if (role === 'KNOWLEDGE') return '知识库'
   return role || '—'
+}
+
+function previewRole(value: unknown): string {
+  const role = String(value || '').toUpperCase()
+  return role === 'BUSINESS' || role === 'SYNC' ? 'BUSINESS' : role === 'REAL' ? 'REAL' : ''
 }
 
 function incomingLabel(nodeId: unknown): string {
@@ -165,10 +185,21 @@ async function copySql(node: FlowNode): Promise<void> {
             <div v-if="strings(node.parameters).length" class="indicator-flow-params">
               脚本变量：<code v-for="parameter in strings(node.parameters)" :key="parameter">@{{ parameter }}</code>
             </div>
-            <div v-if="node.sqlExecutable" class="indicator-flow-sql-actions">
-              <button type="button" @click="copySql(node)">
+            <div class="indicator-flow-sql-actions">
+              <button v-if="node.sqlExecutable" type="button" @click="copySql(node)">
                 {{ copiedNodeId === String(node.id || '') ? '已复制' : '复制 SQL' }}
               </button>
+              <SqlExecuteButton
+                :token="previewToken"
+                :sql="String(node.sql || '')"
+                :database-role="previewRole(node.databaseRole)"
+                :rule-id="previewRuleId"
+                :profile-id="previewProfileId"
+                :stat-start="previewStatStart"
+                :stat-end="previewStatEnd"
+                :disabled-reason="!previewRole(node.databaseRole) ? '该节点不是可查询数据库 SQL。' : ''"
+                compact
+              />
             </div>
             <pre>{{ String(node.sql) }}</pre>
           </details>

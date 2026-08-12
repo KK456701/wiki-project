@@ -8,7 +8,8 @@
     "build": "vue-tsc -b && vite build",
     "type-check": "vue-tsc -b",
     "test:autonomous": "node --experimental-strip-types --test tests/autonomousActivity.test.mjs",
-    "test:standard": "vitest run tests/standardDiagnosisStepper.spec.ts tests/standardDataConfirmationEditor.spec.ts"
+    "test:standard": "vitest run tests/standardDiagnosisStepper.spec.ts tests/standardDataConfirmationEditor.spec.ts tests/batchReportSnapshot.spec.ts",
+    "test:sql-preview": "vitest run tests/sqlExecuteButton.spec.ts"
   },
   "dependencies": {
     "pinia": "^3.0.3",

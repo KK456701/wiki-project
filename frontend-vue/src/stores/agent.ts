@@ -524,13 +524,13 @@ async function waitForPersistedTurn(
 }
 
 /** 把持久化的批量卡片载荷（与 SSE batch_indicator_result 同形态）转为前端卡片数据 */
-function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
+export function toBatchResult(raw: Record<string, unknown>): BatchIndicatorResult {
   return {
     batchRunId: raw.batchRunId as string | undefined,
     ruleId: String(raw.ruleId ?? ''),
     ruleName: String(raw.ruleName ?? ''),
     profileId: raw.profileId as string | undefined,
-    profileLabel: raw.profileLabel as string | undefined,
+    profileLabel: (raw.profileLabel ?? raw.profileName) as string | undefined,
     status: String(raw.status ?? ''),
     done: Number(raw.done ?? 0),
     total: Number(raw.total ?? 0),

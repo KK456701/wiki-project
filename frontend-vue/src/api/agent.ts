@@ -5,6 +5,30 @@ export interface HospitalUser {
   permissions: string[]
 }
 
+export type SqlPreviewDatabaseRole = 'BUSINESS' | 'REAL'
+
+export interface SqlPreviewInput {
+  sql: string
+  databaseRole: SqlPreviewDatabaseRole
+  ruleId: string
+  profileId?: string
+  statStart?: string
+  statEnd?: string
+}
+
+export interface SqlPreviewResult {
+  executionId: string
+  databaseRole: SqlPreviewDatabaseRole
+  databaseLabel: string
+  status: string
+  rowCount: number
+  truncated: boolean
+  columns: string[]
+  rows: Array<Record<string, unknown>>
+  durationMs: number
+  executedSql: string
+}
+
 export interface AgentModel {
   id: string
   name: string
@@ -171,6 +195,18 @@ export interface IndicatorExport {
 
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export async function executeSqlPreview(
+  token: string,
+  input: SqlPreviewInput,
+): Promise<SqlPreviewResult> {
+  const response = await fetch('/api/sql-executions/preview', {
+    method: 'POST',
+    headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return readJson<SqlPreviewResult>(response)
 }
 
 async function readJson<T>(response: Response): Promise<T> {

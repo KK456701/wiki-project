@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ReadOnlySqlValidator {
     private static final List<String> FORBIDDEN = List.of(
-            "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE", "CREATE", "REPLACE",
+            "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE", "CREATE",
             "GRANT", "REVOKE", "EXEC", "EXECUTE", "LOAD", "MERGE");
 
     public ValidationResult validate(String sql, String mainTable) {
@@ -29,6 +29,37 @@ public class ReadOnlySqlValidator {
      */
     public ValidationResult validateReadOnly(String sql) {
         return validate(sql, "", false);
+    }
+
+    /** 自主排查临时查询：仍执行全部只读/单语句检查，但不强制知识库时间占位符。 */
+    public ValidationResult validateAdHocReadOnly(String sql) {
+        String stripped = sql == null ? "" : sql.strip();
+        String masked = maskCommentsAndLiterals(stripped);
+        String upper = masked.strip().toUpperCase(Locale.ROOT);
+        if (!(upper.startsWith("SELECT") || upper.startsWith("WITH"))) return failure("只允许 SELECT 或 WITH...SELECT 查询");
+        if (masked.replaceFirst(";+\\s*$", "").contains(";")) return failure("禁止多语句 SQL");
+        for (String keyword : FORBIDDEN) {
+            if (Pattern.compile("\\b" + keyword + "\\b", Pattern.CASE_INSENSITIVE).matcher(masked).find()) {
+                return failure("禁止使用 " + keyword);
+            }
+        }
+        if (Pattern.compile("\\b(?:SP_EXECUTESQL|OPENROWSET|OPENDATASOURCE)\\b", Pattern.CASE_INSENSITIVE)
+                .matcher(masked).find()) return failure("禁止动态 SQL 或外部数据源调用");
+        if (Pattern.compile("\\b(?:DBMS_[A-Z0-9_]+|UTL_[A-Z0-9_]+|XP_[A-Z0-9_]+)\\b|"
+                        + "[A-Za-z0-9_$#]+\\s*@[A-Za-z0-9_$#]+", Pattern.CASE_INSENSITIVE)
+                .matcher(masked).find()) return failure("禁止动态 SQL 或外部数据源调用");
+        if (Pattern.compile("(?:^|[^A-Za-z0-9_])#[A-Za-z_][A-Za-z0-9_]*").matcher(masked).find()) {
+            return failure("禁止使用临时表");
+        }
+        if (Pattern.compile("\\bSELECT\\s+(?:TOP\\s*\\([^)]*\\)\\s+|TOP\\s+\\d+\\s+)?(?:DISTINCT\\s+)?[\\s\\S]*?\\bINTO\\b",
+                Pattern.CASE_INSENSITIVE).matcher(masked).find()) {
+            return failure("禁止使用 SELECT INTO 写入数据");
+        }
+        if (Pattern.compile("\\bFOR\\s+UPDATE\\b", Pattern.CASE_INSENSITIVE)
+                .matcher(masked).find()) {
+            return failure("禁止使用 FOR UPDATE 锁定数据");
+        }
+        return new ValidationResult(true, "安全校验通过");
     }
 
     private ValidationResult validate(String sql, String mainTable, boolean requireMainTable) {

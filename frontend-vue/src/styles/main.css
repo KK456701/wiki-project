@@ -1760,6 +1760,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .diagnosis-case-table code { color: #244d45; font-size: 11px; }.diagnosis-case-table em { font-style: normal; }.diagnosis-case-table strong[data-pass='true'] { color: #087249; }.diagnosis-case-table strong[data-pass='false'] { color: #b42318; }
 .diagnosis-case-reconcile .diagnosis-base-conclusion { margin: 12px 14px; }
 .diagnosis-sql-disclosure summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.diagnosis-sql-actions,
+.sql-action-pair { display: inline-flex; align-items: center; gap: 8px; }
+.diagnosis-sql-run-shortcuts { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 12px 14px; border: 1px solid #cfe3de; border-radius: 10px; background: #f8fcfb; }
+.diagnosis-sql-run-shortcuts > span { display: inline-flex; gap: 8px; }
 .diagnosis-copy-button { flex: 0 0 auto; border: 1px solid #9fcbbf; border-radius: 6px; padding: 5px 9px; color: #0f6d5c; background: #fff; font: 700 10px/1.2 inherit; cursor: pointer; }
 .diagnosis-copy-button:hover { border-color: #148470; background: #eef8f5; }
 .diagnosis-technical-purpose { margin: 0; padding: 11px 13px; border-top: 1px solid #e1e8e6; color: #607772; background: #fff; font-size: 11px; line-height: 1.6; }
