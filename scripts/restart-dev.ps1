@@ -1,4 +1,4 @@
-param(
+﻿param(
     [int]$Port = 8765,
     [int]$StartupTimeoutSeconds = 120
 )
@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $devRunScript = Join-Path $PSScriptRoot 'dev-run.ps1'
+$ollamaStartupScript = Join-Path $PSScriptRoot 'start-local-ollama.ps1'
 $launcher = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 $runtimeDirectory = Join-Path $projectRoot 'backend-java\runtime'
 $stdout = Join-Path $runtimeDirectory 'dev-run.stdout.log'
@@ -19,6 +20,12 @@ if (-not (Test-Path -LiteralPath $devRunScript)) {
 }
 if (-not (Test-Path -LiteralPath $runtimeDirectory)) {
     New-Item -ItemType Directory -Path $runtimeDirectory | Out-Null
+}
+
+# 本地模型配置默认访问 127.0.0.1:11434。桌面 Ollama UI 进程存在并不代表
+# API 端口仍在监听，因此每次开发服务重启前都进行一次幂等存活检查。
+if (Test-Path -LiteralPath $ollamaStartupScript) {
+    & $ollamaStartupScript
 }
 
 $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
