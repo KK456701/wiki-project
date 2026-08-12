@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -29,6 +29,8 @@ type WorkspaceStep = StandardWorkspaceStep
 type FlowNode = Record<string, unknown>
 type AiScopeOption = { value: string; label: string; field: string }
 type SqlDiffLine = { kind: 'same' | 'added' | 'removed'; text: string; oldLine?: number; newLine?: number }
+type ExecutionKind = '' | 'overall' | 'candidate-generate' | 'candidate-run' | 'baseline-refresh' | 'rule-preview' | 'rule-run'
+const repairDetailGroups: Array<'numerator' | 'denominator'> = ['numerator', 'denominator']
 
 function buildSqlDiff(originalSql: string, candidateSql: string): SqlDiffLine[] {
   const original = originalSql.replace(/\r\n/g, '\n').split('\n')
@@ -99,6 +101,12 @@ const screening = ref<DiagnosisDataScreening | null>(null)
 const screeningLoading = ref(false)
 const screeningExpanded = ref(false)
 const selectedPublicRuleIds = ref<string[]>([])
+const repairDialogOpen = ref(false)
+const repairRuleId = ref('')
+const repairPreviewLoading = ref(false)
+const repairRunLoading = ref(false)
+const repairError = ref('')
+const repairSqlExpanded = ref(false)
 const overIncludedNote = ref('')
 const underIncludedNote = ref('')
 const selectedDepartments = ref<string[]>([])
@@ -128,7 +136,10 @@ const draftFormOpen = ref(false)
 const trialProgress = ref('')
 const trialError = ref('')
 const trialNodeId = ref('')
-let overallProgressTimer: ReturnType<typeof setInterval> | null = null
+const candidatePreparedSignature = ref('')
+const activeExecution = ref<ExecutionKind>('')
+const executionStage = ref('')
+let executionProgressTimer: ReturnType<typeof setInterval> | null = null
 const clarifyingDirection = ref<'' | 'OVER_INCLUDED' | 'UNDER_INCLUDED' | 'ALL'>('')
 const refreshProgress = ref('')
 const refreshError = ref('')
@@ -210,6 +221,15 @@ const diffCategories = computed<Array<{ type: DiagnosisShadowDiffPage['type']; l
 const hasRecordDiff = computed(() => diffCategories.value.length > 0)
 const shadowOriginalRow = computed(() => firstResultRow(shadow.value.originalResult))
 const shadowCandidateRow = computed(() => firstResultRow(shadow.value.candidateResult))
+const candidateDetailSamples = computed(() => record(shadow.value.candidateDetailSamples))
+const shadowResultChanged = computed(() =>
+  number(aggregateValue(shadowOriginalRow.value, 'result')) !== number(aggregateValue(shadowCandidateRow.value, 'result')))
+const repairResultDelta = computed(() => number(aggregateValue(shadowCandidateRow.value, 'result'))
+  - number(aggregateValue(shadowOriginalRow.value, 'result')))
+const repairResultDeltaPercent = computed(() => {
+  const original = number(aggregateValue(shadowOriginalRow.value, 'result'))
+  return original === 0 ? null : repairResultDelta.value / Math.abs(original) * 100
+})
 const latestRequirementAnalysis = computed(() => {
   const evidence = Array.isArray(snapshot.value?.evidence) ? snapshot.value.evidence : []
   for (let index = evidence.length - 1; index >= 0; index -= 1) {
@@ -226,13 +246,19 @@ const candidateOriginalExecutable = computed(() => String(
   candidate.value.originalSqlExecutable || candidate.value.originalSql || ''))
 const candidateDiffLines = computed(() => buildSqlDiff(
   candidateOriginalExecutable.value, candidateExecutable.value))
+const candidateChangedLines = computed(() => candidateDiffLines.value.filter((line) => line.kind !== 'same'))
 const trialPassed = computed(() => Boolean(shadow.value.passed))
-const trialButtonLabel = computed(() => trialProgress.value || '校验 SQL 并自动影子试跑')
+const candidatePendingRun = computed(() => candidateOwnedBySelectedNode.value && !shadowOwnedBySelectedNode.value)
+const candidateContentChanged = computed(() => Boolean(candidateExecutable.value.trim())
+  && candidateExecutable.value.trim() !== candidateOriginalExecutable.value.trim())
+const candidateMatchesInput = computed(() => Boolean(candidatePreparedSignature.value)
+  && candidatePreparedSignature.value === candidateInputSignature())
+const candidateCanExecute = computed(() => candidatePendingRun.value
+  && candidateContentChanged.value
+  && Boolean(record(candidate.value.validation).ok)
+  && candidateMatchesInput.value
+  && !busy.value)
 const directSqlChanged = computed(() => directSql.value.trim() !== String(selectedNode.value?.templateSql || selectedNode.value?.sql || '').trim())
-const hasPendingModification = computed(() => selectedNodeEditable.value
-  && (editMode.value === 'ai'
-    ? Boolean(requirement.value.trim() || aiSelectedPatients.value.length || aiSelectedDepartments.value.length)
-    : directSqlChanged.value))
 const filteredAiDepartments = computed(() => {
   const keyword = aiDepartmentSearch.value.trim().toLowerCase()
   const values = screening.value?.departmentOptions || []
@@ -240,31 +266,43 @@ const filteredAiDepartments = computed(() => {
 })
 const overallButtonLabel = computed(() => {
   if (checksPreparing.value) return '正在准备当前链路…'
-  if (busy.value || trialProgress.value && !['试跑完成', '试跑失败', 'SQL校验失败'].includes(trialProgress.value)) {
-    return trialProgress.value || '正在执行完整链路…'
-  }
+  if (activeExecution.value === 'overall') return executionStage.value
   return '整体执行'
 })
+const candidateGenerateLabel = computed(() => activeExecution.value === 'candidate-generate'
+  ? executionStage.value : editMode.value === 'ai' ? 'AI 生成对应 SQL' : '生成手动候选 SQL')
+const candidateRunLabel = computed(() => activeExecution.value === 'candidate-run'
+  ? executionStage.value : '用该候选 SQL 整体执行')
+const refreshButtonLabel = computed(() => activeExecution.value === 'baseline-refresh'
+  ? executionStage.value : '↻ 重新抽取并计算')
+const repairRunButtonLabel = computed(() => activeExecution.value === 'rule-run'
+  ? executionStage.value : '用该 SQL 整体执行')
 
-function startOverallProgress() {
-  stopOverallProgress()
-  const stages = ['准备当前链路…', '校验数据库方言…', '执行影子抽取…', '计算分子分母…', '正在核对结果…']
+function startExecutionFlow(kind: ExecutionKind, stages: string[]) {
+  stopExecutionFlow()
+  activeExecution.value = kind
   let index = 0
-  trialProgress.value = stages[index]
-  overallProgressTimer = setInterval(() => {
-    if (index < stages.length - 1) trialProgress.value = stages[++index]
-  }, 1300)
+  executionStage.value = stages[index]
+  executionProgressTimer = setInterval(() => {
+    if (index < stages.length - 1) executionStage.value = stages[++index]
+  }, 1400)
 }
 
-function stopOverallProgress() {
-  if (overallProgressTimer) clearInterval(overallProgressTimer)
-  overallProgressTimer = null
+function stopExecutionFlow() {
+  if (executionProgressTimer) clearInterval(executionProgressTimer)
+  executionProgressTimer = null
+  activeExecution.value = ''
+  executionStage.value = ''
 }
 
-watch(selectedNode, (node) => {
+onBeforeUnmount(stopExecutionFlow)
+
+watch(selectedNodeId, () => {
+  const node = selectedNode.value
   if (!node) return
   directSql.value = String(node.templateSql || node.sql || '')
   requirement.value = clarificationRequirement()
+  candidatePreparedSignature.value = ''
 }, { immediate: true })
 
 watch(() => String(shadow.value.trialId || ''), () => {
@@ -404,6 +442,16 @@ function publicRuleLabel(ruleId: string): string {
   if (ruleId === 'PUBLIC_001') return '排除测试患者'
   if (ruleId === 'PUBLIC_002') return '排除测试及血液透析门诊科室'
   return '检查重复明细与事件启用情况'
+}
+
+function publicRuleRepairable(ruleId: string): boolean {
+  return ruleId === 'PUBLIC_001' || ruleId === 'PUBLIC_002'
+}
+
+function publicRuleRepairDescription(ruleId: string): string {
+  if (ruleId === 'PUBLIC_001') return '在当前指标源表抽取 SQL 的患者姓名字段上追加“测试 / test”排除条件。'
+  if (ruleId === 'PUBLIC_002') return '在当前指标源表抽取 SQL 的科室名称字段上追加“测试 / test / 血液透析门诊”排除条件。'
+  return '该规则只提示人工检查相关事件是否重复启用，不自动修改 SQL。'
 }
 
 function clearPublicRules() {
@@ -690,6 +738,60 @@ function findingSelect(finding: DiagnosisDataScreening['findings'][number]) {
   }
 }
 
+async function openRuleRepair(finding: DiagnosisDataScreening['findings'][number]) {
+  const ruleId = String(finding.ruleCode || '')
+  repairRuleId.value = ruleId
+  repairDialogOpen.value = true
+  repairError.value = ''
+  repairSqlExpanded.value = false
+  if (!publicRuleRepairable(ruleId)) return
+  repairPreviewLoading.value = true
+  startExecutionFlow('rule-preview', ['正在读取公共规则…', '正在匹配当前 SQL 字段…', '正在生成一键修复方案…', '正在校验候选 SQL…'])
+  try {
+    const prepared = await act('PREVIEW_PUBLIC_RULE_FIX', { publicRuleIds: [ruleId] })
+    if (!prepared || !Object.keys(prepared.candidateSql || {}).length) {
+      repairError.value = error.value || '未能生成公共规则候选 SQL。'
+    }
+  } finally {
+    stopExecutionFlow()
+    repairPreviewLoading.value = false
+  }
+}
+
+function closeRuleRepair() {
+  repairDialogOpen.value = false
+  repairRuleId.value = ''
+  repairError.value = ''
+  repairSqlExpanded.value = false
+}
+
+async function toggleRepairSql() {
+  repairSqlExpanded.value = !repairSqlExpanded.value
+  if (!repairSqlExpanded.value) return
+  await nextTick()
+  document.querySelector('.repair-sql-body')?.scrollIntoView({ block: 'nearest' })
+}
+
+async function runRuleRepair() {
+  repairError.value = ''
+  repairRunLoading.value = true
+  startExecutionFlow('rule-run', ['正在创建隔离影子环境…', '正在执行修复候选 SQL…', '正在计算候选分子分母…', '正在生成候选明细…', '正在完成结果对账…'])
+  try {
+    const completed = await act('RUN_PUBLIC_RULE_FIX', {})
+    if (!completed) {
+      repairError.value = error.value || '公共规则候选 SQL 整体执行失败。'
+      return
+    }
+    const result = record(completed.shadowTrial)
+    if (String(result.status || '') === 'FAILED' || result.passed === false) {
+      repairError.value = `${String(result.failureStage || '执行阶段')}：${String(result.message || '试跑未通过')}`
+    }
+  } finally {
+    stopExecutionFlow()
+    repairRunLoading.value = false
+  }
+}
+
 function screeningFindingCell(
   finding: DiagnosisDataScreening['findings'][number],
   kind: 'name' | 'record' | 'department',
@@ -756,6 +858,19 @@ function formatDetailValue(field: string, value: unknown): string {
   }
   if (field === '__meets_numerator') return number(value) > 0 ? '是' : '否'
   return String(value)
+}
+
+function candidateSampleRows(group: 'numerator' | 'denominator'): Record<string, unknown>[] {
+  const rows = candidateDetailSamples.value[group]
+  return Array.isArray(rows) ? rows.map((row) => record(row)) : []
+}
+
+function candidateSampleColumns(group: 'numerator' | 'denominator'): string[] {
+  const rows = candidateSampleRows(group)
+  const priority = ['PERSON_NAME', 'FULL_NAME', 'personName', 'ENCOUNTER_ID', 'encounterId', 'IMRN', 'imrn',
+    'CURRENT_DEPT_NAME', 'currentDeptName', 'CURRENT_WARD_NAME', 'currentWardName', '__meets_numerator']
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))]
+  return [...priority.filter((key) => keys.includes(key)), ...keys.filter((key) => !priority.includes(key))].slice(0, 8)
 }
 
 function departmentTargets(values: string[]) {
@@ -850,7 +965,8 @@ function importConfirmationScope() {
 }
 
 function aiRequirementText(): string {
-  const parts = [requirement.value.trim()]
+  const entered = requirement.value.trim()
+  const parts = [entered]
   if (aiSelectedPatients.value.length) {
     parts.push(`针对这些患者或业务记录核查并修改：${aiSelectedPatients.value.map((item) => item.label).join('、')}`)
   }
@@ -859,7 +975,28 @@ function aiRequirementText(): string {
     const labels = aiSelectedDepartments.value.map((value) => options.find((item) => item.value === value)?.label || value)
     parts.push(`针对这些科室范围核查并修改：${labels.join('、')}`)
   }
+  if (!aiSelectedPatients.value.length && !aiSelectedDepartments.value.length) {
+    const marker = '排除这些疑似多算记录：'
+    const markerIndex = entered.indexOf(marker)
+    if (markerIndex >= 0) {
+      const selectedPart = entered.slice(markerIndex + marker.length).split('；')[0]
+      const patientNames = selectedPart.split('、').map((label) => label.trim().split(' · ')[0]).filter(Boolean)
+      if (patientNames.length) parts.push(`排除患者姓名属于“${patientNames.join(',')}”的数据`)
+    }
+  }
   return parts.filter(Boolean).join('；')
+}
+
+function candidateInputSignature(): string {
+  return JSON.stringify({
+    nodeId: selectedNodeId.value,
+    layer: selectedNodeLayer.value,
+    mode: editMode.value,
+    sql: editMode.value === 'direct' ? directSql.value.trim() : '',
+    requirement: editMode.value === 'ai' ? aiRequirementText() : '',
+    targets: editMode.value === 'ai' ? aiScopeTargets() : [],
+    publicRuleIds: selectedPublicRuleIds.value,
+  })
 }
 
 function aiScopeTargets() {
@@ -942,27 +1079,26 @@ async function clarifyData() {
 
 async function checkLatestExtraction() {
   refreshError.value = ''
-  refreshProgress.value = '正在读取最新业务源并进行隔离核对…'
-  const updated = await act('RUN_CURRENT_SQL_SHADOW', {})
-  if (!updated) {
-    refreshError.value = error.value || '最新业务源核对失败。'
-    refreshProgress.value = ''
-    return
+  startExecutionFlow('baseline-refresh', ['正在读取当前正式 SQL…', '正在重新抽取业务数据…', '正在计算正式分子分母…', '正在核对最新结果…'])
+  try {
+    const updated = await act('RUN_LINEAGE_BASELINE', {
+      layer: 'SOURCE_EXTRACT', nodeId: selectedNodeId.value,
+    })
+    if (!updated) {
+      refreshError.value = error.value || '重新抽取并计算失败。'
+      refreshProgress.value = ''
+      return
+    }
+    const oldRow = firstResultRow(updated.shadowTrial?.originalResult)
+    const newRow = firstResultRow(updated.shadowTrial?.candidateResult)
+    const oldValue = number(aggregateValue(oldRow, 'result'))
+    const newValue = number(aggregateValue(newRow, 'result'))
+    refreshProgress.value = oldValue === newValue
+      ? '重新抽取和计算完成，指标结果无变化。'
+      : `重新抽取和计算完成：指标值由 ${metricText(oldValue)} 变为 ${metricText(newValue)}。`
+  } finally {
+    stopExecutionFlow()
   }
-  refreshProgress.value = '核对完成，请查看影子结果后决定是否正式重新抽取。'
-}
-
-async function confirmFormalRefresh() {
-  if (!window.confirm('确认使用当前正式抽取 SQL 重新抽取并刷新正式中间数据？该操作会重新计算当前指标。')) return
-  refreshError.value = ''
-  refreshProgress.value = '正在重新抽取正式数据并重新计算指标…'
-  const updated = await act('FORMAL_RECALCULATE_CURRENT', {})
-  if (!updated) {
-    refreshError.value = error.value || '正式重新抽取失败。'
-    refreshProgress.value = ''
-    return
-  }
-  refreshProgress.value = '重新抽取和指标计算已完成。'
 }
 
 async function proceedToLineage() {
@@ -1078,7 +1214,7 @@ function nodeHint(node: FlowNode | null): string {
 
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.map(String).filter(Boolean) : [] }
 
-async function submitCandidate() {
+async function runCandidate() {
   if (!snapshot.value || !selectedNodeLayer.value) {
     error.value = '请先选择源表抽取 SQL 或概览统计 SQL 节点。'
     return
@@ -1087,14 +1223,52 @@ async function submitCandidate() {
     error.value = '后台数据准备完成后，才能生成候选 SQL 并执行影子试跑。'
     return
   }
+  if (!candidateCanExecute.value) {
+    error.value = candidateContentChanged.value
+      ? '当前修改条件已变化，请重新生成并校验候选 SQL。'
+      : '尚未生成与正式 SQL 不同的候选 SQL，不能执行。'
+    return
+  }
+  trialError.value = ''
+  trialNodeId.value = selectedNodeId.value
+  trialProgress.value = '正在执行候选 SQL'
+  startExecutionFlow('candidate-run', ['正在创建隔离影子环境…', '正在执行候选抽取 SQL…', '正在计算候选分子分母…', '正在生成差异明细…', '正在完成结果对账…'])
+  try {
+    const completed = await act('RUN_SHADOW_TRIAL', {})
+    if (!completed) {
+      trialError.value = error.value || '影子试跑请求失败。'
+      trialProgress.value = '试跑失败'
+      return
+    }
+    const result = record(completed.shadowTrial)
+    if (String(result.status || '') === 'FAILED' || result.passed === false) {
+      trialError.value = `${String(result.failureStage || '执行阶段')}：${String(result.message || '影子试跑未通过')}`
+      trialProgress.value = '试跑失败'
+    } else {
+      trialProgress.value = '试跑完成'
+    }
+    await nextTick()
+    document.querySelector('.shadow-result, .trial-inline-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } catch (cause) {
+    trialError.value = message(cause, '候选 SQL 影子试跑失败。')
+  } finally {
+    stopExecutionFlow()
+    if (!trialError.value && trialProgress.value !== '试跑完成') trialProgress.value = ''
+  }
+}
+
+async function generateCandidate() {
+  if (!snapshot.value || !selectedNodeLayer.value || !modificationAllowed.value) return null
   const candidateSql = editMode.value === 'direct' ? directSql.value.trim() : ''
-  const requirementText = editMode.value === 'ai'
-    ? aiRequirementText()
-    : '实施人员直接编辑当前正式 SQL'
-  if (!requirementText) return
+  const requirementText = editMode.value === 'ai' ? aiRequirementText() : '实施人员直接编辑当前正式 SQL'
+  if (!requirementText || (editMode.value === 'direct' && !directSqlChanged.value)) return null
+  const preparedSignature = candidateInputSignature()
   trialError.value = ''
   trialNodeId.value = selectedNodeId.value
   trialProgress.value = '正在生成候选 SQL'
+  startExecutionFlow('candidate-generate', editMode.value === 'ai'
+    ? ['正在读取带入条件…', '正在匹配当前 SQL 字段…', '正在生成对应 SQL…', '正在校验 SQL 安全性…']
+    : ['正在比对手动 SQL…', '正在校验 SQL 安全性…', '正在确认输出结构…'])
   try {
     const prepared = await act('SUBMIT_EVIDENCE', {
       type: 'IMPLEMENTER_SQL_REQUIREMENT',
@@ -1115,57 +1289,36 @@ async function submitCandidate() {
     if (!prepared || !Object.keys(prepared.candidateSql || {}).length) {
       trialError.value = error.value || '候选 SQL 未通过静态校验，请核对修改要求。'
       trialProgress.value = 'SQL校验失败'
-      return
+      return null
     }
-    trialProgress.value = 'SQL校验通过，正在执行影子试跑'
-    const completed = await act('RUN_SHADOW_TRIAL', {})
-    if (!completed) {
-      trialError.value = error.value || '影子试跑请求失败。'
-      trialProgress.value = '试跑失败'
-      return
+    const preparedCandidate = record(prepared.candidateSql)
+    const preparedSql = String(preparedCandidate.candidateSqlExecutable || preparedCandidate.sql || '').trim()
+    const preparedOriginal = String(preparedCandidate.originalSqlExecutable || preparedCandidate.originalSql || '').trim()
+    if (!preparedSql || preparedSql === preparedOriginal) {
+      trialError.value = '候选 SQL 与当前正式 SQL 相同，请先修改条件或 SQL 内容。'
+      trialProgress.value = '候选 SQL 未发生变化'
+      candidatePreparedSignature.value = ''
+      return null
     }
-    const result = record(completed.shadowTrial)
-    if (String(result.status || '') === 'FAILED' || result.passed === false) {
-      trialError.value = `${String(result.failureStage || '执行阶段')}：${String(result.message || '影子试跑未通过')}`
-      trialProgress.value = '试跑失败'
-    } else {
-      trialProgress.value = '试跑完成'
-    }
+    trialProgress.value = 'SQL校验通过，候选 SQL 已生成'
     await nextTick()
-    document.querySelector('.shadow-result, .trial-inline-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    candidatePreparedSignature.value = preparedSignature
+    document.querySelector('.candidate-result, .trial-inline-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    return prepared
   } catch (cause) {
-    trialError.value = message(cause, '候选 SQL 校验或影子试跑失败。')
+    trialError.value = message(cause, '候选 SQL 生成或校验失败。')
+    return null
   } finally {
-    if (!trialError.value && trialProgress.value !== '试跑完成') trialProgress.value = ''
+    stopExecutionFlow()
+    if (trialError.value && trialProgress.value !== 'SQL校验失败') trialProgress.value = 'SQL校验失败'
   }
 }
 
 async function executeWholeLineage() {
   if (!snapshot.value || !modificationAllowed.value) return
   trialError.value = ''
-  if (['SHADOW_TRIAL', 'DRAFT_SAVE'].includes(String(snapshot.value.currentStep))
-    && Object.keys(candidate.value).length && !Boolean(candidate.value.baselineOnly)) {
-    trialNodeId.value = String(candidate.value.nodeId || '')
-    startOverallProgress()
-    try {
-      const completed = await act('RUN_SHADOW_TRIAL', {})
-      if (!completed) {
-        trialError.value = error.value || '影子试跑请求失败。'
-        trialProgress.value = '执行失败'
-      } else {
-        trialProgress.value = Boolean(completed.shadowTrial?.passed) ? '执行完成' : '执行失败'
-      }
-    } finally {
-      stopOverallProgress()
-    }
-    return
-  }
-  if (hasPendingModification.value) {
-    await submitCandidate()
-    return
-  }
   trialNodeId.value = selectedNodeEditable.value ? selectedNodeId.value : ''
-  startOverallProgress()
+  startExecutionFlow('overall', ['正在准备当前正式链路…', '正在校验数据库方言…', '正在执行正式 SQL 基线…', '正在计算分子分母…', '正在核对执行结果…'])
   try {
     const completed = await act('RUN_LINEAGE_BASELINE', selectedNodeEditable.value
       ? { layer: selectedNodeLayer.value, nodeId: selectedNodeId.value } : {})
@@ -1183,7 +1336,7 @@ async function executeWholeLineage() {
       trialProgress.value = '执行完成'
     }
   } finally {
-    stopOverallProgress()
+    stopExecutionFlow()
   }
   await nextTick()
   document.querySelector('.shadow-result, .trial-inline-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -1208,6 +1361,13 @@ async function loadDiff(page = 1) {
   } finally {
     diffLoading.value = false
   }
+}
+
+async function toggleDiffCategory(event: Event, type: DiagnosisShadowDiffPage['type']) {
+  if (!(event.currentTarget as HTMLDetailsElement).open) return
+  diffType.value = type
+  diffSearch.value = ''
+  await loadDiff(1)
 }
 
 async function saveDraft() {
@@ -1321,12 +1481,12 @@ function closeWorkspace() { void router.push('/') }
           <p v-if="screeningLoading">正在按公共规则检查患者姓名、科室名称和明细重复业务编号…</p>
           <p v-else-if="!screening?.findingCount">当前明细未命中测试患者、测试/血液透析门诊科室或重复业务编号规则。</p>
           <template v-else>
-            <p class="screening-guidance">以下是公共规则命中的实际明细样例。点击一行会选择整条公共规则；进入链路核查后，程序将按当前指标抽取 SQL 的实际字段生成候选语句，不会只排除这一条样例。</p>
+            <p class="screening-guidance">以下是公共规则命中的实际明细样例。点击“一键修复”，可按当前指标抽取 SQL 的实际字段生成候选语句并预览差异。</p>
             <div class="screening-table" role="table" aria-label="AI初筛结果">
-              <div class="screening-table-head" role="row"><span>患者姓名</span><span>患者标识</span><span>科室</span><span>命中规则</span></div>
-              <button v-for="finding in screeningPreviewFindings" :key="finding.findingId" type="button" role="row" :class="{ selected: selectedPublicRuleIds.includes(finding.ruleCode) }" @click="findingSelect(finding)">
-                <strong>{{ screeningFindingCell(finding, 'name') }}</strong><span>{{ screeningFindingCell(finding, 'record') }}</span><span>{{ screeningFindingCell(finding, 'department') }}</span><small>{{ selectedPublicRuleIds.includes(finding.ruleCode) ? '✓ 已选择此公共规则' : finding.reason }}</small>
-              </button>
+              <div class="screening-table-head" role="row"><span>患者姓名</span><span>患者标识</span><span>科室</span><span>命中规则</span><span>一键修复</span></div>
+              <div v-for="finding in screeningPreviewFindings" :key="finding.findingId" role="row" class="screening-table-row">
+                <strong>{{ screeningFindingCell(finding, 'name') }}</strong><span>{{ screeningFindingCell(finding, 'record') }}</span><span>{{ screeningFindingCell(finding, 'department') }}</span><small>{{ finding.reason }}</small><div class="screening-row-actions"><button type="button" class="screening-repair-button" :disabled="repairPreviewLoading" @click="openRuleRepair(finding)">{{ publicRuleRepairable(finding.ruleCode) ? '一键修复' : '人工检查' }}</button></div>
+              </div>
             </div>
           </template>
         </section>
@@ -1363,7 +1523,7 @@ function closeWorkspace() { void router.push('/') }
     </section>
 
     <section v-else class="workspace-page lineage-page">
-      <header class="lineage-toolbar"><div class="lineage-actions"><button type="button" class="workspace-primary" title="整体执行当前链路；存在候选 SQL 时自动使用候选版本，所有操作都在隔离影子环境完成" :disabled="!overallExecutionReady" @click="executeWholeLineage"><span v-if="busy || checksPreparing" class="trial-spinner" aria-hidden="true"></span>{{ overallButtonLabel }}</button></div></header>
+      <header class="lineage-toolbar"><div class="lineage-actions"><button type="button" class="workspace-primary" title="使用当前正式 SQL 执行完整链路基线；不会自动使用尚未单独确认执行的候选 SQL" :disabled="!overallExecutionReady" aria-live="polite" @click="executeWholeLineage"><span v-if="activeExecution === 'overall' || checksPreparing" class="trial-spinner" aria-hidden="true"></span>{{ overallButtonLabel }}</button></div></header>
       <div class="lineage-layout">
         <aside class="flow-rail"><header><strong>当前生效数据链路</strong><span>{{ flowNodes.length }} 个节点</span></header><button v-for="node in flowNodes" :key="String(node.id)" type="button" :class="{ active: String(node.id) === selectedNodeId, editable: ['SOURCE_EXTRACT_SQL', 'OVERVIEW_SQL'].includes(String(node.nodeType)) }" @click="selectNode(node)"><span><strong>{{ String(node.title || '未命名节点') }}</strong><small>{{ databaseLabel(node.databaseRole) }}</small></span><em v-if="String(shadow.nodeId || candidate.nodeId || '') === String(node.id)" class="trial-badge">✓ 已试跑</em><em v-else>{{ ['SOURCE_EXTRACT_SQL', 'OVERVIEW_SQL'].includes(String(node.nodeType)) ? '✎ 可修改' : '◉ 只读' }}</em></button><p v-if="!flowNodes.length" class="workspace-empty">当前知识库没有可展示的数据链路。</p></aside>
         <section v-if="selectedNode" class="node-inspector">
@@ -1374,18 +1534,17 @@ function closeWorkspace() { void router.push('/') }
           <section v-if="strings(selectedNode.tableNames).length" class="node-table-section lineage-work-card"><header><div><strong>这一环节用到的数据表</strong><span>先展示最主要的两张表，其余表可按需展开。</span></div></header><ul class="node-table-list"><li v-for="table in strings(selectedNode.tableNames).slice(0, 2)" :key="table"><i aria-hidden="true">▦</i><div><strong>{{ table }}</strong><span>{{ tablePurpose(table, record(selectedNode.tableDescriptions)[table]) }}</span></div></li></ul><details v-if="strings(selectedNode.tableNames).length > 2" class="more-node-tables"><summary>查看其余 {{ strings(selectedNode.tableNames).length - 2 }} 张表</summary><ul class="node-table-list"><li v-for="table in strings(selectedNode.tableNames).slice(2)" :key="table"><i aria-hidden="true">▦</i><div><strong>{{ table }}</strong><span>{{ tablePurpose(table, record(selectedNode.tableDescriptions)[table]) }}</span></div></li></ul></details></section>
           <details v-if="String(selectedNode.sql || '').trim()" class="sql-template-evidence lineage-work-card"><summary><span><strong>查看当前正式 SQL</strong><small>查看当前线上生效的 SQL、内容与运行配置。</small></span><em>展开查看与复制 ›</em></summary><section class="sql-panel"><header><strong>当前统计窗口可直接执行 SQL</strong><button type="button" @click="copyText(`node-${String(selectedNode.id)}`, selectedNode.sql)">{{ copiedKey === `node-${String(selectedNode.id)}` ? '已复制' : '复制 SQL' }}</button></header><pre>{{ String(selectedNode.sql) }}</pre></section></details>
           <section v-if="selectedNodeLayer === 'SOURCE_EXTRACT'" class="source-refresh-card lineage-work-card">
-            <div><strong>重新抽取最新业务数据</strong><p>先在影子环境核对最新业务源与当前中间数据的差异；确认无误后，才会刷新正式中间数据并重新计算当前指标。</p></div>
-            <button v-if="snapshot?.currentStep !== 'DATA_REFRESH_REVIEW'" type="button" class="workspace-secondary" :disabled="Boolean(busy) || !modificationAllowed" @click="checkLatestExtraction"><span v-if="refreshProgress && busy" class="trial-spinner" aria-hidden="true"></span>{{ busy ? '正在核对最新数据…' : '↻ 重新抽取' }}</button>
-            <button v-else type="button" class="workspace-primary" :disabled="Boolean(busy)" @click="confirmFormalRefresh"><span v-if="busy" class="trial-spinner" aria-hidden="true"></span>{{ busy ? '正在重新抽取…' : '确认刷新正式数据' }}</button>
+            <div><strong>用当前正式 SQL 重新抽取并计算</strong><p>始终使用当前正式抽取 SQL读取最新业务数据，并在影子环境重新计算；页面里的候选 SQL不会参与本次执行。</p></div>
+            <button type="button" class="workspace-secondary" :disabled="Boolean(busy) || !modificationAllowed" aria-live="polite" @click="checkLatestExtraction"><span v-if="activeExecution === 'baseline-refresh'" class="trial-spinner" aria-hidden="true"></span>{{ refreshButtonLabel }}</button>
             <p v-if="refreshProgress" class="source-refresh-status">{{ refreshProgress }}</p>
             <p v-if="refreshError" class="source-refresh-error">{{ refreshError }}</p>
           </section>
           <div v-if="checksPreparing" class="node-lock is-preparing"><strong>正在准备本次统计数据</strong><p>数据链路和正式 SQL 可以先查看；准备完成后即可整体执行或生成候选 SQL。</p></div>
           <div v-else-if="gateBlocked" class="node-lock is-blocked"><strong>{{ String(blockedGate?.message || '后台校验发现需要处理的问题') }}</strong><p>{{ String(blockedGate?.repairSuggestion || '修复现场数据或知识口径后重新准备。') }}</p><button type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="retryGate(number(blockedGate?.gate))">修复后重新准备</button></div>
           <section v-else-if="selectedNodeEditable && ['SHADOW_TRIAL', 'DRAFT_SAVE'].includes(String(snapshot?.currentStep)) && !candidateOwnedBySelectedNode" class="node-lock"><strong>当前试跑属于另一个 SQL 节点</strong><p>该节点不会显示其他节点的候选和影子结果。开始修改这里前，需要重新生成本节点候选。</p><button type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="reviseCandidate">开始修改当前节点</button></section>
-          <section v-else-if="selectedNodeEditable && ['CASE_INPUT', 'CASE_INVESTIGATION'].includes(String(snapshot?.currentStep))" class="candidate-editor lineage-work-card">
+          <section v-else-if="selectedNodeEditable && (['CASE_INPUT', 'CASE_INVESTIGATION'].includes(String(snapshot?.currentStep)) || candidatePendingRun)" class="candidate-editor lineage-work-card">
             <header><div><strong>修改{{ selectedNodeLayer === 'SOURCE_EXTRACT' ? '抽取' : '概览' }} SQL</strong><span>通过直接编辑或 AI辅助，修改当前节点；只在影子环境执行。</span></div></header>
-            <div class="edit-tabs"><button type="button" :class="{ active: editMode === 'direct' }" @click="editMode = 'direct'">✎ 直接编辑 SQL</button><button type="button" :class="{ active: editMode === 'ai' }" @click="editMode = 'ai'">▣ AI 修改 SQL</button></div>
+            <div class="edit-tabs"><button type="button" :class="{ active: editMode === 'direct' }" @click="editMode = 'direct'">✎ 直接编辑 SQL</button><button type="button" :class="{ active: editMode === 'ai' }" @click="editMode = 'ai'">▣ AI 生成对应 SQL</button></div>
             <textarea v-if="editMode === 'direct'" v-model="directSql" rows="12" class="sql-editor" placeholder="编辑当前正式模板 SELECT"></textarea>
             <template v-else>
               <textarea v-model="requirement" rows="6" placeholder="写清楚需要纳入或排除什么数据，以及使用哪个已有字段判断。已完成的数据确认内容会自动带入；也可以直接在这里填写。"></textarea>
@@ -1396,41 +1555,54 @@ function closeWorkspace() { void router.push('/') }
                 <section v-if="aiScopeMode === 'PATIENT'"><label><span>搜索患者</span><div><input v-model="aiPatientSearch" type="search" placeholder="输入姓名、就诊号或住院号" @keyup.enter="searchAiPatients" /><button type="button" :disabled="aiScopeLoading" @click="searchAiPatients">{{ aiScopeLoading ? '查询中…' : '查询' }}</button></div></label><div class="ai-scope-options"><label v-for="item in aiPatientOptions" :key="item.value"><input type="checkbox" :checked="aiSelectedPatients.some((selected) => selected.value === item.value)" @change="toggleAiPatient(item)" /><span>{{ item.label }}</span></label><p v-if="aiPatientOptions.length === 0">输入关键词后查询本次分子、分母明细。</p></div></section>
                 <section v-else><label><span>选择科室</span><input v-model="aiDepartmentSearch" type="search" placeholder="搜索科室名称或编码" /></label><div class="ai-scope-options"><label v-for="item in filteredAiDepartments" :key="item.value"><input type="checkbox" :checked="aiSelectedDepartments.includes(item.value)" @change="toggleAiDepartment(item.value)" /><span>{{ item.label }}</span><small>分母 {{ item.denominatorCount }} · 分子 {{ item.numeratorCount }}</small></label></div></section>
               </details>
-              <p class="candidate-helper">已选择患者或科室时，程序会先确定性生成候选 SQL；无法安全定位字段时，才由当前小模型整理要求。两种路径都必须通过 SQL 校验和影子试跑。</p>
+              <p class="candidate-helper">带入条件后不会自动执行。请先点击“AI 生成对应 SQL”完成生成和校验，再单独确认执行候选 SQL。</p>
             </template>
             <p v-if="!modificationAllowed" class="workspace-warning">后台数据准备通过后，即可生成候选 SQL 并执行影子试跑。</p>
             <article v-else-if="latestRequirementAnalysis.failureReason && !candidateOwnedBySelectedNode" class="workspace-stop"><strong>本轮未生成候选 SQL</strong><p>{{ latestRequirementAnalysis.failureReason }}</p><p>{{ latestRequirementAnalysis.nextAction }}</p></article>
-            <button type="button" class="workspace-primary trial-action" :disabled="Boolean(busy) || !modificationAllowed || (editMode === 'ai' ? !aiRequirementText() : !directSql.trim())" @click="submitCandidate"><span v-if="busy || (trialProgress && !['试跑完成', '试跑失败', 'SQL校验失败'].includes(trialProgress))" class="trial-spinner" aria-hidden="true"></span>{{ trialButtonLabel }}</button>
+            <p v-if="candidatePendingRun && !candidateMatchesInput" class="candidate-stale-warning">修改条件或编辑内容已经变化，请重新生成候选 SQL；旧候选不会执行。</p>
+            <div class="candidate-action-row"><button type="button" class="workspace-secondary candidate-generate-action" :disabled="Boolean(busy) || !modificationAllowed || (editMode === 'ai' ? !aiRequirementText() : !directSqlChanged)" aria-live="polite" @click="generateCandidate"><span v-if="activeExecution === 'candidate-generate'" class="trial-spinner" aria-hidden="true"></span>{{ candidateGenerateLabel }}</button><button type="button" class="workspace-primary trial-action" :disabled="!candidateCanExecute" aria-live="polite" @click="runCandidate"><span v-if="activeExecution === 'candidate-run'" class="trial-spinner" aria-hidden="true"></span>{{ candidateRunLabel }}</button></div>
           </section>
-          <article v-if="trialError && selectedNodeEditable && trialNodeId === selectedNodeId" class="trial-inline-error"><strong>{{ trialProgress || '执行失败' }}</strong><p>{{ trialError }}</p><p v-if="trialError.includes('模型')">本次失败发生在模型整理修改要求阶段，尚未修改正式 SQL，也没有执行影子写入。</p><div class="trial-error-actions"><button type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="submitCandidate">重新生成</button><button type="button" class="workspace-secondary" @click="editMode = 'direct'; trialError = ''; trialProgress = ''">切换为直接编辑 SQL</button></div></article>
-          <details v-if="candidateOwnedBySelectedNode" class="candidate-result collapsible-result" open><summary><span><strong>候选 SQL</strong><small>{{ String(candidate.generationMethod || '') }} · {{ String(candidate.databaseDialect || '当前数据库方言') }}</small></span><em>展开/收起并复制</em></summary><ul class="candidate-validation"><li v-for="stage in strings(candidate.validationStages)" :key="stage">✓ {{ stage }}</li></ul><div class="sql-diff-legend"><span class="added">绿色：新增或修改后的内容</span><span class="removed">红色：被删除或替换的原内容</span></div><div class="sql-panel"><header><small>{{ String(record(candidate.validation).message || '安全校验已通过') }}</small><button type="button" @click="copyText('candidate', candidateExecutable)">{{ copiedKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></header><pre class="sql-diff"><code v-for="(line, index) in candidateDiffLines" :key="`${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }}</i><b>{{ line.newLine || line.oldLine || '' }}</b><span>{{ line.text || ' ' }}</span></code></pre></div></details>
-          <section v-if="shadowOwnedBySelectedNode" class="shadow-result" :data-state="trialPassed ? 'PASSED' : 'FAILED'">
-            <header><div><span>影子试跑</span><strong>{{ trialPassed ? '验收通过' : '未通过验收' }}</strong></div><em>{{ String(shadow.trialId || '') }}</em></header>
-            <p>{{ String(shadow.message || (trialPassed ? '候选数据已完成隔离试跑，正式表和当前卡片未被修改。' : '请根据执行错误或记录差异调整候选条件。')) }}</p>
+          <article v-if="trialError && selectedNodeEditable && trialNodeId === selectedNodeId" class="trial-inline-error"><strong>{{ trialProgress || '执行失败' }}</strong><p>{{ trialError }}</p><p v-if="trialError.includes('模型')">本次失败发生在模型整理修改要求阶段，尚未修改正式 SQL，也没有执行影子写入。</p><div class="trial-error-actions"><button type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="generateCandidate">重新生成</button><button type="button" class="workspace-secondary" @click="editMode = 'direct'; trialError = ''; trialProgress = ''">切换为直接编辑 SQL</button></div></article>
+          <details v-if="candidateOwnedBySelectedNode && !Boolean(candidate.baselineOnly)" class="candidate-result collapsible-result"><summary><span><strong>候选 SQL</strong><small>{{ String(candidate.generationMethod || '') }} · {{ String(candidate.databaseDialect || '当前数据库方言') }}</small></span><em>展开查看完整 SQL</em></summary><ul class="candidate-validation"><li v-for="stage in strings(candidate.validationStages)" :key="stage">✓ {{ stage }}</li></ul><div class="sql-diff-legend"><span class="added">绿色：新增或修改后的内容</span><span class="removed">红色：被删除或替换的原内容</span></div><div class="sql-panel"><header><small>{{ String(record(candidate.validation).message || '安全校验已通过') }}</small><button type="button" @click="copyText('candidate', candidateExecutable)">{{ copiedKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></header><pre class="sql-diff"><code v-for="(line, index) in candidateDiffLines" :key="`${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }}</i><b>{{ line.newLine || line.oldLine || '' }}</b><span>{{ line.text || ' ' }}</span></code></pre></div></details>
+          <section v-if="shadowOwnedBySelectedNode && (!Boolean(shadow.baselineOnly) || shadowResultChanged)" class="shadow-result shadow-result-showcase" :data-state="trialPassed ? 'PASSED' : 'FAILED'">
+            <header><div><span>{{ trialPassed ? '✓ 候选 SQL 隔离验证' : '候选 SQL 验证失败' }}</span><strong>{{ trialPassed ? '候选结果已生成' : '未通过验收' }}</strong></div><em>{{ String(shadow.trialId || '') }}</em></header>
+            <p class="shadow-result-note">{{ String(shadow.message || (trialPassed ? '候选数据已完成隔离试跑，正式 SQL 和正式数据保持不变。' : '请根据执行错误或记录差异调整候选条件。')) }}</p>
             <button v-if="!trialPassed && snapshot?.currentStep === 'SHADOW_TRIAL'" type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="reviseCandidate">调整候选并重新试跑</button>
-            <div v-if="String(shadow.layer || '') === 'SOURCE_EXTRACT'" class="shadow-record-strip">
-              <article><span>正式记录</span><strong>{{ metricText(shadow.formalRows ?? shadowRecordDiff.originalCount) }}</strong></article>
-              <article><span>候选记录</span><strong>{{ metricText(shadow.shadowRows ?? shadowRecordDiff.candidateCount) }}</strong></article>
-              <article v-for="item in diffCategories" :key="item.type"><span>{{ item.label.replace('记录', '') }}</span><strong>{{ item.count }}</strong></article>
-            </div>
-            <p v-if="String(shadow.layer || '') === 'SOURCE_EXTRACT' && !hasRecordDiff" class="no-record-diff">本次试跑未发现记录集合变化</p>
-            <article v-else class="overview-record-note">
-              <strong>正式记录集保持不变</strong>
-              <p>本轮只对候选概览 SQL 做只读试算，不重新抽取、不写入中间表，也不会修改正式记录。</p>
-            </article>
-            <table class="shadow-result-table"><thead><tr><th>对比项</th><th>当前正式结果</th><th>候选试跑结果</th><th>变化</th></tr></thead><tbody>
-              <tr><th>分子</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'numerator')) - number(aggregateValue(shadowOriginalRow, 'numerator')) }}</td></tr>
-              <tr><th>分母</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'denominator')) - number(aggregateValue(shadowOriginalRow, 'denominator')) }}</td></tr>
-              <tr><th>结果值</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</td><td>{{ metricText(number(aggregateValue(shadowCandidateRow, 'result')) - number(aggregateValue(shadowOriginalRow, 'result'))) }}</td></tr>
-            </tbody></table>
-            <div v-if="hasRecordDiff" class="diff-toolbar"><select v-if="diffCategories.length > 1" v-model="diffType"><option v-for="item in diffCategories" :key="item.type" :value="item.type">{{ item.label }}（{{ item.count }}）</option></select><strong v-else>{{ diffCategories[0].label }}（{{ diffCategories[0].count }}）</strong><input v-model="diffSearch" placeholder="搜索业务编号" @keyup.enter="loadDiff(1)" /><button type="button" :disabled="diffLoading" @click="loadDiff(1)">查看明细</button></div>
-            <div v-if="diffPage" class="diff-list"><p>共 {{ diffPage.total }} 个业务编号</p><details v-for="item in diffPage.items" :key="item.businessKey"><summary>{{ item.businessKey }}<span v-if="item.changedFields.length"> · {{ item.changedFields.join('、') }}</span></summary><div><section><strong>修改前</strong><pre>{{ JSON.stringify(item.beforeRows, null, 2) }}</pre></section><section><strong>修改后</strong><pre>{{ JSON.stringify(item.afterRows, null, 2) }}</pre></section></div></details><nav v-if="diffPage.total > diffPage.pageSize" class="pager"><button type="button" :disabled="diffPage.page <= 1" @click="loadDiff(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} / {{ Math.ceil(diffPage.total / diffPage.pageSize) }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total" @click="loadDiff(diffPage.page + 1)">下一页</button></nav></div>
+            <div v-if="trialPassed" class="repair-metrics lineage-result-metrics"><article class="primary-result"><span><i aria-hidden="true">↗</i>候选指标结果（当前值）</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</strong><div><small>正式值 <b>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</b></small><small :class="repairResultDelta >= 0 ? 'is-up' : 'is-down'">差异值 {{ repairResultDelta >= 0 ? '+' : '' }}{{ metricText(repairResultDelta) }} {{ repairResultDelta >= 0 ? '↑' : '↓' }}<b v-if="repairResultDeltaPercent !== null">{{ repairResultDeltaPercent >= 0 ? '+' : '' }}{{ repairResultDeltaPercent.toFixed(2) }}%</b></small></div></article><article><span><i aria-hidden="true">⌘</i>候选分子</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</strong><small>正式分子 {{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }}</small></article><article><span><i aria-hidden="true">▦</i>候选分母</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</strong><small>正式分母 {{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }}</small></article></div>
+            <div v-if="trialPassed" class="repair-detail-entry"><strong>候选结果差异明细</strong><span>展开查看指标值或记录集合的具体差异</span></div>
+            <details v-if="trialPassed" class="repair-detail-samples lineage-diff-samples"><summary><i aria-hidden="true">≠</i><span>指标结果差异明细</span><small>分子、分母、结果值共 3 项</small><em>展开查看⌄</em></summary><table class="shadow-result-table"><thead><tr><th>对比项</th><th>当前正式结果</th><th>候选试跑结果</th><th>变化</th></tr></thead><tbody><tr><th>分子</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'numerator')) - number(aggregateValue(shadowOriginalRow, 'numerator')) }}</td></tr><tr><th>分母</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'denominator')) - number(aggregateValue(shadowOriginalRow, 'denominator')) }}</td></tr><tr><th>结果值</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</td><td>{{ metricText(repairResultDelta) }}</td></tr></tbody></table></details>
+            <details v-for="item in diffCategories" :key="item.type" class="repair-detail-samples lineage-diff-samples" @toggle="toggleDiffCategory($event, item.type)"><summary><i aria-hidden="true">{{ item.type === 'REMOVED' ? '−' : item.type === 'ADDED' ? '+' : '≠' }}</i><span>{{ item.label }}差异明细</span><small>共 {{ item.count }} 条</small><em>{{ diffLoading && diffType === item.type ? '加载中…' : '展开查看⌄' }}</em></summary><div v-if="diffPage && diffType === item.type" class="diff-list"><p>共 {{ diffPage.total }} 个业务编号</p><details v-for="row in diffPage.items" :key="row.businessKey"><summary>{{ row.businessKey }}<span v-if="row.changedFields.length"> · {{ row.changedFields.join('、') }}</span></summary><div><section><strong>修改前</strong><pre>{{ JSON.stringify(row.beforeRows, null, 2) }}</pre></section><section><strong>修改后</strong><pre>{{ JSON.stringify(row.afterRows, null, 2) }}</pre></section></div></details><nav v-if="diffPage.total > diffPage.pageSize" class="pager"><button type="button" :disabled="diffPage.page <= 1" @click="loadDiff(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} / {{ Math.ceil(diffPage.total / diffPage.pageSize) }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total" @click="loadDiff(diffPage.page + 1)">下一页</button></nav></div></details>
+            <p v-if="trialPassed && !hasRecordDiff" class="no-record-diff">本次试跑未发现记录集合差异，指标结果差异仍可在上方展开查看。</p>
           </section>
           <section v-if="snapshot?.currentStep === 'DRAFT_SAVE' && shadowOwnedBySelectedNode && trialPassed && !Boolean(candidate.baselineOnly) && !Boolean(shadow.baselineOnly)" class="draft-save-entry"><button v-if="!draftFormOpen" type="button" class="workspace-primary draft-open-button" @click="draftFormOpen = true">保存为医院草稿版本</button><section v-else class="draft-save"><header><strong>填写医院草稿说明</strong><button type="button" class="draft-form-close" @click="draftFormOpen = false">暂不保存 ×</button></header><p>说明将随候选 SQL 一起进入“知识库回收与审批”，不会影响当前正式计算。</p><label><span>问题说明</span><textarea v-model="draftDescription.issueSummary" rows="2"></textarea></label><label><span>本次修改</span><textarea v-model="draftDescription.changeSummary" rows="2"></textarea></label><label><span>预期影响</span><textarea v-model="draftDescription.expectedImpact" rows="2"></textarea></label><label><span>影子验证结论</span><textarea v-model="draftDescription.verificationSummary" rows="2"></textarea></label><button type="button" class="workspace-primary" :disabled="Boolean(busy) || Object.values(draftDescription).some((value) => !value.trim())" @click="saveDraft">确认保存草稿</button></section></section>
           <section v-if="snapshot?.draftResult && Object.keys(snapshot.draftResult).length" class="draft-complete"><strong>医院草稿已保存</strong><p>草稿编号：{{ String(snapshot.draftResult.draftId || '') }}</p><p>未发布，不影响当前正式计算。</p></section>
         </section>
       </div>
     </section>
+    <div v-if="repairDialogOpen" class="rule-repair-overlay" role="dialog" aria-modal="true" aria-labelledby="rule-repair-title" @click.self="closeRuleRepair">
+      <section class="rule-repair-dialog" :class="{ 'has-result': Boolean(shadow.publicRuleFix) }">
+        <header class="rule-repair-heading"><div><small><i aria-hidden="true">{{ shadow.publicRuleFix ? '✓' : '✦' }}</i>{{ shadow.publicRuleFix ? '公共规则候选验证' : '公共规则修复方案' }}</small><strong id="rule-repair-title">{{ shadow.publicRuleFix ? (trialPassed ? '候选结果已生成' : '候选执行未通过') : publicRuleLabel(repairRuleId) }}</strong><p v-if="!shadow.publicRuleFix">{{ publicRuleRepairDescription(repairRuleId) }}</p></div><button type="button" aria-label="关闭" @click="closeRuleRepair">×</button></header>
+        <article v-if="!publicRuleRepairable(repairRuleId)" class="manual-rule-guidance"><strong>需要人工检查事件启用情况</strong><p>请核对当前指标相关事件是否重复启用，再根据确认的业务编号、去重字段和保留顺序修改源表抽取 SQL。程序不会猜测去重规则。</p></article>
+        <p v-else-if="repairPreviewLoading" class="rule-repair-loading" aria-live="polite"><span class="trial-spinner" aria-hidden="true"></span>{{ executionStage || '正在解析当前指标抽取 SQL…' }}</p>
+        <template v-else-if="publicRuleRepairable(repairRuleId) && Object.keys(candidate).length && !shadow.publicRuleFix">
+          <section class="repair-candidate-card">
+            <header><div><i aria-hidden="true">&lt;/&gt;</i><span><strong>修改后的候选 SQL</strong><small>已根据当前指标抽取 SQL 生成，仅预览，尚未执行</small></span></div><button type="button" @click="copyText('rule-repair', candidateExecutable)">{{ copiedKey === 'rule-repair' ? '✓ 已复制' : '▣ 复制 SQL' }}</button></header>
+            <div class="repair-change-preview"><strong>本次修改 {{ candidateChangedLines.length }} 行</strong><code v-for="(line, index) in candidateChangedLines.slice(0, 12)" :key="`changed-${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : '−' }}</i><span>{{ line.text }}</span></code></div>
+            <button type="button" class="repair-sql-toggle" :aria-expanded="repairSqlExpanded" @click="toggleRepairSql"><span><i aria-hidden="true">◉</i>查看完整候选 SQL</span><em>{{ repairSqlExpanded ? '点击收起' : '点击展开' }} <b aria-hidden="true">⌄</b></em></button>
+            <section v-show="repairSqlExpanded" class="repair-sql-body"><div class="sql-diff-legend"><span class="added">绿色：新增或修改后的内容</span><span class="removed">红色：被删除或替换的原内容</span></div><pre class="sql-diff"><code v-for="(line, index) in candidateDiffLines" :key="`repair-${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }}</i><b>{{ line.newLine || line.oldLine || '' }}</b><span>{{ line.text || ' ' }}</span></code></pre></section>
+          </section>
+          <button type="button" class="workspace-primary rule-repair-run" :disabled="repairRunLoading" aria-live="polite" @click="runRuleRepair"><span v-if="repairRunLoading" class="trial-spinner" aria-hidden="true"></span><i v-else aria-hidden="true">▶</i>{{ repairRunButtonLabel }}</button>
+        </template>
+        <section v-else-if="shadow.publicRuleFix" class="repair-trial-result" :data-state="trialPassed ? 'PASSED' : 'FAILED'">
+          <p class="repair-result-note">{{ String(shadow.message || '公共规则修复 SQL 已完成隔离试跑，正式数据保持不变。') }}</p>
+          <div class="repair-metrics"><article class="primary-result"><span><i aria-hidden="true">↗</i>候选指标结果（当前值）</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</strong><div><small>正式值 <b>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</b></small><small :class="repairResultDelta >= 0 ? 'is-up' : 'is-down'">差异值 {{ repairResultDelta >= 0 ? '+' : '' }}{{ metricText(repairResultDelta) }} {{ repairResultDelta >= 0 ? '↑' : '↓' }}<b v-if="repairResultDeltaPercent !== null">{{ repairResultDeltaPercent >= 0 ? '+' : '' }}{{ repairResultDeltaPercent.toFixed(2) }}%</b></small></div></article><article><span><i aria-hidden="true">⌘</i>候选分子</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</strong><small>正式分子 {{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }} · 下方可展开明细</small></article><article><span><i aria-hidden="true">▦</i>候选分母</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</strong><small>正式分母 {{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }} · 下方可展开明细</small></article></div>
+          <div v-if="repairDetailGroups.some((group) => candidateSampleRows(group).length)" class="repair-detail-entry"><strong>候选结果明细</strong><span>点击下方分子或分母即可展开查看</span></div>
+          <details v-for="group in repairDetailGroups" :key="group" v-show="candidateSampleRows(group).length" class="repair-detail-samples"><summary><i aria-hidden="true">{{ group === 'numerator' ? '⌘' : '▦' }}</i><span>候选{{ group === 'numerator' ? '分子' : '分母' }}明细</span><small>共 {{ number(candidateDetailSamples[`${group}Total`]) }} 条 · 展示 {{ candidateSampleRows(group).length }} 条</small><em>展开查看⌄</em></summary><div class="repair-detail-table"><table><thead><tr><th v-for="column in candidateSampleColumns(group)" :key="column">{{ detailFieldLabel(column) }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in candidateSampleRows(group)" :key="`${group}-${rowIndex}`"><td v-for="column in candidateSampleColumns(group)" :key="column">{{ formatDetailValue(column, row[column]) }}</td></tr></tbody></table></div></details>
+          <p v-if="shadow.candidateDetailWarning" class="workspace-warning">{{ String(shadow.candidateDetailWarning) }}</p>
+        </section>
+        <p v-if="repairError" class="trial-inline-error">{{ repairError }}</p>
+      </section>
+    </div>
   </main>
 </template>
 
