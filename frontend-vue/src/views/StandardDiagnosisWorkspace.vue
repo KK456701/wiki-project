@@ -30,7 +30,6 @@ type FlowNode = Record<string, unknown>
 type AiScopeOption = { value: string; label: string; field: string }
 type SqlDiffLine = { kind: 'same' | 'added' | 'removed'; text: string; oldLine?: number; newLine?: number }
 type ExecutionKind = '' | 'overall' | 'candidate-generate' | 'candidate-run' | 'baseline-refresh' | 'rule-preview' | 'rule-run'
-const repairDetailGroups: Array<'numerator' | 'denominator'> = ['numerator', 'denominator']
 
 function buildSqlDiff(originalSql: string, candidateSql: string): SqlDiffLine[] {
   const original = originalSql.replace(/\r\n/g, '\n').split('\n')
@@ -221,7 +220,6 @@ const diffCategories = computed<Array<{ type: DiagnosisShadowDiffPage['type']; l
 const hasRecordDiff = computed(() => diffCategories.value.length > 0)
 const shadowOriginalRow = computed(() => firstResultRow(shadow.value.originalResult))
 const shadowCandidateRow = computed(() => firstResultRow(shadow.value.candidateResult))
-const candidateDetailSamples = computed(() => record(shadow.value.candidateDetailSamples))
 const shadowResultChanged = computed(() =>
   number(aggregateValue(shadowOriginalRow.value, 'result')) !== number(aggregateValue(shadowCandidateRow.value, 'result')))
 const repairResultDelta = computed(() => number(aggregateValue(shadowCandidateRow.value, 'result'))
@@ -274,7 +272,8 @@ const candidateGenerateLabel = computed(() => activeExecution.value === 'candida
 const candidateRunLabel = computed(() => activeExecution.value === 'candidate-run'
   ? executionStage.value : '用该候选 SQL 整体执行')
 const refreshButtonLabel = computed(() => activeExecution.value === 'baseline-refresh'
-  ? executionStage.value : '↻ 重新抽取并计算')
+  ? executionStage.value
+  : selectedNodeLayer.value === 'OVERVIEW' ? '↻ 重新统计并计算' : '↻ 重新抽取并计算')
 const repairRunButtonLabel = computed(() => activeExecution.value === 'rule-run'
   ? executionStage.value : '用该 SQL 整体执行')
 
@@ -860,19 +859,6 @@ function formatDetailValue(field: string, value: unknown): string {
   return String(value)
 }
 
-function candidateSampleRows(group: 'numerator' | 'denominator'): Record<string, unknown>[] {
-  const rows = candidateDetailSamples.value[group]
-  return Array.isArray(rows) ? rows.map((row) => record(row)) : []
-}
-
-function candidateSampleColumns(group: 'numerator' | 'denominator'): string[] {
-  const rows = candidateSampleRows(group)
-  const priority = ['PERSON_NAME', 'FULL_NAME', 'personName', 'ENCOUNTER_ID', 'encounterId', 'IMRN', 'imrn',
-    'CURRENT_DEPT_NAME', 'currentDeptName', 'CURRENT_WARD_NAME', 'currentWardName', '__meets_numerator']
-  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))]
-  return [...priority.filter((key) => keys.includes(key)), ...keys.filter((key) => !priority.includes(key))].slice(0, 8)
-}
-
 function departmentTargets(values: string[]) {
   const options = screening.value?.departmentOptions || []
   const byField = new Map<string, { values: string[]; labels: string[] }>()
@@ -975,15 +961,6 @@ function aiRequirementText(): string {
     const labels = aiSelectedDepartments.value.map((value) => options.find((item) => item.value === value)?.label || value)
     parts.push(`针对这些科室范围核查并修改：${labels.join('、')}`)
   }
-  if (!aiSelectedPatients.value.length && !aiSelectedDepartments.value.length) {
-    const marker = '排除这些疑似多算记录：'
-    const markerIndex = entered.indexOf(marker)
-    if (markerIndex >= 0) {
-      const selectedPart = entered.slice(markerIndex + marker.length).split('；')[0]
-      const patientNames = selectedPart.split('、').map((label) => label.trim().split(' · ')[0]).filter(Boolean)
-      if (patientNames.length) parts.push(`排除患者姓名属于“${patientNames.join(',')}”的数据`)
-    }
-  }
   return parts.filter(Boolean).join('；')
 }
 
@@ -1079,13 +1056,16 @@ async function clarifyData() {
 
 async function checkLatestExtraction() {
   refreshError.value = ''
-  startExecutionFlow('baseline-refresh', ['正在读取当前正式 SQL…', '正在重新抽取业务数据…', '正在计算正式分子分母…', '正在核对最新结果…'])
+  const overview = selectedNodeLayer.value === 'OVERVIEW'
+  startExecutionFlow('baseline-refresh', overview
+    ? ['正在读取当前正式概览 SQL…', '正在重新统计分子分母…', '正在计算正式结果值…', '正在核对最新结果…']
+    : ['正在读取当前正式抽取 SQL…', '正在重新抽取业务数据…', '正在计算正式分子分母…', '正在核对最新结果…'])
   try {
     const updated = await act('RUN_LINEAGE_BASELINE', {
-      layer: 'SOURCE_EXTRACT', nodeId: selectedNodeId.value,
+      layer: selectedNodeLayer.value, nodeId: selectedNodeId.value,
     })
     if (!updated) {
-      refreshError.value = error.value || '重新抽取并计算失败。'
+      refreshError.value = error.value || (overview ? '重新统计并计算失败。' : '重新抽取并计算失败。')
       refreshProgress.value = ''
       return
     }
@@ -1094,8 +1074,8 @@ async function checkLatestExtraction() {
     const oldValue = number(aggregateValue(oldRow, 'result'))
     const newValue = number(aggregateValue(newRow, 'result'))
     refreshProgress.value = oldValue === newValue
-      ? '重新抽取和计算完成，指标结果无变化。'
-      : `重新抽取和计算完成：指标值由 ${metricText(oldValue)} 变为 ${metricText(newValue)}。`
+      ? `${overview ? '重新统计' : '重新抽取'}和计算完成，指标结果无变化。`
+      : `${overview ? '重新统计' : '重新抽取'}和计算完成：指标值由 ${metricText(oldValue)} 变为 ${metricText(newValue)}。`
   } finally {
     stopExecutionFlow()
   }
@@ -1262,6 +1242,14 @@ async function generateCandidate() {
   const candidateSql = editMode.value === 'direct' ? directSql.value.trim() : ''
   const requirementText = editMode.value === 'ai' ? aiRequirementText() : '实施人员直接编辑当前正式 SQL'
   if (!requirementText || (editMode.value === 'direct' && !directSqlChanged.value)) return null
+  if (editMode.value === 'ai'
+    && requirementText.includes('排除这些疑似多算记录：')
+    && aiScopeTargets().length === 0) {
+    trialNodeId.value = selectedNodeId.value
+    trialProgress.value = '带入条件不完整'
+    trialError.value = '缺少原始记录字段和业务编号，请点击“带入数据确认”重新选择记录后再生成 SQL。'
+    return null
+  }
   const preparedSignature = candidateInputSignature()
   trialError.value = ''
   trialNodeId.value = selectedNodeId.value
@@ -1532,9 +1520,9 @@ function closeWorkspace() { void router.push('/') }
             <aside><span aria-hidden="true">♧</span>{{ nodeHint(selectedNode) }}</aside>
           </header>
           <section v-if="strings(selectedNode.tableNames).length" class="node-table-section lineage-work-card"><header><div><strong>这一环节用到的数据表</strong><span>先展示最主要的两张表，其余表可按需展开。</span></div></header><ul class="node-table-list"><li v-for="table in strings(selectedNode.tableNames).slice(0, 2)" :key="table"><i aria-hidden="true">▦</i><div><strong>{{ table }}</strong><span>{{ tablePurpose(table, record(selectedNode.tableDescriptions)[table]) }}</span></div></li></ul><details v-if="strings(selectedNode.tableNames).length > 2" class="more-node-tables"><summary>查看其余 {{ strings(selectedNode.tableNames).length - 2 }} 张表</summary><ul class="node-table-list"><li v-for="table in strings(selectedNode.tableNames).slice(2)" :key="table"><i aria-hidden="true">▦</i><div><strong>{{ table }}</strong><span>{{ tablePurpose(table, record(selectedNode.tableDescriptions)[table]) }}</span></div></li></ul></details></section>
-          <details v-if="String(selectedNode.sql || '').trim()" class="sql-template-evidence lineage-work-card"><summary><span><strong>查看当前正式 SQL</strong><small>查看当前线上生效的 SQL、内容与运行配置。</small></span><em>展开查看与复制 ›</em></summary><section class="sql-panel"><header><strong>当前统计窗口可直接执行 SQL</strong><button type="button" @click="copyText(`node-${String(selectedNode.id)}`, selectedNode.sql)">{{ copiedKey === `node-${String(selectedNode.id)}` ? '已复制' : '复制 SQL' }}</button></header><pre>{{ String(selectedNode.sql) }}</pre></section></details>
-          <section v-if="selectedNodeLayer === 'SOURCE_EXTRACT'" class="source-refresh-card lineage-work-card">
-            <div><strong>用当前正式 SQL 重新抽取并计算</strong><p>始终使用当前正式抽取 SQL读取最新业务数据，并在影子环境重新计算；页面里的候选 SQL不会参与本次执行。</p></div>
+          <details v-if="String(selectedNode.sql || '').trim()" class="sql-template-evidence lineage-work-card"><summary><span><strong>查看当前正式 SQL</strong><small>用当前正式 SQL {{ selectedNodeLayer === 'OVERVIEW' ? '重新统计并计算' : '重新抽取并计算' }}</small></span><em>展开查看与复制 ›</em></summary><section class="sql-panel"><header><strong>当前统计窗口可直接执行 SQL</strong><button type="button" @click="copyText(`node-${String(selectedNode.id)}`, selectedNode.sql)">{{ copiedKey === `node-${String(selectedNode.id)}` ? '已复制' : '复制 SQL' }}</button></header><pre>{{ String(selectedNode.sql) }}</pre></section></details>
+          <section v-if="selectedNodeEditable" class="source-refresh-card lineage-work-card">
+            <div><strong>{{ selectedNodeLayer === 'OVERVIEW' ? '怀疑是统计计算有问题？' : '怀疑是抽数据有问题？' }}</strong><p>使用当前正式{{ selectedNodeLayer === 'OVERVIEW' ? '概览统计' : '抽取' }} SQL {{ selectedNodeLayer === 'OVERVIEW' ? '重新统计指标结果' : '读取最新业务数据并重新计算' }}，不会使用页面中的候选 SQL。</p></div>
             <button type="button" class="workspace-secondary" :disabled="Boolean(busy) || !modificationAllowed" aria-live="polite" @click="checkLatestExtraction"><span v-if="activeExecution === 'baseline-refresh'" class="trial-spinner" aria-hidden="true"></span>{{ refreshButtonLabel }}</button>
             <p v-if="refreshProgress" class="source-refresh-status">{{ refreshProgress }}</p>
             <p v-if="refreshError" class="source-refresh-error">{{ refreshError }}</p>
@@ -1595,10 +1583,11 @@ function closeWorkspace() { void router.push('/') }
         </template>
         <section v-else-if="shadow.publicRuleFix" class="repair-trial-result" :data-state="trialPassed ? 'PASSED' : 'FAILED'">
           <p class="repair-result-note">{{ String(shadow.message || '公共规则修复 SQL 已完成隔离试跑，正式数据保持不变。') }}</p>
-          <div class="repair-metrics"><article class="primary-result"><span><i aria-hidden="true">↗</i>候选指标结果（当前值）</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</strong><div><small>正式值 <b>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</b></small><small :class="repairResultDelta >= 0 ? 'is-up' : 'is-down'">差异值 {{ repairResultDelta >= 0 ? '+' : '' }}{{ metricText(repairResultDelta) }} {{ repairResultDelta >= 0 ? '↑' : '↓' }}<b v-if="repairResultDeltaPercent !== null">{{ repairResultDeltaPercent >= 0 ? '+' : '' }}{{ repairResultDeltaPercent.toFixed(2) }}%</b></small></div></article><article><span><i aria-hidden="true">⌘</i>候选分子</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</strong><small>正式分子 {{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }} · 下方可展开明细</small></article><article><span><i aria-hidden="true">▦</i>候选分母</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</strong><small>正式分母 {{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }} · 下方可展开明细</small></article></div>
-          <div v-if="repairDetailGroups.some((group) => candidateSampleRows(group).length)" class="repair-detail-entry"><strong>候选结果明细</strong><span>点击下方分子或分母即可展开查看</span></div>
-          <details v-for="group in repairDetailGroups" :key="group" v-show="candidateSampleRows(group).length" class="repair-detail-samples"><summary><i aria-hidden="true">{{ group === 'numerator' ? '⌘' : '▦' }}</i><span>候选{{ group === 'numerator' ? '分子' : '分母' }}明细</span><small>共 {{ number(candidateDetailSamples[`${group}Total`]) }} 条 · 展示 {{ candidateSampleRows(group).length }} 条</small><em>展开查看⌄</em></summary><div class="repair-detail-table"><table><thead><tr><th v-for="column in candidateSampleColumns(group)" :key="column">{{ detailFieldLabel(column) }}</th></tr></thead><tbody><tr v-for="(row, rowIndex) in candidateSampleRows(group)" :key="`${group}-${rowIndex}`"><td v-for="column in candidateSampleColumns(group)" :key="column">{{ formatDetailValue(column, row[column]) }}</td></tr></tbody></table></div></details>
-          <p v-if="shadow.candidateDetailWarning" class="workspace-warning">{{ String(shadow.candidateDetailWarning) }}</p>
+          <div class="repair-metrics"><article class="primary-result"><span><i aria-hidden="true">↗</i>候选指标结果（当前值）</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</strong><div><small>正式值 <b>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</b></small><small :class="repairResultDelta >= 0 ? 'is-up' : 'is-down'">差异值 {{ repairResultDelta >= 0 ? '+' : '' }}{{ metricText(repairResultDelta) }} {{ repairResultDelta >= 0 ? '↑' : '↓' }}<b v-if="repairResultDeltaPercent !== null">{{ repairResultDeltaPercent >= 0 ? '+' : '' }}{{ repairResultDeltaPercent.toFixed(2) }}%</b></small></div></article><article><span><i aria-hidden="true">⌘</i>候选分子</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</strong><small>正式分子 {{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }} · 下方仅展示差异</small></article><article><span><i aria-hidden="true">▦</i>候选分母</span><strong>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</strong><small>正式分母 {{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }} · 下方仅展示差异</small></article></div>
+          <div class="repair-detail-entry"><strong>候选结果差异明细</strong><span>展开查看指标值或记录集合的具体差异</span></div>
+          <details class="repair-detail-samples lineage-diff-samples"><summary><i aria-hidden="true">≠</i><span>指标结果差异明细</span><small>分子、分母、结果值共 3 项</small><em>展开查看⌄</em></summary><table class="shadow-result-table"><thead><tr><th>对比项</th><th>当前正式结果</th><th>候选试跑结果</th><th>变化</th></tr></thead><tbody><tr><th>分子</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'numerator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'numerator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'numerator')) - number(aggregateValue(shadowOriginalRow, 'numerator')) }}</td></tr><tr><th>分母</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'denominator')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'denominator')) }}</td><td>{{ number(aggregateValue(shadowCandidateRow, 'denominator')) - number(aggregateValue(shadowOriginalRow, 'denominator')) }}</td></tr><tr><th>结果值</th><td>{{ metricText(aggregateValue(shadowOriginalRow, 'result')) }}</td><td>{{ metricText(aggregateValue(shadowCandidateRow, 'result')) }}</td><td>{{ metricText(repairResultDelta) }}</td></tr></tbody></table></details>
+          <details v-for="item in diffCategories" :key="item.type" class="repair-detail-samples lineage-diff-samples" @toggle="toggleDiffCategory($event, item.type)"><summary><i aria-hidden="true">{{ item.type === 'REMOVED' ? '−' : item.type === 'ADDED' ? '+' : '≠' }}</i><span>{{ item.label }}差异明细</span><small>共 {{ item.count }} 条</small><em>{{ diffLoading && diffType === item.type ? '加载中…' : '展开查看⌄' }}</em></summary><div v-if="diffPage && diffType === item.type" class="diff-list"><p>共 {{ diffPage.total }} 个业务编号</p><details v-for="row in diffPage.items" :key="row.businessKey"><summary>{{ row.businessKey }}<span v-if="row.changedFields.length"> · {{ row.changedFields.join('、') }}</span></summary><div><section><strong>修改前</strong><pre>{{ JSON.stringify(row.beforeRows, null, 2) }}</pre></section><section><strong>修改后</strong><pre>{{ JSON.stringify(row.afterRows, null, 2) }}</pre></section></div></details><nav v-if="diffPage.total > diffPage.pageSize" class="pager"><button type="button" :disabled="diffPage.page <= 1" @click="loadDiff(diffPage.page - 1)">上一页</button><span>第 {{ diffPage.page }} / {{ Math.ceil(diffPage.total / diffPage.pageSize) }} 页</span><button type="button" :disabled="diffPage.page * diffPage.pageSize >= diffPage.total" @click="loadDiff(diffPage.page + 1)">下一页</button></nav></div></details>
+          <p v-if="!hasRecordDiff" class="no-record-diff">本次试跑未发现记录集合差异，指标结果差异仍可在上方展开查看。</p>
         </section>
         <p v-if="repairError" class="trial-inline-error">{{ repairError }}</p>
       </section>
