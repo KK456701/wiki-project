@@ -431,7 +431,13 @@ export interface DiagnosisDataScreening {
   scannedRows: number
   findingCount: number
   truncated: boolean
-  rules: string[]
+  rules: Array<{
+    ruleId: 'PUBLIC_001' | 'PUBLIC_002' | 'PUBLIC_003'
+    target: 'PATIENT_NAME' | 'DEPARTMENT_NAME' | 'BUSINESS_KEY'
+    changeLayer: 'SOURCE_EXTRACT'
+    action: 'FLAG_OVER_INCLUDED' | 'FLAG_DUPLICATE_DETAIL'
+    sourcePath: string
+  }>
   modelUsed: false
   countsReconciled: boolean
   overviewSqlHash: string
@@ -444,12 +450,16 @@ export interface DiagnosisDataScreening {
   }>
   findings: Array<{
     findingId: string
-    ruleCode: 'DETERMINISTIC_TEST_MARKER' | 'DETERMINISTIC_DUPLICATE_KEY'
+    ruleCode: 'PUBLIC_001' | 'PUBLIC_002' | 'PUBLIC_003'
+    ruleSource: string
+    changeLayer: 'SOURCE_EXTRACT'
     reason: string
     rowKey: string
     field?: string
     value?: string
     count?: number
+    sourceGroup?: 'NUMERATOR_DETAIL' | 'DENOMINATOR_DETAIL'
+    target?: 'PATIENT_NAME' | 'DEPARTMENT_NAME' | 'BUSINESS_KEY'
     row: Record<string, unknown>
   }>
 }

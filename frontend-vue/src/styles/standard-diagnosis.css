@@ -1029,3 +1029,11 @@
 @media (prefers-reduced-motion: reduce) {
   .standard-diagnosis-workspace * { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.selected-public-rules { margin-top: 14px; padding: 13px 15px; border: 1px solid #a9d8cc; border-radius: 13px; background: #f2faf8; }
+.selected-public-rules header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.selected-public-rules header strong { color: #0e5f52; font-size: 13px; }
+.selected-public-rules header button { border: 0; color: #50736b; background: transparent; cursor: pointer; }
+.selected-public-rules > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.selected-public-rules > div button { padding: 6px 10px; border: 1px solid #8bc9ba; border-radius: 999px; color: #0d6858; background: #fff; cursor: pointer; }
+.selected-public-rules p { margin: 9px 0 0; color: #66817a; font-size: 10px; }

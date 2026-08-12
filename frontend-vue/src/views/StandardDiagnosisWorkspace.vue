@@ -98,6 +98,7 @@ const selectedRows = ref(new Map<string, Record<string, unknown>>())
 const screening = ref<DiagnosisDataScreening | null>(null)
 const screeningLoading = ref(false)
 const screeningExpanded = ref(false)
+const selectedPublicRuleIds = ref<string[]>([])
 const overIncludedNote = ref('')
 const underIncludedNote = ref('')
 const selectedDepartments = ref<string[]>([])
@@ -364,6 +365,8 @@ function hydrateDataConfirmation() {
     const target = record(item)
     return Array.isArray(target.values) ? target.values.map(String) : []
   })
+  selectedPublicRuleIds.value = Array.isArray(confirmation.publicRuleIds)
+    ? confirmation.publicRuleIds.map(String) : []
   const underTargets = Array.isArray(confirmation.underIncludedTargets)
     ? confirmation.underIncludedTargets.map(record) : []
   const underRecord = underTargets.find((item) => String(item.targetType) === 'RECORD')
@@ -389,7 +392,22 @@ function clarificationRequirement(): string {
   if (departmentLabels.length) parts.push('核对并排除科室范围：' + departmentLabels.join('、'))
   if (confirmation.overIncludedNote) parts.push(`数据多了：${String(confirmation.overIncludedNote)}`)
   if (confirmation.underIncludedNote) parts.push(`数据少了：${String(confirmation.underIncludedNote)}`)
+  const publicRules = selectedPublicRuleIds.value.length ? selectedPublicRuleIds.value
+    : Array.isArray(confirmation.publicRuleIds) ? confirmation.publicRuleIds.map(String) : []
+  if (publicRules.includes('PUBLIC_001')) parts.push('按公共规则排除患者姓名包含“测试”或“test”的数据')
+  if (publicRules.includes('PUBLIC_002')) parts.push('按公共规则排除当前科室名称包含“测试”“test”或“血液透析门诊”的数据')
+  if (publicRules.includes('PUBLIC_003')) parts.push('最终明细存在重复业务编号，请人工核对当前指标相关事件是否重复启用')
   return parts.join('；')
+}
+
+function publicRuleLabel(ruleId: string): string {
+  if (ruleId === 'PUBLIC_001') return '排除测试患者'
+  if (ruleId === 'PUBLIC_002') return '排除测试及血液透析门诊科室'
+  return '检查重复明细与事件启用情况'
+}
+
+function clearPublicRules() {
+  selectedPublicRuleIds.value = []
 }
 
 function normalizeStep(value: string): WorkspaceStep {
@@ -467,6 +485,7 @@ function resetCaseWorkingState() {
   selectedRows.value = new Map()
   screening.value = null
   screeningExpanded.value = false
+  selectedPublicRuleIds.value = []
   overIncludedNote.value = ''
   underIncludedNote.value = ''
   selectedDepartments.value = []
@@ -649,13 +668,21 @@ function clearSelectedRows() {
 }
 
 function findingSelect(finding: DiagnosisDataScreening['findings'][number]) {
+  const ruleId = String(finding.ruleCode || '')
+  selectedPublicRuleIds.value = selectedPublicRuleIds.value.includes(ruleId)
+    ? selectedPublicRuleIds.value.filter((item) => item !== ruleId)
+    : [...selectedPublicRuleIds.value, ruleId]
+  // 公共规则代表“当前指标全量应用该规则”，不能把一条命中样例误当成
+  // 只排除这一名患者。精确排除单条患者仍从分子/分母明细勾选。
+  if (ruleId) return
   if (finding.row && Object.keys(finding.row).length) {
     const copy = new Map(selectedRows.value)
     if (copy.has(finding.rowKey)) copy.delete(finding.rowKey)
     else {
       copy.set(finding.rowKey, {
         ...finding.row,
-        __sourceGroup: String((finding.row as Record<string, unknown>).__sourceGroup || 'screening'),
+        __sourceGroup: String(finding.sourceGroup
+          || (finding.row as Record<string, unknown>).__sourceGroup || 'screening'),
       })
       selectedDepartments.value = []
     }
@@ -797,6 +824,13 @@ function toggleAiDepartment(value: string) {
 }
 
 function importConfirmationScope() {
+  const publicRules = Array.isArray(snapshot.value?.dataConfirmation.publicRuleIds)
+    ? snapshot.value?.dataConfirmation.publicRuleIds.map(String) : []
+  if (publicRules.length) {
+    selectedPublicRuleIds.value = [...new Set(publicRules)]
+    requirement.value = clarificationRequirement()
+    return
+  }
   const rows = confirmationRows()
   if (rows.length) {
     aiScopeMode.value = 'PATIENT'
@@ -875,6 +909,7 @@ function dataConfirmationPayload(noIssue = false) {
     overIncludedDepartments: departmentTargets(selectedDepartments.value),
     underIncludedNote: underIncludedNote.value.trim(),
     underIncludedTargets: clarificationTargets('UNDER_INCLUDED'),
+    publicRuleIds: selectedPublicRuleIds.value,
     confirmedNoIssue: noIssue,
   }
 }
@@ -937,6 +972,7 @@ async function proceedToLineage() {
     || payload.overIncludedDepartments.length > 0
     || Boolean(payload.underIncludedNote)
     || payload.underIncludedTargets.length > 0
+    || payload.publicRuleIds.length > 0
   const updated = await act('SUBMIT_DATA_CONFIRMATION', {
     ...payload,
     confirmedNoIssue: !hasIssue,
@@ -1069,6 +1105,8 @@ async function submitCandidate() {
       candidateSql,
       patchConditions: [],
       scopeTargets: aiScopeTargets(),
+      publicRuleIds: Array.isArray(snapshot.value?.dataConfirmation.publicRuleIds)
+        ? snapshot.value?.dataConfirmation.publicRuleIds : [],
       generationMode: editMode.value === 'direct' ? 'DIRECT_EDIT' : 'AI_MODIFY',
       dataConfirmationRef: String(snapshot.value?.dataConfirmation.submittedAt || ''),
       requestAiAnalysis: editMode.value === 'ai',
@@ -1280,17 +1318,23 @@ function closeWorkspace() { void router.push('/') }
 
         <section class="screening-panel compact-screening" :class="{ 'has-findings': Boolean(screening?.findingCount) }">
           <header><div><span class="screening-alert" aria-hidden="true">!</span><strong>AI 初筛</strong><span v-if="screening?.findingCount" class="screening-count">发现 {{ screening.findingCount }} 条疑似测试或重复数据</span></div><button v-if="(screening?.findingCount || 0) > 3" type="button" class="screening-toggle" @click="screeningExpanded = !screeningExpanded">{{ screeningExpanded ? '收起' : `查看全部 ${screening?.findingCount} 条 ›` }}</button></header>
-          <p v-if="screeningLoading">正在检查患者姓名、科室名称和重复业务编号…</p>
-          <p v-else-if="!screening?.findingCount">当前明细中未发现明确的“测试 / test”字样或重复业务编号。</p>
+          <p v-if="screeningLoading">正在按公共规则检查患者姓名、科室名称和明细重复业务编号…</p>
+          <p v-else-if="!screening?.findingCount">当前明细未命中测试患者、测试/血液透析门诊科室或重复业务编号规则。</p>
           <template v-else>
-            <p class="screening-guidance">以下记录可能导致指标失真。点击一行即可加入下方“数据多了”的待澄清范围。</p>
+            <p class="screening-guidance">以下是公共规则命中的实际明细样例。点击一行会选择整条公共规则；进入链路核查后，程序将按当前指标抽取 SQL 的实际字段生成候选语句，不会只排除这一条样例。</p>
             <div class="screening-table" role="table" aria-label="AI初筛结果">
               <div class="screening-table-head" role="row"><span>患者姓名</span><span>患者标识</span><span>科室</span><span>命中规则</span></div>
-              <button v-for="finding in screeningPreviewFindings" :key="finding.findingId" type="button" role="row" :class="{ selected: selectedRows.has(finding.rowKey) }" @click="findingSelect(finding)">
-                <strong>{{ screeningFindingCell(finding, 'name') }}</strong><span>{{ screeningFindingCell(finding, 'record') }}</span><span>{{ screeningFindingCell(finding, 'department') }}</span><small>{{ selectedRows.has(finding.rowKey) ? '✓ 已加入排除范围' : finding.reason }}</small>
+              <button v-for="finding in screeningPreviewFindings" :key="finding.findingId" type="button" role="row" :class="{ selected: selectedPublicRuleIds.includes(finding.ruleCode) }" @click="findingSelect(finding)">
+                <strong>{{ screeningFindingCell(finding, 'name') }}</strong><span>{{ screeningFindingCell(finding, 'record') }}</span><span>{{ screeningFindingCell(finding, 'department') }}</span><small>{{ selectedPublicRuleIds.includes(finding.ruleCode) ? '✓ 已选择此公共规则' : finding.reason }}</small>
               </button>
             </div>
           </template>
+        </section>
+
+        <section v-if="selectedPublicRuleIds.length" class="selected-public-rules">
+          <header><strong>已选择公共处理规则</strong><button type="button" @click="clearPublicRules">清空</button></header>
+          <div><button v-for="ruleId in selectedPublicRuleIds" :key="ruleId" type="button" @click="findingSelect({ ruleCode: ruleId } as DiagnosisDataScreening['findings'][number])">{{ publicRuleLabel(ruleId) }} ×</button></div>
+          <p>进入数据链路后默认修改当前指标的源表抽取 SQL；程序会先解析当前脚本实际字段，再生成候选 SQL。</p>
         </section>
 
         <StandardDataConfirmationEditor
@@ -1359,7 +1403,7 @@ function closeWorkspace() { void router.push('/') }
             <button type="button" class="workspace-primary trial-action" :disabled="Boolean(busy) || !modificationAllowed || (editMode === 'ai' ? !aiRequirementText() : !directSql.trim())" @click="submitCandidate"><span v-if="busy || (trialProgress && !['试跑完成', '试跑失败', 'SQL校验失败'].includes(trialProgress))" class="trial-spinner" aria-hidden="true"></span>{{ trialButtonLabel }}</button>
           </section>
           <article v-if="trialError && selectedNodeEditable && trialNodeId === selectedNodeId" class="trial-inline-error"><strong>{{ trialProgress || '执行失败' }}</strong><p>{{ trialError }}</p><p v-if="trialError.includes('模型')">本次失败发生在模型整理修改要求阶段，尚未修改正式 SQL，也没有执行影子写入。</p><div class="trial-error-actions"><button type="button" class="workspace-secondary" :disabled="Boolean(busy)" @click="submitCandidate">重新生成</button><button type="button" class="workspace-secondary" @click="editMode = 'direct'; trialError = ''; trialProgress = ''">切换为直接编辑 SQL</button></div></article>
-          <details v-if="candidateOwnedBySelectedNode" class="candidate-result collapsible-result"><summary><span><strong>候选 SQL</strong><small>{{ String(candidate.generationMethod || '') }} · {{ String(candidate.databaseDialect || '当前数据库方言') }}</small></span><em>展开查看与复制</em></summary><ul class="candidate-validation"><li v-for="stage in strings(candidate.validationStages)" :key="stage">✓ {{ stage }}</li></ul><div class="sql-diff-legend"><span class="added">绿色：新增或修改后的内容</span><span class="removed">红色：被删除或替换的原内容</span></div><div class="sql-panel"><header><small>{{ String(record(candidate.validation).message || '安全校验已通过') }}</small><button type="button" @click="copyText('candidate', candidateExecutable)">{{ copiedKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></header><pre class="sql-diff"><code v-for="(line, index) in candidateDiffLines" :key="`${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }}</i><b>{{ line.newLine || line.oldLine || '' }}</b><span>{{ line.text || ' ' }}</span></code></pre></div></details>
+          <details v-if="candidateOwnedBySelectedNode" class="candidate-result collapsible-result" open><summary><span><strong>候选 SQL</strong><small>{{ String(candidate.generationMethod || '') }} · {{ String(candidate.databaseDialect || '当前数据库方言') }}</small></span><em>展开/收起并复制</em></summary><ul class="candidate-validation"><li v-for="stage in strings(candidate.validationStages)" :key="stage">✓ {{ stage }}</li></ul><div class="sql-diff-legend"><span class="added">绿色：新增或修改后的内容</span><span class="removed">红色：被删除或替换的原内容</span></div><div class="sql-panel"><header><small>{{ String(record(candidate.validation).message || '安全校验已通过') }}</small><button type="button" @click="copyText('candidate', candidateExecutable)">{{ copiedKey === 'candidate' ? '已复制' : '复制 SQL' }}</button></header><pre class="sql-diff"><code v-for="(line, index) in candidateDiffLines" :key="`${index}-${line.kind}`" :class="`is-${line.kind}`"><i>{{ line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : ' ' }}</i><b>{{ line.newLine || line.oldLine || '' }}</b><span>{{ line.text || ' ' }}</span></code></pre></div></details>
           <section v-if="shadowOwnedBySelectedNode" class="shadow-result" :data-state="trialPassed ? 'PASSED' : 'FAILED'">
             <header><div><span>影子试跑</span><strong>{{ trialPassed ? '验收通过' : '未通过验收' }}</strong></div><em>{{ String(shadow.trialId || '') }}</em></header>
             <p>{{ String(shadow.message || (trialPassed ? '候选数据已完成隔离试跑，正式表和当前卡片未被修改。' : '请根据执行错误或记录差异调整候选条件。')) }}</p>
