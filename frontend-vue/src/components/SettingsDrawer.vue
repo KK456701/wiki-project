@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
-  activateRuntimeBusinessConnection,
   loadApplicationLogs,
   loadRuntimeSettings,
   saveRuntimeConnection,
@@ -57,6 +56,7 @@ const modelItems = computed<RuntimeModelSetting[]>(() => settings.value?.models 
   baseUrl: '',
   completionsPath: '',
   enableThinking: null,
+  contextWindowTokens: model.provider === 'ollama' ? 16384 : null,
   apiKeyConfigured: false,
 })))
 
@@ -81,7 +81,7 @@ const databaseGroups = computed(() => {
     {
       key: 'business',
       title: '业务库',
-      description: '医院指标源数据；同一时间只启用一个连接',
+      description: '当前唯一启用的医院 Oracle 指标源数据连接',
       items: items.filter((item) => item.role === 'BUSINESS'),
     },
     {
@@ -127,6 +127,7 @@ function modelDraft(item: RuntimeModelSetting): RuntimeModelConfigInput {
     apiKey: '',
     thinking: Boolean(item.thinking),
     enableThinking: item.enableThinking,
+    contextWindowTokens: item.provider === 'ollama' ? Number(item.contextWindowTokens || 16384) : null,
   }
 }
 
@@ -192,21 +193,7 @@ async function saveDatabase(item: RuntimeDatabaseSetting): Promise<boolean> {
 async function testAndApplyDatabase(item: RuntimeDatabaseSetting) {
   message.value = ''
   if (!await testConnection(item)) return
-  const wasActive = item.active
-  if (!await saveDatabase(item)) return
-  if (item.role === 'BUSINESS' && !wasActive) {
-    saving.value = `activate:${item.id}`
-    try {
-      const result = await activateRuntimeBusinessConnection(props.token, item.id as 'business' | 'oracle')
-      message.value = result.message
-      await load()
-      emit('settingsUpdated')
-    } catch (reason) {
-      message.value = reason instanceof Error ? reason.message : '业务库切换失败。'
-    } finally {
-      saving.value = ''
-    }
-  }
+  await saveDatabase(item)
 }
 
 async function saveModels(preferredModelId = '') {
@@ -320,15 +307,21 @@ async function copyLogs() {
       </header>
 
       <nav class="settings-tabs" aria-label="设置分类">
-        <button type="button" :class="{ active: activeTab === 'models' }" @click="activeTab = 'models'">模型</button>
-        <button type="button" :class="{ active: activeTab === 'databases' }" @click="activeTab = 'databases'">数据库</button>
-        <button type="button" :class="{ active: activeTab === 'logs' }" @click="selectLogs">错误日志</button>
+        <button type="button" :class="{ active: activeTab === 'models' }" @click="activeTab = 'models'">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 7 4-7 4-7-4 7-4Z"/><path d="m5 7 7 4 7-4v9l-7 4-7-4V7Z"/></svg><span>模型</span>
+        </button>
+        <button type="button" :class="{ active: activeTab === 'databases' }" @click="activeTab = 'databases'">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v7c0 1.7 3.1 3 7 3s7-1.3 7-3V5"/><path d="M5 12v7c0 1.7 3.1 3 7 3s7-1.3 7-3v-7"/></svg><span>数据库</span>
+        </button>
+        <button type="button" :class="{ active: activeTab === 'logs' }" @click="selectLogs">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M15 3v5h4M9 12h6M9 16h6"/></svg><span>错误日志</span>
+        </button>
       </nav>
 
       <main class="settings-body">
         <p class="settings-security">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8 7 10 4.2-2 7-5.4 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-          {{ settings?.securityNotice || '密钥和数据库密码仅保存在本机运行设置中，不会回显。' }}
+          <span><strong>安全提示</strong>{{ settings?.securityNotice || '密钥和数据库密码仅保存在本机运行设置中，不会回显。' }}<small>配置测试通过后立即生效，不会写入知识库。</small></span>
         </p>
 
         <p v-if="loading" class="settings-state">正在读取实际运行配置…</p>
@@ -360,6 +353,7 @@ async function copyLogs() {
                     <label>API Key（只写；留空不改）<input v-model="modelDrafts[model.id].apiKey" type="password" autocomplete="new-password" :placeholder="model.apiKeyConfigured ? '已保存，留空不修改' : '请输入 API Key'"></label>
                     <label class="settings-check"><input v-model="modelDrafts[model.id].thinking" type="checkbox"> 思考型模型</label>
                     <label v-if="modelDrafts[model.id].provider === 'openai-compatible'" class="settings-check"><input v-model="modelDrafts[model.id].enableThinking" type="checkbox"> 请求时开启厂商思考参数</label>
+                    <label v-if="model.provider === 'ollama' || modelDrafts[model.id].provider === 'ollama'">上下文容量（tokens）<input v-model.number="modelDrafts[model.id].contextWindowTokens" type="number" min="8192" max="131072" step="4096"><small>建议先用 16384；增大后会占用更多内存或显存。</small></label>
                     <button type="button" class="settings-save-model" :disabled="modelTesting === model.id || saving === `model:${model.id}`" @click="testAndUseModel(model)">{{ modelTesting === model.id ? '正在发送测试请求…' : saving === `model:${model.id}` ? '正在启用…' : '测试并启用此模型' }}</button>
                     <span v-if="modelResults[model.id]" class="settings-inline-result" :data-state="modelResults[model.id].status.toLowerCase()">{{ modelResults[model.id].message }} · {{ modelResults[model.id].durationMs }} ms</span>
                   </details>
@@ -372,17 +366,17 @@ async function copyLogs() {
         </section>
 
         <section v-else-if="activeTab === 'databases'" class="settings-section">
-          <header><div><h3>数据库连接</h3><p>业务库和真实库分开管理；测试通过后直接热更新。</p></div><small>密码不回显</small></header>
+          <header><div><h3>数据库连接</h3><p>只保留当前业务库和真实库各一份配置；测试通过后直接热更新。</p></div><small>密码不回显</small></header>
+          <p class="settings-config-source">部署时填写外部 application.properties，服务首次启动会自动带入这里；页面修改只保存到本机运行设置，不会改写部署文件。</p>
           <div class="settings-config-groups">
             <details v-for="group in databaseGroups" :key="group.key" class="settings-config-group settings-database-group">
               <summary>
                 <span class="settings-group-icon" :data-kind="group.key">{{ group.key === 'business' ? '业' : '真' }}</span>
                 <span><strong>{{ group.title }}</strong><small>{{ group.description }}</small></span>
-                <em v-if="group.key === 'business'">当前：{{ group.items.find((item) => item.active)?.engine || '未选择' }}</em>
-                <em v-else>{{ group.items.length }} 个连接</em>
+                <em>{{ group.items.length }} 个连接</em>
               </summary>
               <article v-for="item in group.items" :key="item.id" class="settings-db-card" :class="{ active: item.active }">
-                <header><div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div><em :data-state="item.active ? 'ok' : item.configured ? 'ready' : item.enabled ? 'warn' : 'off'">{{ item.active ? (item.role === 'BUSINESS' ? '当前业务库' : '正式真实库') : item.configured ? '可切换' : item.enabled ? '配置不完整' : '未启用' }}</em></header>
+                <header><div><strong>{{ item.name }}</strong><span>{{ item.engine }} · {{ item.purpose }}</span></div><em :data-state="item.configured ? 'ok' : item.enabled ? 'warn' : 'off'">{{ item.configured ? '正在使用' : item.enabled ? '配置不完整' : '未启用' }}</em></header>
                 <dl><div><dt>当前地址</dt><dd>{{ item.endpoint }}</dd></div><div><dt>账号 / Schema</dt><dd>{{ item.username || '—' }}<template v-if="item.schema"> / {{ item.schema }}</template></dd></div><div><dt>密码</dt><dd>{{ item.credentialConfigured ? '已保存（不回显）' : '未配置' }}</dd></div><div><dt>运行角色</dt><dd>{{ item.role === 'BUSINESS' ? (item.active ? '正在提供业务源数据' : '候选业务库连接') : '正式中间表与统计结果' }}</dd></div></dl>
                 <details class="settings-db-editor">
                   <summary>查看和编辑连接配置</summary>
@@ -397,7 +391,7 @@ async function copyLogs() {
                 </details>
                 <div class="settings-db-actions">
                   <button type="button" :disabled="testing === item.id" @click="testConnection(item)">{{ testing === item.id ? '正在测试…' : '仅测试连接' }}</button>
-                  <button type="button" class="is-primary" :disabled="testing === item.id || saving === `database:${item.id}` || saving === `activate:${item.id}` || !connectionDrafts[item.id].enabled" @click="testAndApplyDatabase(item)">{{ testing === item.id ? '正在测试…' : saving === `database:${item.id}` || saving === `activate:${item.id}` ? '正在应用…' : item.role === 'BUSINESS' && !item.active ? '测试并启用为业务库' : '测试并立即应用' }}</button>
+                  <button type="button" class="is-primary" :disabled="testing === item.id || saving === `database:${item.id}` || !connectionDrafts[item.id].enabled" @click="testAndApplyDatabase(item)">{{ testing === item.id ? '正在测试…' : saving === `database:${item.id}` ? '正在应用…' : '测试并立即应用' }}</button>
                   <span v-if="connectionResults[item.id]" :data-state="connectionResults[item.id].status.toLowerCase()">{{ connectionResults[item.id].message }} · {{ connectionResults[item.id].durationMs }} ms</span>
                 </div>
               </article>

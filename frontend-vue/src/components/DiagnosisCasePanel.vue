@@ -483,16 +483,15 @@ function submitCase() {
   })
 }
 
-function startAutonomous() {
-  if (!autonomousProblem.value.trim()) return
-  const clientMessageId = `CLIENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  optimisticAutonomousTurns.value.push({ clientMessageId, userMessage: autonomousProblem.value.trim(), status: 'SENDING' })
-  emit('action', 'START_AUTONOMOUS_INVESTIGATION', { problem: autonomousProblem.value.trim(), clientMessageId })
-  autonomousProblem.value = ''
-}
-
 function respondAutonomous(answer: string) {
   sendAutonomousText(answer, true)
+}
+
+function startAutonomous() {
+  if (!autonomousProblem.value.trim()) return
+  const problem = autonomousProblem.value.trim()
+  autonomousProblem.value = ''
+  sendAutonomousText(problem)
 }
 
 function sendAutonomousText(text: string, answeringQuestion = false) {
@@ -500,6 +499,13 @@ function sendAutonomousText(text: string, answeringQuestion = false) {
   if (!normalized) return
   const clientMessageId = `CLIENT_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   optimisticAutonomousTurns.value.push({ clientMessageId, userMessage: normalized, status: 'SENDING' })
+  if (String(props.snapshot.investigationMode || '') !== 'AUTONOMOUS') {
+    emit('action', 'START_AUTONOMOUS_INVESTIGATION', {
+      problem: normalized,
+      clientMessageId,
+    })
+    return
+  }
   const pendingQuestion = answeringQuestion || String(props.snapshot.autonomousRun?.status || '') === 'WAITING_USER'
   emit('action', pendingQuestion ? 'RESPOND_AUTONOMOUS_QUESTION' : 'SEND_AUTONOMOUS_MESSAGE', {
     message: normalized,
@@ -886,6 +892,7 @@ function stepState(number: number): string {
   const result = gate(number)
   if (String(result?.status || '') === 'PASSED') return 'PASSED'
   if (String(result?.status || '') === 'BLOCKED') return 'BLOCKED'
+  if (String(result?.status || '') === 'RUNNING') return 'RUNNING'
   const step = baseSteps.find((item) => item.gate === number)
   if (props.busy && step?.key === props.snapshot.currentStep) return 'RUNNING'
   return 'WAITING'
@@ -932,11 +939,15 @@ const investigationReached = computed(() => (
     || props.snapshot.evidence.some((item) => String(item.type || '') !== 'AUTONOMOUS_TOOL'))
 ))
 const currentBaseGate = computed(() => baseSteps.find((item) => item.key === props.snapshot.currentStep)?.gate || 0)
-const currentGateHasResult = computed(() => currentBaseGate.value > 0 && Boolean(gate(currentBaseGate.value)))
 const allBaseChecksPassed = computed(() => baseSteps.every((item) => stepState(item.gate) === 'PASSED'))
+const autonomousEntry = computed(() => String(props.snapshot.caseInput.entryMode || '') === 'AUTONOMOUS')
 const baseConclusion = computed(() => {
   if (blockedGateCount.value) return '基础校验发现需要处理的问题，修复当前步骤后才能继续。'
-  if (allBaseChecksPassed.value) return '三项基础校验均已通过，可以选择标准排查或自主排查。'
+  if (allBaseChecksPassed.value) {
+    return autonomousEntry.value
+      ? '三项基础校验均已通过，可以直接开始自主排查。'
+      : '三项基础校验均已通过，可以继续排查。'
+  }
   return props.busy ? '基础校验正在执行，请等待本轮结果。' : '基础校验尚未完成。'
 })
 
@@ -1059,18 +1070,15 @@ function evidenceStageStatusText(status: ScopeEvidenceStage['status']): string {
 
 <template>
   <div class="diagnosis-case-thread" :data-status="snapshot.status">
-    <article v-if="snapshot.currentStep === 'CALIBER_CONFIRMATION'" class="message is-agent">
+    <article v-if="snapshot.currentStep === 'CALIBER_CONFIRMATION' && !autonomousEntry" class="message is-agent">
       <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 准备排查</strong></div><h4>{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h4><p>系统将按当前生效口径检查数据结构、事件与抽取、当前窗口数据是否可用。</p><dl class="caliber-facts"><div><dt>当前口径</dt><dd>{{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl><button type="button" class="diagnosis-primary" :disabled="busy" @click="emit('action', 'CONFIRM_CALIBER', { confirmed: true })">异常排查基础校验</button></div>
     </article>
 
-    <article v-if="baseChecksStarted" class="message is-user">
-      <div class="message-avatar">我</div><div class="message-card diagnosis-turn-card"><strong>异常排查基础校验</strong></div>
-    </article>
-    <article v-if="baseChecksStarted" class="message is-agent">
-      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 基础校验回复</strong><span>{{ blockedGateCount ? '需要处理' : allBaseChecksPassed ? '可以继续' : '检查中' }}</span></div><section class="diagnosis-caliber-section"><h4>当前排查指标：{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }}</h4><dl class="caliber-facts"><div><dt>指标编码</dt><dd>{{ snapshot.ruleId }}</dd></div><div><dt>当前口径</dt><dd>{{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}（{{ snapshot.profileId }}）</dd></div><div><dt>统计窗口</dt><dd>{{ snapshot.caseInput.statStart }} 至 {{ snapshot.caseInput.statEnd }}</dd></div></dl></section><section v-for="item in baseSteps" :key="item.gate" class="diagnosis-gate-summary"><header><strong>{{ item.label }}</strong><em :data-state="stepState(item.gate)">{{ stepStateText(item.gate) }}</em></header><div class="diagnosis-result" :data-state="stepState(item.gate)"><strong>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</strong><code v-if="gate(item.gate)?.errorCode">{{ gate(item.gate)?.errorCode }}</code></div><div v-if="gate(item.gate)?.repairSuggestion" class="diagnosis-repair"><strong>建议怎么处理</strong><p>{{ gate(item.gate)?.repairSuggestion }}</p></div></section><p class="diagnosis-base-conclusion"><strong>结论：</strong>{{ baseConclusion }}</p><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验当前步骤</button><button v-else-if="snapshot.currentStep.startsWith('GATE_') && !currentGateHasResult && !busy" type="button" class="diagnosis-primary" @click="retryCurrentGate">继续基础校验</button></div>
+    <article v-if="baseChecksStarted && !allBaseChecksPassed" class="message is-agent diagnosis-base-check-message">
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card diagnosis-base-workspace"><header><div><strong>正在准备本次统计数据</strong><span>{{ blockedGateCount ? '发现需要处理的问题' : allBaseChecksPassed ? '三项校验已通过' : '系统正在依次校验' }}</span></div><small>{{ snapshot.caliberSnapshot.ruleName || snapshot.ruleId }} · {{ snapshot.caliberSnapshot.profileName || snapshot.profileId }}</small></header><ol class="diagnosis-preparation-flow"><li v-for="item in baseSteps" :key="item.gate" :data-state="stepState(item.gate)"><b><span v-if="stepState(item.gate) === 'RUNNING'" class="diagnosis-inline-spinner" aria-hidden="true"></span><template v-else>{{ stepState(item.gate) === 'PASSED' ? '✓' : item.gate }}</template></b><div><strong>{{ item.label }}</strong><p>{{ gate(item.gate)?.message || (stepState(item.gate) === 'RUNNING' ? '正在检查，请稍候…' : '等待前一步完成') }}</p></div><em>{{ stepStateText(item.gate) }}</em></li></ol><section v-if="blockedGateCount" class="diagnosis-base-blocker"><strong>{{ gate(currentBaseGate)?.errorCode || '基础校验未通过' }}</strong><p>{{ gate(currentBaseGate)?.repairSuggestion || baseConclusion }}</p></section><footer><span>{{ baseConclusion }}</span><button v-if="blockedGateCount" type="button" class="diagnosis-primary" :disabled="busy" @click="retryCurrentGate">修复后重新校验</button><span v-else-if="snapshot.currentStep.startsWith('GATE_')" class="diagnosis-auto-checking"><i class="diagnosis-inline-spinner" aria-hidden="true"></i>系统会自动继续下一项校验</span></footer></div>
     </article>
 
-    <article v-if="snapshot.currentStep === 'CASE_INPUT' && snapshot.investigationMode !== 'AUTONOMOUS'" class="message is-agent">
+    <article v-if="snapshot.currentStep === 'CASE_INPUT' && snapshot.investigationMode !== 'AUTONOMOUS' && !autonomousEntry" class="message is-agent">
       <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card"><div class="message-head"><strong>系统 · 选择排查方式</strong></div>
         <div class="diagnosis-mode-grid">
           <button type="button" :class="{ active: selectedMode === 'STANDARD' }" @click="selectedMode = 'STANDARD'"><strong>标准模式</strong><span>按字段和条件由程序安全改写</span></button>
@@ -1082,6 +1090,10 @@ function evidenceStageStatusText(status: ScopeEvidenceStage['status']): string {
           <button type="button" class="diagnosis-primary" :disabled="busy || !autonomousProblem.trim()" @click="startAutonomous">开始自主排查</button>
         </template>
       </div>
+    </article>
+
+    <article v-if="snapshot.currentStep === 'CASE_INPUT' && autonomousEntry && snapshot.investigationMode !== 'AUTONOMOUS'" class="message is-agent">
+      <div class="message-avatar">AI</div><div class="message-card diagnosis-turn-card autonomous-problem-card"><div class="message-head"><strong>可以开始自主排查</strong><span>{{ autonomousModelName }}</span></div><p>请在下方对话框描述结果不对、科室漏数或患者判定异常的现象，我会直接读取当前口径和数据链路继续核查。</p></div>
     </article>
 
     <template v-if="caseInputReached && snapshot.investigationMode !== 'AUTONOMOUS' && selectedMode === 'STANDARD'">

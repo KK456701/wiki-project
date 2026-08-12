@@ -5,19 +5,47 @@ import { latestPendingQuestionId, projectAutonomousActivities } from '../src/dom
 
 const base = { turnId: 'TURN_1', iteration: 1, createdAt: '2026-08-10T00:00:00Z' }
 
-test('merges model start and public analysis into one stable item', () => {
+test('merges model start and free-form analysis into one stable item', () => {
   const activities = projectAutonomousActivities({
     turnId: 'TURN_1',
     processEvents: [
       { ...base, seq: 1, eventType: 'MODEL_STARTED', status: 'RUNNING' },
-      { ...base, seq: 2, eventType: 'ANALYSIS', status: 'SUCCEEDED', problemUnderstanding: '核对科室漏数' },
+      { ...base, seq: 2, eventType: 'ANALYSIS', status: 'SUCCEEDED', analysisProcess: '先核对科室记录在哪一层消失，再决定是否需要查看SQL。' },
     ],
   })
 
   assert.equal(activities.length, 1)
   assert.equal(activities[0].id, 'model:TURN_1:1')
   assert.equal(activities[0].status, 'SUCCEEDED')
-  assert.equal(activities[0].analysis.problemUnderstanding, '核对科室漏数')
+  assert.equal(activities[0].analysisProcess, '先核对科室记录在哪一层消失，再决定是否需要查看SQL。')
+})
+
+test('shows partial analysis while the model action JSON is still streaming', () => {
+  const activities = projectAutonomousActivities({
+    turnId: 'TURN_1',
+    processEvents: [
+      { ...base, seq: 1, eventType: 'MODEL_STARTED', status: 'RUNNING', analysisProcess: '正在核对当前分子' },
+    ],
+  })
+
+  assert.equal(activities.length, 1)
+  assert.equal(activities[0].status, 'RUNNING')
+  assert.equal(activities[0].analysisProcess, '正在核对当前分子')
+})
+
+test('keeps streamed model thought and shows retry reason separately', () => {
+  const activities = projectAutonomousActivities({
+    turnId: 'TURN_1',
+    processEvents: [
+      { ...base, seq: 1, eventType: 'MODEL_STARTED', status: 'RUNNING', analysisProcess: '先判断用户需要哪一类SQL，再选择知识工具。' },
+      { ...base, seq: 2, eventType: 'ANALYSIS', status: 'RETRYING', analysisProcess: '动作格式不完整，正在保留现有证据并重试。' },
+    ],
+  })
+
+  assert.equal(activities.length, 1)
+  assert.equal(activities[0].status, 'RETRYING')
+  assert.equal(activities[0].analysisProcess, '先判断用户需要哪一类SQL，再选择知识工具。')
+  assert.match(activities[0].retryReason, /动作格式不完整/)
 })
 
 test('merges tool call and observation while keeping distinct calls separate', () => {

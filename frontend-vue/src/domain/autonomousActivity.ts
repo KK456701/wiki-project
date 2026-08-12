@@ -23,6 +23,8 @@ export interface AutonomousActivityItem {
   question?: string
   conclusion?: string
   conclusionLevel?: string
+  analysisProcess?: string
+  retryReason?: string
   analysis?: {
     problemUnderstanding: string
     hypotheses: string[]
@@ -55,14 +57,25 @@ export function projectAutonomousActivities(
       const id = `model:${turnId}:${iteration}`
       const existing = activities.get(id)
       const analysisEvent = type === 'ANALYSIS' ? event : undefined
+      const retrying = type === 'ANALYSIS' && text(event.status) === 'RETRYING'
+      const eventAnalysis = text(event.analysisProcess)
       activities.set(id, {
         ...(existing || baseItem(id, 'MODEL', turnId, iteration, seq, event)),
         seq: existing ? Math.min(existing.seq, seq) : seq,
         status: type === 'ANALYSIS' ? text(event.status) || 'SUCCEEDED' : existing?.status || text(event.status) || 'RUNNING',
         createdAt: existing?.createdAt || text(event.createdAt),
-        title: type === 'ANALYSIS' ? '公开分析' : existing?.title || '思考中',
+        title: type === 'ANALYSIS'
+          ? (text(event.status) === 'RETRYING' ? '本轮思考未完成' : '思考完毕')
+          : existing?.title || '思考中',
         summary: text(event.analysisSummary) || text(event.summary) || existing?.summary || '',
         eventType: type,
+        // 格式重试不能覆盖这一轮已经流式保存的原生思考；错误原因单独展示。
+        analysisProcess: retrying && existing?.analysisProcess
+          ? existing.analysisProcess
+          : eventAnalysis || existing?.analysisProcess,
+        retryReason: retrying
+          ? eventAnalysis || text(event.summary) || '本轮动作格式不完整，系统正在重试。'
+          : existing?.retryReason,
         analysis: analysisEvent ? analysisDetails(analysisEvent) : existing?.analysis,
       })
       continue

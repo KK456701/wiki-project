@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 
 import {
   latestPendingQuestionId,
@@ -22,7 +22,10 @@ const emit = defineEmits<{
 
 const answer = ref('')
 const now = ref(Date.now())
+const streamedNarratives = reactive<Record<string, string>>({})
+const narrativeTargets = reactive<Record<string, string>>({})
 let clock = 0
+let typingClock = 0
 
 const projectedTurns = computed(() => props.turns.map((turn, index) => ({
   key: String(turn.turnId || turn.clientMessageId || index),
@@ -33,7 +36,42 @@ const projectedTurns = computed(() => props.turns.map((turn, index) => ({
 const pendingQuestionId = computed(() => latestPendingQuestionId(props.turns, props.events, props.runStatus))
 
 clock = window.setInterval(() => { now.value = Date.now() }, 500)
-onUnmounted(() => window.clearInterval(clock))
+typingClock = window.setInterval(() => {
+  for (const [id, target] of Object.entries(narrativeTargets)) {
+    const current = streamedNarratives[id] || ''
+    if (current === target) continue
+    if (!target.startsWith(current)) {
+      streamedNarratives[id] = ''
+      continue
+    }
+    const currentPoints = Array.from(current)
+    const targetPoints = Array.from(target)
+    streamedNarratives[id] = targetPoints.slice(0, currentPoints.length + 1).join('')
+  }
+}, 18)
+onUnmounted(() => {
+  window.clearInterval(clock)
+  window.clearInterval(typingClock)
+})
+
+watch(projectedTurns, (turns) => {
+  const activeIds = new Set<string>()
+  for (const turn of turns) {
+    for (const item of turn.activities) {
+      if (item.kind !== 'MODEL') continue
+      const target = item.analysisProcess || (item.status === 'RUNNING' ? '' : item.summary)
+      activeIds.add(item.id)
+      narrativeTargets[item.id] = target
+      if (!(item.id in streamedNarratives)) streamedNarratives[item.id] = ''
+    }
+  }
+  for (const id of Object.keys(narrativeTargets)) {
+    if (!activeIds.has(id)) {
+      delete narrativeTargets[id]
+      delete streamedNarratives[id]
+    }
+  }
+}, { immediate: true, deep: true })
 
 function processActivities(items: AutonomousActivityItem[]): AutonomousActivityItem[] {
   return items.filter((item) => ['MODEL', 'TOOL', 'PROCESS'].includes(item.kind))
@@ -43,6 +81,15 @@ function visibleActivities(items: AutonomousActivityItem[]): AutonomousActivityI
   return items.filter((item) => !['MODEL', 'TOOL', 'PROCESS'].includes(item.kind))
 }
 
+function processBreakdown(items: AutonomousActivityItem[]): string {
+  const models = items.filter((item) => item.kind === 'MODEL').length
+  const tools = items.filter((item) => item.kind === 'TOOL').length
+  const values: string[] = []
+  if (models) values.push(`思考 ${models} 次`)
+  if (tools) values.push(`调用 ${tools} 个工具`)
+  return values.join(' · ')
+}
+
 function turnProgress(
   turn: Record<string, unknown>,
   items: AutonomousActivityItem[],
@@ -50,16 +97,18 @@ function turnProgress(
   const turnStatus = String(turn.status || '').toUpperCase()
   const running = [...items].reverse().find((item) => item.status === 'RUNNING')
   if (running?.kind === 'TOOL') {
-    return { label: `正在调用：${running.toolDisplayName || running.tool || '排查工具'}`, state: 'running' }
+    return { label: `正在${running.toolDisplayName || running.tool || '核查数据'}`, state: 'running' }
   }
-  if (running?.kind === 'MODEL') return { label: '思考中', state: 'running' }
+  if (running?.kind === 'MODEL') {
+    return { label: running.analysisProcess ? '模型正在实时思考' : '模型正在开始思考', state: 'running' }
+  }
   if (running) return { label: running.title || '正在处理', state: 'running' }
 
   if (turnStatus === 'RUNNING' || turnStatus === 'SENDING' || turnStatus === 'QUEUED') {
     const latest = items.at(-1)
-    if (latest?.kind === 'TOOL') return { label: '正在整理工具结果', state: 'running' }
-    if (latest?.kind === 'MODEL') return { label: '正在选择下一步', state: 'running' }
-    return { label: '正在开始排查', state: 'running' }
+    if (latest?.kind === 'TOOL') return { label: `已完成${latest.toolDisplayName || latest.tool || '数据核查'}，正在整理结果`, state: 'running' }
+    if (latest?.kind === 'MODEL') return { label: '正在根据现有证据选择下一步', state: 'running' }
+    return { label: '正在准备本轮排查', state: 'running' }
   }
   if (turnStatus === 'WAITING_USER') return { label: '等待现场补充', state: 'waiting' }
   if (turnStatus === 'FAILED') return { label: '未完成', state: 'failed' }
@@ -83,29 +132,21 @@ function turnDuration(turn: Record<string, unknown>): string {
   return `${Math.max(0, (ended - started) / 1000).toFixed(1)}s`
 }
 
-function analysisRows(item: AutonomousActivityItem): Array<{ label: string, value: string }> {
-  if (!item.analysis) return []
-  const rows = [
-    ['问题理解', item.analysis.problemUnderstanding],
-    ['候选原因', item.analysis.hypotheses.join('；')],
-    ['已有依据', item.analysis.evidenceRefs.join('；')],
-    ['验证目标', item.analysis.verificationGoal],
-    ['为什么调用这个工具', item.analysis.toolChoiceReason],
-    ['判断更新', item.analysis.judgementUpdate],
-    ['下一步', item.analysis.nextStep],
-  ]
-  return rows.filter(([, value]) => value).map(([label, value]) => ({ label, value }))
-}
-
 function statusText(status: string): string {
   return ({
     RUNNING: '执行中', SUCCEEDED: '已完成', FAILED: '失败', WAITING_USER: '等待回复',
-    STOPPED: '已停止', CANCELLED: '已停止', READY: '可继续', COMPLETED: '已完成', QUEUED: '已排队',
+    RETRYING: '正在重试', STOPPED: '已停止', CANCELLED: '已停止', READY: '可继续', COMPLETED: '已完成', QUEUED: '已排队',
   } as Record<string, string>)[status] || status
 }
 
 function pretty(value: unknown): string {
   try { return JSON.stringify(value, null, 2) } catch { return String(value ?? '') }
+}
+
+function analysisText(item: AutonomousActivityItem): string {
+  return streamedNarratives[item.id] || (item.status === 'RUNNING'
+    ? '正在等待模型返回第一个分析内容…'
+    : item.analysisProcess || item.summary)
 }
 </script>
 
@@ -123,43 +164,47 @@ function pretty(value: unknown): string {
     <article v-if="entry.activities.length" class="message is-agent autonomous-process-message">
       <div class="message-avatar">AI</div>
       <div class="message-card diagnosis-turn-card autonomous-stream-card">
-        <div class="message-head">
-          <strong>{{ modelName }} · 自主排查</strong>
-        </div>
-        <details v-if="processActivities(entry.activities).length" class="autonomous-process-details">
+        <details
+          v-if="processActivities(entry.activities).length"
+          class="autonomous-process-details"
+        >
           <summary>
-            <strong>思考过程</strong>
+            <span
+              class="autonomous-status-medallion"
+              :data-state="turnProgress(entry.turn, processActivities(entry.activities)).state"
+              aria-hidden="true"
+            >{{ turnProgress(entry.turn, processActivities(entry.activities)).state === 'completed' ? '✓' : '' }}</span>
             <span
               class="autonomous-progress-status"
               :data-state="turnProgress(entry.turn, processActivities(entry.activities)).state"
             >
-              <i aria-hidden="true"></i>
-              {{ turnProgress(entry.turn, processActivities(entry.activities)).label }} · {{ turnDuration(entry.turn) }}
+              <strong>{{ turnProgress(entry.turn, processActivities(entry.activities)).label }}</strong>
             </span>
+            <span class="autonomous-process-metric"><i aria-hidden="true">◷</i>{{ turnDuration(entry.turn) }}</span>
+            <span v-if="processBreakdown(processActivities(entry.activities))" class="autonomous-process-metric"><i aria-hidden="true">♧</i>{{ processBreakdown(processActivities(entry.activities)) }}</span>
+            <span class="autonomous-process-chevron" aria-hidden="true">⌄</span>
           </summary>
           <ol class="autonomous-activity-list">
           <li v-for="item in processActivities(entry.activities)" :key="item.id" :data-kind="item.kind.toLowerCase()" :data-status="item.status.toLowerCase()">
-            <details
-              v-if="item.kind === 'MODEL'"
-              class="autonomous-analysis"
-            >
-              <summary>
-                <span class="autonomous-seq">{{ item.iteration || '—' }}</span>
-                <span>
-                  <strong>{{ item.status === 'RUNNING' ? '思考中' : '公开分析' }}</strong>
-                  <small v-if="item.status === 'RUNNING'">{{ item.summary || '正在理解问题并选择下一步验证方式…' }}</small>
-                </span>
+            <section v-if="item.kind === 'MODEL'" class="autonomous-analysis">
+              <div class="autonomous-item-head">
+                <span class="autonomous-event-dot" aria-hidden="true"></span>
+                <strong>{{ item.status === 'RUNNING' ? '模型正在思考' : item.status === 'RETRYING' ? '思考未完成，正在重试' : '模型思考' }}</strong>
                 <em>{{ statusText(item.status) }}</em>
-              </summary>
-              <dl v-if="analysisRows(item).length" class="autonomous-analysis-grid">
-                <div v-for="row in analysisRows(item)" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
-              </dl>
-            </details>
+              </div>
+              <p
+                class="autonomous-analysis-narrative"
+                :class="{ 'is-streaming': item.status === 'RUNNING' }"
+              >{{ analysisText(item) }}<i v-if="item.status === 'RUNNING'" class="autonomous-stream-caret" aria-hidden="true"></i></p>
+              <p v-if="item.retryReason" class="autonomous-retry-reason">
+                <strong>重试原因：</strong>{{ item.retryReason }}
+              </p>
+            </section>
 
             <template v-else-if="item.kind === 'TOOL'">
               <div class="autonomous-item-head">
-                <span class="autonomous-seq">{{ item.iteration || '—' }}</span>
-                <strong>{{ item.toolDisplayName || item.tool || '执行工具' }}</strong>
+                <span class="autonomous-event-dot" aria-hidden="true"></span>
+                <strong>{{ item.status === 'RUNNING' ? '正在执行' : '已执行' }} {{ item.toolDisplayName || item.tool || '工具' }}</strong>
                 <em>{{ statusText(item.status) }}<template v-if="item.durationMs !== undefined"> · {{ item.durationMs }}ms</template></em>
               </div>
               <p v-if="item.summary"><strong>观察：</strong>{{ item.summary }}</p>
@@ -173,7 +218,7 @@ function pretty(value: unknown): string {
             </template>
 
             <template v-else>
-              <div class="autonomous-item-head"><span class="autonomous-seq">{{ item.iteration || '—' }}</span><strong>{{ item.title }}</strong><em>{{ statusText(item.status) }}</em></div>
+              <div class="autonomous-item-head"><span class="autonomous-event-dot" aria-hidden="true"></span><strong>{{ item.title }}</strong><em>{{ statusText(item.status) }}</em></div>
               <p>{{ item.summary }}</p>
             </template>
           </li>
@@ -208,10 +253,14 @@ function pretty(value: unknown): string {
 
 <style scoped>
 .autonomous-stream-card { border-color: #d6dde5; background: #fff; box-shadow: none; }
-.autonomous-process-details { margin-bottom: 10px; border: 1px solid #e2e6eb; border-radius: 10px; background: #f7f8fa; }
-.autonomous-process-details > summary { display: flex; justify-content: space-between; gap: 16px; padding: 12px 14px; cursor: pointer; color: #4f5b66; }
+.autonomous-process-details { margin-bottom: 10px; border: 0; border-radius: 10px; background: #f7f8fa; }
+.autonomous-process-details > summary { display: flex; align-items: center; justify-content: flex-start; gap: 10px; min-height: 42px; padding: 10px 13px; cursor: pointer; color: #4f5b66; list-style: none; }
+.autonomous-process-details > summary::-webkit-details-marker { display: none; }
 .autonomous-process-details > summary span { color: #7a8490; font-size: 12px; }
-.autonomous-progress-status { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; text-align: right; }
+.autonomous-progress-status { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px; text-align: left; }
+.autonomous-progress-status strong { overflow: hidden; color: #45534f; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.autonomous-progress-status em { flex: 0 0 auto; color: #7a8783; font-size: 11px; font-style: normal; font-weight: 500; }
+.autonomous-process-count { margin-left: 5px; color: #8a9490; font-size: 11px; }
 .autonomous-progress-status i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #148675; }
 .autonomous-progress-status[data-state="running"] { color: #217d6e; }
 .autonomous-progress-status[data-state="running"] i { animation: autonomous-status-pulse 1.3s ease-in-out infinite; box-shadow: 0 0 0 0 rgba(20, 134, 117, .3); }
@@ -220,27 +269,38 @@ function pretty(value: unknown): string {
 .autonomous-progress-status[data-state="failed"] { color: #b44f47; }
 .autonomous-progress-status[data-state="failed"] i { background: #cf5f56; }
 .autonomous-progress-status[data-state="stopped"] i { background: #87938f; }
+.autonomous-process-chevron { margin-left: auto; font-size: 14px !important; transition: transform .16s ease; }
+.autonomous-process-details[open] .autonomous-process-chevron { transform: rotate(180deg); }
 @keyframes autonomous-status-pulse { 50% { box-shadow: 0 0 0 5px rgba(20, 134, 117, 0); transform: scale(.86); } }
-.autonomous-process-details > .autonomous-activity-list { padding: 0 12px 12px; }
+.autonomous-process-details > .autonomous-activity-list { position: relative; gap: 0; padding: 2px 13px 12px 32px; }
+.autonomous-process-details > .autonomous-activity-list::before { content: ''; position: absolute; top: 6px; bottom: 18px; left: 20px; width: 1px; background: #d9dfdc; }
 .autonomous-activity-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .autonomous-result-list { margin-top: 10px; }
+.autonomous-process-details .autonomous-activity-list > li { position: relative; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; }
+.autonomous-process-details .autonomous-activity-list > li:hover { background: #f0f3f2; }
 .autonomous-activity-list > li { padding: 12px 14px; border: 1px solid #e2e6eb; border-radius: 10px; background: #f7f8fa; }
 .autonomous-activity-list > li[data-kind="tool"] { border-color: #d3d8de; background: #eceff2; }
+.autonomous-process-details .autonomous-activity-list > li[data-kind="tool"] { background: transparent; }
 .autonomous-activity-list > li[data-kind="reply"] { border-color: transparent; background: #fff; padding-inline: 4px; }
 .autonomous-activity-list > li[data-kind="question"] { border-color: #efd7a5; background: #fff9ed; }
 .autonomous-activity-list > li[data-kind="conclusion"] { border-color: #9fc9bf; background: #eff9f6; box-shadow: inset 3px 0 #16836f; }
 .autonomous-activity-list > li[data-kind="stop"], .autonomous-activity-list > li[data-status="failed"] { border-color: #efb9b4; background: #fff4f3; }
 .autonomous-analysis { margin: 0; }
-.autonomous-analysis > summary { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
-.autonomous-analysis > summary::-webkit-details-marker { display: none; }
-.autonomous-analysis > summary > span:nth-child(2) { display: grid; gap: 3px; }
-.autonomous-analysis > summary small { color: #7a8490; font-weight: 400; }
-.autonomous-analysis > summary em, .autonomous-item-head em { color: #65717d; font-size: 12px; font-style: normal; }
+.autonomous-analysis em, .autonomous-item-head em { color: #65717d; font-size: 12px; font-style: normal; }
+.autonomous-analysis-narrative, .autonomous-thinking-placeholder { margin: 9px 0 0 22px; color: #33423e; line-height: 1.72; white-space: pre-wrap; }
+.autonomous-thinking-placeholder { color: #72807c; }
+.autonomous-analysis-narrative.is-streaming { color: #263d37; }
+.autonomous-retry-reason { margin: 8px 0 0 22px; padding: 8px 10px; border-left: 3px solid #d49436; border-radius: 4px; background: #fff8eb; color: #7a5725; line-height: 1.6; }
+.autonomous-stream-caret { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: -.18em; background: #148675; animation: autonomous-caret-blink .8s steps(1) infinite; }
+@keyframes autonomous-caret-blink { 50% { opacity: 0; } }
 .autonomous-analysis-grid { display: grid; gap: 9px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid #e1e5e9; }
 .autonomous-analysis-grid div { display: grid; grid-template-columns: 135px 1fr; gap: 12px; }
 .autonomous-analysis-grid dt { color: #5f6974; font-weight: 700; }
 .autonomous-analysis-grid dd { margin: 0; color: #27323d; white-space: pre-wrap; }
 .autonomous-item-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+.autonomous-event-dot { position: relative; z-index: 1; width: 8px; height: 8px; border-radius: 50%; background: #16836f; box-shadow: 0 0 0 4px #f7f8fa; }
+.autonomous-activity-list > li[data-kind="tool"] .autonomous-event-dot { background: #60717c; box-shadow: 0 0 0 4px rgba(96, 113, 124, .1); }
+.autonomous-activity-list > li[data-status="retrying"] .autonomous-event-dot { background: #ca8a2e; box-shadow: 0 0 0 4px rgba(202, 138, 46, .12); }
 .autonomous-seq { display: inline-grid; place-items: center; min-width: 24px; height: 24px; border-radius: 7px; background: #dfe4e8; color: #53606c; font-size: 12px; font-weight: 700; }
 .autonomous-tool-details { margin-top: 9px; }
 .autonomous-tool-details summary { cursor: pointer; color: #44515e; font-weight: 700; }
@@ -251,5 +311,97 @@ function pretty(value: unknown): string {
 .autonomous-inline-answer { display: grid; gap: 8px; margin-top: 12px; }
 .autonomous-inline-answer textarea { width: 100%; box-sizing: border-box; }
 @media (max-width: 760px) { .autonomous-analysis-grid div { grid-template-columns: 1fr; gap: 2px; } }
-@media (prefers-reduced-motion: reduce) { .autonomous-progress-status[data-state="running"] i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .autonomous-progress-status[data-state="running"] i, .autonomous-stream-caret { animation: none; } }
+
+/* Compact activity shell: the status is visible, evidence and model reasoning stay folded. */
+.autonomous-stream-card {
+  padding: 16px;
+  border: 1px solid #c9ded8;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff, #fbfefd);
+  box-shadow: 0 10px 28px rgba(19, 82, 68, .07);
+}
+.autonomous-process-details {
+  overflow: hidden;
+  margin: 0 0 12px;
+  border: 1px solid #d4e3df;
+  border-radius: 13px;
+  background: #fff;
+}
+.autonomous-process-details > summary {
+  min-height: 54px;
+  gap: 12px;
+  padding: 10px 15px;
+  background: linear-gradient(90deg, #f6fbf9, #fff);
+}
+.autonomous-status-medallion {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #168570;
+  font-size: 15px;
+  font-weight: 800;
+}
+.autonomous-status-medallion[data-state="running"] {
+  border: 3px solid #d8eee8;
+  background: transparent;
+  box-shadow: inset 0 0 0 3px #2a9a83;
+  animation: autonomous-medallion-pulse 1.15s ease-in-out infinite;
+}
+.autonomous-status-medallion[data-state="waiting"] { background: #d0963d; }
+.autonomous-status-medallion[data-state="failed"] { background: #c75b51; }
+.autonomous-status-medallion[data-state="stopped"] { background: #84918e; }
+@keyframes autonomous-medallion-pulse { 50% { transform: scale(.9); opacity: .65; } }
+.autonomous-progress-status { flex: 0 1 auto; }
+.autonomous-progress-status strong { color: #17443a; font-size: 14px; }
+.autonomous-process-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 12px;
+  border-left: 1px solid #d8e2df;
+  color: #74837f;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.autonomous-process-metric i { color: #64847c; font-size: 13px; font-style: normal; }
+.autonomous-process-chevron { color: #16816e !important; font-size: 17px !important; }
+.autonomous-process-details > .autonomous-activity-list {
+  margin: 12px;
+  padding: 0;
+  border: 1px solid #dbe6e3;
+  border-left: 3px solid #25a187;
+  border-radius: 11px;
+  background: #fbfdfc;
+}
+.autonomous-process-details > .autonomous-activity-list::before { display: none; }
+.autonomous-process-details .autonomous-activity-list > li {
+  padding: 13px 15px;
+  border-bottom: 1px solid #e4ece9;
+  border-radius: 0;
+}
+.autonomous-process-details .autonomous-activity-list > li:last-child { border-bottom: 0; }
+.autonomous-process-details .autonomous-activity-list > li:hover { background: #f5faf8; }
+.autonomous-analysis-narrative,
+.autonomous-thinking-placeholder { margin: 12px 0 0 18px; color: #263e38; font-size: 12px; line-height: 1.85; }
+.autonomous-result-list { margin-top: 0; }
+.autonomous-activity-list > li[data-kind="reply"] {
+  padding: 15px 17px;
+  border: 1px solid #dce7e4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(21, 70, 59, .035);
+}
+.autonomous-direct-reply { color: #203b34; font-size: 13px; line-height: 1.8; }
+
+@media (max-width: 680px) {
+  .autonomous-process-metric { display: none; }
+  .autonomous-stream-card { padding: 11px; }
+  .autonomous-process-details > summary { padding-inline: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { .autonomous-status-medallion[data-state="running"] { animation: none; } }
 </style>

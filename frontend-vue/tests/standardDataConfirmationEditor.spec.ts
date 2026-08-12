@@ -35,23 +35,41 @@ describe('StandardDataConfirmationEditor', () => {
     })
     expect(wrapper.text()).toContain('张三 · 骨伤一科')
     expect(wrapper.text()).toContain('来自分子明细')
-    expect(wrapper.get('button.workspace-primary').attributes('disabled')).toBeUndefined()
+    expect(wrapper.text()).not.toContain('确认结果正确并结束排查')
   })
 
-  it('clarifies both directions independently and can proceed', async () => {
+  it('uses one clarification action for either or both directions', async () => {
     const wrapper = mount(StandardDataConfirmationEditor, {
       props: {
         ...baseProps,
         selectedRows: [{ rowKey: 'ENCOUNTER_ID:E1', label: '患者E1', recordId: 'E1', sourceGroup: 'denominator' }],
       },
     })
-    await wrapper.findAll('button.clarify-button')[0].trigger('click')
-    expect(wrapper.emitted('clarify')?.[0]).toEqual(['OVER_INCLUDED'])
+    expect(wrapper.findAll('button.clarify-button')).toHaveLength(1)
+    await wrapper.get('button.clarify-button').trigger('click')
+    expect(wrapper.emitted('clarify')?.[0]).toEqual([])
     await wrapper.setProps({ selectedRows: [], underNote: '就诊号 E9 应该出现，但当前明细没有。' })
-    await wrapper.findAll('button.clarify-button')[1].trigger('click')
-    expect(wrapper.emitted('clarify')?.[1]).toEqual(['UNDER_INCLUDED'])
-    await wrapper.get('button.workspace-primary').trigger('click')
-    expect(wrapper.emitted('proceed')).toHaveLength(1)
+    expect(wrapper.get('button.clarify-button').attributes('disabled')).toBeUndefined()
+    await wrapper.get('button.clarify-button').trigger('click')
+    expect(wrapper.emitted('clarify')?.[1]).toEqual([])
+    expect(wrapper.text()).not.toContain('进入链路核查')
+  })
+
+  it('shows both completed directions together in the unified result area', () => {
+    const wrapper = mount(StandardDataConfirmationEditor, {
+      props: {
+        ...baseProps,
+        selectedRows: [{ rowKey: 'ENCOUNTER_ID:E1', label: '患者E1', recordId: 'E1', sourceGroup: 'numerator' }],
+        underNote: '就诊号 E9 应进入分子但没有出现。',
+        overClarification: { naturalLanguageExplanation: '患者E1当前确实位于分子明细。' },
+        underClarification: { naturalLanguageExplanation: '就诊号E9当前不在分子明细。' },
+      },
+    })
+    const results = wrapper.get('.unified-clarification-results')
+    expect(results.text()).toContain('本次澄清结果')
+    expect(results.text()).toContain('患者E1当前确实位于分子明细。')
+    expect(results.text()).toContain('就诊号E9当前不在分子明细。')
+    expect(results.findAll('.clarification-answer')).toHaveLength(2)
   })
 
   it('数据少了只提供一个填写框', () => {

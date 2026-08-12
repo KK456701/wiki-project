@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 
-import { listIndicators, type CreateDiagnosisCaseInput, type IndicatorItem } from '../api/agent'
+import {
+  listIndicatorProfiles,
+  listIndicators,
+  type CreateDiagnosisCaseInput,
+  type IndicatorItem,
+  type IndicatorProfile,
+} from '../api/agent'
 
 const props = defineProps<{
   token: string
@@ -19,13 +25,19 @@ const emit = defineEmits<{
 const task = ref<'' | 'calc' | 'diagnose'>('')
 const diagnosisMode = ref<'' | 'autonomous'>('')
 const indicators = ref<IndicatorItem[]>([])
+const profiles = ref<IndicatorProfile[]>([])
 const loading = ref(false)
 const loadError = ref('')
+const profileLoading = ref(false)
+const profileError = ref('')
 const search = ref('')
 const selected = ref<string[]>([])
+const selectedProfileId = ref('')
 const timeChoice = ref('本月')
 const customStart = ref('')
 const customEnd = ref('')
+const diagnosisStart = ref('')
+const diagnosisEnd = ref('')
 const timePresets = [
   { label: '本月', build: () => '本月' },
   { label: '上月', build: () => '上月' },
@@ -50,12 +62,23 @@ const timeText = computed(() => {
   return `${formatMonth(customStart.value)}到${formatMonth(customEnd.value)}`
 })
 
-const canSubmit = computed(() =>
-  !props.disabled
-  && selected.value.length > 0
-  && Boolean(timeText.value))
+const selectedProfile = computed(() => profiles.value.find((item) => item.profileId === selectedProfileId.value))
+const canSubmit = computed(() => {
+  if (props.disabled || selected.value.length === 0) return false
+  if (task.value === 'diagnose') {
+    return Boolean(selectedProfileId.value
+      && selectedProfile.value?.overviewRuntimeEligible
+      && diagnosisStart.value
+      && diagnosisEnd.value
+      && diagnosisStart.value < diagnosisEnd.value)
+  }
+  return Boolean(timeText.value)
+})
 
 onMounted(async () => {
+  const now = new Date()
+  diagnosisStart.value = `${now.getFullYear() - 1}-01-01`
+  diagnosisEnd.value = `${now.getFullYear()}-01-01`
   loading.value = true
   try {
     indicators.value = await listIndicators(props.token)
@@ -82,6 +105,9 @@ function pickTask(value: 'calc' | 'diagnose') {
   selected.value = []
   search.value = ''
   diagnosisMode.value = ''
+  profiles.value = []
+  selectedProfileId.value = ''
+  profileError.value = ''
 }
 
 function resetTask() {
@@ -89,11 +115,28 @@ function resetTask() {
   selected.value = []
   search.value = ''
   diagnosisMode.value = ''
+  profiles.value = []
+  selectedProfileId.value = ''
+  profileError.value = ''
 }
 
-function toggleIndicator(ruleId: string) {
+async function toggleIndicator(ruleId: string) {
   if (task.value === 'diagnose') {
     selected.value = selected.value.includes(ruleId) ? [] : [ruleId]
+    profiles.value = []
+    selectedProfileId.value = ''
+    profileError.value = ''
+    if (!selected.value.length) return
+    profileLoading.value = true
+    try {
+      profiles.value = await listIndicatorProfiles(props.token, ruleId)
+      const executable = profiles.value.find((item) => item.overviewRuntimeEligible)
+      selectedProfileId.value = executable?.profileId || profiles.value[0]?.profileId || ''
+    } catch {
+      profileError.value = '当前指标口径加载失败，请重新选择指标。'
+    } finally {
+      profileLoading.value = false
+    }
     return
   }
   selected.value = selected.value.includes(ruleId)
@@ -116,7 +159,7 @@ function submit() {
     emit('startDiagnosis', {
       sessionId: props.sessionId,
       ruleId: selected.value[0],
-      profileId: selected.value[0],
+      profileId: selectedProfileId.value,
       statStart: period.start,
       statEnd: period.end,
       modelId: props.modelId,
@@ -131,9 +174,19 @@ function submit() {
   }
   task.value = ''
   selected.value = []
+  profiles.value = []
+  selectedProfileId.value = ''
+}
+
+function selectDiagnosisProfile(profile: IndicatorProfile) {
+  if (!profile.overviewRuntimeEligible || props.disabled) return
+  selectedProfileId.value = profile.profileId
 }
 
 function diagnosisPeriod(): { start: string; end: string } {
+  if (task.value === 'diagnose' && diagnosisStart.value && diagnosisEnd.value) {
+    return { start: `${diagnosisStart.value}T00:00:00`, end: `${diagnosisEnd.value}T00:00:00` }
+  }
   const now = new Date()
   let start: Date
   let end: Date
@@ -204,7 +257,53 @@ function localIso(value: Date): string {
       </button>
     </div>
 
-    <div v-if="task === 'calc' || diagnosisMode === 'autonomous'" class="guided-steps">
+    <div v-if="diagnosisMode === 'autonomous'" class="autonomous-selection-shell">
+      <header class="autonomous-selection-title">
+        <span aria-hidden="true"><i></i><i></i><i></i></span>
+        <div><strong>选择指标、时间与本次口径</strong><small>一次只排查一个指标，系统会按所选口径执行基础校验。</small></div>
+      </header>
+      <div class="autonomous-selection-layout">
+        <section class="autonomous-indicator-column">
+          <label><span>查找指标</span><input v-model="search" type="search" placeholder="输入指标名称或编码" /></label>
+          <p v-if="loading" class="guided-hint">正在加载指标列表…</p>
+          <p v-else-if="loadError" class="guided-hint">{{ loadError }}</p>
+          <div v-else class="autonomous-indicator-list">
+            <button v-for="item in filteredIndicators" :key="item.ruleId" type="button" :class="{ selected: selected.includes(item.ruleId) }" @click="toggleIndicator(item.ruleId)">
+              <span aria-hidden="true"></span><strong>{{ item.ruleName }}</strong><small>{{ item.ruleId }}</small>
+            </button>
+            <p v-if="!filteredIndicators.length" class="guided-hint">没有匹配的指标。</p>
+          </div>
+        </section>
+        <section class="autonomous-profile-column">
+          <div class="autonomous-date-grid">
+            <label><span>统计开始</span><input v-model="diagnosisStart" type="date" /></label>
+            <label><span>统计结束（不含）</span><input v-model="diagnosisEnd" type="date" /></label>
+          </div>
+          <header class="autonomous-profile-heading"><strong>本指标可用口径</strong><span>{{ profiles.length }} 种</span></header>
+          <p v-if="profileLoading" class="guided-hint">正在读取当前指标口径…</p>
+          <p v-else-if="profileError" class="guided-hint is-error">{{ profileError }}</p>
+          <p v-else-if="selected.length && !profiles.length" class="guided-hint">当前知识库没有可选口径。</p>
+          <div v-else class="autonomous-profile-list">
+            <button v-for="profile in profiles" :key="profile.profileId" type="button" :class="{ selected: selectedProfileId === profile.profileId }" :disabled="!profile.overviewRuntimeEligible || disabled" @click="selectDiagnosisProfile(profile)">
+              <span class="autonomous-profile-icon" aria-hidden="true">★</span>
+              <span><strong>{{ profile.profileName }}</strong><small>{{ profile.profileId }}</small></span>
+              <em>{{ profile.overviewRuntimeEligible ? '可执行' : '仅文档' }}</em>
+              <p><b>分子</b>{{ profile.numeratorRule || '知识库未单独登记' }}</p>
+              <p><b>分母</b>{{ profile.denominatorRule || '知识库未单独登记' }}</p>
+            </button>
+          </div>
+          <div v-if="profiles.length" class="autonomous-start-actions">
+            <button type="button" class="guided-submit autonomous-start-button" :disabled="!canSubmit" @click="submit">
+              <span aria-hidden="true">▶</span>开始排查
+            </button>
+            <p class="autonomous-auto-start-hint">点击“开始排查”后，系统会自动完成三项基础校验。</p>
+          </div>
+        </section>
+      </div>
+      <footer><span aria-hidden="true">♧</span>确认指标、统计时间和口径后，点击“开始排查”。</footer>
+    </div>
+
+    <div v-if="task === 'calc'" class="guided-steps">
       <div class="guided-step">
         <h4>第一步：选择指标 <small v-if="task === 'calc'">可多选，已选 {{ selected.length }} 个</small><small v-else>一次只排查一个指标</small></h4>
         <p v-if="loading" class="guided-hint">正在加载指标列表…</p>
@@ -236,9 +335,7 @@ function localIso(value: Date): string {
         </div>
       </div>
 
-      <p v-if="task === 'diagnose'" class="diagnosis-order-note">开始后系统将依次检查：表和字段 → 事件与抽取脚本 → 数值与现场常量。有问题会停在对应步骤并给出修复建议；全部通过后才要求填写具体案例。</p>
-
-      <button type="button" class="guided-submit" :disabled="!canSubmit" @click="submit">{{ task === 'calc' ? '开始计算' : '开始异常排查' }}</button>
+      <button type="button" class="guided-submit" :disabled="!canSubmit" @click="submit">开始计算</button>
     </div>
   </section>
 </template>

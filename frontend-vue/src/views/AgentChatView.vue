@@ -47,6 +47,7 @@ const historySearchOpen = ref(false)
 const historySearch = ref('')
 const historySearchInput = ref<HTMLInputElement | null>(null)
 const autonomousPollCases = new Set<string>()
+const autonomousGateAdvanceCases = new Set<string>()
 const diagnosisPanelRefs = new Map<string, InstanceType<typeof DiagnosisCasePanel>>()
 
 function setDiagnosisPanelRef(caseId: string, el: unknown) {
@@ -58,7 +59,11 @@ function setDiagnosisPanelRef(caseId: string, el: unknown) {
 // 不再在排查面板内另外常驻一个输入条。
 const activeAutonomousCase = computed(() => {
   const last = diagnosisCases.value[diagnosisCases.value.length - 1]
-  return last && String(last.investigationMode || '') === 'AUTONOMOUS' ? last : null
+  if (!last) return null
+  const runningAutonomous = String(last.investigationMode || '') === 'AUTONOMOUS'
+  const waitingForFirstQuestion = String(last.caseInput?.entryMode || '') === 'AUTONOMOUS'
+    && String(last.currentStep || '') === 'CASE_INPUT'
+  return runningAutonomous || waitingForFirstQuestion ? last : null
 })
 const showWelcome = computed(() => !diagnosisCasesLoading.value
   && store.messages.length === 0
@@ -278,6 +283,9 @@ async function restoreDiagnosisCases(sessionId: string) {
     const loaded = await Promise.all(ids.map((caseId) => loadDiagnosisCase(store.token, caseId).catch(() => null)))
     diagnosisCases.value = loaded.filter((item): item is DiagnosisCaseSnapshot => Boolean(item))
     for (const snapshot of diagnosisCases.value) {
+      if (String(snapshot.caseInput?.entryMode || '') === 'AUTONOMOUS') {
+        void resumeAutonomousBaseChecks(snapshot)
+      }
       if (String(snapshot.autonomousRun?.status || '') === 'RUNNING') {
         store.runningSessions[snapshot.sessionId] = true
         void pollAutonomousDiagnosis(snapshot.caseId)
@@ -288,6 +296,23 @@ async function restoreDiagnosisCases(sessionId: string) {
   }
 }
 
+async function resumeAutonomousBaseChecks(snapshot: DiagnosisCaseSnapshot) {
+  if (!currentGateNumber(snapshot.currentStep)
+    || snapshot.gateResults.some((item) => String(item.status || '') === 'BLOCKED')
+    || autonomousGateAdvanceCases.has(snapshot.caseId)) return
+  autonomousGateAdvanceCases.add(snapshot.caseId)
+  diagnosisBusy.value = snapshot.caseId
+  try {
+    const prepared = await advanceDiagnosisGates(snapshot)
+    replaceDiagnosisSnapshot(prepared)
+  } catch (error) {
+    store.error = error instanceof Error ? error.message : '基础校验自动执行失败。'
+  } finally {
+    autonomousGateAdvanceCases.delete(snapshot.caseId)
+    if (diagnosisBusy.value === snapshot.caseId) diagnosisBusy.value = ''
+  }
+}
+
 async function startDiagnosis(input: CreateDiagnosisCaseInput) {
   diagnosisBusy.value = 'creating'
   store.error = ''
@@ -295,6 +320,12 @@ async function startDiagnosis(input: CreateDiagnosisCaseInput) {
     const created = await createDiagnosisCase(store.token, input)
     diagnosisCases.value.push(created)
     rememberDiagnosisCase(store.sessionId, created.caseId)
+    if (String(input.caseInput.entryMode || '') === 'AUTONOMOUS') {
+      let prepared = await actOnDiagnosisCase(store.token, created.caseId, 'CONFIRM_CALIBER', { confirmed: true })
+      replaceDiagnosisSnapshot(prepared)
+      prepared = await advanceDiagnosisGates(prepared)
+      replaceDiagnosisSnapshot(prepared)
+    }
     await refreshSessionList()
     await nextTick()
     conversation.value?.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' })
@@ -434,6 +465,18 @@ async function advanceDiagnosisGates(initial: DiagnosisCaseSnapshot): Promise<Di
     if (!gate) return current
     const existing = current.gateResults.find((item) => Number(item.gate) === gate)
     if (String(existing?.status || '') === 'BLOCKED') return current
+    // The request below is the actual execution of this gate. Project that real
+    // in-flight state immediately so the UI does not sit on “等待前置” until the
+    // whole database call has returned.
+    const runningGate = { ...(existing || {}), gate, status: 'RUNNING', message: '正在执行本项校验，请稍候…' }
+    const optimistic: DiagnosisCaseSnapshot = {
+      ...current,
+      gateResults: [
+        ...current.gateResults.filter((item) => Number(item.gate) !== gate),
+        runningGate,
+      ].sort((left, right) => Number(left.gate) - Number(right.gate)),
+    }
+    replaceDiagnosisSnapshot(optimistic)
     await nextTick()
     current = await actOnDiagnosisCase(store.token, current.caseId, 'RUN_GATE', { gate })
     replaceDiagnosisSnapshot(current)
@@ -716,6 +759,7 @@ async function exportDiagnosis(reportId?: string) {
         </div>
 
         <form class="composer" @submit.prevent="send()">
+           <span class="composer-spark" aria-hidden="true">✦</span>
             <textarea v-model="query" rows="1" maxlength="5000" :placeholder="showWelcome ? '输入问题，或从上方选择一个任务…' : composerPlaceholder" @keydown="handleComposerKeydown"></textarea>
            <label v-if="composerModels.length" class="composer-model-select" title="选择本次对话和新建异常排查任务使用的模型">
              <span class="visually-hidden">选择模型</span>
@@ -724,7 +768,7 @@ async function exportDiagnosis(reportId?: string) {
              </select>
            </label>
            <span v-if="activeAutonomousCase && contextStatNumber('contextWindowTokens')" class="composer-context-ring" role="progressbar" aria-label="当前对话容量使用进度" :aria-valuenow="autonomousContextPercent" aria-valuemin="0" aria-valuemax="100" :title="`对话容量约 ${autonomousContextPercent}%（${autonomousContextIsActual ? '按本轮实际用量计算' : '当前为估算'}）`" :style="{ background: `conic-gradient(#16836f ${autonomousContextPercent}%, #dfeae7 0)` }"></span>
-          <button class="send-button" type="submit" :disabled="store.running || !query.trim()">{{ store.running ? '处理中' : '发送' }}</button>
+          <button class="send-button" type="submit" :disabled="store.running || !query.trim()"><span aria-hidden="true">➤</span>{{ store.running ? '处理中' : '发送' }}</button>
         </form>
       </div>
 

@@ -218,13 +218,14 @@ export interface RuntimeModelSetting extends AgentModel {
   baseUrl: string
   completionsPath: string
   enableThinking: boolean | null
+  contextWindowTokens: number | null
   apiKeyConfigured: boolean
 }
 
 export interface RuntimeSettings {
   securityNotice: string
   defaultModel: string
-  activeBusinessConnectionId: 'business' | 'oracle'
+  activeBusinessConnectionId: 'business'
   models: RuntimeModelSetting[]
   databases: RuntimeDatabaseSetting[]
 }
@@ -289,6 +290,7 @@ export interface RuntimeModelConfigInput {
   apiKey: string
   thinking: boolean
   enableThinking: boolean | null
+  contextWindowTokens: number | null
 }
 
 export async function loadRuntimeSettings(token: string): Promise<RuntimeSettings> {
@@ -433,6 +435,13 @@ export interface DiagnosisDataScreening {
   modelUsed: false
   countsReconciled: boolean
   overviewSqlHash: string
+  departmentOptions: Array<{
+    field: string
+    value: string
+    label: string
+    denominatorCount: number
+    numeratorCount: number
+  }>
   findings: Array<{
     findingId: string
     ruleCode: 'DETERMINISTIC_TEST_MARKER' | 'DETERMINISTIC_DUPLICATE_KEY'
