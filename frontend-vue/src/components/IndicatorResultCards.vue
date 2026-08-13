@@ -10,6 +10,7 @@ import {
 } from '../api/agent'
 import IndicatorDataFlowPanel from './IndicatorDataFlowPanel.vue'
 import MetricDetailRenderer from './MetricDetailRenderer.vue'
+import { formatIndicatorFailure } from '../utils/indicatorFailure'
 
 const props = defineProps<{
   results: BatchIndicatorResult[]
@@ -237,7 +238,7 @@ function recommendation(group: CardGroup): string {
     return `建议以“${profileName(chosen)}”作为本次主视图，其他口径保留作对照。不同口径的结果不得混算，切换正式口径前需人工确认。`
   }
   if (chosen.status === 'FAILED') {
-    return `计算失败：${chosen.errorMessage || '数据源或执行链路未完成'} 建议先确认依赖表、知识库概览 SQL 和数据采集模块，修复后重跑；不得补造指标值。`
+    return formatIndicatorFailure(chosen.errorCode, chosen.errorMessage)
   }
   if (chosen.status === 'NO_SAMPLE') {
     return '本周期没有可用样本，这属于无法计算，不代表未达标。建议确认统计窗口、源表采集覆盖和对应业务模块是否实际启用。'

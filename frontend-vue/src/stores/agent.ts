@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { isInitializationSystemFailure } from '../utils/indicatorFailure'
 
 import {
   loadCapabilities,
@@ -380,7 +381,7 @@ function isUnexpectedSystemFailure(result: BatchIndicatorResult): boolean {
   if (result.status !== 'FAILED') return false
   const code = (result.errorCode || '').toUpperCase()
   if (code === 'PROFILE_NOT_IMPLEMENTED') return false
-  if (code.startsWith('INIT_') && code !== 'INIT_DATABASE_UNAVAILABLE') return false
+  if (code.startsWith('INIT_')) return isInitializationSystemFailure(code)
   return true
 }
 
