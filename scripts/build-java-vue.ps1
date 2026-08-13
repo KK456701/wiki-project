@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$frontend = Join-Path $projectRoot 'frontend-vue'
+$frontend = Join-Path $projectRoot 'winning-webui-mras-aima-develop'
 $backend = Join-Path $projectRoot 'backend-java'
 
 if (-not $env:JAVA_HOME) {
@@ -70,8 +70,11 @@ if (-not $env:JAVA_HOME) {
 }
 $jarTool = Join-Path $env:JAVA_HOME 'bin\jar.exe'
 $jarEntries = & $jarTool 'tf' $jar.FullName
-if ($LASTEXITCODE -ne 0 -or $jarEntries -notcontains 'BOOT-INF/classes/static/index.html') {
-    throw 'The deployment JAR does not contain the latest static/index.html.'
+if ($LASTEXITCODE -ne 0 -or $jarEntries -notcontains 'BOOT-INF/classes/static/webui-mras-aima/index.html') {
+    throw 'The deployment JAR does not contain the latest webui-mras-aima/index.html.'
+}
+if ($jarEntries -contains 'BOOT-INF/classes/static/index.html') {
+    throw 'The deployment JAR still contains the retired root frontend index.html.'
 }
 
 $deployDirectory = Join-Path $backend 'target\deploy'

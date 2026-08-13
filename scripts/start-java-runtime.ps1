@@ -68,7 +68,7 @@ function Test-BundledVue {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
     try {
-        return $null -ne $archive.GetEntry('BOOT-INF/classes/static/index.html')
+        return $null -ne $archive.GetEntry('BOOT-INF/classes/static/webui-mras-aima/index.html')
     } finally {
         $archive.Dispose()
     }
