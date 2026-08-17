@@ -4,9 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-
 import java.util.List;
 
 import com.hospital.wikiagent.agent.ir.ExplanationFocus;
@@ -14,13 +11,12 @@ import com.hospital.wikiagent.agent.ir.PlanIntent;
 import com.hospital.wikiagent.agent.ir.RequestPlan;
 import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
-@SpringBootTest
 class AgentContractJacksonTest {
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final JsonMapper objectMapper = JsonMapper.builder()
+            .findAndAddModules()
+            .build();
 
     @Test
     void readsAndWritesCamelCaseFields() throws Exception {
@@ -60,7 +56,10 @@ class AgentContractJacksonTest {
                 "\"helpText\"",
                 "\"selectionMode\":\"single\"",
                 "\"allowFreeText\":true",
-                "\"resumePrefix\"");
+                "\"resumePrefix\"",
+                "\"clarificationId\":\"CLR_",
+                "\"field\":\"time\"",
+                "\"resumeToken\"");
     }
 
     @Test

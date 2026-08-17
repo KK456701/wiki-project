@@ -1,6 +1,7 @@
 package com.hospital.wikiagent.api;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -21,6 +22,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
 import com.hospital.wikiagent.agent.runtime.CompoundAgentRuntime;
 import com.hospital.wikiagent.agent.trace.AgentTraceService;
+import com.hospital.wikiagent.agent.model.PlannerOutputException;
 import com.hospital.wikiagent.auth.BearerTokens;
 import com.hospital.wikiagent.auth.HospitalAuthService;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
@@ -101,14 +103,10 @@ public class AgentRunController {
                 traces.finish(traceId, result);
                 completeIfOpen(emitter, streamOpen);
             } catch (RuntimeException exception) {
+                String errorId = ApiExceptionHandler.errorId();
                 traces.fail(traceId, exception.getMessage());
-                LOGGER.error("Java Agent stream failed, traceId={}", traceId, exception);
-                sendIfOpen(emitter, streamOpen, Map.of(
-                        "event", "agent_error",
-                        "traceId", traceId,
-                        "message", "Java Agent 运行失败。",
-                        "stopReason", "runtime_error",
-                        "status", "failed"));
+                LOGGER.error("Java Agent stream failed, errorId={}, traceId={}", errorId, traceId, exception);
+                sendIfOpen(emitter, streamOpen, streamError(exception, errorId, traceId));
                 completeIfOpen(emitter, streamOpen);
             }
         });
@@ -122,7 +120,8 @@ public class AgentRunController {
             String traceId) {
         return new AgentRunRequest(
                 request.query(), request.sessionId(), request.modelId(), request.fileKey(),
-                requestId, traceId, null, "{}", "", principal);
+                requestId, traceId, null, "{}", "", principal,
+                request.clarificationResponse());
     }
 
     /**
@@ -145,6 +144,27 @@ public class AgentRunController {
             LOGGER.debug("SSE connection closed; background Agent run continues: {}",
                     exception.getMessage());
         }
+    }
+
+    static Map<String, Object> streamError(
+            RuntimeException exception,
+            String errorId,
+            String traceId) {
+        boolean plannerInvalid = exception instanceof PlannerOutputException;
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("event", "agent_error");
+        event.put("traceId", traceId);
+        event.put("message", plannerInvalid
+                ? "模型业务计划格式错误，自动修复后仍未通过校验。请重试；若再次失败，请在“系统设置 → 错误日志”中搜索错误编号 "
+                        + errorId
+                : "运行失败。请在“系统设置 → 错误日志”中搜索错误编号 " + errorId);
+        event.put("errorId", errorId);
+        event.put("errorCode", plannerInvalid
+                ? ((PlannerOutputException) exception).code() : "RUNTIME_ERROR");
+        event.put("stopReason", plannerInvalid
+                ? "planner_output_invalid" : "runtime_error");
+        event.put("status", "failed");
+        return Map.copyOf(event);
     }
 
     private static void completeIfOpen(

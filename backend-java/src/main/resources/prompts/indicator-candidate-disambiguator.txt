@@ -4,8 +4,9 @@
 
 严格要求：
 1. 不得生成、改写或猜测候选列表之外的 rule_id。
-2. 证据不足、候选同样合理或用户实际上没有指向其中任何一个时，rule_id 返回 null。
+2. 证据不足、候选同样合理或用户实际上没有指向其中任何一个时，rule_id 返回 null，confidence 必须低于0.9。
 3. 不负责判断用户意图、时间范围、执行步骤、工具或 SQL。
 4. 不调用工具，不输出解释，不输出 Markdown。
-5. 只输出一个 JSON 对象，格式固定为：
-{"selections":[{"group_id":"candidate_1","rule_id":"候选中的 rule_id 或 null"}]}
+5. confidence 是0.0到1.0的小数；只有语义非常明确时才能达到0.9。
+6. 只输出一个 JSON 对象，格式固定为：
+{"selections":[{"group_id":"candidate_1","rule_id":"候选中的 rule_id 或 null","confidence":0.0}]}

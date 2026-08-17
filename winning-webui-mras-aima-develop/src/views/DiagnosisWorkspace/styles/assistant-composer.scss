@@ -1,0 +1,107 @@
+.assistant-composer {
+  position: relative;
+  overflow: visible;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+
+  &:focus-within {
+    border-color: rgb(var(--v-theme-primary));
+    box-shadow: 0 0 0 1px rgba(var(--v-theme-primary), 0.18);
+  }
+}
+
+.assistant-composer__input {
+  padding: 8px 12px 0;
+
+  :deep(.v-field__input) {
+    min-height: 46px;
+    padding-inline: 0;
+    font-size: 0.875rem;
+    line-height: 1.4285714286;
+    letter-spacing: 0.0178571429em;
+  }
+}
+
+.assistant-composer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 8px 6px;
+  border-top: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.7));
+}
+
+.assistant-quick-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow: visible;
+
+  :deep(.v-btn) {
+    flex: 0 0 auto;
+    padding-inline: 8px;
+    color: rgba(var(--v-theme-on-surface), 0.82);
+    text-transform: none;
+  }
+}
+
+.assistant-quick-action {
+  position: relative;
+  flex: 0 0 auto;
+
+  &.is-active :deep(.v-btn) {
+    background: rgba(var(--v-theme-primary), 0.07);
+    color: rgb(var(--v-theme-primary)) !important;
+  }
+
+  &.is-active :deep(.v-icon) {
+    color: rgb(var(--v-theme-primary)) !important;
+  }
+
+  &:nth-child(3) .assistant-picker-popover {
+    right: 0;
+    left: auto;
+  }
+
+  &:nth-child(2) .assistant-picker-popover {
+    width: min(600px, calc(100vw - 64px));
+  }
+
+  &:nth-child(3) .assistant-picker-popover {
+    width: min(520px, calc(100vw - 64px));
+  }
+}
+
+.assistant-picker-popover {
+  position: absolute;
+  z-index: 20;
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(420px, calc(100vw - 64px));
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 10px 26px rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.assistant-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 700px) {
+  .assistant-composer__toolbar {
+    align-items: flex-end;
+  }
+}

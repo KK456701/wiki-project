@@ -1,6 +1,8 @@
 package com.hospital.wikiagent.agent.batch;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -203,7 +205,8 @@ public class BatchIndicatorRuntime {
         List<IndicatorExecutionResult> results =
                 executeAll(
                         observer, traceId, requestId, context, executionTargets,
-                        spec.timeText(), statStart, statEnd, batchRunId, initialization);
+                        spec.timeText(), statStart, statEnd, batchRunId, initialization,
+                        request.principal().hospitalId());
 
         long mergeStarted = System.currentTimeMillis();
         String answer = aggregator.aggregate(
@@ -283,7 +286,8 @@ public class BatchIndicatorRuntime {
             String statStart,
             String statEnd,
             String batchRunId,
-            InitializationValidationReport initialization) {
+            InitializationValidationReport initialization,
+            String hospitalId) {
         int total = targets.size();
         /*
          * 真实库是全局单快照：每个 Profile 都会清理并替换同一组受控表，然后在持锁
@@ -334,7 +338,7 @@ public class BatchIndicatorRuntime {
                             result = executeViaMras(
                                     ruleId, ruleName, target, statStart, statEnd,
                                     observer, traceId, subtaskId,
-                                    validation);
+                                    validation, hospitalId);
                         } else if (target.profileId() == null) {
                             result = executor.execute(
                                     ruleId, ruleName, subtaskId, timeText,
@@ -464,7 +468,7 @@ public class BatchIndicatorRuntime {
             ProfileExecutionTarget target,
             String statStart, String statEnd,
             AgentRunObserver observer, String traceId, String subtaskId,
-            ProfileValidation validation) {
+            ProfileValidation validation, String hospitalId) {
         long started = System.currentTimeMillis();
         LocalDateTime start = LocalDateTime.parse(statStart, TIME_FORMAT);
         LocalDateTime end = LocalDateTime.parse(statEnd, TIME_FORMAT);
@@ -484,7 +488,7 @@ public class BatchIndicatorRuntime {
                     profileTraceInput(target), Map.copyOf(directOutput));
         } else {
             ToolResult extraction = mrasExecution.prepareExtraction(
-                    ruleId, target.profileId(), start, end);
+                    ruleId, target.profileId(), hospitalId, start, end);
             emitExtractionTrace(observer, traceId, subtaskId, target, extraction);
             if (!extraction.ok()) {
                 return IndicatorExecutionResult.failed(
@@ -496,7 +500,8 @@ public class BatchIndicatorRuntime {
             long snapshotStarted = System.currentTimeMillis();
             RealSnapshotValidation snapshot = initializationValidator.validateRealSnapshot(
                     validationTarget(target),
-                    validation == null ? null : validation.businessSourceCount(), start, end);
+                    validation == null ? null : validation.businessSourceCount(),
+                    hospitalId, start, end);
             emitTrace(observer, traceId, "real_snapshot_data_validation",
                     snapshot.ok() ? "success" : "failed", snapshotStarted, subtaskId,
                     profileTraceInput(target), snapshot.output());
@@ -509,7 +514,7 @@ public class BatchIndicatorRuntime {
         }
 
         ToolResult toolResult = mrasExecution.executeOverview(
-                ruleId, target.profileId(), start, end, null, null);
+                ruleId, target.profileId(), hospitalId, start, end, null, null);
         long durationMs = System.currentTimeMillis() - started;
         emitMrasOverviewTrace(observer, traceId, subtaskId, target, toolResult);
 
@@ -682,18 +687,26 @@ public class BatchIndicatorRuntime {
             AgentRunObserver observer) {
         long started = System.currentTimeMillis();
         try {
-            String jobId = jobStore.createJob(
-                    conversation.storageKey(),
-                    request.principal().hospitalId(),
-                    request.principal().userId(),
-                    request.query(),
-                    total,
-                    statStart,
-                    statEnd,
-                    traceId);
+            String knowledgeReleaseId = rules.knowledgeReleaseId(
+                    request.principal().hospitalId());
+            String jobId = knowledgeReleaseId == null || knowledgeReleaseId.isBlank()
+                    ? jobStore.createJob(
+                            conversation.storageKey(), request.principal().hospitalId(),
+                            request.principal().userId(), request.query(), total,
+                            statStart, statEnd, traceId)
+                    : jobStore.createJob(
+                            conversation.storageKey(), request.principal().hospitalId(),
+                            request.principal().userId(), request.query(), total,
+                            statStart, statEnd, traceId, knowledgeReleaseId);
+            Map<String, Object> startOutput = new LinkedHashMap<>();
+            startOutput.put("batchRunId", jobId);
+            startOutput.put("status", "RUNNING");
+            if (knowledgeReleaseId != null && !knowledgeReleaseId.isBlank()) {
+                startOutput.put("knowledgeReleaseId", knowledgeReleaseId);
+            }
             emitTrace(observer, traceId, "batch_job_start", "success", started,
                     "root", Map.of("taskCount", total),
-                    Map.of("batchRunId", jobId, "status", "RUNNING"));
+                    Map.copyOf(startOutput));
             return jobId;
         } catch (RuntimeException exception) {
             LOGGER.warn("批量作业启动持久化失败，结果仍返回但明细不可绑定：{}", exception.getMessage());
@@ -842,15 +855,20 @@ public class BatchIndicatorRuntime {
 
     private static AgentClarification timeClarification(
             BatchRequestSpec spec, String scopeText) {
+        LocalDate today = LocalDate.now();
+        YearMonth previousMonth = YearMonth.from(today).minusMonths(1);
         List<AgentClarification.Option> options = List.of(
                 new AgentClarification.Option(
-                        "year-to-date", "今年至今", "今年至今",
+                        "year-to-date", "今年至今",
+                        LocalDate.of(today.getYear(), 1, 1) + " 至 " + today,
                         "从今年1月1日统计到今天", "time"),
                 new AgentClarification.Option(
-                        "current-month", "本月", "本月",
+                        "current-month", "本月",
+                        YearMonth.from(today).atDay(1) + " 至 " + today,
                         "从本月1日统计到今天", "time"),
                 new AgentClarification.Option(
-                        "previous-month", "上个月", "上个月",
+                        "previous-month", "上个月",
+                        previousMonth.atDay(1) + " 至 " + previousMonth.atEndOfMonth(),
                         "统计上个自然月", "time"));
         boolean allScope = spec.allActive() || spec.targets().isEmpty();
         return new AgentClarification(
@@ -1003,12 +1021,16 @@ public class BatchIndicatorRuntime {
 
     /**
      * 数据质量只依据确定性事实分级。无法完成检查不等于数据异常，纯展示字段空值也
-     * 不改变分子分母；已确认或可能影响计算的数据问题，以及无法形成可信结果的执行
-     * 状态，统一归入异常。
+     * 不改变分子分母；已确认影响计算的数据问题，以及无法形成可信结果的执行状态，
+     * 统一归入异常。未实现属于口径配置状态，不属于数据质量异常；POSSIBLE
+     * 只表示需要人工关注，在没有确定证据时不能把整个指标判为异常。
      */
     private static String qualityStatus(
             InitializationValidationReport initialization,
             IndicatorExecutionResult result) {
+        if ("PROFILE_NOT_IMPLEMENTED".equals(result.errorCode())) {
+            return "NORMAL";
+        }
         if (result.status() != Status.SUCCESS
                 || "extraction_failed_stale".equals(result.dataFreshness())) {
             return "ABNORMAL";
@@ -1016,8 +1038,7 @@ public class BatchIndicatorRuntime {
         boolean dataProblem = initialization.items().stream()
                 .filter(item -> result.ruleId().equals(item.ruleId()))
                 .filter(item -> Objects.equals(result.profileId(), item.profileId()))
-                .anyMatch(item -> "CONFIRMED".equals(item.impactLevel())
-                        || "POSSIBLE".equals(item.impactLevel()));
+                .anyMatch(item -> "CONFIRMED".equals(item.impactLevel()));
         return dataProblem ? "ABNORMAL" : "NORMAL";
     }
 

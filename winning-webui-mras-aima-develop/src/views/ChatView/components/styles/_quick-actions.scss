@@ -1,0 +1,30 @@
+.quick-actions {
+  max-width: 660px;
+}
+
+.quick-action-card {
+  flex: 1;
+  min-width: 280px;
+  max-width: 320px;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+
+  &:hover,
+  &--active {
+    border-color: rgb(var(--v-theme-primary));
+  }
+}
+
+.quick-action-form {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.select-all-header {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  background: rgb(var(--v-theme-surface));
+}

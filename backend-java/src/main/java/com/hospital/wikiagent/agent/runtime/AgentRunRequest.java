@@ -1,6 +1,7 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import com.hospital.wikiagent.auth.HospitalPrincipal;
+import com.hospital.wikiagent.contract.AgentChatRequest.ClarificationResponse;
 
 /**
  * 定义 {@code AgentRunRequest} 的不可变数据载体。
@@ -17,7 +18,23 @@ public record AgentRunRequest(
         String dbSourceId,
         String structuredState,
         String recentHistory,
-        HospitalPrincipal principal) {
+        HospitalPrincipal principal,
+        ClarificationResponse clarificationResponse) {
+
+    public AgentRunRequest(
+            String query,
+            String sessionId,
+            String modelId,
+            String fileKey,
+            String requestId,
+            String traceId,
+            String dbSourceId,
+            String structuredState,
+            String recentHistory,
+            HospitalPrincipal principal) {
+        this(query, sessionId, modelId, fileKey, requestId, traceId, dbSourceId,
+                structuredState, recentHistory, principal, null);
+    }
 
     public AgentRunRequest {
         if (query == null || query.isBlank()) {

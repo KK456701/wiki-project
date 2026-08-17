@@ -33,9 +33,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Component
 public class HybridIndicatorResolver {
-    public static final String VERSION = "hybrid-indicator-resolver-java-v3";
-    private static final double SEMANTIC_THRESHOLD = 0.68;
-    private static final double SEMANTIC_MARGIN = 0.12;
+    public static final String VERSION = "hybrid-indicator-resolver-java-v5";
+    private static final double SEMANTIC_CANDIDATE_THRESHOLD = 0.45;
+    private static final double LLM_DISAMBIGUATION_THRESHOLD = 0.9;
     private static final int MAX_INDICATORS = 35;
     private static final Pattern SEGMENT_SPLIT = Pattern.compile(
             "[,，、;；]|(?:还有|以及|另外(?:再|还|也)?|同时(?:还|也)?)");
@@ -52,7 +52,7 @@ public class HybridIndicatorResolver {
             "(?:从|自|在)?(?:\\d{2,4}\\s*年)?(?:1[0-2]|[1-9]|[一二三四五六七八九十]{1,3})"
                     + "\\s*月份?.*$");
     private static final Pattern INDICATOR_HINT = Pattern.compile(
-            "指标|率|比例|会诊|转科|查房|患者|住院|手术|抢救|死亡|感染|输血");
+            "制度|指标|率|比例|会诊|转科|查房|患者|住院|手术|抢救|死亡|感染|输血");
 
     private final TerminologyService terminology;
     private final TerminologyRepository terminologyRepository;
@@ -105,6 +105,10 @@ public class HybridIndicatorResolver {
         long ruleStarted = TraceEvents.started();
         List<ResolvedIndicator> resolved = new ArrayList<>();
         List<Span> occupied = new ArrayList<>();
+        // 制度名称是一组指标的共同别名，必须成组展开后再占用文本片段，
+        // 否则普通精确匹配的“一个片段只命中一次”会错误丢掉同制度下其余指标。
+        List<Ambiguity> ambiguities = new ArrayList<>();
+        addSystemCatalogMatches(input, catalog, resolved, ambiguities, occupied);
         try {
             Map<String, Object> normalization = terminology.normalize(input, hospitalId);
             releaseVersion = text(normalization.get("releaseVersion"));
@@ -122,7 +126,6 @@ public class HybridIndicatorResolver {
 
         // 第二层：只在未占用文本片段内做本地相似度召回，阈值和领先幅度均固定。
         long semanticStarted = TraceEvents.started();
-        List<Ambiguity> ambiguities = new ArrayList<>();
         Set<String> knownRules = new LinkedHashSet<>();
         resolved.forEach(value -> knownRules.add(value.ruleId()));
         List<Segment> segments = candidateSegments(input).stream()
@@ -132,13 +135,7 @@ public class HybridIndicatorResolver {
             List<Candidate> ranked = rank(segment.text(), catalog, knownRules);
             if (ranked.isEmpty()) continue;
             Candidate top = ranked.get(0);
-            double runnerUp = ranked.size() > 1 ? ranked.get(1).score() : 0.0;
-            if (top.score() >= SEMANTIC_THRESHOLD && top.score() - runnerUp >= SEMANTIC_MARGIN) {
-                resolved.add(new ResolvedIndicator(
-                        segment.text(), top.canonicalName(), top.ruleId(), top.conceptCode(),
-                        "semantic", top.score(), segment.start(), segment.end()));
-                knownRules.add(top.ruleId());
-            } else if (top.score() >= 0.45) {
+            if (top.score() >= SEMANTIC_CANDIDATE_THRESHOLD) {
                 ambiguities.add(new Ambiguity(segment.text(), ranked.stream().limit(3).toList()));
             }
         }
@@ -149,20 +146,31 @@ public class HybridIndicatorResolver {
                         "resolved", resolved,
                         "candidateGroups", ambiguities,
                         "algorithm", "normalized-levenshtein+jaccard+containment",
-                        "threshold", SEMANTIC_THRESHOLD,
-                        "margin", SEMANTIC_MARGIN));
+                        "threshold", SEMANTIC_CANDIDATE_THRESHOLD,
+                        "directResolution", false));
 
         // 第三层：语义召回拿不准时调用 LLM 消歧，使用独立短超时避免离线模型阻塞主链路。
         // 超时或失败时安全降级为“把候选交给用户确认”，不猜测。
         boolean usedLlm = false;
-        if (!ambiguities.isEmpty()) {
+        // 精确制度分类命中多个指标时，候选集合本身已经由生效规则目录确定。
+        // 这类歧义必须交给用户选择，不能再让模型猜一个指标，也不应为此等待模型超时。
+        List<Ambiguity> exactCatalogAmbiguities = ambiguities.stream()
+                .filter(HybridIndicatorResolver::isExactCatalogAmbiguity)
+                .toList();
+        List<Ambiguity> modelAmbiguities = ambiguities.stream()
+                .filter(group -> !isExactCatalogAmbiguity(group))
+                .toList();
+        if (!modelAmbiguities.isEmpty()) {
+            usedLlm = true;
             Disambiguation disambiguation = disambiguate(
-                    input, ambiguities, modelId, traceId, subtaskId, sink);
+                    input, modelAmbiguities, modelId, traceId, subtaskId, sink);
             if (!disambiguation.resolved().isEmpty()) {
                 resolved.addAll(disambiguation.resolved());
-                usedLlm = true;
             }
-            ambiguities = new ArrayList<>(disambiguation.remaining());
+            ambiguities = new ArrayList<>(exactCatalogAmbiguities);
+            ambiguities.addAll(disambiguation.remaining());
+        } else {
+            ambiguities = new ArrayList<>(exactCatalogAmbiguities);
         }
         resolved = new ArrayList<>(deduplicate(resolved));
         if (resolved.size() > MAX_INDICATORS) {
@@ -175,6 +183,12 @@ public class HybridIndicatorResolver {
         return new Resolution(resolved, ambiguities, usedLlm, releaseVersion);
     }
 
+    private static boolean isExactCatalogAmbiguity(Ambiguity ambiguity) {
+        return ambiguity.candidates().size() > 1
+                && ambiguity.candidates().stream()
+                        .allMatch(candidate -> candidate.score() >= 0.99);
+    }
+
     private List<CatalogItem> catalog(String hospitalId) {
         Map<String, CatalogBuilder> byRule = new LinkedHashMap<>();
 
@@ -184,11 +198,13 @@ public class HybridIndicatorResolver {
         for (Map<String, String> item : rules.activeIndicatorNames(hospitalId, 500)) {
             String ruleId = text(item.get("ruleId"));
             String name = text(item.get("ruleName"));
+            String system = text(item.get("system"));
             if (ruleId.isBlank() || name.isBlank()) continue;
             CatalogBuilder builder = byRule.computeIfAbsent(ruleId,
                     ignored -> new CatalogBuilder(ruleId, "RULE:" + ruleId, name));
             if (builder.canonicalName.isBlank()) builder.canonicalName = name;
             builder.names.add(name);
+            builder.systemNames.addAll(systemAliases(system));
         }
 
         Map<String, Map<String, Object>> concepts = new LinkedHashMap<>();
@@ -227,6 +243,71 @@ public class HybridIndicatorResolver {
             // 生效指标目录仍可单独作为完整兜底。
         }
         return byRule.values().stream().map(CatalogBuilder::build).toList();
+    }
+
+    private static Set<String> systemAliases(String system) {
+        String canonical = system == null ? "" : system.strip();
+        if (canonical.isBlank()) return Set.of();
+        Set<String> aliases = new LinkedHashSet<>();
+        aliases.add(canonical);
+        // 医院业务人员常把“首诊负责制度”口语化为“首诊责任制”。
+        if ("首诊负责制度".equals(canonical)) aliases.add("首诊责任制");
+        return aliases;
+    }
+
+    private static void addSystemCatalogMatches(
+            String query,
+            List<CatalogItem> catalog,
+            List<ResolvedIndicator> resolved,
+            List<Ambiguity> ambiguities,
+            List<Span> occupied) {
+        Map<String, List<CatalogItem>> itemsBySystemName = new LinkedHashMap<>();
+        for (CatalogItem item : catalog) {
+            for (String systemName : item.systemNames()) {
+                if (systemName == null || systemName.isBlank()) continue;
+                itemsBySystemName.computeIfAbsent(systemName, ignored -> new ArrayList<>()).add(item);
+            }
+        }
+        List<SystemMatch> matches = new ArrayList<>();
+        String lowered = query.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, List<CatalogItem>> entry : itemsBySystemName.entrySet()) {
+            String systemName = entry.getKey().strip();
+            String needle = systemName.toLowerCase(Locale.ROOT);
+            int offset = 0;
+            while (offset < lowered.length()) {
+                int start = lowered.indexOf(needle, offset);
+                if (start < 0) break;
+                matches.add(new SystemMatch(
+                        start, start + systemName.length(), systemName, entry.getValue()));
+                offset = start + Math.max(1, systemName.length());
+            }
+        }
+        matches.sort(Comparator.comparingInt(SystemMatch::length).reversed()
+                .thenComparingInt(SystemMatch::start));
+        for (SystemMatch match : matches) {
+            Span span = new Span(match.start(), match.end());
+            if (occupied.stream().anyMatch(value -> value.overlaps(span))) continue;
+            String mention = query.substring(match.start(), match.end());
+            if (match.items().size() > 1 && !requestsAllSystemIndicators(query)) {
+                ambiguities.add(new Ambiguity(mention, match.items().stream()
+                        .map(item -> new Candidate(
+                                item.ruleId(), item.canonicalName(), item.conceptCode(), 1.0))
+                        .toList()));
+            } else {
+                for (CatalogItem item : match.items()) {
+                    resolved.add(new ResolvedIndicator(
+                            mention, item.canonicalName(), item.ruleId(), item.conceptCode(),
+                            "system", 1.0, match.start(), match.end()));
+                }
+            }
+            occupied.add(span);
+        }
+    }
+
+    private static boolean requestsAllSystemIndicators(String query) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "");
+        return Pattern.compile("全部|所有|有哪些|分别|这些指标|各个|每个")
+                .matcher(compact).find();
     }
 
     @SuppressWarnings("unchecked")
@@ -342,15 +423,17 @@ public class HybridIndicatorResolver {
                 if (!(rawSelection instanceof Map<?, ?> selection)) continue;
                 String groupId = text(selection.get("group_id"));
                 String ruleId = text(selection.get("rule_id"));
+                double confidence = number(selection.get("confidence"));
                 Ambiguity group = groupMap.get(groupId);
-                if (group == null || ruleId.isBlank()) continue;
+                if (group == null || ruleId.isBlank()
+                        || confidence < LLM_DISAMBIGUATION_THRESHOLD) continue;
                 Candidate candidate = group.candidates().stream()
                         .filter(value -> value.ruleId().equals(ruleId)).findFirst().orElse(null);
                 if (candidate == null) continue;
                 int start = Math.max(0, query.indexOf(group.mention()));
                 resolved.add(new ResolvedIndicator(
                         group.mention(), candidate.canonicalName(), candidate.ruleId(),
-                        candidate.conceptCode(), "llm_disambiguation", candidate.score(),
+                        candidate.conceptCode(), "llm_disambiguation", confidence,
                         start, start + group.mention().length()));
                 selectedGroups.add(groupId);
             }
@@ -510,6 +593,15 @@ public class HybridIndicatorResolver {
         return "true".equalsIgnoreCase(text(value)) || "1".equals(text(value));
     }
 
+    private static double number(Object value) {
+        if (value instanceof Number number) return number.doubleValue();
+        try {
+            return Double.parseDouble(text(value));
+        } catch (NumberFormatException ignored) {
+            return 0.0;
+        }
+    }
+
     private static String safe(String value) { return value == null ? "" : value; }
     private static String text(Object value) { return value == null ? "" : String.valueOf(value); }
 
@@ -550,20 +642,27 @@ public class HybridIndicatorResolver {
     }
 
     private record CatalogItem(
-            String ruleId, String conceptCode, String canonicalName, List<String> names) {
+            String ruleId,
+            String conceptCode,
+            String canonicalName,
+            List<String> names,
+            List<String> systemNames) {
     }
     private static final class CatalogBuilder {
         private final String ruleId;
         private final String conceptCode;
         private String canonicalName;
         private final Set<String> names = new LinkedHashSet<>();
+        private final Set<String> systemNames = new LinkedHashSet<>();
         private CatalogBuilder(String ruleId, String conceptCode, String canonicalName) {
             this.ruleId = ruleId;
             this.conceptCode = conceptCode;
             this.canonicalName = canonicalName;
         }
         private CatalogItem build() {
-            return new CatalogItem(ruleId, conceptCode, canonicalName, List.copyOf(names));
+            return new CatalogItem(
+                    ruleId, conceptCode, canonicalName,
+                    List.copyOf(names), List.copyOf(systemNames));
         }
     }
     private record Span(int start, int end) {
@@ -572,6 +671,10 @@ public class HybridIndicatorResolver {
     }
     private record Segment(int start, String text) { private int end() { return start + text.length(); } }
     private record ExactMatch(int start, int end, String mention, CatalogItem item) {
+        private int length() { return end - start; }
+    }
+    private record SystemMatch(
+            int start, int end, String mention, List<CatalogItem> items) {
         private int length() { return end - start; }
     }
     private record Disambiguation(List<ResolvedIndicator> resolved, List<Ambiguity> remaining) { }

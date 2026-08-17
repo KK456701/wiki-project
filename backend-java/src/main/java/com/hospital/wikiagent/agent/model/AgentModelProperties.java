@@ -27,14 +27,51 @@ public class AgentModelProperties {
     private double traceToolFailureWarningRate = 0.05;
     private double traceTimeoutWarningRate = 0.05;
     private String evidenceJsonlPath = "runtime/agent_evidence_java.jsonl";
-    private double confidenceThreshold = 0.7;
+    private double confidenceThreshold = 0.9;
     private int batchMaxIndicators = 35;
     private int batchWorkerConcurrency = 4;
     /** 指标消歧 LLM 调用的独立超时，短于 Planner 以避免离线模型阻塞主链路。 */
     private Duration disambiguationTimeout = Duration.ofSeconds(20);
     /** 批量意图 LLM 校验的独立超时；超时或失败时回退正则结果。 */
     private Duration batchVerifyTimeout = Duration.ofSeconds(15);
-    private List<ModelDefinition> models = new ArrayList<>();
+    /**
+     * 首次安装时在“系统设置”中显示的模型模板。模板只提供名称、协议和推荐地址，
+     * 不包含任何 API Key；实施人员保存后，实际配置写入本机运行时数据库。
+     */
+    private List<ModelDefinition> models = defaultModels();
+
+    private static List<ModelDefinition> defaultModels() {
+        return List.of(
+                model("ollama-qwen3", "Qwen3 4B（本地 Ollama）", "ollama", "qwen3:4B-instruct",
+                        "http://127.0.0.1:11434", "", false, null),
+                model("ollama-qwen3-8b-thinking", "Qwen3 8B 思考模式（本地 Ollama）", "ollama", "qwen3:8b",
+                        "http://127.0.0.1:11434", "", true, null),
+                model("aliyun-qwen-distill-7b", "DeepSeek R1 Distill Qwen 7B（阿里云百炼 API）",
+                        "openai-compatible", "deepseek-r1-distill-qwen-7b",
+                        "https://dashscope.aliyuncs.com/compatible-mode/v1", "/chat/completions", false, false),
+                model("aliyun-qwen3-14b", "Qwen3 14B（阿里云百炼 API）", "openai-compatible", "qwen3-14b",
+                        "https://dashscope.aliyuncs.com/compatible-mode/v1", "/chat/completions", true, false),
+                model("deepseek-v4-flash", "DeepSeek V4 Flash（API）", "openai-compatible", "deepseek-v4-flash",
+                        "https://api.deepseek.com", "", false, null),
+                model("deepseek-v4-pro", "DeepSeek V4 Pro（API）", "openai-compatible", "deepseek-v4-pro",
+                        "https://api.deepseek.com", "", true, null));
+    }
+
+    private static ModelDefinition model(
+            String id, String name, String provider, String model, String baseUrl,
+            String completionsPath, boolean thinking, Boolean enableThinking) {
+        ModelDefinition value = new ModelDefinition();
+        value.setId(id);
+        value.setName(name);
+        value.setProvider(provider);
+        value.setModel(model);
+        value.setBaseUrl(baseUrl);
+        value.setCompletionsPath(completionsPath);
+        value.setThinking(thinking);
+        value.setEnableThinking(enableThinking);
+        value.setContextWindowTokens("ollama".equals(provider) ? 16_384 : null);
+        return value;
+    }
 
     public String getDefaultModel() { return defaultModel; }
     public void setDefaultModel(String value) { defaultModel = value; }
@@ -89,6 +126,7 @@ public class AgentModelProperties {
         private String apiKey;
         private boolean thinking;
         private Boolean enableThinking;
+        private Integer contextWindowTokens;
 
         public String getId() { return id; }
         public void setId(String value) { id = value; }
@@ -116,5 +154,7 @@ public class AgentModelProperties {
          */
         public Boolean getEnableThinking() { return enableThinking; }
         public void setEnableThinking(Boolean value) { enableThinking = value; }
+        public Integer getContextWindowTokens() { return contextWindowTokens; }
+        public void setContextWindowTokens(Integer value) { contextWindowTokens = value; }
     }
 }

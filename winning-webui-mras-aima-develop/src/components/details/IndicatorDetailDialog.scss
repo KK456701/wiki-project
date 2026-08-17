@@ -1,0 +1,36 @@
+.detail-table-wrap {
+  max-height: 55vh;
+  overflow-x: scroll;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+}
+
+.detail-table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.detail-table :deep(.v-table__wrapper),
+.detail-table :deep(table) {
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+}
+
+.detail-table :deep(th) {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  white-space: nowrap;
+  background: rgb(var(--v-theme-surface));
+}
+
+.detail-table :deep(td) {
+  white-space: nowrap;
+}
+
+.median-row {
+  background: rgba(var(--v-theme-primary), 0.08);
+}

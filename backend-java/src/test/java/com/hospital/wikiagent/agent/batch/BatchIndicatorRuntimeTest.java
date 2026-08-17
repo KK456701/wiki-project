@@ -30,6 +30,7 @@ import com.hospital.wikiagent.agent.initialization.BatchDataInitializationValida
 import com.hospital.wikiagent.agent.initialization.InitializationValidationReport;
 import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.Decision;
 import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.ProfileValidation;
+import com.hospital.wikiagent.agent.initialization.InitializationValidationReport.ValidationItem;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.ConversationSnapshot;
 import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryScopeState;
@@ -41,6 +42,7 @@ import com.hospital.wikiagent.agent.runtime.AgentRunRequest;
 import com.hospital.wikiagent.agent.runtime.AgentRunResult;
 import com.hospital.wikiagent.agent.mras.MrasSqlExecutionService;
 import com.hospital.wikiagent.agent.tools.AgentRuntimeContext;
+import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 import com.hospital.wikiagent.rules.WikiRuleKnowledgeSource;
 
@@ -219,7 +221,29 @@ class BatchIndicatorRuntimeTest {
                 "stage_update".equals(event.get("event"))
                         && "failed".equals(event.get("status"))
                         && "INIT_MISSING_COLUMN".equals(event.get("errorCode"))
-                        && String.valueOf(event.get("errorMessage")).contains("缺少计算字段"));
+                && String.valueOf(event.get("errorMessage")).contains("缺少计算字段"));
+    }
+
+    @Test
+    void possibleInitializationWarningDoesNotMarkSuccessfulResultAbnormal() {
+        stubIndicators("R1");
+        stubExecutorSuccess();
+        doReturn(new InitializationValidationReport(
+                        "BJOB_test", "hospital_001", START, END, 7,
+                        "WARNING", true, true,
+                        List.of(new ProfileValidation(
+                                "R1", "指标一", "R1-default", "默认口径",
+                                Decision.RUNNABLE, "", "通过", 10L,
+                                "DIRECT_TO_TARGET")),
+                        List.of(possibleQualityItem())))
+                .when(initializationValidator)
+                .validate(any(), any(), any(), any(), any(), any(), any(), any());
+
+        runtime.run(request(), observer, batchSpec());
+
+        ArgumentCaptor<String> quality = ArgumentCaptor.forClass(String.class);
+        verify(jobStore).recordTask(eq("BJOB_test"), anyInt(), any(), quality.capture());
+        assertThat(quality.getValue()).isEqualTo("NORMAL");
     }
 
     @Test
@@ -375,6 +399,10 @@ class BatchIndicatorRuntimeTest {
         assertThat(result.stopReason()).isEqualTo("clarification");
         assertThat(result.clarification()).isNotNull();
         assertThat(result.clarification().code()).isEqualTo("TIME_RANGE_AMBIGUOUS");
+        assertThat(result.clarification().field()).isEqualTo("time");
+        assertThat(result.clarification().options())
+                .allSatisfy(option -> assertThat(option.value())
+                        .matches("\\d{4}-\\d{2}-\\d{2} 至 \\d{4}-\\d{2}-\\d{2}"));
         String continuation = result.clarification().resumePrefix()
                 + "2026-06-01 至 2026-07-01";
         assertThat(new BatchRequestDetector().detect(continuation).batch()).isTrue();
@@ -471,6 +499,20 @@ class BatchIndicatorRuntimeTest {
                 "refreshed_by_current_run",
                 profileId, profileLabel, "EXT_" + profileId,
                 "COMPLETED", "CORE_TEST");
+    }
+
+    private static ValidationItem possibleQualityItem() {
+        return new ValidationItem(
+                "NULL_RATE", "WARNING", DatabaseRole.BUSINESS,
+                "R1", "指标一", "R1-default", "默认口径",
+                "住院系统", "SOURCE_TABLE", "EVENT_AT", "事件时间",
+                "本次统计窗口", START, END, null, 10L, 1L,
+                null, null, 0.1, true, "继续", "INIT_FIELD_HAS_NULL",
+                "关键字段存在空值", "SELECT 1", Map.of(), 1L, 1L, "",
+                "POSSIBLE", List.of("TIME_FILTER"), "WINDOW",
+                "BUSINESS|SOURCE_TABLE|EVENT_AT", "DETERMINISTIC_SQL_PROBE",
+                "R1|NULL_RATE", "字段存在空值", List.of(), List.of(), 1,
+                "", "", "");
     }
 
     private static String nameFor(String ruleId) {

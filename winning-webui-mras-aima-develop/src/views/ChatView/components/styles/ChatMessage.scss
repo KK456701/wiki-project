@@ -1,0 +1,229 @@
+// ============================================================
+// ChatMessage — 聊天消息气泡样式
+// 依赖：Vuetify 3 CSS 变量（v-theme-*, v-border-*）
+// BEM 命名：Block__Element--Modifier
+// ============================================================
+
+// ── 设计令牌（Design Tokens） ──
+// Vuetify 主题 RGB 通道（配合 rgb() / rgba() 使用）
+$c-primary: var(--v-theme-primary);
+$c-on-primary: var(--v-theme-on-primary);
+$c-surface: var(--v-theme-surface);
+$c-on-surface: var(--v-theme-on-surface);
+$c-surface-variant: var(--v-theme-surface-variant);
+$c-error: var(--v-theme-error);
+$c-border: var(--v-border-color);
+$c-border-opacity: var(--v-border-opacity);
+
+// 边框
+$border: 1px solid rgba($c-border, $c-border-opacity);
+
+// 圆角
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 16px;
+
+// 间距
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+$spacing-lg: 24px;
+
+// 阴影
+$shadow-bubble: 0 1px 3px rgba(0, 0, 0, 0.06);
+
+// 字号
+$font-size-caption: 11px;
+$font-size-body: 14px;
+
+// 过渡动画
+$transition-opacity: opacity 0.2s ease;
+
+// ============================================================
+// 消息容器 (Block: message-wrapper)
+// ============================================================
+.message-wrapper {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: $spacing-lg;
+  gap: $spacing-md;
+
+  // ── 修饰符：用户消息（右对齐） ──
+  &--user {
+    flex-direction: row-reverse;
+
+    .message-content {
+      align-items: flex-end;
+    }
+
+    .message-text {
+      white-space: pre-wrap;
+    }
+  }
+
+  // ── 修饰符：助手消息（左对齐，全宽） ──
+  &--assistant {
+    .message-content {
+      align-items: flex-start;
+      max-width: 100%;
+      flex: 1;
+      overflow-x: auto;
+    }
+  }
+
+  // ── 修饰符：已停止生成 ──
+  // &--stopped {
+  //   // 预留：停止状态的容器级样式
+  // }
+
+  // ── 悬停时显示复制按钮 ──
+  &:hover .copy-btn {
+    opacity: 1;
+  }
+}
+
+// ============================================================
+// 头像
+// ============================================================
+.message-avatar {
+  flex-shrink: 0;
+}
+
+// ============================================================
+// 消息内容区
+// ============================================================
+.message-content {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+}
+
+// ============================================================
+// 消息气泡 (Element: message-bubble)
+// ============================================================
+.message-bubble {
+  padding: $spacing-md 16px;
+  border-radius: $radius-lg;
+  word-wrap: break-word;
+
+  // ── 用户气泡 ──
+  &--user {
+    background: rgb($c-primary);
+    color: rgb($c-on-primary);
+    border-bottom-right-radius: $radius-sm;
+  }
+
+  // ── 助手气泡 ──
+  &--assistant {
+    background: rgb($c-surface);
+    color: rgb($c-on-surface);
+    border-bottom-left-radius: $radius-sm;
+    border: $border;
+    box-shadow: $shadow-bubble;
+  }
+
+  // ── 错误气泡 ──
+  &--error {
+    border: 1px solid rgb($c-error);
+  }
+}
+
+// ============================================================
+// 消息正文
+// ============================================================
+.message-text {
+  line-height: 1.6;
+  font-size: $font-size-body;
+  word-break: break-word;
+}
+
+// ============================================================
+// 消息状态（流式、错误）
+// ============================================================
+.message-status {
+  margin-top: $spacing-sm;
+}
+
+.message-error {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: rgb($c-error);
+}
+
+// ============================================================
+// 工具调用阶段列表
+// ============================================================
+.message-stages {
+  margin-top: $spacing-sm;
+  padding-left: $spacing-xs;
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+// ============================================================
+// 消息元信息（时间、复制按钮、链路详情）
+// ============================================================
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  margin-top: $spacing-xs;
+  padding: 0 $spacing-xs;
+}
+
+.message-time {
+  font-size: $font-size-caption;
+  color: rgba($c-on-surface, 0.6);
+}
+
+.copy-btn {
+  opacity: 0;
+  transition: $transition-opacity;
+  will-change: opacity;
+}
+
+// ============================================================
+// 响应式适配
+// ============================================================
+
+// ── 平板 / 小屏手机 (≤ 600px)：缩小间距与气泡 ──
+@media (max-width: 600px) {
+  .message-wrapper {
+    margin-bottom: 16px;
+    gap: $spacing-sm;
+  }
+
+  .message-content {
+    max-width: 80%;
+  }
+
+  .message-bubble {
+    padding: 10px $spacing-md;
+    border-radius: $spacing-md;
+  }
+
+  .message-text {
+    font-size: 13px;
+  }
+}
+
+// ── 超小屏手机 (≤ 400px)：隐藏头像，全宽消息 ──
+@media (max-width: 400px) {
+  .message-wrapper {
+    margin-bottom: $spacing-md;
+  }
+
+  .message-avatar {
+    display: none;
+  }
+
+  .message-content {
+    max-width: 100%;
+  }
+}

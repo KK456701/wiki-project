@@ -3,13 +3,20 @@ package com.hospital.wikiagent.agent.model;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.ir.RequestPlan;
+import com.hospital.wikiagent.agent.ir.ExplanationFocus;
+import com.hospital.wikiagent.agent.ir.PlanIntent;
+import com.hospital.wikiagent.agent.ir.RequestedOutput;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * 把自然语言请求转换为 RequestPlan；仅允许模型描述业务目标，
@@ -25,9 +32,17 @@ public class ModelRequestPlanner {
 
     /**
      * 模型输出缺少 confidence 字段时使用的降级值。
-     * 低于默认阈值 0.7，会触发确定性澄清而不是静默按 1.0 直接执行。
+     * 低于默认阈值0.9，会触发确定性澄清而不是静默按1.0直接执行。
      */
     private static final double MISSING_CONFIDENCE = 0.0;
+
+    /**
+     * 只识别“整条消息就是问候”的轻量快速通道。锚定整句可确保
+     * “你好，计算去年指标”之类带业务目标的输入仍交给 Planner。
+     */
+    private static final Pattern PURE_GREETING = Pattern.compile(
+            "^(?:(?:你|您)?好(?:呀|啊|哇)?|(?:嗨|哈[喽啰]|hi|hello|hey))[!！。,.，\\s]*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private final AgentModelInvoker models;
     private final AgentModelRegistry registry;
@@ -54,11 +69,48 @@ public class ModelRequestPlanner {
     public PlannerResult plan(PlannerInput input) {
         String modelId = input.modelId() == null || input.modelId().isBlank()
                 ? registry.defaultModelId() : input.modelId();
+        if (isPureGreeting(input.userMessage())) {
+            RequestPlan greetingPlan = new RequestPlan(
+                    RequestPlan.VERSION,
+                    PlanIntent.GENERAL_CHAT,
+                    input.userMessage().strip(),
+                    null,
+                    null,
+                    null,
+                    List.of(RequestedOutput.EXPLANATION),
+                    List.of(ExplanationFocus.OVERVIEW),
+                    List.of(),
+                    List.of(),
+                    1.0);
+            return new PlannerResult(
+                    greetingPlan,
+                    toJson(greetingPlan),
+                    modelId,
+                    false,
+                    null,
+                    List.of());
+        }
         String userPrompt = "当前日期：" + input.currentDate() + "。\n"
                 + "结构化会话状态：\n" + safe(input.structuredState()) + "\n"
                 + "最近对话（最多 8 轮）：\n" + safe(input.recentHistory()) + "\n"
                 + "本轮用户输入：\n" + input.userMessage();
         return generate(modelId, userPrompt, input.currentDate());
+    }
+
+    private static boolean isPureGreeting(String input) {
+        if (input == null) {
+            return false;
+        }
+        String normalized = input.strip();
+        return normalized.length() <= 24 && PURE_GREETING.matcher(normalized).matches();
+    }
+
+    private String toJson(RequestPlan value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception exception) {
+            return "{\"intent\":\"general_chat\"}";
+        }
     }
 
     /**
@@ -138,14 +190,20 @@ public class ModelRequestPlanner {
                 modelId, systemPrompt, userPrompt, properties.getPlannerTimeout()).content();
         try {
             return new PlannerResult(
-                    parseAndValidate(raw), raw, modelId, false, initialAudit);
+                    parseAndValidate(raw), raw, modelId, false, initialAudit,
+                    List.of(attempt("initial", raw, "", initialAudit, true)));
         } catch (RuntimeException firstFailure) {
+            PlannerAttemptAudit initialAttempt = attempt(
+                    "initial", raw, firstFailure.getMessage(), initialAudit, false);
             // 修复提示只纠正 JSON/Schema，不改变用户目标，也不暴露工具实现。
             String repair = prompts.plannerRepair()
                     .replace("{{validation_error}}", safe(firstFailure.getMessage()))
                     .replace("{{raw_output}}", raw == null ? "" : raw);
+            String repairUserPrompt = userPrompt + "\n\n" + repair;
+            PlannerRequestAudit repairAudit = audit(
+                    modelId, currentDate, systemPrompt, repairUserPrompt, true);
             String repaired = models.complete(
-                    modelId, systemPrompt, userPrompt + "\n\n" + repair,
+                    modelId, systemPrompt, repairUserPrompt,
                     properties.getPlannerTimeout()).content();
             try {
                 return new PlannerResult(
@@ -153,13 +211,31 @@ public class ModelRequestPlanner {
                         repaired,
                         modelId,
                         true,
-                        audit(modelId, currentDate, systemPrompt,
-                                userPrompt + "\n\n" + repair, true));
+                        repairAudit,
+                        List.of(
+                                initialAttempt,
+                                attempt("repair", repaired, "", repairAudit, true)));
             } catch (RuntimeException secondFailure) {
                 throw new PlannerOutputException(
-                        "PLANNER_OUTPUT_INVALID", "模型未生成有效业务计划。", secondFailure);
+                        "PLANNER_OUTPUT_INVALID",
+                        "模型业务计划格式错误，自动修复后仍未通过校验。",
+                        secondFailure,
+                        List.of(
+                                initialAttempt,
+                                attempt("repair", repaired, secondFailure.getMessage(),
+                                        repairAudit, false)));
             }
         }
+    }
+
+    private static PlannerAttemptAudit attempt(
+            String phase,
+            String rawContent,
+            String validationError,
+            PlannerRequestAudit requestAudit,
+            boolean valid) {
+        return new PlannerAttemptAudit(
+                phase, safe(rawContent), safe(validationError), requestAudit, valid);
     }
 
     private PlannerRequestAudit audit(
@@ -187,6 +263,8 @@ public class ModelRequestPlanner {
             // 提示词声明的字段是 snake_case，IR record 是 camelCase，先统一键的书写再反序列化。
             JsonNode node = ModelJsonFieldNames.toCamelCase(
                     objectMapper.readTree(ModelJsonExtractor.firstObject(raw)));
+            normalizeEmptyCollections(node);
+            normalizeRequestedOutputs(node);
             RequestPlan value = objectMapper.treeToValue(node, RequestPlan.class);
             if (!RequestPlan.VERSION.equals(value.schemaVersion())
                     && !RequestPlan.LEGACY_VERSION.equals(value.schemaVersion())) {
@@ -206,6 +284,77 @@ public class ModelRequestPlanner {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
+    }
+
+    /**
+     * 小模型偶尔会把“没有任何项”的数组写成空字符串。这里仅把明确为空的复数字段
+     * 归一化为 {@code []}；非空字符串仍交给严格 Schema 校验拒绝，避免掩盖语义错误。
+     */
+    private void normalizeEmptyCollections(JsonNode node) {
+        if (!(node instanceof ObjectNode object)) {
+            return;
+        }
+        for (String field : List.of(
+                "requestedOutputs",
+                "explanationFocuses",
+                "constraints",
+                "semanticAmbiguities")) {
+            JsonNode value = object.get(field);
+            if (value != null && value.isTextual() && value.textValue().isBlank()) {
+                object.putArray(field);
+            }
+        }
+    }
+
+    /**
+     * 小模型偶尔把 requested_outputs 写成单值对象或布尔映射。只在对象能被无歧义地
+     * 还原为已知枚举时转换为数组；未知字段仍交给严格校验和一次修复重试。
+     */
+    private void normalizeRequestedOutputs(JsonNode node) {
+        if (!(node instanceof ObjectNode object)) {
+            return;
+        }
+        JsonNode value = object.get("requestedOutputs");
+        if (!(value instanceof ObjectNode requested)) {
+            return;
+        }
+        List<String> values = requestedOutputValues(requested);
+        if (values.isEmpty()) {
+            return;
+        }
+        ArrayNode array = object.putArray("requestedOutputs");
+        values.forEach(array::add);
+    }
+
+    private static List<String> requestedOutputValues(ObjectNode requested) {
+        if (requested.size() == 1) {
+            Map.Entry<String, JsonNode> entry = requested.fields().next();
+            if (Set.of("value", "type", "name", "output", "requestedOutput")
+                    .contains(entry.getKey()) && entry.getValue().isTextual()) {
+                String candidate = entry.getValue().textValue();
+                return knownRequestedOutput(candidate) ? List.of(candidate) : List.of();
+            }
+        }
+        List<String> values = new java.util.ArrayList<>();
+        var fields = requested.fields();
+        while (fields.hasNext()) {
+            Map.Entry<String, JsonNode> entry = fields.next();
+            if (!entry.getValue().isBoolean() || !entry.getValue().booleanValue()
+                    || !knownRequestedOutput(entry.getKey())) {
+                return List.of();
+            }
+            values.add(entry.getKey());
+        }
+        return List.copyOf(values);
+    }
+
+    private static boolean knownRequestedOutput(String value) {
+        try {
+            RequestedOutput.fromValue(value);
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
         }
     }
 
@@ -232,7 +381,21 @@ public class ModelRequestPlanner {
             String rawContent,
             String modelId,
             boolean repaired,
-            PlannerRequestAudit requestAudit) {
+            PlannerRequestAudit requestAudit,
+            List<PlannerAttemptAudit> attempts) {
+
+        public PlannerResult {
+            attempts = attempts == null ? List.of() : List.copyOf(attempts);
+        }
+
+        public PlannerResult(
+                RequestPlan plan,
+                String rawContent,
+                String modelId,
+                boolean repaired,
+                PlannerRequestAudit requestAudit) {
+            this(plan, rawContent, modelId, repaired, requestAudit, List.of());
+        }
 
         /** 兼容服务端确定性计划和既有测试；这类计划没有实际 LLM 请求。 */
         public PlannerResult(
@@ -242,6 +405,15 @@ public class ModelRequestPlanner {
                 boolean repaired) {
             this(plan, rawContent, modelId, repaired, null);
         }
+    }
+
+    /** 单次 Planner 模型输出及校验结果；仅进入授权 Trace，不通过 SSE 广播。 */
+    public record PlannerAttemptAudit(
+            String phase,
+            String rawContent,
+            String validationError,
+            PlannerRequestAudit requestAudit,
+            boolean valid) {
     }
 
     /** Planner 实际模型请求的完整审计信息，仅进入授权 Trace。 */

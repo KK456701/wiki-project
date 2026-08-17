@@ -2,6 +2,7 @@ package com.hospital.wikiagent.agent.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -20,6 +21,37 @@ import com.hospital.wikiagent.agent.model.AgentModelRegistry;
 import com.hospital.wikiagent.auth.HospitalPrincipal;
 
 class CompoundAgentRuntimeTest {
+    @Test
+    void diagnosisRequestIsNotSplitIntoLegacySubtasks() {
+        AgentRunner single = mock(AgentRunner.class);
+        AtomicInteger calls = new AtomicInteger();
+        when(single.redirectDiagnosisWorkspace(
+                any(AgentRunRequest.class), any(AgentRunObserver.class), anyList()))
+                .thenAnswer(invocation -> {
+                    calls.incrementAndGet();
+                    AgentRunRequest request = invocation.getArgument(0);
+                    return new AgentRunResult(
+                            "已进入异常排查，请选择指标、口径和统计周期。",
+                            "workspace_redirect", request.traceId(), request.sessionId(), 0,
+                            null, null);
+                });
+        AgentModelProperties properties = properties("local", "ollama");
+        CompoundAgentRuntime runtime = new CompoundAgentRuntime(
+                single, new CompoundRequestSplitter(), new AgentModelRegistry(properties),
+                properties, AgentConversationMemory.noop());
+        AgentRunRequest request = new AgentRunRequest(
+                "排查患者入院48小时内转科和急会诊两个指标为什么异常",
+                "session_diagnosis", "local", null, "REQ_DIAG", "TRACE_DIAG", null,
+                "{}", "", new HospitalPrincipal(
+                        "user_001", "doctor", "hospital_001", Set.of(), false, "AUTH_1"));
+
+        AgentRunResult result = runtime.run(request);
+        runtime.close();
+
+        assertThat(result.stopReason()).isEqualTo("workspace_redirect");
+        assertThat(calls).hasValue(1);
+    }
+
     @Test
     void runsApiSubtasksInParallelButMergesInInputOrderAndKeepsPartialSuccess() {
         AgentRunner single = mock(AgentRunner.class);

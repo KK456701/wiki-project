@@ -1,0 +1,10 @@
+.detail-panel {
+  width: 520px;
+  min-width: 520px;
+  flex-shrink: 0;
+  max-height: calc(100vh - 64px);
+}
+
+.border-t-sm {
+  border-top: 1px solid rgba(var(--v-border-color), 0.12);
+}

@@ -1,12 +1,16 @@
 package com.hospital.wikiagent.agent.runtime;
 
 import java.time.Duration;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,6 +72,7 @@ public class CompoundAgentRuntime {
     private final BatchIntentVerifier batchIntentVerifier;
     private final MrasSqlExecutionService mrasExecution;
     private final MrasDetailSqlExtractor detailExtractor;
+    private final Map<String, String> confirmedClarifications = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newFixedThreadPool(4, runnable -> {
         Thread thread = new Thread(runnable, "java-agent-compound");
         thread.setDaemon(true);
@@ -138,6 +143,11 @@ public class CompoundAgentRuntime {
     }
 
     public AgentRunResult run(AgentRunRequest request, AgentRunObserver observer) {
+        return runResolvedRequest(applyClarificationResponse(request), observer);
+    }
+
+    private AgentRunResult runResolvedRequest(
+            AgentRunRequest request, AgentRunObserver observer) {
         var conversation = conversations.open(request.principal(), request.sessionId());
         // “计算所有指标结果”走确定性批量路径：意图由正则检测器确定，指标身份可枚举、
         // 时间来自父请求，全程 0 次 LLM 调用。未挂载批量组件时回退原有复合路径。
@@ -179,12 +189,26 @@ public class CompoundAgentRuntime {
                 : indicatorResolver.resolve(
                         request.query(), request.principal().hospitalId(), request.modelId(),
                         request.traceId(), "root", observer);
+        List<RequestKind> explicitIntents =
+                CompoundRequestSplitter.detectExplicitIntents(request.query());
+        if (explicitIntents.contains(RequestKind.DIAGNOSIS)
+                && resolution.needsClarification()) {
+            return runner.redirectDiagnosisWorkspace(
+                    request, observer, exactAmbiguityCandidates(request.query(), resolution));
+        }
         if (resolution.needsClarification()) {
             return clarification(request, observer, conversation, resolution);
         }
         List<HybridIndicatorResolver.ResolvedIndicator> resolvedIndicators =
                 conversationAwareIndicators(
                         request, observer, conversation, resolution.indicators());
+        if (explicitIntents.contains(RequestKind.DIAGNOSIS)) {
+            return runner.redirectDiagnosisWorkspace(request, observer, resolvedIndicators);
+        }
+        if (resolvedIndicators.size() > 1 && explicitIntents.size() > 1) {
+            return unsupportedMultiIndicatorMultiIntent(
+                    request, observer, conversation);
+        }
         if ((conversation.queryScope() == null
                     || !conversation.queryScope().valid())
                 && resolvedIndicators.size() == 1
@@ -221,7 +245,8 @@ public class CompoundAgentRuntime {
                                 request.principal().hospitalId());
         if (batchDetector != null && batchRuntime != null
                 && !resolvedIndicators.isEmpty()
-                && continuesCalculation) {
+                && continuesCalculation
+                && explicitIntents.size() <= 1) {
             List<BatchRequestSpec.Target> targets =
                     explicitSingleProfile != null
                             ? List.of(explicitSingleProfile)
@@ -255,6 +280,13 @@ public class CompoundAgentRuntime {
         SplitResult split = splitter.split(
                 request.query(), conversation.recentHistory(), request.principal().hospitalId(),
                 resolvedIndicators, conversation.compoundTargets());
+        // 异常排查由新的可视化工作区承接。复合请求也只打开一次空白选择页，
+        // 不能继续 fan-out 调用旧版诊断工具并生成多段 Demo 回答。
+        if (split.kind() == RequestKind.DIAGNOSIS) {
+            var resolved = resolvedIndicators.size() == 1
+                    ? resolvedIndicators.get(0) : null;
+            return runner.run(request, observer, resolved);
+        }
         if (split.compound()
                 && split.kind() == RequestKind.TRIAL_RUN
                 && batchDetector != null
@@ -284,6 +316,7 @@ public class CompoundAgentRuntime {
                 && batchDetector.isBareAllScope(request.query())
                 && conversation.queryScope() != null
                 && conversation.queryScope().valid()
+                && split.tasks().stream().noneMatch(task -> task.kind() != null)
                 && !"indicator_trial_run".equals(conversation.queryScope().operation())) {
             split = withKind(split, requestKind(conversation.queryScope().operation()));
         }
@@ -300,7 +333,7 @@ public class CompoundAgentRuntime {
                     .map(task -> new SubtaskSpec(
                             task.index(), task.target(),
                             task.query() + "，统计周期" + inheritedPeriod,
-                            task.resolvedIndicator()))
+                            task.resolvedIndicator(), task.kind()))
                     .toList();
             split = new SplitResult(
                     inheritedTasks, split.kind(), inheritedPeriod,
@@ -324,7 +357,7 @@ public class CompoundAgentRuntime {
                     SubtaskSpec task = split.tasks().get(index);
                     boundTasks.add(new SubtaskSpec(
                             task.index(), rebound.get(index).canonicalName(),
-                            task.query(), rebound.get(index)));
+                            task.query(), rebound.get(index), task.kind()));
                 }
                 split = new SplitResult(
                         List.copyOf(boundTasks), split.kind(),
@@ -661,6 +694,91 @@ public class CompoundAgentRuntime {
                 null, null, clarification);
     }
 
+    private AgentRunRequest applyClarificationResponse(AgentRunRequest request) {
+        var response = request.clarificationResponse();
+        if (response == null || response.selectedOptionIds().isEmpty()) return request;
+        try {
+            String decoded = new String(
+                    Base64.getUrlDecoder().decode(response.resumeToken()),
+                    StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\\n", 3);
+            if (parts.length != 3) return request;
+            Map<String, String> allowed = new LinkedHashMap<>();
+            for (String pair : parts[2].split("&")) {
+                if (pair.isBlank()) continue;
+                String[] values = pair.split("=", 2);
+                if (values.length == 2) {
+                    allowed.put(decode(values[0]), decode(values[1]));
+                }
+            }
+            List<String> selected = response.selectedOptionIds().stream()
+                    .map(allowed::get)
+                    .filter(value -> value != null && !value.isBlank())
+                    .toList();
+            if (selected.size() != response.selectedOptionIds().size()) return request;
+            String confirmationKey = request.principal().hospitalId() + ':'
+                    + request.principal().userId() + ':'
+                    + (request.sessionId() == null ? "" : request.sessionId()) + ':'
+                    + response.clarificationId();
+            String canonical = confirmedClarifications.computeIfAbsent(
+                    confirmationKey,
+                    ignored -> parts[1] + String.join("、", selected));
+            return new AgentRunRequest(
+                    canonical, request.sessionId(), request.modelId(), request.fileKey(),
+                    request.requestId(), request.traceId(), request.dbSourceId(),
+                    request.structuredState(), request.recentHistory(), request.principal(),
+                    response);
+        } catch (IllegalArgumentException exception) {
+            return request;
+        }
+    }
+
+    private static String decode(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
+    }
+
+    private AgentRunResult unsupportedMultiIndicatorMultiIntent(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            AgentConversationMemory.ConversationSnapshot conversation) {
+        String traceId = first(request.traceId(), id("TRACE_"));
+        String answer = "您可以减少指标的数量询问哦，我目前无法处理这种复杂的请求。";
+        conversations.appendUser(
+                conversation, request.principal(), request.query(), request.fileKey());
+        conversations.appendAssistant(
+                conversation, request.principal(), answer, new AgentRunState());
+        emit(observer, "agent_start", traceId, 0, Map.of(
+                "status", "running", "sessionId", conversation.sessionId()));
+        emit(observer, "assistant_message", traceId, 0, Map.of(
+                "message", answer, "status", "completed"));
+        emit(observer, "agent_done", traceId, 0, Map.of(
+                "stopReason", "final_answer", "status", "completed", "stepCount", 0));
+        return new AgentRunResult(
+                answer, "final_answer", traceId, conversation.sessionId(), 0,
+                null, null);
+    }
+
+    private static List<HybridIndicatorResolver.ResolvedIndicator> exactAmbiguityCandidates(
+            String query,
+            HybridIndicatorResolver.Resolution resolution) {
+        String input = query == null ? "" : query;
+        return resolution.ambiguities().stream()
+                .filter(ambiguity -> ambiguity.candidates().size() > 1)
+                .filter(ambiguity -> ambiguity.candidates().stream()
+                        .allMatch(candidate -> candidate.score() >= 0.99))
+                .flatMap(ambiguity -> {
+                    int start = Math.max(0, input.indexOf(ambiguity.mention()));
+                    int end = start + ambiguity.mention().length();
+                    return ambiguity.candidates().stream().map(candidate ->
+                            new HybridIndicatorResolver.ResolvedIndicator(
+                                    ambiguity.mention(), candidate.canonicalName(),
+                                    candidate.ruleId(), candidate.conceptCode(),
+                                    "system_candidate", candidate.score(), start, end));
+                })
+                .distinct()
+                .toList();
+    }
+
     private AgentRunResult allIndicatorIntentClarification(
             AgentRunRequest request,
             AgentRunObserver observer,
@@ -822,7 +940,7 @@ public class CompoundAgentRuntime {
                 .map(task -> new SubtaskSpec(
                         task.index(), task.target(),
                         childQueryFor(task.target(), kind, source.commonTimeExpression()),
-                        task.resolvedIndicator()))
+                        task.resolvedIndicator(), kind))
                 .toList();
         return new SplitResult(tasks, kind, source.commonTimeExpression(),
                 source.serialRequired(), source.followup());

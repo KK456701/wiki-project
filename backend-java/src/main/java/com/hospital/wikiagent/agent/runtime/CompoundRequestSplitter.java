@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -73,6 +74,21 @@ public class CompoundRequestSplitter {
             List<HybridIndicatorResolver.ResolvedIndicator> resolvedIndicators,
             List<String> rememberedTargets) {
         String input = query == null ? "" : query.strip();
+        List<RequestKind> explicitIntents = detectExplicitIntents(input);
+        if (resolvedIndicators != null && resolvedIndicators.size() == 1
+                && explicitIntents.size() > 1) {
+            var resolved = resolvedIndicators.get(0);
+            String time = extractTime(input);
+            List<SubtaskSpec> tasks = new ArrayList<>();
+            for (int index = 0; index < explicitIntents.size(); index++) {
+                RequestKind kind = explicitIntents.get(index);
+                tasks.add(new SubtaskSpec(
+                        index + 1, resolved.canonicalName(),
+                        childQuery(resolved.canonicalName(), kind, time, input), resolved, kind));
+            }
+            return new SplitResult(
+                    List.copyOf(tasks), RequestKind.RULE_EXPLANATION, time, true, false);
+        }
         if (resolvedIndicators != null && resolvedIndicators.size() >= 2) {
             RequestKind kind = classify(input, recentHistory);
             String time = extractTime(input);
@@ -251,17 +267,17 @@ public class CompoundRequestSplitter {
         // 此时回退到最近一轮用户消息，继承原始意图（如“SQL 怎么写”），避免子任务降级为口径解释。
         String context = compact + "\n" + lastUserText(recentHistory)
                 .replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+        List<RequestKind> explicit = detectExplicitIntents(compact);
+        if (explicit.size() == 1) return explicit.get(0);
         // “执行/运行/跑”明确要求算出数值：即使句中出现“sql”一词（如“执行这两个sql”），
         // 也应试运行而非仅生成 SQL；但“怎么写/如何写/生成”仍属于 SQL 准备。
         if (List.of("执行", "运行", "跑").stream().anyMatch(context::contains)
                 && List.of("怎么写", "如何写", "生成").stream().noneMatch(context::contains)) {
             return RequestKind.TRIAL_RUN;
         }
-        // 当前句明确要求“计算”时必须覆盖上一轮的 SQL 意图。只有“怎么算/如何计算”
-        // 这类口径问法仍按解释处理。
-        if (compact.contains("计算")
-                && !compact.contains("怎么计算")
-                && !compact.contains("如何计算")) {
+        // “怎么算/怎么计算”按产品约定表示要得到实际结果；查询口径需明确说“口径/定义/公式”。
+        if (compact.contains("计算") || compact.contains("怎么算")
+                || compact.contains("如何计算")) {
             return RequestKind.TRIAL_RUN;
         }
         if (context.contains("sql")) {
@@ -276,6 +292,42 @@ public class CompoundRequestSplitter {
             return RequestKind.TRIAL_RUN;
         }
         return RequestKind.RULE_EXPLANATION;
+    }
+
+    public static List<RequestKind> detectExplicitIntents(String query) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "")
+                .toLowerCase(Locale.ROOT);
+        if (AgentRunner.isExplicitIssueDiagnosis(compact)) {
+            return List.of(RequestKind.DIAGNOSIS);
+        }
+        if (List.of("执行", "运行", "跑").stream().anyMatch(compact::contains)
+                && List.of("怎么写", "如何写", "生成").stream().noneMatch(compact::contains)) {
+            return List.of(RequestKind.TRIAL_RUN);
+        }
+        Map<RequestKind, Integer> positions = new java.util.EnumMap<>(RequestKind.class);
+        rememberFirst(positions, RequestKind.SQL_PREPARE, compact,
+                "sql", "脚本", "查询语句");
+        rememberFirst(positions, RequestKind.TRIAL_RUN, compact,
+                "试算", "测算", "计算结果", "具体结果", "结果是多少", "怎么算", "怎么计算");
+        rememberFirst(positions, RequestKind.RULE_EXPLANATION, compact,
+                "口径", "定义", "公式", "分子", "分母", "排除", "去重");
+        return positions.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .toList();
+    }
+
+    private static void rememberFirst(
+            Map<RequestKind, Integer> positions,
+            RequestKind kind,
+            String query,
+            String... terms) {
+        int first = Integer.MAX_VALUE;
+        for (String term : terms) {
+            int index = query.indexOf(term);
+            if (index >= 0) first = Math.min(first, index);
+        }
+        if (first != Integer.MAX_VALUE) positions.put(kind, first);
     }
 
     /**
@@ -351,9 +403,18 @@ public class CompoundRequestSplitter {
             int index,
             String target,
             String query,
-            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+            HybridIndicatorResolver.ResolvedIndicator resolvedIndicator,
+            RequestKind kind) {
         public SubtaskSpec(int index, String target, String query) {
-            this(index, target, query, null);
+            this(index, target, query, null, null);
+        }
+
+        public SubtaskSpec(
+                int index,
+                String target,
+                String query,
+                HybridIndicatorResolver.ResolvedIndicator resolvedIndicator) {
+            this(index, target, query, resolvedIndicator, null);
         }
     }
 

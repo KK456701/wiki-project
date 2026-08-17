@@ -1,0 +1,211 @@
+// ============================================================
+// Markdown 渲染内容 — 公共样式 (Block: markdown-body)
+//
+// 依赖：Vuetify 3 CSS 变量（v-theme-*, v-border-*）
+// 使用方式：在 .vue 中的 <style lang="scss" scoped> 中 @use
+// ============================================================
+
+// Vuetify 主题 RGB 通道
+$c-primary: var(--v-theme-primary);
+$c-on-surface: var(--v-theme-on-surface);
+$c-surface-variant: var(--v-theme-surface-variant);
+$c-border: var(--v-border-color);
+$c-border-opacity: var(--v-border-opacity);
+$border: 1px solid rgba($c-border, $c-border-opacity);
+$radius-sm: 4px;
+$radius-md: 8px;
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 12px;
+
+.markdown-body {
+  line-height: 1.6;
+
+  :deep(p) {
+    margin: 0 0 $spacing-sm 0;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  :deep(h1),
+  :deep(h2),
+  :deep(h3),
+  :deep(h4),
+  :deep(h5),
+  :deep(h6) {
+    margin: $spacing-md 0 $spacing-sm 0;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  :deep(h1) {
+    font-size: 1.4em;
+  }
+
+  :deep(h2) {
+    font-size: 1.3em;
+  }
+
+  :deep(h3) {
+    font-size: 1.2em;
+  }
+
+  :deep(h4) {
+    font-size: 1.1em;
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    margin: $spacing-sm 0;
+    padding-left: 20px;
+  }
+
+  :deep(li) {
+    margin: $spacing-xs 0;
+  }
+
+  :deep(code) {
+    background: rgba($c-on-surface, 0.08);
+    padding: 2px 6px;
+    border-radius: $radius-sm;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.9em;
+  }
+
+  :deep(.code-block-wrapper) {
+    margin: $spacing-sm 0;
+    border-radius: $radius-md;
+    border: $border;
+    overflow: hidden;
+  }
+
+  :deep(.code-block-header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    font-size: 12px;
+    background: rgba($c-on-surface, 0.05);
+    border-bottom: 1px solid rgba($c-border, $c-border-opacity);
+    user-select: none;
+  }
+
+  :deep(.code-block-lang) {
+    color: rgba($c-on-surface, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+
+  :deep(.code-block-copy-btn) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: $radius-sm;
+    background: transparent;
+    color: rgba($c-on-surface, 0.5);
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+
+    &:hover {
+      color: rgba($c-on-surface, 0.9);
+      background: rgba($c-on-surface, 0.08);
+    }
+  }
+
+  :deep(.code-block-copy-icon) {
+    display: inline-flex;
+    align-items: center;
+    pointer-events: none;
+
+    svg {
+      fill: currentColor;
+    }
+  }
+
+  :deep(.code-block-body) {
+    max-height: 360px;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :deep(pre) {
+    padding: $spacing-md;
+    border-radius: 0;
+    overflow: visible;
+    margin: 0;
+
+    &:not(.hljs) {
+      background: rgba($c-on-surface, 0.06);
+    }
+
+    code {
+      background: transparent;
+      padding: 0;
+    }
+  }
+
+  :deep(blockquote) {
+    border-left: 3px solid rgba($c-primary, 0.5);
+    margin: $spacing-sm 0;
+    padding: $spacing-xs $spacing-md;
+    color: rgba($c-on-surface, 0.7);
+  }
+
+  :deep(a) {
+    color: rgb($c-primary);
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  :deep(.table-wrapper) {
+    overflow: auto;
+    margin: $spacing-sm 0;
+    -webkit-overflow-scrolling: touch;
+    max-height: 400px;
+    outline: 1px solid rgba($c-border, $c-border-opacity);
+
+    table {
+      margin: 0;
+    }
+  }
+
+  :deep(table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: $spacing-sm 0;
+  }
+
+  :deep(th),
+  :deep(td) {
+    border: $border;
+    padding: 6px $spacing-md;
+    text-align: left;
+  }
+
+  :deep(th) {
+    min-width: 90px;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgb($c-surface-variant);
+  }
+
+  :deep(hr) {
+    border: none;
+    border-top: $border;
+    margin: $spacing-md 0;
+  }
+}

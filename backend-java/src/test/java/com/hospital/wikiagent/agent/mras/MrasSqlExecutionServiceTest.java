@@ -4,13 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
 
 import java.time.LocalDateTime;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +27,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.extraction.HospitalExecutionLock;
 import com.hospital.wikiagent.agent.extraction.ExtractionSnapshotRegistry;
+import com.hospital.wikiagent.agent.extraction.SyncDataRequestContractValidator;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
 import com.hospital.wikiagent.agent.sql.IndicatorDatabaseQueryClient;
 import com.hospital.wikiagent.agent.sql.ReadOnlySqlValidator;
@@ -39,7 +47,10 @@ class MrasSqlExecutionServiceTest {
 
     @BeforeEach
     void setUp() {
-        entityPageParser = new EntityPageParser();
+        KnowledgeIndexResources activeKnowledge = new KnowledgeIndexResources(
+                Path.of("src", "main", "resources",
+                        "knowledge-index_backup_20260801_150233").toAbsolutePath().toString());
+        entityPageParser = new EntityPageParser(activeKnowledge);
         databaseQuery = mock(IndicatorDatabaseQueryClient.class);
         SqlServerProperties props = new SqlServerProperties();
         props.setHospitalSoid(991827L);
@@ -57,7 +68,7 @@ class MrasSqlExecutionServiceTest {
         when(snapshotProvider.getIfAvailable()).thenReturn(null);
         service = new MrasSqlExecutionService(
                 entityPageParser,
-                new ConceptPageParser(),
+                new ConceptPageParser(activeKnowledge),
                 new MrasTemplateRenderer(),
                 new MrasParameterMapper(),
                 new ReadOnlySqlValidator(),
@@ -66,7 +77,9 @@ class MrasSqlExecutionServiceTest {
                 provider,
                 props,
                 lockProvider,
-                snapshotProvider);
+                snapshotProvider,
+                new SyncDataRequestContractValidator(
+                        entityPageParser, new MrasTemplateRenderer()));
     }
 
     @Test
@@ -166,6 +179,80 @@ class MrasSqlExecutionServiceTest {
         assertThat(String.valueOf(result.data().get("rows")))
                 .doesNotContain("__detail_numerator_count")
                 .doesNotContain("__detail_denominator_count");
+        verify(syncDataService, times(1))
+                .syncEventData(org.mockito.ArgumentMatchers.any());
+        verify(databaseQuery, times(1)).execute(eq(DatabaseRole.REAL), anyString());
+    }
+
+    @Test
+    void concurrentBoundDetailRequestsShareOneDatabaseQuery() throws Exception {
+        CountDownLatch queryStarted = new CountDownLatch(1);
+        CountDownLatch releaseQuery = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            queryStarted.countDown();
+            assertThat(releaseQuery.await(5, TimeUnit.SECONDS)).isTrue();
+            return List.of(
+                    Map.of(
+                            "__meets_numerator", 1,
+                            "__detail_numerator_count", 1L,
+                            "__detail_denominator_count", 2L,
+                            "ENCOUNTER_ID", 1L),
+                    Map.of(
+                            "__meets_numerator", 0,
+                            "__detail_numerator_count", 1L,
+                            "__detail_denominator_count", 2L,
+                            "ENCOUNTER_ID", 2L));
+        }).when(databaseQuery).execute(eq(DatabaseRole.REAL), anyString());
+
+        String detailSql = new MrasDetailSqlExtractor(entityPageParser)
+                .extract("HXZD-001-001", null).detailSql();
+        LocalDateTime start = LocalDateTime.of(2025, 1, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 1, 1, 0, 0);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<ToolResult> first = executor.submit(() -> service.executeBoundDetail(
+                    "HXZD-001-001", null, detailSql, "hash", start, end, 1L, 2L));
+            assertThat(queryStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<ToolResult> second = executor.submit(() -> service.executeBoundDetail(
+                    "HXZD-001-001", null, detailSql, "hash", start, end, 1L, 2L));
+            releaseQuery.countDown();
+
+            ToolResult firstResult = first.get(5, TimeUnit.SECONDS);
+            ToolResult secondResult = second.get(5, TimeUnit.SECONDS);
+            assertThat(firstResult.ok()).isTrue();
+            assertThat(secondResult.ok()).isTrue();
+            assertThat(firstResult.cacheReused() || secondResult.cacheReused()).isTrue();
+            verify(syncDataService, times(1))
+                    .syncEventData(org.mockito.ArgumentMatchers.any());
+            verify(databaseQuery, times(1)).execute(eq(DatabaseRole.REAL), anyString());
+        } finally {
+            releaseQuery.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void scopedBoundDetailReusesCompletedResult() {
+        when(databaseQuery.execute(eq(DatabaseRole.REAL), anyString()))
+                .thenReturn(List.of(Map.of(
+                        "__meets_numerator", 1,
+                        "__detail_numerator_count", 1L,
+                        "__detail_denominator_count", 1L,
+                        "ENCOUNTER_ID", 1L)));
+        String detailSql = new MrasDetailSqlExtractor(entityPageParser)
+                .extract("HXZD-001-001", null).detailSql();
+        LocalDateTime start = LocalDateTime.of(2025, 1, 1, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 1, 1, 0, 0);
+
+        ToolResult first = service.executeBoundDetail(
+                "DCASE_1", "HXZD-001-001", null, detailSql, "hash",
+                start, end, 1L, 1L);
+        ToolResult second = service.executeBoundDetail(
+                "DCASE_1", "HXZD-001-001", null, detailSql, "hash",
+                start, end, 1L, 1L);
+
+        assertThat(first.ok()).isTrue();
+        assertThat(second.cacheReused()).isTrue();
         verify(syncDataService, times(1))
                 .syncEventData(org.mockito.ArgumentMatchers.any());
         verify(databaseQuery, times(1)).execute(eq(DatabaseRole.REAL), anyString());
@@ -272,10 +359,25 @@ class MrasSqlExecutionServiceTest {
                 LocalDateTime.of(2025, 12, 31, 23, 59), null, null);
 
         assertThat(result.ok()).isFalse();
-        assertThat(result.code()).isEqualTo("MRAS_CALIBER_EXTRACTION_FAILED");
+        assertThat(result.code()).isEqualTo("SOURCE_EXTRACTION_FAILED");
         assertThat(result.summary()).contains("exDeptSet");
         // 不回退：一条 SQL 都不该发给数据库
         org.mockito.Mockito.verifyNoInteractions(databaseQuery);
+    }
+
+    @Test
+    void extractionPreservesSyncQueryFailureCodeForBatchEvidence() {
+        org.mockito.Mockito.doThrow(com.hospital.wikiagent.service.SyncDataException.query(
+                        "业务系统源表查询失败", new RuntimeException("timeout")))
+                .when(syncDataService).syncEventData(org.mockito.ArgumentMatchers.any());
+
+        ToolResult result = service.prepareExtraction("HXZD-001-001", "HXZD-001-001",
+                LocalDateTime.of(2025, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 1, 1, 0, 0));
+
+        assertThat(result.ok()).isFalse();
+        assertThat(result.code()).isEqualTo("SYNC_QUERY_FAILED");
+        assertThat(result.summary()).contains("业务系统源表查询失败");
     }
 
     @Test

@@ -32,6 +32,7 @@ import com.hospital.wikiagent.agent.memory.AgentConversationMemory.QueryTarget;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer;
 import com.hospital.wikiagent.agent.model.FinalAnswerComposer.FinalAnswerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner;
+import com.hospital.wikiagent.agent.model.PlannerOutputException;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerInput;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.PlannerResult;
 import com.hospital.wikiagent.agent.model.ModelRequestPlanner.ReplannerInput;
@@ -89,6 +90,8 @@ public class AgentRunner {
     /** 低置信度意图澄清的回复前缀，命中即视为用户已确认意图，不得再次反问。 */
     private static final Pattern INTENT_CONFIRMATION_REPLY = Pattern.compile(
             "我确认要执行的操作是：\\s*(.+)\\s*$", Pattern.DOTALL);
+    /** 单独的标点不是可执行业务目标，直接给出可恢复提示，不能交给 Planner 产生 500。 */
+    private static final Pattern ACKNOWLEDGEMENT_ONLY = Pattern.compile("^[？?！!。…]+$");
 
     private final ModelRequestPlanner planner;
     private final PlanValidator validator;
@@ -206,6 +209,51 @@ public class AgentRunner {
         return run(request, observer, null);
     }
 
+    /** 由复合入口在批量检测、时间追问和模型规划之前直接打开异常排查工作区。 */
+    AgentRunResult redirectDiagnosisWorkspace(
+            AgentRunRequest request,
+            AgentRunObserver observer) {
+        return redirectDiagnosisWorkspace(request, observer, List.of());
+    }
+
+    AgentRunResult redirectDiagnosisWorkspace(
+            AgentRunRequest request,
+            AgentRunObserver observer,
+            List<HybridIndicatorResolver.ResolvedIndicator> resolvedIndicators) {
+        String requestId = blankTo(request.requestId(), id("REQ_"));
+        String traceId = blankTo(request.traceId(), id("TRACE_"));
+        ConversationSnapshot conversation = conversations.open(
+                request.principal(), request.sessionId());
+        request = withConversationContext(request, conversation);
+        conversations.appendUser(
+                conversation, request.principal(), request.query(), request.fileKey());
+        String sessionId = conversation.sessionId();
+        String subtaskId = requestId.contains(":subtask:") ? requestId : id("SUB_");
+        emit(observer, "agent_start", traceId, 0, Map.of(
+                "status", "running", "sessionId", sessionId));
+        HybridIndicatorResolver.ResolvedIndicator resolved =
+                resolvedIndicators != null && resolvedIndicators.size() == 1
+                        ? resolvedIndicators.get(0) : null;
+        RequestPlan plan = new RequestPlan(
+                RequestPlan.VERSION,
+                PlanIntent.INDICATOR_DIAGNOSIS,
+                "进入异常排查工作区",
+                resolved == null
+                        ? new RequestPlan.TargetIndicator("", null)
+                        : new RequestPlan.TargetIndicator(
+                                resolved.canonicalName(), resolved.ruleId()),
+                new RequestPlan.TargetCaliber("", null),
+                new RequestPlan.TimeExpression("", null, null),
+                List.of(RequestedOutput.DIAGNOSIS),
+                List.of("workspace_redirect"),
+                List.of(),
+                1.0);
+        return redirectToDiagnosisWorkspace(
+                observer, traceId, subtaskId, sessionId, conversation,
+                request.principal(), plan,
+                resolvedIndicators == null ? List.of() : resolvedIndicators);
+    }
+
     /**
      * 执行单指标子任务。
      *
@@ -266,6 +314,29 @@ public class AgentRunner {
                     answer, "final_answer", traceId, sessionId,
                     0, unsupportedPlan, null);
         }
+        if (ACKNOWLEDGEMENT_ONLY.matcher(request.query().trim()).matches()) {
+            String answer = "请继续说明需要查询的指标、统计周期或排查的问题，我会继续处理。";
+            RequestPlan acknowledgementPlan = new RequestPlan(
+                    RequestPlan.VERSION,
+                    PlanIntent.UNKNOWN,
+                    "等待用户补充业务问题",
+                    new RequestPlan.TargetIndicator("", null),
+                    new RequestPlan.TimeExpression("", null, null),
+                    List.of(RequestedOutput.EXPLANATION),
+                    List.of("clarify_request"),
+                    List.of());
+            AgentRunState acknowledgementState = new AgentRunState();
+            acknowledgementState.subtaskId(subtaskId);
+            saveConversation(observer, traceId, subtaskId, conversation,
+                    request.principal(), answer, acknowledgementState);
+            emit(observer, "agent_message", traceId, 0,
+                    Map.of("message", answer, "status", "completed"));
+            emit(observer, "agent_done", traceId, 0, Map.of(
+                    "stopReason", "clarification", "status", "completed", "stepCount", 0));
+            return new AgentRunResult(
+                    answer, "clarification", traceId, sessionId,
+                    0, acknowledgementPlan, null);
+        }
         PlannerResult modelPlan;
         String deterministicQuery = clarificationOriginal(
                 request.query(), request.recentHistory());
@@ -276,11 +347,13 @@ public class AgentRunner {
                     deterministicQuery, conversation, resolvedIndicator);
         }
         if (followupPlan == null) {
-            followupPlan = deterministicTrialRunFollowup(
+            // 异常排查动作优先于“结果”一词触发的试算。否则“结果异常，帮我排查”
+            // 会被旧试算规则抢先并错误追问统计时间。
+            followupPlan = deterministicDiagnosisFollowup(
                     deterministicQuery, conversation, resolvedIndicator);
         }
         if (followupPlan == null) {
-            followupPlan = deterministicDiagnosisFollowup(
+            followupPlan = deterministicTrialRunFollowup(
                     deterministicQuery, conversation, resolvedIndicator);
         }
         if (followupPlan != null) {
@@ -361,14 +434,20 @@ public class AgentRunner {
                         request.structuredState(), request.recentHistory()));
                 TraceEvents.completed(observer, traceId, "planner_llm", "llm", plannerStarted,
                         subtaskId, plannerTraceInput(request, modelPlan), eventValues(
-                                "rawContent", modelPlan.rawContent(),
-                                "requestPlan", tracePlan(modelPlan.plan()),
+                                 "rawContent", modelPlan.rawContent(),
+                                 "attempts", plannerAttempts(modelPlan.attempts()),
+                                 "requestPlan", tracePlan(modelPlan.plan()),
                                 "normalizedPlan", tracePlan(modelPlan.plan()),
                                 "repaired", modelPlan.repaired()),
                         "modelId", modelPlan.modelId());
             } catch (RuntimeException exception) {
+                String plannerErrorCode = exception instanceof PlannerOutputException failure
+                        ? failure.code() : "PLANNER_FAILED";
                 TraceEvents.failed(observer, traceId, "planner_llm", "llm", plannerStarted,
-                        subtaskId, "PLANNER_FAILED", exception.getMessage(),
+                        subtaskId,
+                        plannerFailureTraceInput(request, exception),
+                        plannerFailureTraceOutput(exception),
+                        plannerErrorCode, exception.getMessage(),
                         "modelId", request.modelId());
                 throw exception;
             }
@@ -381,14 +460,15 @@ public class AgentRunner {
                                 request.query(),
                                 normalizeExplicitDifferenceDiagnosis(
                                         request.query(), upgradeToTrialRun(
-                                                request.query(), enrichFromResolvedIndicator(
-                                                        enrichFromConversation(
-                                                                enrichFromUploadedFile(
-                                                                        modelPlan.plan(), fileContext),
-                                                                conversation),
-                                                        resolvedIndicator))))));
+                                                request.query(), normalizeCalculationWording(
+                                                        request.query(), enrichFromResolvedIndicator(
+                                                                enrichFromConversation(
+                                                                        enrichFromUploadedFile(
+                                                                                modelPlan.plan(), fileContext),
+                                                                        conversation),
+                                                                resolvedIndicator)))))));
         // 低置信度意图澄清：在编译前检查 Planner 的置信度
-        double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.7;
+        double threshold = modelProperties != null ? modelProperties.getConfidenceThreshold() : 0.9;
         // “还有哪些口径”属于服务端可以高置信识别的业务动作。即使小模型给出较低
         // confidence，也应先交给目标—计划一致性校验纠正为口径列表查询，不能在这里
         // 提前反问并中断。这样 8B 与 API 大模型会得到一致的确定性行为。
@@ -399,11 +479,13 @@ public class AgentRunner {
         // 所选意图并绕过低置信度反问，否则会形成无限确认循环。
         Matcher intentConfirmed = INTENT_CONFIRMATION_REPLY.matcher(request.query());
         boolean confirmedIntentReply = intentConfirmed.find();
+        boolean structuredConfirmation = request.clarificationResponse() != null;
         if (confirmedIntentReply) {
             enrichedPlan = applyConfirmedIntent(enrichedPlan, intentConfirmed.group(1));
         }
         if (enrichedPlan.confidence() < threshold
                 && !confirmedIntentReply
+                && !structuredConfirmation
                 && !deterministicCaliberOptionsQuery
                 && !deterministicIssueDiagnosis) {
             long clarificationStarted = TraceEvents.started();
@@ -436,6 +518,11 @@ public class AgentRunner {
             return new AgentRunResult(
                     clarificationMessage, "clarification", traceId, sessionId,
                     0, enrichedPlan, null, clarification);
+        }
+        if (enrichedPlan.intent() == PlanIntent.INDICATOR_DIAGNOSIS) {
+            return redirectToDiagnosisWorkspace(
+                    observer, traceId, subtaskId, sessionId, conversation,
+                    request.principal(), enrichedPlan);
         }
         // 复数指标指代兜底：用户说“这两个指标”“这些指标”但没给出可解析的指标名时，
         // Planner 常会误判为对上一轮单个指标的追问并给出高置信度，从而静默生成
@@ -502,6 +589,11 @@ public class AgentRunner {
         // Replanner 或服务端受控修正可能改变计划意图；运行态必须以最终计划为准，
         // 否则工具层会把“只展示 SQL”和“执行试运行”混为同一种操作。
         state.lastIntent(planned.plan().intent().value());
+        if (planned.plan().intent() == PlanIntent.INDICATOR_DIAGNOSIS) {
+            return redirectToDiagnosisWorkspace(
+                    observer, traceId, subtaskId, sessionId, conversation,
+                    request.principal(), planned.plan());
+        }
 
         // 编译器从目标事实反推前置能力，形成后续状态机唯一可执行的 IR。
         long compileStarted = TraceEvents.started();
@@ -890,7 +982,8 @@ public class AgentRunner {
                 return null;
             }
             PlannerResult planned = new PlannerResult(
-                    plan, raw.rawContent(), raw.modelId(), raw.repaired());
+                    plan, raw.rawContent(), raw.modelId(), raw.repaired(),
+                    raw.requestAudit(), raw.attempts());
             TraceEvents.completed(observer, traceId, "plan_replan", "llm", started,
                     state.subtaskId(), Map.of(
                             "originalPlanId", failedPlanId,
@@ -898,6 +991,7 @@ public class AgentRunner {
                             "failureReason", failureReason,
                             "knownEvidenceIds", state.evidenceIds()), eventValues(
                             "rawContent", raw.rawContent(),
+                            "attempts", plannerAttempts(raw.attempts()),
                             "candidatePlanId", alternativeId,
                             "requestPlan", tracePlan(plan),
                             "replanCount", state.replanCount()),
@@ -962,7 +1056,8 @@ public class AgentRunner {
                                                             conversation),
                                                     resolvedIndicator)))));
             PlannerResult planned = new PlannerResult(
-                    plan, raw.rawContent(), raw.modelId(), raw.repaired());
+                    plan, raw.rawContent(), raw.modelId(), raw.repaired(),
+                    raw.requestAudit(), raw.attempts());
             CompiledPlanIR alternative = compiler.compile(plan);
             if (!failureRouter.acceptsAlternative(state, alternative.planId())) {
                 TraceEvents.failed(observer, traceId, "plan_replan", "llm", started,
@@ -982,6 +1077,7 @@ public class AgentRunner {
                             "failureReason", failureReason,
                             "knownEvidenceIds", state.evidenceIds()), eventValues(
                             "rawContent", raw.rawContent(),
+                            "attempts", plannerAttempts(raw.attempts()),
                             "planId", alternative.planId(),
                             "requestPlan", tracePlan(plan),
                             "replanCount", state.replanCount(),
@@ -1494,8 +1590,6 @@ public class AgentRunner {
             return null;
         }
         if ((compact.contains("计算")
-                    && !compact.contains("怎么计算")
-                    && !compact.contains("如何计算")
                     && !compact.contains("计算方式"))
                 || compact.contains("算一下")
                 || compact.contains("跑一下")
@@ -1511,10 +1605,7 @@ public class AgentRunner {
                 || compact.matches(".*(?:是什么|是啥)[？?]?$")) {
             focuses.add(ExplanationFocus.DEFINITION);
         }
-        if (compact.contains("公式")
-                || compact.contains("怎么算")
-                || compact.contains("如何计算")
-                || compact.contains("计算方式")) {
+        if (compact.contains("公式") || compact.contains("计算方式")) {
             focuses.add(ExplanationFocus.FORMULA);
         }
         if (compact.contains("分子")) focuses.add(ExplanationFocus.NUMERATOR);
@@ -1544,9 +1635,9 @@ public class AgentRunner {
         }
         if (focuses.isEmpty()) return null;
 
-        String ruleId = first(
-                resolvedIndicator == null ? null : resolvedIndicator.ruleId(),
-                conversation.ruleId());
+        String ruleId = resolvedIndicator == null
+                ? (isContextualIndicatorReference(compact) ? conversation.ruleId() : null)
+                : resolvedIndicator.ruleId();
         if (ruleId == null) return null;
         String ruleName = first(
                 resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
@@ -1593,22 +1684,20 @@ public class AgentRunner {
                 || compact.contains("定义")
                 || compact.contains("口径")
                 || compact.contains("公式")
-                || compact.contains("怎么算")
-                || compact.contains("如何计算")
                 || compact.contains("解释")
                 || compact.contains("什么意思")) {
             return null;
         }
-        String ruleId = first(
-                resolvedIndicator == null ? null : resolvedIndicator.ruleId(),
-                conversation.ruleId());
+        String ruleId = resolvedIndicator == null
+                ? (isContextualIndicatorReference(compact) ? conversation.ruleId() : null)
+                : resolvedIndicator.ruleId();
         String ruleName = first(
                 resolvedIndicator == null ? null : resolvedIndicator.canonicalName(),
                 conversation.ruleName(), ruleId);
         if (ruleId == null) return null;
 
         boolean explicitTrial = List.of(
-                "计算", "算一下", "统计", "结果", "数值", "跑一下")
+                "计算", "怎么算", "怎么计算", "如何计算", "算一下", "统计", "结果", "数值", "跑一下")
                 .stream().anyMatch(compact::contains);
         boolean hasCurrentTime = CURRENT_QUERY_TIME.matcher(compact).find();
         boolean inheritedTrial = scope != null
@@ -1676,6 +1765,18 @@ public class AgentRunner {
                 List.of(),
                 List.of(),
                 1.0);
+    }
+
+    /**
+     * 只有明确的“这个/当前指标”类追问才允许复用上一轮指标。
+     * 新出现的指标名称必须重新解析，不能静默套用会话中的旧指标。
+     */
+    static boolean isContextualIndicatorReference(String compact) {
+        if (!compact.contains("指标")) return true;
+        return compact.contains("这个指标")
+                || compact.contains("该指标")
+                || compact.contains("当前指标")
+                || compact.matches(".*(?:它|这个|当前)(?:怎么|如何).*");
     }
 
     private static boolean hasAlternativeCaliberCue(String compact) {
@@ -1829,16 +1930,23 @@ public class AgentRunner {
                 .withRequestedOutputs(List.of(RequestedOutput.DIAGNOSIS));
     }
 
-    private static boolean isExplicitIssueDiagnosis(String query) {
-        String compact = query == null ? "" : query.replaceAll("\\s+", "");
-        boolean issue = List.of(
-                "有问题", "不对", "异常", "不可信", "算错", "错了",
-                "排查", "诊断", "查原因")
-                .stream().anyMatch(compact::contains);
+    static boolean isExplicitIssueDiagnosis(String query) {
+        String compact = query == null ? "" : query.replaceAll("\\s+", "")
+                .toLowerCase(java.util.Locale.ROOT);
         boolean subject = List.of(
-                "口径", "分子", "分母", "SQL", "sql", "结果", "指标", "数据")
+                "口径", "分子", "分母", "sql", "结果", "指标", "数据", "制度", "规则")
                 .stream().anyMatch(compact::contains);
-        return issue && subject;
+        boolean diagnosisAction = List.of(
+                "有问题", "不对", "不可信", "算错", "错了",
+                "异常", "排查", "诊断", "查原因")
+                .stream().anyMatch(compact::contains);
+        boolean explicitAbnormalSubject = List.of(
+                "口径异常", "分子异常", "分母异常", "sql异常",
+                "结果异常", "指标异常", "数据异常",
+                "口径有异常", "分子有异常", "分母有异常", "sql有异常",
+                "结果有异常", "指标有异常", "数据有异常")
+                .stream().anyMatch(compact::contains);
+        return (diagnosisAction && subject) || explicitAbnormalSubject;
     }
 
     /**
@@ -1850,7 +1958,7 @@ public class AgentRunner {
      *   <li>RULE_EXPLANATION：用户提供了具体时间范围时升级（提供时间意味着想算出结果）</li>
      * </ul>
      */
-    private static RequestPlan upgradeToTrialRun(
+    static RequestPlan upgradeToTrialRun(
             String query,
             RequestPlan plan) {
         String compact = query == null ? "" : query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
@@ -1870,10 +1978,43 @@ public class AgentRunner {
         if (plan.intent() == PlanIntent.RULE_EXPLANATION
                 && hasExplicitTimeRange(plan, compact)) {
             return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+                    // “统计时间为：...”是用户确认后的事实，升级为试算时必须保留，
+                    // 由 PlanValidator 的确定性日期解析器绑定实际起止时间。
+                    .withTimeExpression(new RequestPlan.TimeExpression(query, null, null))
                     .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT));
         }
 
         return plan;
+    }
+
+    /**
+     * “怎么算/怎么计算/如何计算”在本系统表示用户要取得实际统计结果；
+     * 仅“口径/定义/公式是什么”才保留为说明请求。模型误判为公式说明时，
+     * 由此处统一改为试算，并始终以用户原文解析统计周期。
+     */
+    static RequestPlan normalizeCalculationWording(String query, RequestPlan plan) {
+        if (plan == null || query == null || query.isBlank()) {
+            return plan;
+        }
+        String compact = query.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        boolean asksToCalculate = compact.contains("怎么算")
+                || compact.contains("怎么计算")
+                || compact.contains("如何计算");
+        boolean hasIndicator = plan.targetIndicator() != null
+                && (!plan.targetIndicator().rawName().isBlank()
+                        || (plan.targetIndicator().ruleId() != null
+                                && !plan.targetIndicator().ruleId().isBlank()));
+        if (!asksToCalculate || !hasIndicator) {
+            return plan;
+        }
+        RequestPlan.TimeExpression existing = plan.timeExpression();
+        return plan.withIntent(PlanIntent.INDICATOR_TRIAL_RUN)
+                .withTimeExpression(new RequestPlan.TimeExpression(
+                        query,
+                        existing == null ? null : existing.startTime(),
+                        existing == null ? null : existing.endTime()))
+                .withRequestedOutputs(List.of(RequestedOutput.TRIAL_RESULT))
+                .withExplanationFocuses(List.of());
     }
 
     /**
@@ -2518,6 +2659,116 @@ public class AgentRunner {
             value.put("repairAttempt", result.requestAudit().repairAttempt());
         }
         return value;
+    }
+
+    private AgentRunResult redirectToDiagnosisWorkspace(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            String sessionId,
+            ConversationSnapshot conversation,
+            com.hospital.wikiagent.auth.HospitalPrincipal principal,
+            RequestPlan plan) {
+        return redirectToDiagnosisWorkspace(
+                observer, traceId, subtaskId, sessionId, conversation,
+                principal, plan, List.of());
+    }
+
+    private AgentRunResult redirectToDiagnosisWorkspace(
+            AgentRunObserver observer,
+            String traceId,
+            String subtaskId,
+            String sessionId,
+            ConversationSnapshot conversation,
+            com.hospital.wikiagent.auth.HospitalPrincipal principal,
+            RequestPlan plan,
+            List<HybridIndicatorResolver.ResolvedIndicator> candidates) {
+        RequestPlan.TargetIndicator target = plan.targetIndicator();
+        boolean hasConfirmedIndicator = target != null
+                && target.ruleId() != null && !target.ruleId().isBlank();
+        String mode = candidates != null && candidates.size() > 1
+                ? "candidate_selection" : hasConfirmedIndicator ? "prefill" : "blank";
+        String answer = "prefill".equals(mode)
+                ? "已进入异常排查，并带入已确认指标；请确认口径和统计周期。"
+                : "candidate_selection".equals(mode)
+                        ? "已进入异常排查，请从候选指标中选择具体指标。"
+                        : "已进入异常排查，请选择指标、口径和统计周期。";
+        AgentRunState state = new AgentRunState();
+        state.subtaskId(subtaskId);
+        state.lastIntent(PlanIntent.INDICATOR_DIAGNOSIS.value());
+        saveConversation(observer, traceId, subtaskId, conversation, principal, answer, state);
+        emit(observer, "assistant_message", traceId, 0, Map.of(
+                "message", answer, "status", "completed"));
+        Map<String, Object> redirect = new LinkedHashMap<>();
+        redirect.put("workspace", "indicator_diagnosis");
+        redirect.put("step", "selection");
+        redirect.put("mode", mode);
+        if (hasConfirmedIndicator) {
+            redirect.put("ruleId", target.ruleId());
+            redirect.put("ruleName", target.rawName());
+        }
+        if (conversation.caliberProfileId() != null) {
+            redirect.put("profileId", conversation.caliberProfileId());
+        }
+        String statStart = plan.timeExpression().startTime() == null
+                ? conversation.statStart() : plan.timeExpression().startTime().toString();
+        String statEnd = plan.timeExpression().endTime() == null
+                ? conversation.statEnd() : plan.timeExpression().endTime().toString();
+        if (statStart != null && !statStart.isBlank()) redirect.put("statStart", statStart);
+        if (statEnd != null && !statEnd.isBlank()) redirect.put("statEnd", statEnd);
+        if (candidates != null && candidates.size() > 1) {
+            redirect.put("candidateIndicators", candidates.stream().map(value -> Map.of(
+                    "ruleId", value.ruleId(),
+                    "ruleName", value.canonicalName())).toList());
+        }
+        emit(observer, "workspace_redirect", traceId, 0, Map.copyOf(redirect));
+        emit(observer, "agent_done", traceId, 0, Map.of(
+                "stopReason", "workspace_redirect",
+                "status", "completed",
+                "stepCount", 0));
+        return new AgentRunResult(
+                answer, "workspace_redirect", traceId, sessionId, 0, plan, null);
+    }
+
+    private static Map<String, Object> plannerFailureTraceInput(
+            AgentRunRequest request,
+            RuntimeException exception) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("query", request.query());
+        value.put("structuredState", request.structuredState());
+        value.put("recentHistory", request.recentHistory());
+        if (exception instanceof PlannerOutputException failure
+                && !failure.attempts().isEmpty()) {
+            var audit = failure.attempts().get(failure.attempts().size() - 1).requestAudit();
+            if (audit != null) {
+                value.put("currentDate", audit.currentDate());
+                value.put("systemPrompt", audit.systemPrompt());
+                value.put("userPrompt", audit.userPrompt());
+                value.put("messages", audit.messages());
+                value.put("modelId", audit.modelId());
+                value.put("timeoutMs", audit.timeoutMs());
+                value.put("promptVersion", audit.promptVersion());
+                value.put("plannerVersion", audit.plannerVersion());
+                value.put("repairAttempt", audit.repairAttempt());
+            }
+        }
+        return value;
+    }
+
+    private static Map<String, Object> plannerFailureTraceOutput(RuntimeException exception) {
+        if (!(exception instanceof PlannerOutputException failure)) {
+            return Map.of();
+        }
+        return Map.of("attempts", plannerAttempts(failure.attempts()));
+    }
+
+    private static List<Map<String, Object>> plannerAttempts(
+            List<ModelRequestPlanner.PlannerAttemptAudit> attempts) {
+        return attempts.stream().map(attempt -> eventValues(
+                "phase", attempt.phase(),
+                "rawContent", attempt.rawContent(),
+                "validationError", attempt.validationError(),
+                "valid", attempt.valid())).toList();
     }
 
     private static Map<String, Object> tracePlan(RequestPlan plan) {

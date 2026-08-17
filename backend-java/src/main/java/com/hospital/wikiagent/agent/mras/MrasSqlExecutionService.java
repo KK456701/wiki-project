@@ -10,15 +10,20 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import com.hospital.wikiagent.agent.extraction.HospitalExecutionLock;
+import com.hospital.wikiagent.agent.extraction.SyncDataRequestContractValidator;
 import com.hospital.wikiagent.agent.extraction.ExtractionSnapshotRegistry;
 import com.hospital.wikiagent.agent.runtime.ToolResult;
 import com.hospital.wikiagent.agent.sql.DatabaseRole;
@@ -28,6 +33,7 @@ import com.hospital.wikiagent.agent.sql.SqlParameterBinder;
 import com.hospital.wikiagent.dbhub.DbHubMcpException;
 import com.hospital.wikiagent.dto.SyncDataDto;
 import com.hospital.wikiagent.dto.TableDataDto;
+import com.hospital.wikiagent.service.SyncDataException;
 import com.hospital.wikiagent.service.SyncDataService;
 import com.hospital.wikiagent.sqlserver.SqlServerProperties;
 
@@ -62,6 +68,17 @@ public class MrasSqlExecutionService {
     private final SqlServerProperties sqlServerProperties;
     private final HospitalExecutionLock executionLock;
     private final ExtractionSnapshotRegistry extractionSnapshots;
+    private final SyncDataRequestContractValidator syncRequestValidator;
+    private final EntitySqlDialectResolver sqlDialects;
+    /**
+     * 同一批次的 AI 初筛和明细弹窗可能同时请求完整明细。这里只合并正在执行的相同查询，
+     * 完成后立即移除，不跨批次缓存患者数据，也不会返回可能已经变化的历史患者行。
+     */
+    private final ConcurrentHashMap<String, CompletableFuture<ToolResult>> boundDetailInFlight =
+            new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, BoundDetailCacheEntry> boundDetailResults =
+            new ConcurrentHashMap<>();
+    private static final long BOUND_DETAIL_CACHE_TTL_MS = 30 * 60_000L;
 
     public MrasSqlExecutionService(
             EntityPageParser entityPageParser,
@@ -74,7 +91,29 @@ public class MrasSqlExecutionService {
             ObjectProvider<SyncDataService> syncDataProvider,
             SqlServerProperties sqlServerProperties,
             ObjectProvider<HospitalExecutionLock> executionLockProvider,
-            ObjectProvider<ExtractionSnapshotRegistry> extractionSnapshotProvider) {
+            ObjectProvider<ExtractionSnapshotRegistry> extractionSnapshotProvider,
+            SyncDataRequestContractValidator syncRequestValidator) {
+        this(entityPageParser, conceptPageParser, templateRenderer, parameterMapper,
+                sqlValidator, parameterBinder, databaseQuery, syncDataProvider,
+                sqlServerProperties, executionLockProvider, extractionSnapshotProvider,
+                syncRequestValidator, new EntitySqlDialectResolver());
+    }
+
+    @Autowired
+    public MrasSqlExecutionService(
+            EntityPageParser entityPageParser,
+            ConceptPageParser conceptPageParser,
+            MrasTemplateRenderer templateRenderer,
+            MrasParameterMapper parameterMapper,
+            ReadOnlySqlValidator sqlValidator,
+            SqlParameterBinder parameterBinder,
+            IndicatorDatabaseQueryClient databaseQuery,
+            ObjectProvider<SyncDataService> syncDataProvider,
+            SqlServerProperties sqlServerProperties,
+            ObjectProvider<HospitalExecutionLock> executionLockProvider,
+            ObjectProvider<ExtractionSnapshotRegistry> extractionSnapshotProvider,
+            SyncDataRequestContractValidator syncRequestValidator,
+            EntitySqlDialectResolver sqlDialects) {
         this.entityPageParser = entityPageParser;
         this.conceptPageParser = conceptPageParser;
         this.templateRenderer = templateRenderer;
@@ -86,6 +125,8 @@ public class MrasSqlExecutionService {
         this.sqlServerProperties = sqlServerProperties;
         this.executionLock = executionLockProvider.getIfAvailable();
         this.extractionSnapshots = extractionSnapshotProvider.getIfAvailable();
+        this.syncRequestValidator = syncRequestValidator;
+        this.sqlDialects = sqlDialects;
     }
 
     /**
@@ -105,8 +146,18 @@ public class MrasSqlExecutionService {
             String profileId,
             LocalDateTime start,
             LocalDateTime end) {
+        return prepareExtraction(indicatorCode, profileId, null, start, end);
+    }
+
+    public ToolResult prepareExtraction(
+            String indicatorCode,
+            String profileId,
+            String hospitalId,
+            LocalDateTime start,
+            LocalDateTime end) {
         try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
-            CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
+            CaliberResolution caliberRes = resolveCaliberEntity(
+                    indicatorCode, profileId, hospitalId);
             if (caliberRes == null) {
                 return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
                         "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
@@ -116,7 +167,7 @@ public class MrasSqlExecutionService {
                     caliberRes.entity(), start, end, caliberRes.caliberNo());
             long durationMs = System.currentTimeMillis() - started;
             if (!extraction.isSuccess()) {
-                return ToolResult.failure("unavailable", "SOURCE_EXTRACTION_FAILED",
+                return ToolResult.failure("unavailable", extraction.errorCode(),
                         "指标 " + indicatorCode + " 数据抽取失败："
                                 + extraction.describeReason(), false);
             }
@@ -164,21 +215,36 @@ public class MrasSqlExecutionService {
             LocalDateTime end,
             String deptFilter,
             String qualifiedFilter) {
+        return executeOverview(indicatorCode, profileId, null, start, end,
+                deptFilter, qualifiedFilter);
+    }
+
+    public ToolResult executeOverview(
+            String indicatorCode,
+            String profileId,
+            String hospitalId,
+            LocalDateTime start,
+            LocalDateTime end,
+            String deptFilter,
+            String qualifiedFilter) {
         try (HospitalExecutionLock.Lease ignored = acquireExecutionLock()) {
             return executeOverviewLocked(
-                    indicatorCode, profileId, start, end, deptFilter, qualifiedFilter);
+                    indicatorCode, profileId, hospitalId,
+                    start, end, deptFilter, qualifiedFilter);
         }
     }
 
     private ToolResult executeOverviewLocked(
             String indicatorCode,
             String profileId,
+            String hospitalId,
             LocalDateTime start,
             LocalDateTime end,
             String deptFilter,
             String qualifiedFilter) {
 
-        CaliberResolution caliberRes = resolveCaliberEntity(indicatorCode, profileId);
+        CaliberResolution caliberRes = resolveCaliberEntity(
+                indicatorCode, profileId, hospitalId);
         if (caliberRes == null) {
             return ToolResult.failure("unavailable", "MRAS_ENTITY_NOT_FOUND",
                     "知识库中没有指标 " + indicatorCode + " 的实体页。", false);
@@ -210,6 +276,10 @@ public class MrasSqlExecutionService {
             return result;
         }
         Map<String, Object> data = new LinkedHashMap<>(result.data());
+        String hospitalDirection = resolveTargetDirection(entity);
+        if (hospitalDirection != null) {
+            data.put("targetDirection", hospitalDirection);
+        }
         data.put("overviewSqlHash", MrasDetailSqlExtractor.sqlHash(entity.overviewSql()));
         data.put("detailKind",
                 MrasDetailContractRegistry.kindFor(indicatorCode, profileId).name());
@@ -535,6 +605,84 @@ public class MrasSqlExecutionService {
      * 使用批次运行中已保存的卡片值对账明细。该路径不重跑概览，同一次请求只抽取一次。
      */
     public ToolResult executeBoundDetail(
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            String overviewSqlHash,
+            LocalDateTime start,
+            LocalDateTime end,
+            long expectedNumerator,
+            long expectedDenominator) {
+        return executeBoundDetail(null, indicatorCode, profileId, detailSql, overviewSqlHash,
+                start, end, expectedNumerator, expectedDenominator);
+    }
+
+    /**
+     * 按案例或批次复用已经核对成功的完整明细。scopeId 必须是服务端生成的案例/批次标识；
+     * 未提供 scopeId 时只合并同时到达的请求，不缓存完成结果。
+     */
+    public ToolResult executeBoundDetail(
+            String scopeId,
+            String indicatorCode,
+            String profileId,
+            String detailSql,
+            String overviewSqlHash,
+            LocalDateTime start,
+            LocalDateTime end,
+            long expectedNumerator,
+            long expectedDenominator) {
+        String inFlightKey = String.join("|",
+                scopeId == null ? "" : scopeId,
+                indicatorCode == null ? "" : indicatorCode,
+                profileId == null ? "" : profileId,
+                overviewSqlHash == null ? "" : overviewSqlHash,
+                MrasDetailSqlExtractor.sqlHash(detailSql == null ? "" : detailSql),
+                String.valueOf(start), String.valueOf(end),
+                String.valueOf(expectedNumerator), String.valueOf(expectedDenominator));
+        long now = System.currentTimeMillis();
+        boundDetailResults.entrySet().removeIf(entry -> entry.getValue().expiresAt() <= now);
+        BoundDetailCacheEntry cached = boundDetailResults.get(inFlightKey);
+        if (cached != null) {
+            if (cached.expiresAt() > now) {
+                return cached.result().reused();
+            }
+            boundDetailResults.remove(inFlightKey, cached);
+        }
+        CompletableFuture<ToolResult> mine = new CompletableFuture<>();
+        CompletableFuture<ToolResult> existing = boundDetailInFlight.putIfAbsent(inFlightKey, mine);
+        if (existing != null) {
+            try {
+                return existing.join().reused();
+            } catch (CompletionException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                throw exception;
+            }
+        }
+        try {
+            ToolResult result = executeBoundDetailOnce(
+                    indicatorCode, profileId, detailSql, overviewSqlHash, start, end,
+                    expectedNumerator, expectedDenominator);
+            if (result.ok() && scopeId != null && !scopeId.isBlank()) {
+                boundDetailResults.put(inFlightKey,
+                        new BoundDetailCacheEntry(result,
+                                System.currentTimeMillis() + BOUND_DETAIL_CACHE_TTL_MS));
+            }
+            mine.complete(result);
+            return result;
+        } catch (RuntimeException exception) {
+            mine.completeExceptionally(exception);
+            throw exception;
+        } finally {
+            boundDetailInFlight.remove(inFlightKey, mine);
+        }
+    }
+
+    private record BoundDetailCacheEntry(ToolResult result, long expiresAt) {}
+
+    private ToolResult executeBoundDetailOnce(
             String indicatorCode,
             String profileId,
             String detailSql,
@@ -876,17 +1024,23 @@ public class MrasSqlExecutionService {
      * @param state  抽取状态
      * @param reason 跳过或失败的具体原因（成功时为 null）
      */
-    private record ExtractionOutcome(ExtractionState state, String reason) {
+    private record ExtractionOutcome(ExtractionState state, String errorCode, String reason) {
         static ExtractionOutcome skipped(String reason) {
-            return new ExtractionOutcome(ExtractionState.SKIPPED, reason);
+            return new ExtractionOutcome(ExtractionState.SKIPPED, "SOURCE_EXTRACTION_SKIPPED", reason);
         }
 
         static ExtractionOutcome success() {
-            return new ExtractionOutcome(ExtractionState.SUCCESS, null);
+            return new ExtractionOutcome(ExtractionState.SUCCESS, "", null);
         }
 
         static ExtractionOutcome failed(String reason) {
-            return new ExtractionOutcome(ExtractionState.FAILED, reason);
+            return failed("SOURCE_EXTRACTION_FAILED", reason);
+        }
+
+        static ExtractionOutcome failed(String errorCode, String reason) {
+            return new ExtractionOutcome(ExtractionState.FAILED,
+                    errorCode == null || errorCode.isBlank() ? "SOURCE_EXTRACTION_FAILED" : errorCode,
+                    reason);
         }
 
         boolean isSuccess() {
@@ -921,10 +1075,13 @@ public class MrasSqlExecutionService {
             log.debug("SyncDataService 未启用，跳过 MRAS 抽取");
             return ExtractionOutcome.skipped("抽取服务未启用（SyncDataService 未注入）");
         }
-        if (!entity.canExtract()) {
+        boolean oracleBusiness = sqlDialects.oracleActive();
+        String selectedSourceSql = sqlDialects.sourceTableSql(entity);
+        List<Map.Entry<String, String>> selectedExtendedEvents = sqlDialects.extendedEvents(entity);
+        if (!entity.canExtract(oracleBusiness)) {
             log.debug("指标 {} 缺少源表 SQL 或目标表，跳过抽取", entity.code());
             return ExtractionOutcome.skipped("实体页缺少源表 SQL 或中间表名"
-                    + "（sourceTableSql=" + (entity.sourceTableSql() == null ? "缺失" : "有")
+                    + "（sourceTableSql=" + (selectedSourceSql == null ? "缺失" : "有")
                     + ", targetTable=" + entity.targetTable() + "）");
         }
         Long hospitalSoid = sqlServerProperties.getHospitalSoid();
@@ -937,10 +1094,11 @@ public class MrasSqlExecutionService {
         List<String> attemptedReferenceTables = new ArrayList<>();
         try {
             String renderedSourceSql = templateRenderer.renderTemplate(
-                    stripLeadingTrailingQuotes(entity.sourceTableSql()),
+                    stripLeadingTrailingQuotes(selectedSourceSql),
                     Map.of("syncType", "outHosp"));
             extractionArtifacts = extractionArtifacts(
-                    entity, renderedSourceSql, hospitalSoid, start, end, caliberNo);
+                    entity, renderedSourceSql, selectedExtendedEvents,
+                    hospitalSoid, start, end, caliberNo);
             if (extractionSnapshots != null
                     && extractionSnapshots.isCurrent(extractionArtifacts)) {
                 log.info("MRAS 指标 {} 复用已绑定的抽取快照: targetTable={} ({} ~ {})",
@@ -968,6 +1126,7 @@ public class MrasSqlExecutionService {
             eventData.setSqlScript(renderedSourceSql);
             eventData.setStartTime(toDate(start));
             eventData.setEndTime(toDate(end));
+            eventData.setQueryFromReal(sqlDialects.sourceQueryFromReal(entity));
             dto.setEventDataList(List.of(eventData));
 
             // bizDataList：业务依赖表
@@ -996,9 +1155,9 @@ public class MrasSqlExecutionService {
             }
 
             // eventTableList：关联拓展事件（部分指标需要的额外患者事件表）
-            if (entity.extendedEvents() != null && !entity.extendedEvents().isEmpty()) {
+            if (selectedExtendedEvents != null && !selectedExtendedEvents.isEmpty()) {
                 List<TableDataDto> extList = new ArrayList<>();
-                for (Map.Entry<String, String> ext : entity.extendedEvents()) {
+                for (Map.Entry<String, String> ext : selectedExtendedEvents) {
                     TableDataDto extEvent = new TableDataDto();
                     extEvent.setEventNo(ext.getKey());
                     extEvent.setTable("MRAS_PATIENT_EVENT");
@@ -1014,6 +1173,7 @@ public class MrasSqlExecutionService {
 
             log.info("MRAS 指标 {} 开始抽取: targetTable={}, bizTables={} ({} ~ {})",
                     entity.code(), entity.targetTable(), entity.bizTables(), start, end);
+            syncRequestValidator.validate(dto);
             syncDataService.syncEventData(dto);
             if (extractionSnapshots != null) {
                 extractionSnapshots.markCurrent(extractionArtifacts);
@@ -1029,7 +1189,9 @@ public class MrasSqlExecutionService {
                         hospitalSoid, attemptedReferenceTables);
             }
             log.warn("MRAS 指标 {} 抽取失败: {}", entity.code(), exception.getMessage());
-            return ExtractionOutcome.failed(exception.getMessage());
+            String code = exception instanceof SyncDataException sync
+                    ? sync.code() : "SOURCE_EXTRACTION_FAILED";
+            return ExtractionOutcome.failed(code, exception.getMessage());
         }
     }
 
@@ -1040,6 +1202,7 @@ public class MrasSqlExecutionService {
     private static Map<String, String> extractionArtifacts(
             EntityPageData entity,
             String renderedSourceSql,
+            List<Map.Entry<String, String>> selectedExtendedEvents,
             long hospitalSoid,
             LocalDateTime start,
             LocalDateTime end,
@@ -1049,9 +1212,9 @@ public class MrasSqlExecutionService {
                 ? ""
                 : entity.bizTables().stream().sorted().reduce(
                         "", (left, right) -> left + "|" + right);
-        String extended = entity.extendedEvents() == null
+        String extended = selectedExtendedEvents == null
                 ? ""
-                : entity.extendedEvents().stream()
+                : selectedExtendedEvents.stream()
                         .map(entry -> entry.getKey() + "=" + entry.getValue())
                         .sorted()
                         .reduce("", (left, right) -> left + "|" + right);
@@ -1087,7 +1250,7 @@ public class MrasSqlExecutionService {
         String reason = extraction.describeReason();
         log.error("指标 {} 第 {} 口径抽取未成功（{}），中断查询: {}",
                 indicatorCode, caliberRes.caliberNo(), extraction.state(), reason);
-        return ToolResult.failure("unavailable", "MRAS_CALIBER_EXTRACTION_FAILED",
+        return ToolResult.failure("unavailable", extraction.errorCode(),
                 "指标 " + indicatorCode + " 第 " + caliberRes.caliberNo()
                         + " 口径数据抽取失败，无法给出该口径结果：" + reason, false);
     }
@@ -1118,13 +1281,18 @@ public class MrasSqlExecutionService {
      * @return CaliberResolution 或 null（实体页不存在时）
      */
     private CaliberResolution resolveCaliberEntity(String indicatorCode, String profileId) {
+        return resolveCaliberEntity(indicatorCode, profileId, null);
+    }
+
+    private CaliberResolution resolveCaliberEntity(
+            String indicatorCode, String profileId, String hospitalId) {
         // 如果 profileId 本身就是一个完整的变体编码（如 HXZD-015-001_002），先尝试直接查找
         EntityPageData entity = null;
         if (profileId != null && !profileId.equals(indicatorCode)) {
-            entity = entityPageParser.getEntity(profileId);
+            entity = entityPageParser.getEntity(profileId, hospitalId);
         }
         if (entity == null) {
-            entity = entityPageParser.getEntity(indicatorCode);
+            entity = entityPageParser.getEntity(indicatorCode, hospitalId);
         }
         if (entity == null) {
             return null;
@@ -1134,7 +1302,7 @@ public class MrasSqlExecutionService {
         String variantCode = entity.variantCode() != null ? entity.variantCode() : entity.code();
 
         // 检查该指标是否有多个变体
-        List<EntityPageData> variants = entityPageParser.getVariants(indicatorCode);
+        List<EntityPageData> variants = entityPageParser.getVariants(indicatorCode, hospitalId);
         if (variants.size() <= 1) {
             // 单口径：不需要分表
             return new CaliberResolution(entity, 0, baseTable, variantCode);
@@ -1246,6 +1414,10 @@ public class MrasSqlExecutionService {
      */
     private String resolveTargetDirection(String indicatorCode) {
         EntityPageData entity = entityPageParser.getEntity(indicatorCode);
+        return resolveTargetDirection(entity);
+    }
+
+    private static String resolveTargetDirection(EntityPageData entity) {
         if (entity == null || entity.monitorParams() == null) {
             return null;
         }

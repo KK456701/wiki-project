@@ -1,0 +1,82 @@
+.header-logo {
+  color: rgb(var(--v-theme-primary));
+
+  :deep(svg) {
+    display: block;
+    height: 28px;
+    width: auto;
+  }
+}
+
+:deep(.v-main) {
+  overflow: hidden;
+}
+
+.chat-main {
+  height: calc(100dvh - 64px);
+}
+
+// 空状态机器人图标浮动动画
+.robot-float {
+  animation: robot-float 3s ease-in-out infinite;
+}
+
+@keyframes robot-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-8px) scale(1.05);
+  }
+}
+
+// 尊重用户减少动画偏好
+@media (prefers-reduced-motion: reduce) {
+  .robot-float {
+    animation: none;
+  }
+}
+
+.messages-container {
+  flex: 1;
+  padding: 24px 20px;
+  scroll-behavior: smooth;
+
+  // 滚动条样式
+  // &::-webkit-scrollbar {
+  //   width: 6px;
+  // }
+
+  // &::-webkit-scrollbar-track {
+  //   background: transparent;
+  // }
+
+  // &::-webkit-scrollbar-thumb {
+  //   background: rgba(var(--v-theme-on-surface), 0.2);
+  //   border-radius: 3px;
+
+  //   &:hover {
+  //     background: rgba(var(--v-theme-on-surface), 0.4);
+  //   }
+  // }
+
+  // 响应式适配
+  @media (max-width: 600px) {
+    padding: 12px;
+  }
+
+  @media (max-width: 400px) {
+    padding: 8px;
+  }
+}
+
+.messages-wrapper {
+  max-width: 900px;
+  flex: 1;
+}
+
+.empty-state {
+  min-height: 300px;
+}

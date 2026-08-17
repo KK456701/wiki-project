@@ -300,4 +300,42 @@ class CompoundRequestSplitterTest {
         assertThat(result.compound()).isFalse();
         assertThat(result.tasks()).isEmpty();
     }
+
+    @Test
+    void recognizesMultipleIntentsInUserOrderForOneIndicator() {
+        var target = new HybridIndicatorResolver.ResolvedIndicator(
+                "急会诊有效率", "急会诊有效率", "HXZD-003-002", "RULE:HXZD-003-002",
+                "exact", 1.0, 0, 7);
+
+        var result = splitter.split(
+                "先解释急会诊有效率的口径，再查看SQL脚本", "", "hospital_001",
+                List.of(target), List.of());
+
+        assertThat(result.compound()).isTrue();
+        assertThat(result.tasks()).extracting(task -> task.kind())
+                .containsExactly(
+                        CompoundRequestSplitter.RequestKind.RULE_EXPLANATION,
+                        CompoundRequestSplitter.RequestKind.SQL_PREPARE);
+    }
+
+    @Test
+    void diagnosisIntentOverridesOtherExplicitActions() {
+        assertThat(CompoundRequestSplitter.detectExplicitIntents(
+                "排查急会诊有效率异常并查看SQL"))
+                .containsExactly(CompoundRequestSplitter.RequestKind.DIAGNOSIS);
+    }
+
+    @Test
+    void recognizesDiagnosisForInstitutionCategory() {
+        assertThat(CompoundRequestSplitter.detectExplicitIntents(
+                "排查术前讨论制度异常"))
+                .containsExactly(CompoundRequestSplitter.RequestKind.DIAGNOSIS);
+    }
+
+    @Test
+    void howToCalculateMeansTrialRunInsteadOfDefinition() {
+        assertThat(CompoundRequestSplitter.detectExplicitIntents(
+                "急会诊有效率怎么计算"))
+                .containsExactly(CompoundRequestSplitter.RequestKind.TRIAL_RUN);
+    }
 }

@@ -1,0 +1,22 @@
+@use 'tailwindcss';
+
+:root {
+  /* 滑块颜色 轨道颜色[reference:5] */
+  /* 接受两个颜色值，分别设置滑块（thumb） 和轨道（track） 的颜色 */
+  // scrollbar-color: #1677ff #f0f2f5;
+  /* 可选值: auto, thin, none */
+  /* 控制滚动条的宽度，可选 auto（默认）、thin（更细）或 none（隐藏但可滚动） */
+  scrollbar-width: thin;
+}
+
+body {
+  margin: 0;
+}
+
+code,
+pre,
+.font-monospace {
+  font-family:
+    'Fira Code', 'Monaspace Krypton', 'source-code-pro', Menlo, Monaco, Consolas, 'Courier New',
+    'Liberation Mono', 'Ubuntu Mono', 'DejaVu Sans Mono', monospace;
+}

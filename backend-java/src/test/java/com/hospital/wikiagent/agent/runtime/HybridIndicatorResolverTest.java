@@ -46,7 +46,7 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
-    void semanticLayerResolvesImpreciseIndicatorNameWithoutLlm() {
+    void semanticLayerReturnsCandidateWhenModelCannotConfirm() {
         Fixture fixture = fixture(List.of(
                 rule("MQSI2025_001", TRANSFER), rule("MQSI2025_005", CONSULT)), null);
 
@@ -54,11 +54,79 @@ class HybridIndicatorResolverTest {
                 "帮我看看患者入院48小时转科比例怎么算",
                 "hospital_001", "ollama-test", "trace-2", "root", AgentRunObserver.noop());
 
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
+        assertThat(result.ambiguities().get(0).candidates()).extracting("ruleId")
+                .contains("MQSI2025_001");
+    }
+
+    @Test
+    void systemAliasResolvesItsSingleIndicatorWithoutLlm() {
+        Fixture fixture = fixture(List.of(rule(
+                "HXZD-001-001", "患者入院48小时内转科的比例", "首诊负责制度")), null);
+
+        var result = fixture.resolver().resolve(
+                "首诊责任制指标怎么计算",
+                "hospital_001", "ollama-test", "trace-system-single", "root",
+                AgentRunObserver.noop());
+
         assertThat(result.indicators()).singleElement().satisfies(value -> {
-            assertThat(value.ruleId()).isEqualTo("MQSI2025_001");
-            assertThat(value.source()).isEqualTo("semantic");
+            assertThat(value.ruleId()).isEqualTo("HXZD-001-001");
+            assertThat(value.canonicalName()).isEqualTo("患者入院48小时内转科的比例");
+            assertThat(value.source()).isEqualTo("system");
         });
+        assertThat(result.needsClarification()).isFalse();
         verifyNoInteractions(fixture.models());
+    }
+
+    @Test
+    void oneSystemNameResolvesAllIndicatorsInThatSystem() {
+        Fixture fixture = fixture(List.of(
+                rule("HXZD-002-001", "三级查房制度知晓率", "三级查房制度"),
+                rule("HXZD-002-002", "患者入院8小时内查房完成率", "三级查房制度"),
+                rule("HXZD-002-003", "三级查房记录完整率", "三级查房制度")), null);
+
+        var result = fixture.resolver().resolve(
+                "三级查房制度有哪些指标，分别怎么计算",
+                "hospital_001", "ollama-test", "trace-system-multiple", "root",
+                AgentRunObserver.noop());
+
+        assertThat(result.indicators()).extracting("ruleId").containsExactly(
+                "HXZD-002-001", "HXZD-002-002", "HXZD-002-003");
+        assertThat(result.indicators()).allMatch(value -> "system".equals(value.source()));
+        assertThat(result.needsClarification()).isFalse();
+        verifyNoInteractions(fixture.models());
+    }
+
+    @Test
+    void oneSystemNameWithSeveralIndicatorsRequiresSelectionWithoutPluralRequest() {
+        Fixture fixture = fixture(List.of(
+                rule("HXZD-002-001", "三级查房制度知晓率", "三级查房制度"),
+                rule("HXZD-002-002", "患者入院8小时内查房完成率", "三级查房制度")), null);
+
+        var result = fixture.resolver().resolve(
+                "三级查房制度怎么计算", "hospital_001", "ollama-test",
+                "trace-system-choice", "root", AgentRunObserver.noop());
+
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
+        assertThat(result.ambiguities().get(0).candidates()).hasSize(2);
+        assertThat(result.usedLlm()).isFalse();
+        verifyNoInteractions(fixture.models());
+    }
+
+    @Test
+    void semanticLayerDoesNotDirectlyBindTransferIndicatorWithoutRatioSuffix() {
+        Fixture fixture = fixture(List.of(
+                rule("HXZD-001-001", "患者入院48小时内转科的比例")), null);
+
+        var result = fixture.resolver().resolve(
+                "患者入院 48小时内转科",
+                "hospital_001", "ollama-test", "trace-short-name", "root",
+                AgentRunObserver.noop());
+
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
     }
 
     @Test
@@ -70,9 +138,9 @@ class HybridIndicatorResolverTest {
                 "急会诊到位率和48小时转科比例怎么算",
                 "hospital_001", "ollama-test", "trace-3", "root", AgentRunObserver.noop());
 
-        assertThat(result.indicators()).extracting("ruleId")
-                .containsExactly("MQSI2025_005", "MQSI2025_001");
-        assertThat(result.needsClarification()).isFalse();
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
+        assertThat(result.ambiguities()).hasSize(2);
     }
 
     @Test
@@ -138,7 +206,7 @@ class HybridIndicatorResolverTest {
                 "急会诊及时率怎么算", "hospital_001", "ollama-test",
                 "trace-4", "root", AgentRunObserver.noop());
 
-        assertThat(result.usedLlm()).isFalse();
+        assertThat(result.usedLlm()).isTrue();
         assertThat(result.indicators()).isEmpty();
         assertThat(result.needsClarification()).isTrue();
         assertThat(result.ambiguities().get(0).candidates()).hasSize(2);
@@ -149,7 +217,7 @@ class HybridIndicatorResolverTest {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
         when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
                 .thenReturn(new AgentModelInvoker.ModelCompletion("ollama-test",
-                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"RULE_1\"}]}"));
+                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"RULE_1\",\"confidence\":0.9}]}"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -165,12 +233,30 @@ class HybridIndicatorResolverTest {
     }
 
     @Test
+    void llmDisambiguationBelowThresholdRequiresUserSelection() {
+        AgentModelInvoker models = mock(AgentModelInvoker.class);
+        when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
+                .thenReturn(new AgentModelInvoker.ModelCompletion("ollama-test",
+                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"RULE_1\",\"confidence\":0.89}]}"));
+        Fixture fixture = fixture(List.of(
+                rule("RULE_1", "急会诊及时到位率"),
+                rule("RULE_2", "急会诊及时到达率")), models);
+
+        var result = fixture.resolver().resolve(
+                "急会诊及时率怎么算", "hospital_001", "ollama-test",
+                "trace-low-confidence", "root", AgentRunObserver.noop());
+
+        assertThat(result.indicators()).isEmpty();
+        assertThat(result.needsClarification()).isTrue();
+    }
+
+    @Test
     void inventedRuleIdIsRejectedAndLeavesClarification() {
         AgentModelInvoker models = mock(AgentModelInvoker.class);
         // LLM 返回不存在的 rule_id，应被拒绝，仍留澄清
         when(models.complete(anyString(), anyString(), anyString(), any(Duration.class)))
                 .thenReturn(new AgentModelInvoker.ModelCompletion("ollama-test",
-                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"FAKE_999\"}]}"));
+                        "{\"selections\":[{\"group_id\":\"candidate_1\",\"rule_id\":\"FAKE_999\",\"confidence\":0.99}]}"));
         Fixture fixture = fixture(List.of(
                 rule("RULE_1", "急会诊及时到位率"),
                 rule("RULE_2", "急会诊及时到达率")), models);
@@ -215,6 +301,10 @@ class HybridIndicatorResolverTest {
 
     private static Map<String, String> rule(String id, String name) {
         return Map.of("ruleId", id, "ruleName", name);
+    }
+
+    private static Map<String, String> rule(String id, String name, String system) {
+        return Map.of("ruleId", id, "ruleName", name, "system", system);
     }
 
     private record Fixture(

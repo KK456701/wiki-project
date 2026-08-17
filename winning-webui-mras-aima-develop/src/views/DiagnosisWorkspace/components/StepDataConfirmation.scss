@@ -1,0 +1,134 @@
+.confirmation-workspace {
+  max-width: 850px;
+}
+
+.confirmation-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.result-card {
+  display: flex;
+  align-items: stretch;
+  border-radius: 8px;
+}
+
+.result-summary {
+  display: inline-flex;
+  flex: 1.45;
+  align-items: center;
+  gap: 8px;
+  min-width: 300px;
+  padding: 10px 16px;
+}
+
+.result-value {
+  margin-left: auto;
+  font-size: 18px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.attainment-suffix {
+  margin-left: 4px;
+  color: rgb(var(--v-theme-on-surface));
+  font-size: var(--v-theme-typography-body-small-font-size, 12px);
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.attainment--met {
+  color: rgb(var(--v-theme-success));
+}
+
+.attainment--not-met {
+  color: rgb(var(--v-theme-error));
+}
+
+.attainment--pending {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+
+.result-metric {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 230px;
+  padding: 10px 16px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+
+  strong {
+    font-size: 18px;
+  }
+
+  small {
+    margin-left: auto;
+    color: rgb(var(--v-theme-primary));
+    white-space: nowrap;
+  }
+
+  &:hover {
+    background: rgba(var(--v-theme-primary), 0.06);
+    border-color: rgba(var(--v-theme-primary), 0.3);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgb(var(--v-theme-primary));
+    outline-offset: 2px;
+  }
+}
+
+.compact-screening {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 12px !important;
+}
+
+.compact-screening :deep(.screening-header) {
+  flex: 0 0 auto;
+  margin: 0 !important;
+  padding: 2px 4px;
+}
+
+.compact-screening :deep(.screening-header .v-spacer) {
+  display: none;
+}
+
+.compact-screening :deep(.screening-header + .text-body-small) {
+  flex: 1 1 380px;
+  margin: 0 !important;
+}
+
+.compact-screening :deep(.screening-header ~ :not(.text-body-small)) {
+  flex-basis: 100%;
+}
+
+@media (max-width: 760px) {
+  .result-card {
+    flex-wrap: wrap;
+  }
+
+  .result-summary,
+  .result-metric {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .result-metric {
+    border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+    border-left: 0;
+  }
+}

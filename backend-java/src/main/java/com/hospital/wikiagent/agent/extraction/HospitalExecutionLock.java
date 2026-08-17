@@ -4,6 +4,7 @@ import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -13,6 +14,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 将同一医院的抽取与双库查询串行化，降低大表抽取并发造成锁竞争的风险。
@@ -23,6 +26,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class HospitalExecutionLock {
+    private static final Logger log = LoggerFactory.getLogger(HospitalExecutionLock.class);
+    private static final int MAX_CONNECTION_ATTEMPTS = 2;
+
     private final ConcurrentHashMap<String, ReentrantLock> locks = new ConcurrentHashMap<>();
     private final ObjectProvider<DataSource> sqlServerDataSourceProvider;
 
@@ -53,29 +59,84 @@ public class HospitalExecutionLock {
             return new Lease(lock, null, null);
         }
         String resource = "wiki-agent:mras:hospital:" + key;
-        Connection connection = null;
-        try {
-            connection = dataSource.getConnection();
-            int result;
-            try (CallableStatement statement = connection.prepareCall(
-                    "{? = call sp_getapplock(?, ?, ?, ?)}")) {
-                statement.registerOutParameter(1, Types.INTEGER);
-                statement.setString(2, resource);
-                statement.setString(3, "Exclusive");
-                statement.setString(4, "Session");
-                statement.setInt(5, 60_000);
-                statement.execute();
-                result = statement.getInt(1);
+        SQLException lastFailure = null;
+        for (int attempt = 1; attempt <= MAX_CONNECTION_ATTEMPTS; attempt++) {
+            Connection connection = null;
+            try {
+                connection = dataSource.getConnection();
+                int result = acquireDatabaseLock(connection, resource);
+                if (result < 0) {
+                    throw new SQLException("sp_getapplock 返回失败码 " + result, "HYT00");
+                }
+                return new Lease(lock, connection, resource);
+            } catch (SQLException exception) {
+                lastFailure = exception;
+                closeQuietly(connection);
+                if (attempt < MAX_CONNECTION_ATTEMPTS && isConnectionFailure(exception)) {
+                    log.warn("SQL Server 医院级执行锁连接已失效，丢弃旧连接并重试一次：{}",
+                            safeMessage(exception));
+                    continue;
+                }
+                break;
             }
-            if (result < 0) {
-                throw new SQLException("sp_getapplock 返回失败码 " + result);
-            }
-            return new Lease(lock, connection, resource);
-        } catch (SQLException exception) {
-            closeQuietly(connection);
-            lock.unlock();
-            throw new IllegalStateException("无法取得医院级数据库执行锁。", exception);
         }
+        lock.unlock();
+        String message = isConnectionFailure(lastFailure)
+                ? "SQL Server 连接已失效，自动重连后仍无法取得医院级数据库执行锁。"
+                : "无法取得医院级数据库执行锁。";
+        throw new IllegalStateException(message, lastFailure);
+    }
+
+    private static int acquireDatabaseLock(Connection connection, String resource)
+            throws SQLException {
+        try (CallableStatement statement = connection.prepareCall(
+                "{? = call sp_getapplock(?, ?, ?, ?)}")) {
+            statement.registerOutParameter(1, Types.INTEGER);
+            statement.setString(2, resource);
+            statement.setString(3, "Exclusive");
+            statement.setString(4, "Session");
+            statement.setInt(5, 60_000);
+            statement.execute();
+            return statement.getInt(1);
+        }
+    }
+
+    private static boolean isConnectionFailure(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) {
+                String state = sqlException.getSQLState();
+                if (state != null && state.startsWith("08")) {
+                    return true;
+                }
+                SQLException next = sqlException.getNextException();
+                if (next != null && next != sqlException && isConnectionFailure(next)) {
+                    return true;
+                }
+            }
+            String message = current.getMessage();
+            if (message != null) {
+                String normalized = message.toLowerCase(Locale.ROOT);
+                if (normalized.contains("connection is broken")
+                        || normalized.contains("connection is closed")
+                        || normalized.contains("closed connection")
+                        || normalized.contains("connection reset")
+                        || normalized.contains("recovery is not possible")
+                        || normalized.contains("socket closed")
+                        || normalized.contains("已关闭连接")
+                        || normalized.contains("连接已关闭")
+                        || normalized.contains("连接已中断")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static String safeMessage(Throwable failure) {
+        String message = failure == null ? null : failure.getMessage();
+        return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
     }
 
     public static final class Lease implements AutoCloseable {
